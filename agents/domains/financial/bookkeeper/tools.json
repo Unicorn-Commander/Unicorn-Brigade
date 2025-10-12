@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "transaction_ledger_api",
+    "bank_statement_parser",
+    "financial_statement_generator",
+    "payroll_processor_api"
+  ]
+}

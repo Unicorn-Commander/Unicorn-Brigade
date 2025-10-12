@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "cloud_security_posture_manager",
+    "vulnerability_scanner",
+    "cloud_iam_analyzer",
+    "threat_detection_service"
+  ]
+}

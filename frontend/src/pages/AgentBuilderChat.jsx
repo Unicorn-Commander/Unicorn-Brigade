@@ -1,0 +1,687 @@
+import { useState, useEffect, useRef } from 'react';
+import { Send, Sparkles, Bot, User, Loader, RefreshCw, BookOpen, ChevronRight, ChevronLeft, ChevronDown, Settings, RotateCcw } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
+import { useNavigate } from 'react-router-dom';
+import AgentPreview from '../components/AgentPreview';
+import ModelSelector from '../components/ModelSelector';
+import ParameterSlider from '../components/ParameterSlider';
+
+const API_BASE = 'http://localhost:8112/api';
+
+const AgentBuilderChat = () => {
+  const navigate = useNavigate();
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState('');
+  const [gunnyInfo, setGunnyInfo] = useState(null);
+  const [showPreview, setShowPreview] = useState(true);
+  const messagesEndRef = useRef(null);
+
+  // Agent Preferences State
+  const [showPreferences, setShowPreferences] = useState(false);
+  const [preferences, setPreferences] = useState({
+    model: 'ai-choice', // null or 'ai-choice' = let AI decide
+    domain: null,
+    temperature: 0.7,
+    maxTokens: 4096
+  });
+
+  // Agent Preview State
+  const [agentPreview, setAgentPreview] = useState({
+    name: null,
+    displayName: null,
+    domain: null,
+    model: null,
+    temperature: 0.7,
+    maxTokens: 4096,
+    tools: [],
+    capabilities: [],
+    systemPrompt: null,
+    status: 'building' // 'building', 'ready', 'created'
+  });
+
+  useEffect(() => {
+    // Generate session ID
+    setSessionId(`session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+
+    // Load Gunny info
+    loadGunnyInfo();
+
+    // Welcome message
+    setMessages([
+      {
+        role: 'assistant',
+        content: `Howdy! I'm **Gunny**, your Agent Builder.
+
+I'm here to help you build and deploy new AI agents through conversation. Whether you need a financial analyst, a legal researcher, a cybersecurity specialist, or any other type of agent, I'll guide you through the process.
+
+**How can I assist you today?**
+
+- Tell me about the agent you want to create
+- Ask about available tools and capabilities
+- Explore different agent domains
+- Get recommendations for your use case
+
+What would you like to build?`
+      }
+    ]);
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const loadGunnyInfo = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/agent-builder/info`);
+      setGunnyInfo(response.data);
+    } catch (error) {
+      console.error('Failed to load Gunny info:', error);
+    }
+  };
+
+  // Parse agent details from The General's messages
+  const parseAgentDetails = (message, currentPreview) => {
+    const updates = { ...currentPreview };
+
+    // Extract agent name
+    const namePatterns = [
+      /(?:call it|name it|agent called|agent named)\s+["']?([^"'\n.]+)["']?/i,
+      /(?:create|build)\s+(?:an?\s+)?["']?([^"'\n.]+)["']?\s+agent/i,
+      /agent\s+name[:\s]+["']?([^"'\n.]+)["']?/i
+    ];
+
+    for (const pattern of namePatterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        const name = match[1].trim();
+        if (name.length > 2 && name.length < 50 && !name.match(/the|this|that|your/i)) {
+          updates.name = name;
+          updates.displayName = name;
+          break;
+        }
+      }
+    }
+
+    // Extract model
+    const modelPatterns = [
+      /(gpt-4[^\s,]*)/i,
+      /(claude[^\s,]*)/i,
+      /(gemini[^\s,]*)/i
+    ];
+
+    for (const pattern of modelPatterns) {
+      const match = message.match(pattern);
+      if (match && match[1] && match[1].match(/gpt|claude|gemini/i)) {
+        updates.model = match[1].trim();
+        break;
+      }
+    }
+
+    // Extract domain
+    const domains = ['financial', 'legal', 'medical', 'technology', 'investigation', 'cybersecurity',
+                    'data-analysis', 'customer-service', 'content-creation', 'education'];
+    for (const domain of domains) {
+      if (message.toLowerCase().includes(domain)) {
+        updates.domain = domain;
+        break;
+      }
+    }
+
+    // Extract temperature
+    const tempMatch = message.match(/temperature[:\s]+([0-9.]+)/i);
+    if (tempMatch) {
+      const temp = parseFloat(tempMatch[1]);
+      if (temp >= 0 && temp <= 2) updates.temperature = temp;
+    }
+
+    // Extract max tokens
+    const tokensMatch = message.match(/(?:max tokens|token limit)[:\s]+([0-9,]+)/i);
+    if (tokensMatch) {
+      const tokens = parseInt(tokensMatch[1].replace(/,/g, ''));
+      if (tokens > 0) updates.maxTokens = tokens;
+    }
+
+    // Extract tools
+    const toolsSection = message.match(/(?:tools?|capabilities)[:\s]+([^\n]+(?:\n[-•*]\s*[^\n]+)*)/i);
+    if (toolsSection) {
+      const toolsList = toolsSection[1]
+        .split(/\n|,/)
+        .map(t => t.replace(/^[-•*]\s*/, '').trim())
+        .filter(t => t.length > 2 && t.length < 50);
+      if (toolsList.length > 0) {
+        updates.tools = [...new Set([...updates.tools, ...toolsList])];
+      }
+    }
+
+    // Extract inline tool mentions
+    const commonTools = ['web search', 'calculator', 'code execution', 'database', 'api',
+                        'data analysis', 'visualization', 'file system'];
+    for (const tool of commonTools) {
+      if (message.toLowerCase().includes(tool) && !updates.tools.some(t => t.toLowerCase().includes(tool))) {
+        updates.tools.push(tool.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+      }
+    }
+
+    // Extract capabilities
+    const capMatch = message.match(/(?:capabilities|can)[:\s]+([^\n]+(?:\n[-•*]\s*[^\n]+)*)/i);
+    if (capMatch) {
+      const capsList = capMatch[1]
+        .split(/\n|,/)
+        .map(c => c.replace(/^[-•*]\s*/, '').trim())
+        .filter(c => c.length > 2 && c.length < 50);
+      if (capsList.length > 0) {
+        updates.capabilities = [...new Set([...updates.capabilities, ...capsList])];
+      }
+    }
+
+    // Check if ready to create
+    if (message.match(/ready to create|shall I create|proceed with creation|create this agent|deploy.*agent/i)) {
+      updates.status = 'ready';
+    }
+
+    return updates;
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim() || loading) return;
+
+    const userMessage = input.trim();
+    setInput('');
+
+    // Add user message to chat
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setLoading(true);
+
+    try {
+      // Include preferences in the request if they're set
+      const requestData = {
+        message: userMessage,
+        sessionId: sessionId,
+        userId: 'demo-user', // TODO: Get from auth context
+        preferences: preferences.model === 'ai-choice' ? {} : preferences
+      };
+
+      const response = await axios.post(`${API_BASE}/agent-builder/chat`, requestData);
+
+      // Add assistant response
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: response.data.message,
+        usage: response.data.usage,
+        agentCreationIntent: response.data.agentCreationIntent
+      }]);
+
+      // Parse agent details from response and update preview
+      const updatedPreview = parseAgentDetails(response.data.message, agentPreview);
+      setAgentPreview(updatedPreview);
+
+      // Show creation intent notification
+      if (response.data.agentCreationIntent) {
+        toast('Agent creation detected! Review the configuration before confirming.', {
+          icon: '🎖️',
+          duration: 4000
+        });
+      }
+    } catch (error) {
+      console.error('Chat error:', error);
+      toast.error('Failed to send message. Please try again.');
+
+      // Add error message
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'I apologize, but I encountered an error. Please try your message again.'
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const resetConversation = () => {
+    if (confirm('Are you sure you want to start a new conversation? Your current conversation will be lost.')) {
+      const newSessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      setSessionId(newSessionId);
+      setMessages([
+        {
+          role: 'assistant',
+          content: `New conversation started. I'm ready to help you build a new agent!
+
+What would you like to create today?`
+        }
+      ]);
+      // Reset preview
+      setAgentPreview({
+        name: null,
+        displayName: null,
+        domain: null,
+        model: null,
+        temperature: 0.7,
+        maxTokens: 4096,
+        tools: [],
+        capabilities: [],
+        systemPrompt: null,
+        status: 'building'
+      });
+    }
+  };
+
+  const handleCreateAgent = async () => {
+    try {
+      // Call backend to create agent with current preview
+      const response = await axios.post(`${API_BASE}/agents-new`, {
+        name: agentPreview.name,
+        displayName: agentPreview.displayName || agentPreview.name,
+        domain: agentPreview.domain,
+        model: agentPreview.model || 'gpt-4-turbo',
+        temperature: agentPreview.temperature,
+        maxTokens: agentPreview.maxTokens,
+        tools: agentPreview.tools,
+        capabilities: agentPreview.capabilities,
+        systemPrompt: agentPreview.systemPrompt,
+        createdBy: 'demo-user',
+        createdByAgent: 'the-general-001'
+      });
+
+      toast.success('Agent created successfully!');
+
+      // Update preview status
+      setAgentPreview({ ...agentPreview, status: 'created' });
+
+      // Navigate to agent detail page after a short delay
+      setTimeout(() => {
+        navigate(`/agent/${response.data.id}`);
+      }, 1000);
+    } catch (error) {
+      console.error('Failed to create agent:', error);
+      toast.error('Failed to create agent. Please try again.');
+    }
+  };
+
+  const handleResetPreview = () => {
+    setAgentPreview({
+      name: null,
+      displayName: null,
+      domain: null,
+      model: null,
+      temperature: 0.7,
+      maxTokens: 4096,
+      tools: [],
+      capabilities: [],
+      systemPrompt: null,
+      status: 'building'
+    });
+    toast.success('Preview reset. Start fresh!');
+  };
+
+  const resetPreferences = () => {
+    setPreferences({
+      model: 'ai-choice',
+      domain: null,
+      temperature: 0.7,
+      maxTokens: 4096
+    });
+    toast.success('Preferences reset to defaults');
+  };
+
+  const applyPreferences = () => {
+    toast.success('Preferences will be applied to Gunny\'s recommendations');
+    setShowPreferences(false);
+  };
+
+  const domains = [
+    { value: null, label: 'Any domain' },
+    { value: 'financial', label: 'Financial' },
+    { value: 'legal', label: 'Legal' },
+    { value: 'medical', label: 'Medical' },
+    { value: 'cybersecurity', label: 'Cybersecurity' },
+    { value: 'analytics', label: 'Analytics' },
+    { value: 'customer-service', label: 'Customer Service' },
+    { value: 'education', label: 'Education' },
+    { value: 'healthcare', label: 'Healthcare' },
+    { value: 'research', label: 'Research' }
+  ];
+
+  const maxTokensPresets = [2048, 4096, 8192, 16384, 32768];
+
+  return (
+    <div className="h-screen flex bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 border-b border-slate-700 bg-slate-900/50 backdrop-blur-sm">
+          <div className="max-w-6xl mx-auto p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+              <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 border-amber-500/30">
+                <img
+                  src="/Gunny_Logo.png"
+                  alt="Gunny - Agent Builder"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gradient">Gunny</h1>
+                <p className="text-sm text-slate-400">Agent Builder</p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              {gunnyInfo && (
+                <div className="text-xs text-slate-400">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                    <span>{gunnyInfo.theGeneral?.status || 'ready'}</span>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={resetConversation}
+                className="btn-secondary flex items-center space-x-2"
+                title="Start New Conversation"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>New Chat</span>
+              </button>
+
+              <a
+                href="/library"
+                className="btn-secondary flex items-center space-x-2"
+                title="View Agent Library"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span>Library</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Agent Preferences Panel */}
+      <div className="flex-shrink-0 border-b border-slate-700 bg-slate-900/30">
+        <div className="max-w-6xl mx-auto p-4">
+          <button
+            onClick={() => setShowPreferences(!showPreferences)}
+            className="flex items-center space-x-2 text-slate-300 hover:text-unicorn-400 transition-colors w-full"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="font-medium">Agent Preferences (Optional)</span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${showPreferences ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showPreferences && (
+            <div className="mt-4 p-6 bg-slate-800/30 border border-slate-700 rounded-xl space-y-6 animate-fade-in">
+              <p className="text-sm text-slate-400 leading-relaxed">
+                These preferences guide Gunny's recommendations. Leave blank or use default values for AI to decide best options.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Preferred Model */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Preferred Model
+                  </label>
+                  <ModelSelector
+                    value={preferences.model}
+                    onChange={(value) => setPreferences({ ...preferences, model: value })}
+                    allowAIChoice={true}
+                  />
+                </div>
+
+                {/* Target Domain */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Target Domain
+                  </label>
+                  <select
+                    value={preferences.domain || ''}
+                    onChange={(e) => setPreferences({ ...preferences, domain: e.target.value || null })}
+                    className="w-full px-4 py-2.5 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent"
+                  >
+                    {domains.map(domain => (
+                      <option key={domain.value || 'any'} value={domain.value || ''}>
+                        {domain.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Temperature Slider */}
+              <div>
+                <ParameterSlider
+                  label="Temperature"
+                  value={preferences.temperature}
+                  onChange={(value) => setPreferences({ ...preferences, temperature: value })}
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  description="Controls creativity and randomness in responses"
+                  leftLabel="Focused"
+                  rightLabel="Creative"
+                />
+              </div>
+
+              {/* Max Tokens */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Max Tokens
+                </label>
+                <div className="flex items-center space-x-2 mb-2">
+                  {maxTokensPresets.map(preset => (
+                    <button
+                      key={preset}
+                      onClick={() => setPreferences({ ...preferences, maxTokens: preset })}
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
+                        preferences.maxTokens === preset
+                          ? 'bg-unicorn-500 text-white'
+                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      {preset >= 1024 ? `${preset / 1024}K` : preset}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  value={preferences.maxTokens}
+                  onChange={(e) => setPreferences({ ...preferences, maxTokens: parseInt(e.target.value) || 4096 })}
+                  className="w-full px-4 py-2.5 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent"
+                  placeholder="Or enter custom value..."
+                  min={256}
+                  max={128000}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center space-x-3 pt-4 border-t border-slate-700">
+                <button
+                  onClick={applyPreferences}
+                  className="btn-primary flex items-center space-x-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Apply Preferences</span>
+                </button>
+                <button
+                  onClick={resetPreferences}
+                  className="btn-secondary flex items-center space-x-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Reset to Defaults</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto p-6 space-y-6">
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}
+            >
+              <div
+                className={`flex items-start space-x-3 max-w-3xl ${
+                  message.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''
+                }`}
+              >
+                {/* Avatar */}
+                <div
+                  className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden ${
+                    message.role === 'user'
+                      ? 'bg-gradient-to-br from-cyan-500 to-blue-600'
+                      : 'border-2 border-amber-500/30'
+                  }`}
+                >
+                  {message.role === 'user' ? (
+                    <User className="w-5 h-5 text-white" />
+                  ) : (
+                    <img
+                      src="/Gunny_Logo.png"
+                      alt="Gunny"
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                </div>
+
+                {/* Message Content */}
+                <div
+                  className={`flex-1 rounded-2xl p-4 ${
+                    message.role === 'user'
+                      ? 'bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30'
+                      : 'bg-gradient-to-br from-slate-800/80 to-slate-700/80 border border-slate-600/30'
+                  }`}
+                >
+                  {message.role === 'assistant' ? (
+                    <div className="prose prose-invert prose-sm max-w-none">
+                      <ReactMarkdown>{message.content}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="text-slate-100 whitespace-pre-wrap">{message.content}</p>
+                  )}
+
+                  {/* Usage Stats */}
+                  {message.usage && (
+                    <div className="mt-3 pt-3 border-t border-slate-600/30 flex items-center space-x-4 text-xs text-slate-400">
+                      <span>Tokens: {message.usage.total_tokens || 0}</span>
+                      <span>Model: {message.usage.model || 'gpt-4-turbo'}</span>
+                    </div>
+                  )}
+
+                  {/* Agent Creation Intent Badge */}
+                  {message.agentCreationIntent && (
+                    <div className="mt-3 flex items-center space-x-2 text-xs">
+                      <div className="px-2 py-1 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center space-x-1">
+                        <Sparkles className="w-3 h-3" />
+                        <span>Ready to create agent</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Loading Indicator */}
+          {loading && (
+            <div className="flex justify-start animate-fade-in">
+              <div className="flex items-start space-x-3 max-w-3xl">
+                <div className="flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 border-amber-500/30">
+                  <img
+                    src="/Gunny_Logo.png"
+                    alt="Gunny"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="flex-1 rounded-2xl p-4 bg-gradient-to-br from-slate-800/80 to-slate-700/80 border border-slate-600/30">
+                  <div className="flex items-center space-x-2 text-slate-400">
+                    <Loader className="w-4 h-4 animate-spin" />
+                    <span>Gunny is thinking...</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
+
+      {/* Input */}
+      <div className="flex-shrink-0 border-t border-slate-700 bg-slate-900/50 backdrop-blur-sm">
+        <div className="max-w-4xl mx-auto p-4">
+          <div className="flex items-end space-x-3">
+            <div className="flex-1">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Describe the agent you want to build..."
+                className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl focus:ring-2 focus:ring-unicorn-500 focus:border-transparent resize-none"
+                rows={3}
+                disabled={loading}
+              />
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                <span>Press Enter to send, Shift+Enter for new line</span>
+                <span>{input.length} characters</span>
+              </div>
+            </div>
+
+            <button
+              onClick={sendMessage}
+              disabled={!input.trim() || loading}
+              className="btn-primary flex items-center space-x-2 px-6 py-3 h-12 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <Loader className="w-5 h-5 animate-spin" />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
+              <span>Send</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      </div>
+
+      {/* Agent Preview Panel */}
+      {showPreview && (
+        <AgentPreview
+          preview={agentPreview}
+          onConfirm={handleCreateAgent}
+          onReset={handleResetPreview}
+        />
+      )}
+
+      {/* Toggle Preview Button */}
+      <button
+        onClick={() => setShowPreview(!showPreview)}
+        className={`fixed right-4 top-24 z-50 btn-secondary p-2 transition-all ${
+          showPreview ? 'translate-x-0' : 'translate-x-0'
+        }`}
+        title={showPreview ? 'Hide Preview' : 'Show Preview'}
+      >
+        {showPreview ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+      </button>
+    </div>
+  );
+};
+
+export default AgentBuilderChat;

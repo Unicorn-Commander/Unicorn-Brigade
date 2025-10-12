@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "database_management_client",
+    "query_analyzer",
+    "backup_and_recovery_tool",
+    "database_monitoring_dashboard"
+  ]
+}

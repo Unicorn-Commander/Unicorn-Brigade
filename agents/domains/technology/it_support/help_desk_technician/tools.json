@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "ticketing_system_api",
+    "remote_desktop_tool",
+    "knowledge_base_search",
+    "user_directory_api"
+  ]
+}

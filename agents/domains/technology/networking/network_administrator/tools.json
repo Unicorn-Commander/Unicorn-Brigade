@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "network_monitoring_dashboard",
+    "packet_analyzer",
+    "firewall_rules_manager",
+    "user_directory_api"
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "agent_name": "DevOps Engineer Agent",
+  "version": "1.0",
+  "model": "gpt-4-turbo"
+}

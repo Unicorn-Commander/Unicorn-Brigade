@@ -1,0 +1,23 @@
+{
+  "agent_id": "medical_malpractice",
+  "name": "Medical Malpractice Attorney",
+  "role": "Medical Legal Specialist & Patient Advocate",
+  "domain": "legal",
+  "specialization": "Medical malpractice, healthcare law, patient rights, and medical expert coordination",
+  "expose_api": true,
+  "enable_chat_ui": true,
+  "a2a_enabled": true,
+  "persona_icon": "profile.png",
+  "created_date": "2025-09-03",
+  "version": "1.0.0",
+  "capabilities": [
+    "Medical record analysis",
+    "Standard of care evaluation",
+    "Expert witness coordination",
+    "Damage calculation",
+    "Hospital liability assessment",
+    "Insurance coverage analysis",
+    "Settlement negotiation",
+    "Medical board complaints"
+  ]
+}

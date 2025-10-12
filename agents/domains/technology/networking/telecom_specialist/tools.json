@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "voip_config_tool",
+    "circuit_provisioning_api",
+    "call_detail_record_analyzer",
+    "video_conference_manager"
+  ]
+}

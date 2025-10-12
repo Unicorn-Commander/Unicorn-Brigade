@@ -1,0 +1,22 @@
+{
+  "agent_id": "compliance_officer",
+  "name": "Chief Compliance Officer",
+  "role": "Regulatory Compliance & Ethics Agent",
+  "domain": "legal",
+  "specialization": "Regulatory compliance, ethics oversight, policy development, and audit management",
+  "expose_api": true,
+  "enable_chat_ui": true,
+  "a2a_enabled": true,
+  "persona_icon": "profile.png",
+  "created_date": "2025-09-03",
+  "version": "1.0.0",
+  "capabilities": [
+    "Regulatory compliance assessment",
+    "Policy development and review",
+    "Audit planning and execution",
+    "Ethics program management",
+    "Training program development",
+    "Incident investigation",
+    "Reporting and documentation"
+  ]
+}

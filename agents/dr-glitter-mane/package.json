@@ -1,0 +1,49 @@
+{
+  "name": "dr-glitter-mane",
+  "version": "1.0.0",
+  "description": "Dr. Glitter Mane - AI Clinical Maestro. A standalone medical AI consultant with RAG capabilities.",
+  "main": "backend/server.js",
+  "author": "UC2 Platform",
+  "license": "MIT",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "nodemon backend/server.js",
+    "setup": "npm install && npm run db:init && npm run build:frontend",
+    "db:init": "npx prisma generate && npx prisma db push",
+    "build:frontend": "echo 'Frontend is a standalone HTML file - no build needed'",
+    "test": "node test/test-agent.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "multer": "^1.4.5-lts.1",
+    "@prisma/client": "^5.0.0",
+    "openai": "^4.0.0",
+    "node-fetch": "^2.6.7",
+    "pdf-parse": "^1.1.1",
+    "tesseract.js": "^4.0.0",
+    "mammoth": "^1.6.0",
+    "dotenv": "^16.0.3",
+    "bcrypt": "^5.1.0",
+    "jsonwebtoken": "^9.0.0",
+    "uuid": "^9.0.0",
+    "node-cache": "^5.1.2",
+    "natural": "^6.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0",
+    "prisma": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "medical",
+    "ai",
+    "consultant",
+    "healthcare",
+    "diagnosis",
+    "rag",
+    "unicorn"
+  ]
+}

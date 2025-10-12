@@ -1,0 +1,189 @@
+// Dr. Glitter Mane Database Schema
+// Standalone medical AI consultant database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../data/dr_glitter_mane.db"
+}
+
+// User management
+model User {
+  id            String          @id @default(uuid())
+  email         String?         @unique
+  name          String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  sessions      Session[]
+  documents     Document[]
+  consultations Consultation[]
+  memories      Memory[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String?
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  
+  user      User?         @relation(fields: [userId], references: [id])
+  messages  Message[]
+  memories  Memory[]
+}
+
+// Medical records and documents
+model Document {
+  id           String   @id @default(uuid())
+  userId       String?
+  fileName     String
+  filePath     String
+  fileType     String
+  documentType String?  // medical_record, lab_result, imaging, prescription
+  description  String?
+  content      String?  // Extracted text content
+  metadata     String?  // JSON metadata
+  uploadedAt   DateTime @default(now())
+  processedAt  DateTime?
+  
+  user         User?    @relation(fields: [userId], references: [id])
+  chunks       DocumentChunk[]
+  embeddings   Embedding[]
+}
+
+model DocumentChunk {
+  id         String   @id @default(uuid())
+  documentId String
+  chunkIndex Int
+  content    String
+  metadata   String?  // JSON metadata
+  createdAt  DateTime @default(now())
+  
+  document   Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  embeddings Embedding[]
+}
+
+// Vector embeddings for RAG
+model Embedding {
+  id           String   @id @default(uuid())
+  documentId   String?
+  chunkId      String?
+  content      String   // Original text
+  embedding    String   // JSON array of vector values
+  dimensions   Int      @default(1536)
+  model        String   @default("text-embedding-ada-002")
+  createdAt    DateTime @default(now())
+  
+  document     Document?      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunk        DocumentChunk? @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  
+  @@index([documentId])
+  @@index([chunkId])
+}
+
+// Consultation history
+model Consultation {
+  id          String   @id @default(uuid())
+  userId      String?
+  sessionId   String?
+  topic       String?
+  summary     String?
+  diagnosis   String?  // JSON array of possible diagnoses
+  medications String?  // JSON array of recommended medications
+  tests       String?  // JSON array of suggested tests
+  referrals   String?  // JSON array of specialist referrals
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  
+  user        User?     @relation(fields: [userId], references: [id])
+  messages    Message[]
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  sessionId      String?
+  consultationId String?
+  role           String   // user, assistant, system
+  content        String
+  metadata       String?  // JSON metadata
+  timestamp      DateTime @default(now())
+  
+  session        Session?      @relation(fields: [sessionId], references: [id])
+  consultation   Consultation? @relation(fields: [consultationId], references: [id])
+  
+  @@index([sessionId])
+  @@index([consultationId])
+}
+
+// Memory system integration
+model Memory {
+  id           String   @id @default(uuid())
+  agentId      String   @default("dr_glitter_mane_001")
+  userId       String?
+  sessionId    String?
+  type         String   // conversation, document, insight, relationship
+  content      String
+  importance   Float    @default(0.5)
+  source       String?  // user, agent, document_upload, analysis
+  tags         String?  // JSON array of tags
+  entities     String?  // JSON array of extracted entities
+  metadata     String?  // JSON metadata
+  vectorId     String?  // Reference to vector embedding
+  timestamp    DateTime @default(now())
+  accessCount  Int      @default(0)
+  lastAccessed DateTime?
+  tier         String   @default("hot") // hot, warm, cold, frozen
+  
+  user         User?    @relation(fields: [userId], references: [id])
+  session      Session? @relation(fields: [sessionId], references: [id])
+  
+  @@index([agentId])
+  @@index([userId])
+  @@index([sessionId])
+  @@index([type])
+  @@index([tier])
+}
+
+// Medical entities and relationships
+model MedicalEntity {
+  id          String   @id @default(uuid())
+  type        String   // symptom, condition, medication, body_part, test
+  name        String
+  description String?
+  metadata    String?  // JSON metadata
+  createdAt   DateTime @default(now())
+  
+  @@unique([type, name])
+}
+
+model EntityRelationship {
+  id         String   @id @default(uuid())
+  fromType   String
+  fromName   String
+  toType     String
+  toName     String
+  relation   String   // causes, treats, indicates, contraindicated_with
+  strength   Float    @default(0.5)
+  metadata   String?  // JSON metadata
+  createdAt  DateTime @default(now())
+  
+  @@index([fromType, fromName])
+  @@index([toType, toName])
+}
+
+// Analytics and insights
+model AnalyticsEvent {
+  id        String   @id @default(uuid())
+  type      String   // consultation_started, document_uploaded, diagnosis_made
+  userId    String?
+  sessionId String?
+  metadata  String?  // JSON metadata
+  timestamp DateTime @default(now())
+  
+  @@index([type])
+  @@index([userId])
+  @@index([timestamp])
+}

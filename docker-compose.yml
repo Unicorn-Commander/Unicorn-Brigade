@@ -1,0 +1,203 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: uc2-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: unicorn_db
+      POSTGRES_USER: unicorn
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-unicorn_secret_2025}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - uc2-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U unicorn"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: uc2-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - uc2-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # LiveKit Server for Voice/Video
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: uc2-livekit
+    restart: unless-stopped
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    environment:
+      LIVEKIT_KEYS: ${LIVEKIT_API_KEY:-devkey}:${LIVEKIT_API_SECRET:-secret}
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: true
+        redis:
+          address: redis:6379
+        webhook:
+          api_key: ${LIVEKIT_WEBHOOK_KEY:-webhook_secret}
+    networks:
+      - uc2-network
+    depends_on:
+      - redis
+
+  # Backend API Server
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: uc2-backend
+    restart: unless-stopped
+    ports:
+      - "8112:8112"
+    environment:
+      NODE_ENV: production
+      PORT: 8112
+      DATABASE_URL: postgresql://unicorn:${POSTGRES_PASSWORD:-unicorn_secret_2025}@postgres:5432/unicorn_db
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-unicorn_jwt_secret_2025}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-32_char_encryption_key_here_2025}
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    volumes:
+      - ./agents:/app/agents:ro
+      - ./tools:/app/tools:ro
+      - backend_logs:/app/logs
+      - backend_uploads:/app/uploads
+    networks:
+      - uc2-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Frontend Web UI
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: uc2-frontend
+    restart: unless-stopped
+    ports:
+      - "8113:80"
+    networks:
+      - uc2-network
+    depends_on:
+      - backend
+
+  # Nginx Reverse Proxy (Production)
+  nginx:
+    image: nginx:alpine
+    container_name: uc2-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_cache:/var/cache/nginx
+    networks:
+      - uc2-network
+    depends_on:
+      - frontend
+      - backend
+    profiles:
+      - production
+
+  # MCP Server (Optional)
+  mcp-server:
+    image: mcphub/mcp-server:latest
+    container_name: uc2-mcp
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      MCP_CONFIG: |
+        servers:
+          - name: filesystem
+            type: builtin
+          - name: web
+            type: builtin
+          - name: shell
+            type: builtin
+    networks:
+      - uc2-network
+    profiles:
+      - mcp
+
+  # Apache Tika for Document Processing (Optional)
+  tika:
+    image: apache/tika:latest
+    container_name: uc2-tika
+    restart: unless-stopped
+    ports:
+      - "9998:9998"
+    networks:
+      - uc2-network
+    profiles:
+      - document-processing
+
+  # SearXNG for Web Search (Optional)
+  searxng:
+    image: searxng/searxng:latest
+    container_name: uc2-searxng
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:ro
+    environment:
+      BASE_URL: http://localhost:8080/
+      INSTANCE_NAME: "UC2 Search"
+    networks:
+      - uc2-network
+    profiles:
+      - search
+
+networks:
+  uc2-network:
+    driver: bridge
+    name: unicorn-network
+
+volumes:
+  postgres_data:
+    name: uc2-postgres-data
+  redis_data:
+    name: uc2-redis-data
+  backend_logs:
+    name: uc2-backend-logs
+  backend_uploads:
+    name: uc2-backend-uploads
+  nginx_cache:
+    name: uc2-nginx-cache

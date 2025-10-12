@@ -1,0 +1,22 @@
+{
+  "agent_id": "legal_researcher",
+  "name": "Legal Research Specialist",
+  "role": "Legal Research & Precedent Analysis Agent",
+  "domain": "legal",
+  "specialization": "Case law research, statutory interpretation, legal precedent analysis, and brief preparation",
+  "expose_api": true,
+  "enable_chat_ui": true,
+  "a2a_enabled": true,
+  "persona_icon": "profile.png",
+  "created_date": "2025-09-03",
+  "version": "1.0.0",
+  "capabilities": [
+    "Case law research",
+    "Statutory interpretation",
+    "Precedent analysis",
+    "Legal brief drafting",
+    "Citation verification",
+    "Jurisdiction comparison",
+    "Legal trend analysis"
+  ]
+}

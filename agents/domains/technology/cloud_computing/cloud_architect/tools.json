@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "cloud_architecture_design_tool",
+    "cost_estimation_calculator",
+    "cloud_service_browser",
+    "compliance_assessment_tool"
+  ]
+}

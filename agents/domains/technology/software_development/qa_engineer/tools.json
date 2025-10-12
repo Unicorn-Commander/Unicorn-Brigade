@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "test_case_management_system",
+    "bug_tracking_system",
+    "browser_automation_framework",
+    "load_testing_tool"
+  ]
+}

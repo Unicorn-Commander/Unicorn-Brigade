@@ -1,0 +1,180 @@
+# LiteLLM Configuration for UC2
+# Multi-provider LLM routing and load balancing
+
+model_list:
+  # ============================================================================
+  # OPENROUTER MODELS (300+ models via single provider)
+  # ============================================================================
+
+  # OpenAI via OpenRouter
+  - model_name: gpt-4-turbo
+    litellm_params:
+      model: openrouter/openai/gpt-4-turbo
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: gpt-4
+    litellm_params:
+      model: openrouter/openai/gpt-4
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+      model: openrouter/openai/gpt-3.5-turbo
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # Anthropic via OpenRouter
+  - model_name: claude-3-opus
+    litellm_params:
+      model: openrouter/anthropic/claude-3-opus
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: claude-3-sonnet
+    litellm_params:
+      model: openrouter/anthropic/claude-3-sonnet
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: claude-3.5-sonnet
+    litellm_params:
+      model: openrouter/anthropic/claude-3.5-sonnet
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  - model_name: claude-3-haiku
+    litellm_params:
+      model: openrouter/anthropic/claude-3-haiku
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # Google via OpenRouter
+  - model_name: gemini-pro
+    litellm_params:
+      model: openrouter/google/gemini-pro
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # Meta via OpenRouter
+  - model_name: llama-3-70b
+    litellm_params:
+      model: openrouter/meta-llama/llama-3-70b-instruct
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # Mistral via OpenRouter
+  - model_name: mistral-large
+    litellm_params:
+      model: openrouter/mistralai/mistral-large
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # ============================================================================
+  # DIRECT PROVIDER FALLBACKS (Optional)
+  # ============================================================================
+
+  # Direct OpenAI (fallback)
+  - model_name: gpt-4-direct
+    litellm_params:
+      model: gpt-4
+      api_key: os.environ/OPENAI_API_KEY
+
+  # Direct Anthropic (fallback)
+  - model_name: claude-3-opus-direct
+    litellm_params:
+      model: claude-3-opus-20240229
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+# ============================================================================
+# ROUTER SETTINGS
+# ============================================================================
+
+router_settings:
+  # Routing strategy
+  routing_strategy: simple-shuffle  # Best performance with minimal latency
+
+  # Enable pre-call checks
+  enable_pre_call_checks: true
+
+  # Retry settings
+  num_retries: 2
+  timeout: 120  # seconds
+
+  # Fallback configuration
+  enable_fallbacks: true
+  fallbacks:
+    # If primary model fails, try these alternatives
+    - gpt-4-turbo: [gpt-4, claude-3.5-sonnet, claude-3-opus]
+    - claude-3-opus: [claude-3.5-sonnet, gpt-4-turbo, gpt-4]
+    - claude-3.5-sonnet: [claude-3-opus, gpt-4-turbo]
+
+  # Load balancing
+  enable_loadbalancing: true
+
+  # Redis for state management (if using multiple LiteLLM instances)
+  # redis_host: redis
+  # redis_port: 6379
+
+# ============================================================================
+# GENERAL SETTINGS
+# ============================================================================
+
+general_settings:
+  # Master key for admin access
+  master_key: ${LITELLM_MASTER_KEY}
+
+  # Database for logging (optional)
+  database_url: ${DATABASE_URL}
+
+  # Enable detailed logging
+  set_verbose: false
+
+  # Max parallel requests
+  max_parallel_requests: 100
+
+  # Default max tokens
+  default_max_tokens: 4096
+
+# ============================================================================
+# LITELLM SETTINGS
+# ============================================================================
+
+litellm_settings:
+  # Timeouts
+  request_timeout: 120
+
+  # Retries
+  num_retries: 2
+
+  # Caching (optional - for cost savings)
+  # cache: true
+  # cache_params:
+  #   type: redis
+  #   host: redis
+  #   port: 6379
+
+  # Drop unmapped params (for compatibility)
+  drop_params: true
+
+  # Success callback
+  success_callback: ["langfuse"]  # If using Langfuse
+
+  # Failure callback
+  # failure_callback: ["slack", "email"]
+
+# ============================================================================
+# OPTIONAL: BUDGET & RATE LIMITS
+# ============================================================================
+
+# budget_settings:
+#   # Global budget (USD per month)
+#   max_budget: 1000
+#
+#   # Per-model budgets
+#   model_max_budget:
+#     gpt-4: 500
+#     claude-3-opus: 300
+#
+#   # Budget duration
+#   budget_duration: 30d
+
+# ============================================================================
+# OPTIONAL: LANGFUSE INTEGRATION
+# ============================================================================
+
+# langfuse_settings:
+#   public_key: ${LANGFUSE_PUBLIC_KEY}
+#   secret_key: ${LANGFUSE_SECRET_KEY}
+#   host: ${LANGFUSE_HOST}

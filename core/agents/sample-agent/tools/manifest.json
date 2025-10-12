@@ -1,0 +1,140 @@
+{
+  "agentId": "sample-agent-001",
+  "agentName": "Sample Research Agent",
+  "toolsVersion": "1.0.0",
+  "lastSynced": "2025-09-25T20:57:36.691Z",
+  "syncSource": "core/tools",
+  "tools": [
+    {
+      "name": "calculator",
+      "version": "1.0.0",
+      "source": "internal",
+      "path": "calculator.js",
+      "enabled": true,
+      "permissions": [
+        "basic"
+      ],
+      "lastUpdated": "2025-09-25T20:57:36.690Z",
+      "checksum": "sha256:fff2dd142a9bb09b2f8964a4e3683be31341537b10a6a39de17531c0054f2d98",
+      "configuration": {
+        "precision": 10,
+        "allowComplexOperations": true
+      }
+    },
+    {
+      "name": "webSearch",
+      "version": "1.0.0",
+      "source": "internal",
+      "path": "webSearch.js",
+      "enabled": true,
+      "permissions": [
+        "network",
+        "api"
+      ],
+      "lastUpdated": "2025-09-25T20:57:36.690Z",
+      "checksum": "sha256:6686c63e164ad991458bcc742768667bf7afc27bf3c3552140e9abc749d0d285",
+      "configuration": {
+        "defaultEngine": "duckduckgo",
+        "maxResults": 10,
+        "safeSearch": true
+      }
+    },
+    {
+      "name": "filesystem",
+      "version": "1.0.0",
+      "source": "internal",
+      "path": "filesystem.js",
+      "enabled": true,
+      "permissions": [
+        "filesystem",
+        "read",
+        "write"
+      ],
+      "lastUpdated": "2025-09-25T20:57:36.691Z",
+      "checksum": "sha256:157a1a0577c3d06bd10b92ecb8cc1b344969729372dfe1b1adad1319703b064e",
+      "configuration": {
+        "sandboxPath": "agents/sample-agent/workspace",
+        "allowedOperations": [
+          "read",
+          "write",
+          "list",
+          "mkdir"
+        ]
+      }
+    },
+    {
+      "name": "database",
+      "version": "1.0.0",
+      "source": "internal",
+      "path": "database.js",
+      "enabled": true,
+      "permissions": [
+        "database",
+        "read",
+        "write"
+      ],
+      "lastUpdated": "2025-09-25T20:57:36.691Z",
+      "checksum": "sha256:373039cef55f34641dee0c304cc53dd51dea8e48d7f77f4ff6509823c702490a",
+      "configuration": {
+        "allowedModels": [
+          "memory",
+          "agentTask",
+          "agentMessage"
+        ],
+        "maxResults": 100
+      }
+    }
+  ],
+  "customTools": [],
+  "workflows": [
+    {
+      "name": "research_workflow",
+      "description": "Standard research workflow using web search and data analysis",
+      "steps": [
+        {
+          "tool": "webSearch",
+          "action": "search",
+          "parameters": {
+            "query": "{research_topic}",
+            "limit": 10
+          }
+        },
+        {
+          "tool": "filesystem",
+          "action": "write",
+          "parameters": {
+            "operation": "write",
+            "path": "research/{timestamp}_results.json",
+            "content": "{search_results}"
+          }
+        },
+        {
+          "tool": "calculator",
+          "action": "calculate",
+          "parameters": {
+            "expression": "{analysis_formula}"
+          },
+          "optional": true
+        },
+        {
+          "tool": "database",
+          "action": "store",
+          "parameters": {
+            "operation": "create",
+            "model": "memory",
+            "data": {
+              "type": "semantic",
+              "scope": "individual",
+              "content": "{research_summary}"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "lastValidated": "2025-09-25T12:00:00.000Z",
+    "status": "valid",
+    "issues": []
+  }
+}

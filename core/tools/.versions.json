@@ -1,0 +1,26 @@
+{
+  "lastSync": "2025-09-25T20:57:36.692Z",
+  "tools": {
+    "calculator@1.0.0": {
+      "checksum": "fff2dd142a9bb09b2f8964a4e3683be31341537b10a6a39de17531c0054f2d98",
+      "lastSynced": "2025-09-25T20:57:36.689Z",
+      "agent": "sample-agent"
+    },
+    "webSearch@1.0.0": {
+      "checksum": "6686c63e164ad991458bcc742768667bf7afc27bf3c3552140e9abc749d0d285",
+      "lastSynced": "2025-09-25T20:57:36.690Z",
+      "agent": "sample-agent"
+    },
+    "filesystem@1.0.0": {
+      "checksum": "157a1a0577c3d06bd10b92ecb8cc1b344969729372dfe1b1adad1319703b064e",
+      "lastSynced": "2025-09-25T20:57:36.691Z",
+      "agent": "sample-agent"
+    },
+    "database@1.0.0": {
+      "checksum": "373039cef55f34641dee0c304cc53dd51dea8e48d7f77f4ff6509823c702490a",
+      "lastSynced": "2025-09-25T20:57:36.691Z",
+      "agent": "sample-agent"
+    }
+  },
+  "agents": {}
+}

@@ -1,0 +1,8 @@
+{
+  "tools": [
+    "ml_orchestration_platform",
+    "model_serving_framework",
+    "data_pipeline_tool",
+    "model_monitoring_dashboard"
+  ]
+}
