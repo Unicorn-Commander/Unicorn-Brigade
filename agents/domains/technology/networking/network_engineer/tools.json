@@ -1,8 +1,0 @@
-{
-  "tools": [
-    "network_design_software",
-    "network_simulator",
-    "device_config_api",
-    "packet_analyzer"
-  ]
-}

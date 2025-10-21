@@ -1,9 +1,0 @@
-{
-  "tools": [
-    "network_mapper",
-    "vulnerability_scanner",
-    "exploitation_framework",
-    "password_cracker",
-    "web_proxy"
-  ]
-}

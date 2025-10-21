@@ -20,7 +20,7 @@ import {
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 
-const API_BASE = 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -41,11 +41,11 @@ const Dashboard = () => {
     setLoading(true);
     try {
       // Load agents
-      const agentsResponse = await axios.get(`${API_BASE}/agents-new`);
+      const agentsResponse = await axios.get(`${API_BASE}/agents`);
       const agents = agentsResponse.data.agents || [];
 
       // Load domains
-      const domainsResponse = await axios.get(`${API_BASE}/agents-new/domains`);
+      const domainsResponse = await axios.get(`${API_BASE}/agents/domains`);
       const domains = domainsResponse.data.domains || [];
 
       // Calculate stats

@@ -1,8 +1,0 @@
-{
-  "tools": [
-    "risk_modeling_engine",
-    "stress_testing_simulator",
-    "credit_rating_api",
-    "regulatory_compliance_checker"
-  ]
-}

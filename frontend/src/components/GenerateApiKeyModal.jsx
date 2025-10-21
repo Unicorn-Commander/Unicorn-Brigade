@@ -59,8 +59,9 @@ const GenerateApiKeyModal = ({ agentId, onSuccess, onClose }) => {
       }
 
       // Mock API call - replace with actual API endpoint
-      // POST /api/agents-new/:agentId/api-keys
-      const response = await fetch(`http://localhost:8112/api/agents-new/${agentId}/api-keys`, {
+      // POST /api/agents/:agentId/api-keys
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+      const response = await fetch(`${API_BASE}/agents/${agentId}/api-keys`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

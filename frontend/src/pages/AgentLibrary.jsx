@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import AgentCard from '../components/AgentCard';
 
-const API_BASE = 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
 
 // Domain Icons and Colors
 const domainConfig = {
@@ -55,7 +55,7 @@ const AgentLibrary = () => {
   const loadAgents = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE}/agents-new`);
+      const response = await axios.get(`${API_BASE}/agents`);
       setAgents(response.data.agents || []);
     } catch (error) {
       console.error('Failed to load agents:', error);
@@ -67,7 +67,7 @@ const AgentLibrary = () => {
 
   const loadDomains = async () => {
     try {
-      const response = await axios.get(`${API_BASE}/agents-new/domains`);
+      const response = await axios.get(`${API_BASE}/agents/domains`);
       setDomains(response.data.domains || []);
     } catch (error) {
       console.error('Failed to load domains:', error);

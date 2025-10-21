@@ -12,7 +12,7 @@ import GenerateApiKeyModal from '../components/GenerateApiKeyModal';
 import KeyRevealModal from '../components/KeyRevealModal';
 import AgentConfigurationTab from '../components/AgentConfigurationTab';
 
-const API_BASE = 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
 
 const AgentDetail = () => {
   const { id } = useParams();
@@ -34,7 +34,7 @@ const AgentDetail = () => {
   const loadAgent = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE}/agents-new/${id}`);
+      const response = await axios.get(`${API_BASE}/agents/${id}`);
       setAgent(response.data);
       setEditedAgent(response.data);
 
@@ -67,7 +67,7 @@ const AgentDetail = () => {
 
   const saveChanges = async () => {
     try {
-      await axios.put(`${API_BASE}/agents-new/${id}`, editedAgent);
+      await axios.put(`${API_BASE}/agents/${id}`, editedAgent);
       toast.success('Agent updated successfully');
       setAgent(editedAgent);
       setEditMode(false);
@@ -90,7 +90,7 @@ const AgentDetail = () => {
 
   const handleRevokeKey = async (apiKey) => {
     try {
-      await axios.delete(`${API_BASE}/agents-new/${id}/api-keys/${apiKey.id}`);
+      await axios.delete(`${API_BASE}/agents/${id}/api-keys/${apiKey.id}`);
       toast.success('API key revoked');
       loadAgent(); // Reload agent to update API keys list
     } catch (error) {

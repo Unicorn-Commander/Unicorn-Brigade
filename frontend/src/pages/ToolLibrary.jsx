@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-const API_BASE = 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
 
 // Mock tools data (will be replaced with API call when endpoint is ready)
 const mockTools = [

@@ -8,7 +8,7 @@ import AgentPreview from '../components/AgentPreview';
 import ModelSelector from '../components/ModelSelector';
 import ParameterSlider from '../components/ParameterSlider';
 
-const API_BASE = 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
 
 const AgentBuilderChat = () => {
   const navigate = useNavigate();
@@ -282,7 +282,7 @@ What would you like to create today?`
   const handleCreateAgent = async () => {
     try {
       // Call backend to create agent with current preview
-      const response = await axios.post(`${API_BASE}/agents-new`, {
+      const response = await axios.post(`${API_BASE}/agents`, {
         name: agentPreview.name,
         displayName: agentPreview.displayName || agentPreview.name,
         domain: agentPreview.domain,

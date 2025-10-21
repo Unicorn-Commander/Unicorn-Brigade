@@ -5,7 +5,7 @@ import axios from 'axios';
 import ToolCard from './ToolCard';
 import ToolConfigModal from './ToolConfigModal';
 
-const API_BASE = 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
 
 // Mock data for when API isn't ready
 const mockTools = [
@@ -123,8 +123,8 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
 
   const handleAdd = async (tool) => {
     try {
-      // POST /api/agents-new/:agentId/tools
-      await axios.post(`${API_BASE}/agents-new/${agentId}/tools`, {
+      // POST /api/agents/:agentId/tools
+      await axios.post(`${API_BASE}/agents/${agentId}/tools`, {
         toolId: tool.id
       });
 
@@ -139,8 +139,8 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
 
   const handleRemove = async (tool) => {
     try {
-      // DELETE /api/agents-new/:agentId/tools/:toolId
-      await axios.delete(`${API_BASE}/agents-new/${agentId}/tools/${tool.id}`);
+      // DELETE /api/agents/:agentId/tools/:toolId
+      await axios.delete(`${API_BASE}/agents/${agentId}/tools/${tool.id}`);
 
       setAssigned(assigned.filter(t => t.id !== tool.id));
       toast.success(`Removed ${tool.name}`);
@@ -160,8 +160,8 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
 
   const handleSaveConfig = async (config) => {
     try {
-      // PATCH /api/agents-new/:agentId/tools/:toolId
-      await axios.patch(`${API_BASE}/agents-new/${agentId}/tools/${configTool.id}`, {
+      // PATCH /api/agents/:agentId/tools/:toolId
+      await axios.patch(`${API_BASE}/agents/${agentId}/tools/${configTool.id}`, {
         config
       });
 

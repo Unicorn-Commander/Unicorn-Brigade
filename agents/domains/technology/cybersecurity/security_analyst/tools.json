@@ -1,8 +1,0 @@
-{
-  "tools": [
-    "siem_dashboard",
-    "vulnerability_scanner",
-    "threat_intelligence_feed",
-    "log_analysis_tool"
-  ]
-}

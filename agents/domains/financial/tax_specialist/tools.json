@@ -1,7 +1,0 @@
-{
-  "tools": [
-    "tax_code_database_search",
-    "tax_form_generator",
-    "tax_liability_calculator"
-  ]
-}

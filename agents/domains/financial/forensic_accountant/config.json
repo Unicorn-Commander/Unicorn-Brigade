@@ -1,6 +1,0 @@
-{
-  "agent_name": "Forensic Accountant Agent",
-  "version": "1.0",
-  "model": "gpt-4-turbo",
-  "response_format": "json"
-}

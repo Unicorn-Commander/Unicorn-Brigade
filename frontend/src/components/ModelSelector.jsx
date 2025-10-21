@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Cpu, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
 
 // Fallback hardcoded models if API fails
 const FALLBACK_MODELS = [

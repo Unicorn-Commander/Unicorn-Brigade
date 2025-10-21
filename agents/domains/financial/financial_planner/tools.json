@@ -1,8 +1,0 @@
-{
-  "tools": [
-    "financial_data_api_reader",
-    "investment_portfolio_analyzer",
-    "retirement_calculator",
-    "tax_projection_tool"
-  ]
-}

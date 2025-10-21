@@ -37,7 +37,9 @@ Explore our product suite at [Unicorn Commander](https://unicorncommander.com)
 
 ## 🚀 What is Unicorn Brigade?
 
-**Unicorn Brigade** is a comprehensive agent infrastructure platform that revolutionizes how you build, deploy, and orchestrate AI agents. Unlike simple agent builders, Unicorn Brigade provides a complete ecosystem for agent development with:
+**Unicorn Brigade** is a comprehensive agent infrastructure platform that revolutionizes how you build, deploy, and orchestrate AI agents. As part of the **UC-Cloud ecosystem**, Brigade serves as the **"Agent Factory"** - where you build and manage AI agents that can be used across all UC-Cloud services.
+
+Unlike simple agent builders, Unicorn Brigade provides a complete ecosystem for agent development with:
 
 - 🎖️ **The General** - Orchestrator of orchestrators, managing agent workflows and coordinating your entire Brigade
 - 🎯 **Gunny** - Your conversational Agent Builder who helps you create agents through natural dialogue
@@ -180,12 +182,57 @@ Explore our product suite at [Unicorn Commander](https://unicorncommander.com)
 
 ## 📦 Installation
 
-### Prerequisites
+### Deployment Modes
+
+Unicorn Brigade can be deployed in two ways:
+
+#### **1. UC-Cloud Integration (Recommended - Production)**
+
+Brigade is designed to integrate with the UC-Cloud ecosystem for production deployment.
+
+**Prerequisites:**
+- UC-Cloud infrastructure running (PostgreSQL, Redis, Keycloak, Traefik)
+- Docker and Docker Compose installed
+
+**Quick Start:**
+
+\`\`\`bash
+# Navigate to UC-Cloud directory
+cd /path/to/UC-Cloud
+
+# Build Brigade images
+docker compose -f docker-compose.brigade.yml build
+
+# Start Brigade services
+docker compose -f docker-compose.brigade.yml up -d
+
+# Initialize database
+cd Unicorn-Brigade
+npx prisma db push
+
+# Verify deployment
+docker ps | grep brigade
+docker logs unicorn-brigade --tail 20
+\`\`\`
+
+**Access:**
+- **Production**: https://brigade.unicorncommander.ai
+- **Local**: http://localhost:8102
+
+**See** [UC-CLOUD-INTEGRATION.md](./UC-CLOUD-INTEGRATION.md) for complete deployment guide.
+
+---
+
+#### **2. Standalone Development (Local Testing)**
+
+For local development without UC-Cloud infrastructure.
+
+**Prerequisites:**
 - Node.js 18 or higher
 - npm or yarn
 - Git
 
-### Quick Start
+**Quick Start:**
 
 \`\`\`bash
 # Clone the repository
@@ -201,7 +248,7 @@ cp .env.example .env
 # Add your OpenRouter API key to .env
 echo "OPENROUTER_API_KEY=your_key_here" >> .env
 
-# Initialize database
+# Initialize database (SQLite for development)
 npx prisma db push
 
 # Start backend (port 8112)
@@ -220,6 +267,8 @@ npm run dev
 \`\`\`
 
 Open your browser to \`http://localhost:8113\` 🎉
+
+**Note:** Standalone mode uses SQLite and local authentication (not Keycloak SSO).
 
 ---
 
@@ -391,6 +440,53 @@ We welcome contributions! Here's how you can help:
 - [ ] Audit logs and compliance
 - [ ] SLA monitoring
 - [ ] White-label options
+
+---
+
+## 🏗️ UC-Cloud Integration
+
+### Brigade's Role in the Ecosystem
+
+```
+UC-Cloud Ecosystem
+│
+├── Ops-Center (Main Dashboard)
+│   ├── Service monitoring
+│   ├── Billing (Lago)
+│   └── User management
+│
+├── Open-WebUI (Chat Interface)
+│   ├── Conversations
+│   └── Agent usage
+│
+├── **Unicorn Brigade** (Agent Management) ← Agent Factory
+│   ├── Build agents (Gunny)
+│   ├── Browse agent library
+│   └── Agent API endpoints
+│
+└── Center-Deep (Search)
+    └── Metasearch engine
+```
+
+### Shared Infrastructure
+
+Brigade integrates with UC-Cloud by sharing:
+
+- **PostgreSQL** - brigade_db in shared unicorn-postgresql
+- **Redis** - Shared cache for sessions
+- **Keycloak** - SSO authentication (uchub realm)
+- **Traefik** - SSL/TLS reverse proxy
+- **Ops-Center** - LLM routing and billing
+
+### Production Status
+
+- ✅ **Deployed**: brigade.unicorncommander.ai
+- ✅ **Authentication**: Keycloak SSO fully operational
+- ✅ **Database**: brigade_db initialized and operational
+- ✅ **SSL/TLS**: Let's Encrypt certificates active
+- ✅ **Monitoring**: Integrated with Ops-Center
+
+**Latest Update**: October 15, 2025 - Production deployment complete
 
 ---
 

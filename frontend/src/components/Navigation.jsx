@@ -8,6 +8,7 @@ import {
   Activity,
   Settings
 } from 'lucide-react';
+import UserProfile from './auth/UserProfile';
 
 const Navigation = () => {
   const navItems = [
@@ -62,8 +63,13 @@ const Navigation = () => {
           ))}
         </div>
 
-        {/* Status */}
+        {/* User Profile */}
         <div className="p-4 border-t border-slate-800/50">
+          <UserProfile />
+        </div>
+
+        {/* Status */}
+        <div className="px-4 pb-4">
           <div className="card bg-emerald-500/10 border-emerald-500/30">
             <div className="flex items-center space-x-3">
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>

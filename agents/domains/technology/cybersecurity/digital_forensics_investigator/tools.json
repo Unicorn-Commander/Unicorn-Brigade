@@ -1,9 +1,0 @@
-{
-  "tools": [
-    "disk_imaging_tool",
-    "file_carving_software",
-    "memory_analysis_tool",
-    "log_parser",
-    "timeline_generator"
-  ]
-}

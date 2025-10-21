@@ -1,8 +1,0 @@
-{
-  "tools": [
-    "code_editor",
-    "api_testing_client",
-    "database_management_tool",
-    "version_control_system"
-  ]
-}

@@ -1,8 +1,0 @@
-{
-  "tools": [
-    "server_management_console",
-    "virtualization_platform_api",
-    "system_monitoring_dashboard",
-    "scripting_shell"
-  ]
-}

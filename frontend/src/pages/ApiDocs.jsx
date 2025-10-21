@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Code, Copy, CheckCircle, Book, Key, Server, Zap, Shield, MessageSquare } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-const API_BASE = 'http://localhost:8112';
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8112/api').replace('/api', '');
 
 const ApiDocs = () => {
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
@@ -17,7 +17,7 @@ const ApiDocs = () => {
     {
       id: 'list-agents',
       method: 'GET',
-      path: '/api/agents-new',
+      path: '/api/agents',
       title: 'List All Agents',
       description: 'Retrieve a list of all agents in the system',
       params: [],
@@ -39,10 +39,10 @@ const ApiDocs = () => {
         ]
       },
       examples: {
-        curl: `curl -X GET "${API_BASE}/api/agents-new" \\
+        curl: `curl -X GET "${API_BASE}/api/agents" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json"`,
-        javascript: `const response = await fetch('${API_BASE}/api/agents-new', {
+        javascript: `const response = await fetch('${API_BASE}/api/agents', {
   method: 'GET',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
@@ -54,7 +54,7 @@ console.log(data.agents);`,
         python: `import requests
 
 response = requests.get(
-    '${API_BASE}/api/agents-new',
+    '${API_BASE}/api/agents',
     headers={
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json'
@@ -67,7 +67,7 @@ print(agents)`
     {
       id: 'create-agent',
       method: 'POST',
-      path: '/api/agents-new',
+      path: '/api/agents',
       title: 'Create Agent',
       description: 'Create a new agent with specified configuration',
       params: [],
@@ -88,7 +88,7 @@ print(agents)`
         }
       },
       examples: {
-        curl: `curl -X POST "${API_BASE}/api/agents-new" \\
+        curl: `curl -X POST "${API_BASE}/api/agents" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -98,7 +98,7 @@ print(agents)`
     "prompt": "You are a helpful assistant",
     "model": "gpt-4-turbo"
   }'`,
-        javascript: `const response = await fetch('${API_BASE}/api/agents-new', {
+        javascript: `const response = await fetch('${API_BASE}/api/agents', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
@@ -117,7 +117,7 @@ console.log(data.agent);`,
         python: `import requests
 
 response = requests.post(
-    '${API_BASE}/api/agents-new',
+    '${API_BASE}/api/agents',
     headers={
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json'
@@ -137,7 +137,7 @@ print(agent)`
     {
       id: 'get-agent-card',
       method: 'GET',
-      path: '/api/agents-new/:id/card',
+      path: '/api/agents/:id/card',
       title: 'Get Agent Card (A2A)',
       description: 'Retrieve Agent Card for Agent-to-Agent (A2A) protocol',
       params: [
@@ -155,10 +155,10 @@ print(agent)`
         }
       },
       examples: {
-        curl: `curl -X GET "${API_BASE}/api/agents-new/AGENT_ID/card" \\
+        curl: `curl -X GET "${API_BASE}/api/agents/AGENT_ID/card" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json"`,
-        javascript: `const response = await fetch('${API_BASE}/api/agents-new/AGENT_ID/card', {
+        javascript: `const response = await fetch('${API_BASE}/api/agents/AGENT_ID/card', {
   method: 'GET',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
@@ -170,7 +170,7 @@ console.log(card);`,
         python: `import requests
 
 response = requests.get(
-    '${API_BASE}/api/agents-new/AGENT_ID/card',
+    '${API_BASE}/api/agents/AGENT_ID/card',
     headers={
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json'
@@ -183,7 +183,7 @@ print(card)`
     {
       id: 'invoke-agent',
       method: 'POST',
-      path: '/api/agents-new/:id/invoke',
+      path: '/api/agents/:id/invoke',
       title: 'Invoke Agent',
       description: 'Send a message to an agent and get a response',
       params: [
@@ -203,14 +203,14 @@ print(card)`
         }
       },
       examples: {
-        curl: `curl -X POST "${API_BASE}/api/agents-new/AGENT_ID/invoke" \\
+        curl: `curl -X POST "${API_BASE}/api/agents/AGENT_ID/invoke" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "message": "Hello, agent!",
     "conversationId": "conv-123"
   }'`,
-        javascript: `const response = await fetch('${API_BASE}/api/agents-new/AGENT_ID/invoke', {
+        javascript: `const response = await fetch('${API_BASE}/api/agents/AGENT_ID/invoke', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
@@ -226,7 +226,7 @@ console.log(data.response);`,
         python: `import requests
 
 response = requests.post(
-    '${API_BASE}/api/agents-new/AGENT_ID/invoke',
+    '${API_BASE}/api/agents/AGENT_ID/invoke',
     headers={
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json'
@@ -294,7 +294,7 @@ print(data['response'])`
     {
       id: 'get-domains',
       method: 'GET',
-      path: '/api/agents-new/domains',
+      path: '/api/agents/domains',
       title: 'Get Domains',
       description: 'Get list of agent domains with counts',
       params: [],
@@ -307,10 +307,10 @@ print(data['response'])`
         ]
       },
       examples: {
-        curl: `curl -X GET "${API_BASE}/api/agents-new/domains" \\
+        curl: `curl -X GET "${API_BASE}/api/agents/domains" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json"`,
-        javascript: `const response = await fetch('${API_BASE}/api/agents-new/domains', {
+        javascript: `const response = await fetch('${API_BASE}/api/agents/domains', {
   method: 'GET',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
@@ -322,7 +322,7 @@ console.log(data.domains);`,
         python: `import requests
 
 response = requests.get(
-    '${API_BASE}/api/agents-new/domains',
+    '${API_BASE}/api/agents/domains',
     headers={
         'Authorization': 'Bearer YOUR_API_KEY',
         'Content-Type': 'application/json'

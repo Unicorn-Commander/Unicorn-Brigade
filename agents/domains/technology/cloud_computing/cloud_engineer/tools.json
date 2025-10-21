@@ -1,8 +1,0 @@
-{
-  "tools": [
-    "cloud_provider_cli",
-    "infrastructure_as_code_tool",
-    "cloud_monitoring_dashboard",
-    "scripting_environment"
-  ]
-}

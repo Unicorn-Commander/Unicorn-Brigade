@@ -1,8 +1,0 @@
-{
-  "tools": [
-    "code_editor",
-    "browser_devtools",
-    "ui_component_library",
-    "version_control_system"
-  ]
-}

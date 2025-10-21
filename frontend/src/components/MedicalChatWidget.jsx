@@ -297,7 +297,8 @@ I've updated your medical profile with these findings. Would you like me to sche
 
     try {
       // Make actual API call
-      const response = await axios.post('http://localhost:8112/api/medical/consultation', {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+      const response = await axios.post(`${API_BASE}/medical/consultation`, {
         message: inputMessage,
         userId: patientData?.id || 'user-' + Date.now(),
         context: {

@@ -1,0 +1,1 @@
+"""Brigade services module"""

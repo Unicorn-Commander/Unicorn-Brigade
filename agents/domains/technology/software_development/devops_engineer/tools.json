@@ -1,8 +1,0 @@
-{
-  "tools": [
-    "ci_cd_platform_api",
-    "iac_tool",
-    "container_orchestration_cli",
-    "monitoring_and_logging_system"
-  ]
-}

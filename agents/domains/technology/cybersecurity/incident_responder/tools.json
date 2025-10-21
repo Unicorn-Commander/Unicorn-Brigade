@@ -1,8 +1,0 @@
-{
-  "tools": [
-    "endpoint_detection_response_api",
-    "network_containment_tool",
-    "forensics_imaging_tool",
-    "incident_ticketing_system"
-  ]
-}
