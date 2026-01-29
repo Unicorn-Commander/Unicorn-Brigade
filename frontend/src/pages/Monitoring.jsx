@@ -6,61 +6,84 @@ import {
   Zap,
   AlertCircle,
   CheckCircle,
-  TrendingUp,
-  TrendingDown,
-  Clock,
   Cpu,
   HardDrive,
   Network,
   BarChart3,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  TrendingUp
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 const Monitoring = () => {
   const [systemHealth, setSystemHealth] = useState({
     status: 'healthy',
-    uptime: '99.9%',
+    uptime: '0s',
     lastCheck: new Date().toISOString()
   });
   const [metrics, setMetrics] = useState({
-    apiRequests: 1247,
-    activeAgents: 42,
-    llmCalls: 3891,
-    avgResponseTime: 245
+    totalAgents: 0,
+    activeAgents: 0,
+    totalModels: 0,
+    totalTools: 0
   });
+  const [resources, setResources] = useState({
+    cpu_percent: 0,
+    memory_percent: 0,
+    memory_used_gb: 0,
+    memory_total_gb: 0,
+    disk_percent: 0
+  });
+  const [recentErrors, setRecentErrors] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     loadMonitoringData();
-    // Refresh every 30 seconds
-    const interval = setInterval(loadMonitoringData, 30000);
+    const interval = setInterval(loadMonitoringData, 15000);
     return () => clearInterval(interval);
   }, []);
+
+  const formatUptime = (seconds) => {
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    if (seconds < 86400) return `${(seconds / 3600).toFixed(1)}h`;
+    return `${(seconds / 86400).toFixed(1)}d`;
+  };
 
   const loadMonitoringData = async () => {
     setLoading(true);
     try {
-      // In a real app, fetch from monitoring endpoints
-      // For now, simulate with mock data
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const [statsRes, healthRes] = await Promise.all([
+        fetch(`${API_BASE}/stats`),
+        fetch(`${API_BASE}/health`)
+      ]);
+
+      const stats = await statsRes.json();
+      const health = await healthRes.json();
 
       setSystemHealth({
-        status: 'healthy',
-        uptime: '99.9%',
-        lastCheck: new Date().toISOString()
+        status: stats.status === 'operational' ? 'healthy' : 'degraded',
+        uptime: formatUptime(stats.uptime_seconds || 0),
+        lastCheck: new Date().toISOString(),
+        version: stats.version
       });
 
       setMetrics({
-        apiRequests: Math.floor(Math.random() * 500) + 1000,
-        activeAgents: Math.floor(Math.random() * 10) + 40,
-        llmCalls: Math.floor(Math.random() * 1000) + 3500,
-        avgResponseTime: Math.floor(Math.random() * 100) + 200
+        totalAgents: stats.totalAgents || 0,
+        activeAgents: stats.activeAgents || 0,
+        totalModels: stats.totalModels || 0,
+        totalTools: stats.totalTools || 0
       });
+
+      if (stats.resources) {
+        setResources(stats.resources);
+      }
     } catch (error) {
       console.error('Failed to load monitoring data:', error);
-      toast.error('Failed to load monitoring data');
+      setSystemHealth(prev => ({ ...prev, status: 'degraded' }));
     } finally {
       setLoading(false);
     }
@@ -69,91 +92,58 @@ const Monitoring = () => {
   const services = [
     {
       name: 'API Server',
-      status: 'healthy',
-      uptime: '99.99%',
-      responseTime: '45ms',
+      status: systemHealth.status === 'healthy' ? 'healthy' : 'degraded',
+      detail: `Uptime: ${systemHealth.uptime}`,
       icon: Server,
-      color: 'emerald'
+      color: systemHealth.status === 'healthy' ? 'emerald' : 'orange'
     },
     {
-      name: 'Database',
+      name: 'Memory (mem0 + Qdrant)',
       status: 'healthy',
-      uptime: '100%',
-      responseTime: '12ms',
+      detail: 'Vector memory operational',
       icon: Database,
       color: 'emerald'
     },
     {
-      name: 'LiteLLM',
+      name: 'Ops-Center LLM',
       status: 'healthy',
-      uptime: '99.8%',
-      responseTime: '234ms',
+      detail: `${metrics.totalModels} models available`,
       icon: Zap,
       color: 'emerald'
     },
     {
-      name: 'OpenRouter',
-      status: 'degraded',
-      uptime: '97.5%',
-      responseTime: '589ms',
+      name: 'LangGraph Workflows',
+      status: 'healthy',
+      detail: 'Orchestration ready',
       icon: Network,
-      color: 'orange'
-    }
-  ];
-
-  const recentErrors = [
-    {
-      timestamp: new Date(Date.now() - 300000).toISOString(),
-      level: 'warning',
-      message: 'High latency detected on OpenRouter',
-      service: 'LLM Provider'
-    },
-    {
-      timestamp: new Date(Date.now() - 1800000).toISOString(),
-      level: 'error',
-      message: 'Agent invocation timeout',
-      service: 'Agent Runtime'
-    },
-    {
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      level: 'warning',
-      message: 'Database connection pool near limit',
-      service: 'Database'
+      color: 'emerald'
     }
   ];
 
   const performanceMetrics = [
     {
-      label: 'API Requests',
-      value: metrics.apiRequests,
-      change: '+12.5%',
-      trend: 'up',
-      icon: BarChart3,
-      color: 'blue'
-    },
-    {
-      label: 'Active Agents',
-      value: metrics.activeAgents,
-      change: '+5.2%',
-      trend: 'up',
+      label: 'Total Agents',
+      value: metrics.totalAgents,
       icon: Activity,
       color: 'purple'
     },
     {
-      label: 'LLM Calls',
-      value: metrics.llmCalls,
-      change: '+18.3%',
-      trend: 'up',
+      label: 'Active Agents',
+      value: metrics.activeAgents,
+      icon: CheckCircle,
+      color: 'emerald'
+    },
+    {
+      label: 'Models Available',
+      value: metrics.totalModels,
       icon: Zap,
       color: 'orange'
     },
     {
-      label: 'Avg Response Time',
-      value: `${metrics.avgResponseTime}ms`,
-      change: '-3.1%',
-      trend: 'down',
-      icon: Clock,
-      color: 'emerald'
+      label: 'Built-in Tools',
+      value: metrics.totalTools,
+      icon: BarChart3,
+      color: 'blue'
     }
   ];
 
@@ -213,20 +203,9 @@ const Monitoring = () => {
             <div key={idx} className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
                 <metric.icon className={`w-8 h-8 text-${metric.color}-400`} />
-                {metric.trend === 'up' && <TrendingUp className="w-5 h-5 text-emerald-400" />}
-                {metric.trend === 'down' && <TrendingDown className="w-5 h-5 text-emerald-400" />}
               </div>
               <p className="text-3xl font-bold text-white mb-1">{metric.value}</p>
-              <p className="text-sm text-slate-400 mb-2">{metric.label}</p>
-              <p className={`text-xs ${
-                metric.trend === 'down' && metric.label.includes('Response Time')
-                  ? 'text-emerald-400'
-                  : metric.trend === 'up'
-                  ? 'text-emerald-400'
-                  : 'text-red-400'
-              }`}>
-                {metric.change} from last hour
-              </p>
+              <p className="text-sm text-slate-400">{metric.label}</p>
             </div>
           ))}
         </div>
@@ -249,16 +228,7 @@ const Monitoring = () => {
                   </div>
                 </div>
                 <h3 className="font-semibold text-white mb-2">{service.name}</h3>
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Uptime</span>
-                    <span className="text-slate-300">{service.uptime}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-400">Response Time</span>
-                    <span className="text-slate-300">{service.responseTime}</span>
-                  </div>
-                </div>
+                <p className="text-xs text-slate-400">{service.detail}</p>
               </div>
             ))}
           </div>
@@ -303,10 +273,10 @@ const Monitoring = () => {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Current</span>
-                  <span className="text-white font-semibold">34%</span>
+                  <span className="text-white font-semibold">{resources.cpu_percent?.toFixed(1) || 0}%</span>
                 </div>
                 <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-500" style={{ width: '34%' }}></div>
+                  <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-700" style={{ width: `${resources.cpu_percent || 0}%` }}></div>
                 </div>
               </div>
             </div>
@@ -318,11 +288,11 @@ const Monitoring = () => {
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Current</span>
-                  <span className="text-white font-semibold">62%</span>
+                  <span className="text-slate-400">{resources.memory_used_gb || 0} / {resources.memory_total_gb || 0} GB</span>
+                  <span className="text-white font-semibold">{resources.memory_percent?.toFixed(1) || 0}%</span>
                 </div>
                 <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500" style={{ width: '62%' }}></div>
+                  <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-700" style={{ width: `${resources.memory_percent || 0}%` }}></div>
                 </div>
               </div>
             </div>
@@ -335,10 +305,10 @@ const Monitoring = () => {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Current</span>
-                  <span className="text-white font-semibold">45%</span>
+                  <span className="text-white font-semibold">{resources.disk_percent?.toFixed(1) || 0}%</span>
                 </div>
                 <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500" style={{ width: '45%' }}></div>
+                  <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-700" style={{ width: `${resources.disk_percent || 0}%` }}></div>
                 </div>
               </div>
             </div>
@@ -395,19 +365,19 @@ const Monitoring = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-3 bg-slate-800/50 rounded-lg">
               <p className="text-sm text-slate-400 mb-1">Version</p>
-              <p className="text-white font-semibold">v1.0.0</p>
+              <p className="text-white font-semibold">v{systemHealth.version || '1.0.0'}</p>
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
               <p className="text-sm text-slate-400 mb-1">Environment</p>
-              <p className="text-white font-semibold">Production</p>
+              <p className="text-white font-semibold">Development</p>
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-sm text-slate-400 mb-1">Database</p>
-              <p className="text-white font-semibold">PostgreSQL 15</p>
+              <p className="text-sm text-slate-400 mb-1">Backend</p>
+              <p className="text-white font-semibold">FastAPI + LangGraph</p>
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-sm text-slate-400 mb-1">Node Version</p>
-              <p className="text-white font-semibold">v20.11.0</p>
+              <p className="text-sm text-slate-400 mb-1">LLM Gateway</p>
+              <p className="text-white font-semibold">Ops-Center</p>
             </div>
           </div>
         </div>

@@ -1,0 +1,95 @@
+# Daily Digest Workflow
+# Aggregates news/updates and creates a formatted digest
+
+id: daily_digest
+name: Daily Digest
+description: Gather and summarize daily updates into a formatted digest
+version: "1.0"
+
+metadata:
+  category: report
+  tags:
+    - digest
+    - summary
+    - daily
+  author: Unicorn Brigade
+  requires_approval: false
+
+inputs:
+  - name: topics
+    type: list
+    description: List of topics to include in digest
+    required: false
+    default: []
+  - name: sources
+    type: list
+    description: Data sources to aggregate
+    required: false
+    default: []
+  - name: max_items
+    type: integer
+    description: Maximum items to include
+    default: 10
+
+outputs:
+  - name: digest
+    type: text
+    description: Formatted daily digest
+  - name: highlights
+    type: json
+    description: Key highlights from the digest
+
+steps:
+  - id: gather_content
+    name: Gather Content
+    description: Research and gather content for the digest
+    worker_type: research
+    tool: llm
+    timeout: 180
+    requires_approval: false
+    parameters:
+      focus_areas: "{{inputs.topics}}"
+      max_results: "{{inputs.max_items}}"
+    expected_outputs:
+      - raw_content
+      - source_list
+
+  - id: analyze_content
+    name: Analyze and Prioritize
+    description: Analyze gathered content and identify highlights
+    worker_type: extract
+    tool: llm
+    timeout: 90
+    requires_approval: false
+    depends_on:
+      - gather_content
+    parameters:
+      content: "{{gather_content.raw_content}}"
+    expected_outputs:
+      - prioritized_items
+      - highlights
+
+  - id: generate_digest
+    name: Generate Digest
+    description: Create the formatted daily digest
+    worker_type: digest
+    tool: llm
+    timeout: 120
+    requires_approval: false
+    depends_on:
+      - analyze_content
+    parameters:
+      items: "{{analyze_content.prioritized_items}}"
+      highlights: "{{analyze_content.highlights}}"
+      digest_type: daily
+    expected_outputs:
+      - digest
+      - summary
+
+verification:
+  required: true
+  min_confidence: 0.7
+  checks:
+    - all_topics_covered
+    - proper_formatting
+    - no_duplicates

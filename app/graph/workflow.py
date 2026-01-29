@@ -153,8 +153,8 @@ class WorkflowManager:
         """Determine next agent to execute"""
         next_agent = state.get("next", "end")
 
-        # First execution - route to requested agent
-        if state.get("current_agent") == "":
+        # First execution - no results yet, route to requested agent
+        if len(state.get("results", [])) == 0:
             if state["agent_type"] in ["research", "code", "analysis"]:
                 return state["agent_type"]
             return "end"

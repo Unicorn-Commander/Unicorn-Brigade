@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Code, Copy, CheckCircle, Book, Key, Server, Zap, Shield, MessageSquare } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8112/api').replace('/api', '');
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1').replace(/\/api\/v1$/, '').replace(/\/api$/, '');
 
 const ApiDocs = () => {
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);

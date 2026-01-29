@@ -306,8 +306,7 @@ const getDomainIcon = (domain) => {
     'education': <BookOpen className="w-4 h-4" />
   };
 
-  const Icon = iconMap[domain.toLowerCase()] || Briefcase;
-  return typeof Icon === 'function' ? <Icon className="w-4 h-4" /> : Icon;
+  return iconMap[domain.toLowerCase()] || <Briefcase className="w-4 h-4" />;
 };
 
 export default AgentPreview;

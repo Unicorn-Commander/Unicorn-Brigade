@@ -3,21 +3,167 @@
 import httpx
 import logging
 import os
-from typing import Dict, Any, List, Optional, AsyncGenerator
+from typing import Dict, Any, List, Optional, AsyncGenerator, Callable, Union
+from dataclasses import dataclass, field
 import json
 
 logger = logging.getLogger(__name__)
 
+
+@dataclass
+class ToolParameter:
+    """Parameter definition for a tool"""
+    name: str
+    type: str  # "string", "number", "boolean", "array", "object"
+    description: str
+    required: bool = True
+    enum: Optional[List[str]] = None
+    default: Any = None
+
+
+@dataclass
+class ToolDefinition:
+    """Definition for a tool/function that the LLM can call"""
+    name: str
+    description: str
+    parameters: List[ToolParameter] = field(default_factory=list)
+    handler: Optional[Callable] = None  # Async function to execute the tool
+
+    def to_openai_format(self) -> Dict[str, Any]:
+        """Convert to OpenAI function calling format"""
+        properties = {}
+        required = []
+
+        for param in self.parameters:
+            prop = {
+                "type": param.type,
+                "description": param.description,
+            }
+            if param.enum:
+                prop["enum"] = param.enum
+            properties[param.name] = prop
+
+            if param.required:
+                required.append(param.name)
+
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                }
+            }
+        }
+
+
+@dataclass
+class ToolCall:
+    """A tool call made by the LLM"""
+    id: str
+    name: str
+    arguments: Dict[str, Any]
+
+
+@dataclass
+class ToolResult:
+    """Result from executing a tool"""
+    tool_call_id: str
+    name: str
+    result: Any
+    error: Optional[str] = None
+
+    def to_message(self) -> Dict[str, Any]:
+        """Convert to a message for the LLM (OpenAI format)"""
+        content = json.dumps(self.result) if not self.error else f"Error: {self.error}"
+        return {
+            "role": "tool",
+            "tool_call_id": self.tool_call_id,
+            "name": self.name,
+            "content": content,
+        }
+
+    def to_user_message(self) -> Dict[str, Any]:
+        """Convert to a user message format (fallback for providers that don't support tool messages)"""
+        if self.error:
+            content = f"[Tool {self.name} error: {self.error}]"
+        else:
+            result_str = json.dumps(self.result, indent=2) if isinstance(self.result, (dict, list)) else str(self.result)
+            content = f"[Tool {self.name} result]\n{result_str}"
+        return {
+            "role": "user",
+            "content": content,
+        }
+
+
+class ToolRegistry:
+    """Registry for available tools"""
+
+    def __init__(self):
+        self.tools: Dict[str, ToolDefinition] = {}
+
+    def register(self, tool: ToolDefinition) -> None:
+        """Register a tool"""
+        self.tools[tool.name] = tool
+        logger.info(f"Registered tool: {tool.name}")
+
+    def get(self, name: str) -> Optional[ToolDefinition]:
+        """Get a tool by name"""
+        return self.tools.get(name)
+
+    def list(self) -> List[ToolDefinition]:
+        """List all registered tools"""
+        return list(self.tools.values())
+
+    def to_openai_format(self) -> List[Dict[str, Any]]:
+        """Get all tools in OpenAI format"""
+        return [tool.to_openai_format() for tool in self.tools.values()]
+
+# Default URLs for different environments
+DEFAULT_INTERNAL_URL = "http://ops-center-direct:8084"
+DEFAULT_EXTERNAL_URL = "https://unicorncommander.ai"
+
+# Brigade service key for authentication
+BRIGADE_SERVICE_KEY = os.getenv("BRIGADE_SERVICE_KEY", "sk-brigade-service-key-2025")
+
+# Default model to use when "default" is specified
+DEFAULT_MODEL = os.getenv("DEFAULT_LLM_MODEL", "meta-llama/llama-3.1-8b-instruct")
+
+
 class OpsCenterLLMClient:
     """Client for Ops-Center LLM inference (vLLM, OpenRouter, etc.)"""
 
-    def __init__(self, ops_center_url: str = None):
-        self.ops_center_url = ops_center_url or os.getenv(
-            "OPS_CENTER_URL",
-            "http://ops-center-direct:8084"
-        )
+    def __init__(
+        self,
+        ops_center_url: str = None,
+        service_key: str = None,
+    ):
+        # Determine URL: env var > explicit > auto-detect
+        if ops_center_url:
+            self.ops_center_url = ops_center_url
+        elif os.getenv("OPS_CENTER_URL"):
+            self.ops_center_url = os.getenv("OPS_CENTER_URL")
+        else:
+            # Auto-detect: use external URL if not in Docker network
+            self.ops_center_url = self._detect_url()
+
+        self.service_key = service_key or BRIGADE_SERVICE_KEY
         self.client = httpx.AsyncClient(timeout=120.0)
         logger.info(f"OpsCenterLLMClient initialized: {self.ops_center_url}")
+
+    def _detect_url(self) -> str:
+        """Detect whether to use internal or external URL"""
+        # Check if we can reach the internal URL (Docker network)
+        try:
+            import socket
+            socket.setdefaulttimeout(1)
+            socket.socket().connect(("ops-center-direct", 8084))
+            return DEFAULT_INTERNAL_URL
+        except (socket.error, socket.timeout, OSError):
+            return DEFAULT_EXTERNAL_URL
 
     async def chat_completion(
         self,
@@ -36,6 +182,9 @@ class OpsCenterLLMClient:
         - OpenRouter (multiple providers)
         - User's BYOK keys if configured
 
+        Note: Due to a Traefik bug, Ops-Center returns SSE-wrapped responses
+        even for non-streaming requests. This method handles both formats.
+
         Args:
             messages: List of chat messages
             model: Model name (Ops-Center will route appropriately)
@@ -48,6 +197,10 @@ class OpsCenterLLMClient:
             OpenAI-compatible response dict
         """
         try:
+            # Resolve model aliases
+            if model in ("default", "local", "auto"):
+                model = DEFAULT_MODEL
+
             # Build request to Ops-Center's LLM endpoint
             payload = {
                 "messages": messages,
@@ -57,21 +210,34 @@ class OpsCenterLLMClient:
                 "stream": stream
             }
 
-            headers = {}
+            headers = {
+                "Authorization": f"Bearer {self.service_key}",
+                "Content-Type": "application/json",
+            }
             if user_id:
-                headers["X-User-ID"] = user_id
+                headers["X-User-ID"] = user_id  # Bills to user instead of service org
 
             logger.info(f"Sending chat completion request to Ops-Center: {model}")
 
-            # Call Ops-Center's inference API
-            response = await self.client.post(
+            # Use streaming client to handle SSE-wrapped responses
+            # (Ops-Center returns SSE format due to Traefik chunked encoding bug)
+            async with self.client.stream(
+                "POST",
                 f"{self.ops_center_url}/api/v1/llm/chat/completions",
                 json=payload,
                 headers=headers
-            )
+            ) as response:
+                response.raise_for_status()
 
-            response.raise_for_status()
-            result = response.json()
+                content_type = response.headers.get("content-type", "")
+
+                # Check if response is SSE-wrapped (text/event-stream)
+                if "text/event-stream" in content_type:
+                    result = await self._parse_sse_response(response)
+                else:
+                    # Standard JSON response (internal/direct access)
+                    body = await response.aread()
+                    result = json.loads(body) if body else {}
 
             # Log token usage for billing
             if "usage" in result:
@@ -89,6 +255,34 @@ class OpsCenterLLMClient:
             logger.error(f"Error calling Ops-Center LLM: {e}")
             raise
 
+    async def _parse_sse_response(self, response) -> Dict[str, Any]:
+        """
+        Parse SSE-wrapped response from Ops-Center.
+
+        Ops-Center wraps non-streaming responses in SSE format due to
+        a Traefik bug with chunked encoding. Format:
+            data: {json}\n\n
+            data: [DONE]\n\n
+
+        Returns:
+            Parsed JSON response dict
+        """
+        result = {}
+        async for line in response.aiter_lines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("data: "):
+                data = line[6:]  # Remove "data: " prefix
+                if data == "[DONE]":
+                    break
+                try:
+                    result = json.loads(data)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse SSE data: {e}")
+                    continue
+        return result
+
     async def chat_completion_stream(
         self,
         messages: List[Dict[str, str]],
@@ -104,6 +298,10 @@ class OpsCenterLLMClient:
             Server-sent events with tokens
         """
         try:
+            # Resolve model aliases
+            if model in ("default", "local", "auto"):
+                model = DEFAULT_MODEL
+
             payload = {
                 "messages": messages,
                 "model": model,
@@ -112,9 +310,12 @@ class OpsCenterLLMClient:
                 "stream": True
             }
 
-            headers = {}
+            headers = {
+                "Authorization": f"Bearer {self.service_key}",
+                "Content-Type": "application/json",
+            }
             if user_id:
-                headers["X-User-ID"] = user_id
+                headers["X-User-ID"] = user_id  # Bills to user instead of service org
 
             logger.info(f"Starting streaming request to Ops-Center: {model}")
 
@@ -144,7 +345,9 @@ class OpsCenterLLMClient:
                 f"{self.ops_center_url}/api/v1/llm/models"
             )
             response.raise_for_status()
-            return response.json().get("models", [])
+            data = response.json()
+            # API returns {"object": "list", "data": [...]}
+            return data.get("data", data.get("models", []))
         except Exception as e:
             logger.error(f"Error fetching models: {e}")
             return []
@@ -164,3 +367,338 @@ class OpsCenterLLMClient:
     async def close(self):
         """Close HTTP client"""
         await self.client.aclose()
+
+    async def chat_completion_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[ToolDefinition],
+        model: str = "default",
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        tool_choice: str = "auto",  # "auto", "none", or {"type": "function", "function": {"name": "..."}}
+        user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Chat completion with function calling support.
+
+        Args:
+            messages: List of chat messages
+            tools: List of tool definitions
+            model: Model name
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens
+            tool_choice: How to handle tool calls ("auto", "none", or specific tool)
+            user_id: User ID for billing
+
+        Returns:
+            Response with potential tool_calls
+        """
+        try:
+            # Resolve model aliases
+            if model in ("default", "local", "auto"):
+                model = DEFAULT_MODEL
+
+            # Convert tools to OpenAI format
+            tools_payload = [tool.to_openai_format() for tool in tools]
+
+            payload = {
+                "messages": messages,
+                "model": model,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "tools": tools_payload,
+                "tool_choice": tool_choice,
+            }
+
+            headers = {
+                "Authorization": f"Bearer {self.service_key}",
+                "Content-Type": "application/json",
+            }
+            if user_id:
+                headers["X-User-ID"] = user_id
+
+            # Debug: log message roles being sent
+            msg_roles = [f"{m.get('role', '?')}" for m in messages]
+            logger.info(f"Sending tool-enabled request to Ops-Center: {model} with {len(tools)} tools")
+            logger.debug(f"Message roles: {msg_roles}")
+
+            # Extra debug for tool messages
+            for m in messages:
+                if m.get("role") == "tool":
+                    logger.info(f"Tool message being sent: tool_call_id={m.get('tool_call_id')}, name={m.get('name')}")
+
+            async with self.client.stream(
+                "POST",
+                f"{self.ops_center_url}/api/v1/llm/chat/completions",
+                json=payload,
+                headers=headers
+            ) as response:
+                if response.status_code >= 400:
+                    error_body = await response.aread()
+                    logger.error(f"Ops-Center error {response.status_code}: {error_body.decode()}")
+                    logger.error(f"Request payload (first 2000 chars): {json.dumps(payload)[:2000]}")
+                response.raise_for_status()
+
+                content_type = response.headers.get("content-type", "")
+
+                if "text/event-stream" in content_type:
+                    result = await self._parse_sse_response(response)
+                else:
+                    body = await response.aread()
+                    result = json.loads(body) if body else {}
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error in tool-enabled completion: {e}")
+            raise
+
+    def parse_tool_calls(self, response: Dict[str, Any]) -> List[ToolCall]:
+        """
+        Parse tool calls from LLM response.
+
+        Handles both OpenAI and Claude response formats.
+        """
+        tool_calls = []
+
+        # Check for OpenAI format
+        choices = response.get("choices", [])
+        if choices:
+            message = choices[0].get("message", {})
+
+            # OpenAI tool_calls format
+            if "tool_calls" in message:
+                for tc in message["tool_calls"]:
+                    try:
+                        arguments = json.loads(tc["function"]["arguments"])
+                    except json.JSONDecodeError:
+                        arguments = {"raw": tc["function"]["arguments"]}
+
+                    tool_calls.append(ToolCall(
+                        id=tc["id"],
+                        name=tc["function"]["name"],
+                        arguments=arguments,
+                    ))
+
+            # Claude tool_use format (content blocks)
+            elif isinstance(message.get("content"), list):
+                for block in message["content"]:
+                    if block.get("type") == "tool_use":
+                        tool_calls.append(ToolCall(
+                            id=block["id"],
+                            name=block["name"],
+                            arguments=block.get("input", {}),
+                        ))
+
+        return tool_calls
+
+    def has_tool_calls(self, response: Dict[str, Any]) -> bool:
+        """Check if response contains tool calls"""
+        choices = response.get("choices", [])
+        if not choices:
+            return False
+
+        message = choices[0].get("message", {})
+
+        # Check OpenAI format
+        if message.get("tool_calls"):
+            return True
+
+        # Check Claude format
+        if isinstance(message.get("content"), list):
+            for block in message["content"]:
+                if block.get("type") == "tool_use":
+                    return True
+
+        return False
+
+    def get_response_content(self, response: Dict[str, Any]) -> str:
+        """Extract text content from response"""
+        choices = response.get("choices", [])
+        if not choices:
+            return ""
+
+        message = choices[0].get("message", {})
+        content = message.get("content", "")
+
+        # Handle Claude format where content is a list
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+            return "\n".join(text_parts)
+
+        return content or ""
+
+    async def execute_tool_loop(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[ToolDefinition],
+        model: str = "default",
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        max_iterations: int = 10,
+        user_id: Optional[str] = None,
+        on_tool_call: Optional[Callable[[ToolCall], None]] = None,
+        on_tool_result: Optional[Callable[[ToolResult], None]] = None,
+        use_user_message_fallback: bool = True,  # Use user messages for tool results (works with more providers)
+    ) -> Dict[str, Any]:
+        """
+        Execute a complete tool use loop.
+
+        This handles the back-and-forth between the LLM and tools:
+        1. Send message to LLM
+        2. If tool calls, execute them
+        3. Send results back to LLM
+        4. Repeat until LLM responds without tool calls
+
+        Args:
+            messages: Initial messages
+            tools: Available tools (with handlers)
+            model: Model to use
+            temperature: Sampling temperature
+            max_tokens: Max tokens per turn
+            max_iterations: Max tool call rounds
+            user_id: User ID for billing
+            on_tool_call: Callback when a tool is called
+            on_tool_result: Callback when a tool returns
+            use_user_message_fallback: If True, use user messages for tool results
+                (more compatible but less structured than OpenAI tool format)
+
+        Returns:
+            Final response from LLM
+        """
+        # Build tool registry for execution
+        tool_registry = {tool.name: tool for tool in tools}
+
+        current_messages = list(messages)
+        iteration = 0
+        retry_with_fallback = False
+
+        while iteration < max_iterations:
+            iteration += 1
+            logger.info(f"Tool loop iteration {iteration}/{max_iterations}")
+
+            try:
+                # Get LLM response
+                response = await self.chat_completion_with_tools(
+                    messages=current_messages,
+                    tools=tools,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    user_id=user_id,
+                )
+            except Exception as e:
+                error_msg = str(e)
+                # Check if this is a tool message format error
+                if "400" in error_msg or "422" in error_msg:
+                    if use_user_message_fallback and not retry_with_fallback:
+                        logger.warning("Tool message format rejected, switching to user message fallback")
+                        retry_with_fallback = True
+                        # Don't re-raise, continue with fallback mode
+                        # But we need to redo the request - the error happened on second+ iteration
+                        # For now, just re-raise since we can't easily undo the message additions
+                        raise
+                raise
+
+            # Check for tool calls
+            if not self.has_tool_calls(response):
+                logger.info(f"No tool calls in response, completing loop")
+                return response
+
+            # Parse tool calls
+            tool_calls = self.parse_tool_calls(response)
+            logger.info(f"Processing {len(tool_calls)} tool calls")
+
+            # Execute each tool call and collect results
+            tool_results = []
+            for tc in tool_calls:
+                if on_tool_call:
+                    on_tool_call(tc)
+
+                tool_def = tool_registry.get(tc.name)
+                if not tool_def or not tool_def.handler:
+                    result = ToolResult(
+                        tool_call_id=tc.id,
+                        name=tc.name,
+                        result=None,
+                        error=f"Unknown tool or no handler: {tc.name}",
+                    )
+                else:
+                    try:
+                        # Execute tool handler
+                        tool_output = await tool_def.handler(**tc.arguments)
+                        result = ToolResult(
+                            tool_call_id=tc.id,
+                            name=tc.name,
+                            result=tool_output,
+                        )
+                    except Exception as e:
+                        logger.error(f"Tool execution error for {tc.name}: {e}")
+                        result = ToolResult(
+                            tool_call_id=tc.id,
+                            name=tc.name,
+                            result=None,
+                            error=str(e),
+                        )
+
+                if on_tool_result:
+                    on_tool_result(result)
+
+                tool_results.append(result)
+
+            # Add messages based on fallback mode
+            if use_user_message_fallback:
+                # User message fallback mode - more compatible
+                # Don't add assistant message with tool_calls (causes issues with some providers)
+                # Instead, add a simple assistant acknowledgment and user messages with results
+                assistant_ack = {
+                    "role": "assistant",
+                    "content": f"I'll use the following tools: {', '.join(tc.name for tc in tool_calls)}",
+                }
+                current_messages.append(assistant_ack)
+
+                # Combine all tool results into a single user message
+                result_parts = []
+                for result in tool_results:
+                    if result.error:
+                        result_parts.append(f"[Tool {result.name} error: {result.error}]")
+                    else:
+                        result_str = json.dumps(result.result, indent=2) if isinstance(result.result, (dict, list)) else str(result.result)
+                        result_parts.append(f"[Tool {result.name} result]\n{result_str}")
+
+                user_result_msg = {
+                    "role": "user",
+                    "content": "\n\n".join(result_parts),
+                }
+                current_messages.append(user_result_msg)
+            else:
+                # Standard OpenAI format - add assistant message with tool_calls
+                raw_message = response["choices"][0]["message"]
+                assistant_message = {
+                    "role": "assistant",
+                    "content": raw_message.get("content") or "",
+                }
+                if raw_message.get("tool_calls"):
+                    assistant_message["tool_calls"] = [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc["function"]["name"],
+                                "arguments": tc["function"]["arguments"],
+                            }
+                        }
+                        for tc in raw_message["tool_calls"]
+                    ]
+                current_messages.append(assistant_message)
+
+                # Add tool result messages
+                for result in tool_results:
+                    current_messages.append(result.to_message())
+
+        # Max iterations reached
+        logger.warning(f"Tool loop reached max iterations ({max_iterations})")
+        return response

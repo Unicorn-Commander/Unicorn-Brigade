@@ -3,9 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { useEffect } from 'react';
 import Dashboard from './pages/Dashboard';
+import AgentChat from './pages/AgentChat';
 import AgentBuilderChat from './pages/AgentBuilderChat';
 import AgentLibrary from './pages/AgentLibrary';
 import AgentDetail from './pages/AgentDetail';
+import Conversations from './pages/Conversations';
+import Orchestration from './pages/Orchestration';
 import ToolLibrary from './pages/ToolLibrary';
 import ApiDocs from './pages/ApiDocs';
 import Monitoring from './pages/Monitoring';
@@ -13,6 +16,7 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import Navigation from './components/Navigation';
+import CommandPalette from './components/CommandPalette';
 import useAuth from './hooks/useAuth';
 import { Loader2 } from 'lucide-react';
 
@@ -83,6 +87,30 @@ function App() {
             </ProtectedRoute>
           } />
 
+          <Route path="/chat" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <AgentChat />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/conversations" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <Conversations />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/orchestration" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <Orchestration />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
           <Route path="/library" element={
             <ProtectedRoute>
               <AppLayout>
@@ -145,6 +173,8 @@ function App() {
           {/* Catch all - redirect to dashboard */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
+
+        <CommandPalette />
 
         <Toaster
           position="top-right"

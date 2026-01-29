@@ -8,6 +8,19 @@ import authService from '../services/authService';
 
 const TIER_HIERARCHY = ['trial', 'starter', 'professional', 'enterprise', 'founders'];
 
+const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true';
+
+const DEV_USER = {
+  id: 'dev-user-001',
+  name: 'Dev User',
+  username: 'devuser',
+  email: 'dev@unicorncommander.ai',
+  tier: 'founders',
+  roles: ['brigade-platform-admin'],
+  permissions: ['*'],
+  avatar: null,
+};
+
 const useAuth = create((set, get) => ({
   // State
   user: null,
@@ -21,6 +34,17 @@ const useAuth = create((set, get) => ({
    */
   loadUser: async () => {
     set({ isLoading: true, error: null });
+
+    // Dev mode: skip Keycloak and auto-authenticate
+    if (DEV_MODE) {
+      set({
+        user: DEV_USER,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null
+      });
+      return;
+    }
 
     try {
       const user = await authService.getCurrentUser();

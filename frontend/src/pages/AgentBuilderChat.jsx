@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Sparkles, Bot, User, Loader, RefreshCw, BookOpen, ChevronRight, ChevronLeft, ChevronDown, Settings, RotateCcw } from 'lucide-react';
+import { Send, Sparkles, Bot, User, Loader, RefreshCw, BookOpen, ChevronRight, ChevronLeft, ChevronDown, Settings, RotateCcw, Rocket, X, CheckCircle, Cpu, Wrench, Shield } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
@@ -7,8 +7,9 @@ import { useNavigate } from 'react-router-dom';
 import AgentPreview from '../components/AgentPreview';
 import ModelSelector from '../components/ModelSelector';
 import ParameterSlider from '../components/ParameterSlider';
+import { GunnyAvatar } from '../components/UnicornBrigadeLogo';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 const AgentBuilderChat = () => {
   const navigate = useNavigate();
@@ -42,6 +43,11 @@ const AgentBuilderChat = () => {
     systemPrompt: null,
     status: 'building' // 'building', 'ready', 'created'
   });
+
+  // Confirmation Flow State
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [parsedAgentConfig, setParsedAgentConfig] = useState(null);
+  const [isDeploying, setIsDeploying] = useState(false);
 
   useEffect(() => {
     // Generate session ID
@@ -190,6 +196,80 @@ What would you like to build?`
     return updates;
   };
 
+  // Parse JSON config block from Gunny's message
+  const parseJsonConfigFromMessage = (messageContent) => {
+    try {
+      // Look for ```json ... ``` blocks
+      const jsonBlockMatch = messageContent.match(/```json\s*([\s\S]*?)```/);
+      if (jsonBlockMatch && jsonBlockMatch[1]) {
+        const parsed = JSON.parse(jsonBlockMatch[1].trim());
+        return parsed;
+      }
+
+      // Fallback: look for any JSON object in the message
+      const jsonObjectMatch = messageContent.match(/\{[\s\S]*"name"[\s\S]*\}/);
+      if (jsonObjectMatch) {
+        const parsed = JSON.parse(jsonObjectMatch[0]);
+        if (parsed.name) return parsed;
+      }
+    } catch (err) {
+      console.error('Failed to parse JSON config from message:', err);
+    }
+    return null;
+  };
+
+  // Handle deploy agent from confirmation panel
+  const handleDeployAgent = async () => {
+    if (!parsedAgentConfig) return;
+
+    setIsDeploying(true);
+    try {
+      const deployPayload = {
+        name: parsedAgentConfig.name,
+        displayName: parsedAgentConfig.displayName || parsedAgentConfig.name,
+        domain: parsedAgentConfig.domain || agentPreview.domain,
+        model: parsedAgentConfig.model || agentPreview.model || 'gpt-4-turbo',
+        temperature: parsedAgentConfig.temperature ?? agentPreview.temperature ?? 0.7,
+        maxTokens: parsedAgentConfig.maxTokens || agentPreview.maxTokens || 4096,
+        tools: parsedAgentConfig.tools || agentPreview.tools || [],
+        capabilities: parsedAgentConfig.capabilities || agentPreview.capabilities || [],
+        systemPrompt: parsedAgentConfig.systemPrompt || agentPreview.systemPrompt,
+        avatar: parsedAgentConfig.avatar,
+        title: parsedAgentConfig.title,
+        bio: parsedAgentConfig.bio,
+        createdBy: 'demo-user',
+        createdByAgent: 'the-general-001'
+      };
+
+      const response = await axios.post(`${API_BASE}/agents`, deployPayload);
+
+      toast.success('Agent deployed successfully!');
+      setShowConfirmation(false);
+      setParsedAgentConfig(null);
+      setAgentPreview(prev => ({ ...prev, status: 'created' }));
+
+      // Navigate to agent detail page after a short delay
+      setTimeout(() => {
+        navigate(`/agent/${response.data.id}`);
+      }, 1000);
+    } catch (error) {
+      console.error('Failed to deploy agent:', error);
+      const errorMsg = error.response?.data?.error || error.message || 'Unknown error';
+      toast.error(`Failed to deploy agent: ${errorMsg}`);
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  // Handle continue editing from confirmation panel
+  const handleContinueEditing = () => {
+    setShowConfirmation(false);
+    toast('Continue refining your agent. Tell Gunny what you want to change.', {
+      icon: '🎯',
+      duration: 3000
+    });
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
@@ -223,12 +303,43 @@ What would you like to build?`
       const updatedPreview = parseAgentDetails(response.data.message, agentPreview);
       setAgentPreview(updatedPreview);
 
-      // Show creation intent notification
+      // Show confirmation flow when creation intent is detected
       if (response.data.agentCreationIntent) {
-        toast('Agent creation detected! Review the configuration before confirming.', {
-          icon: '🎖️',
-          duration: 4000
-        });
+        const jsonConfig = parseJsonConfigFromMessage(response.data.message);
+        if (jsonConfig) {
+          setParsedAgentConfig(jsonConfig);
+          setShowConfirmation(true);
+          toast('Agent configuration ready! Review and deploy.', {
+            icon: '🎖️',
+            duration: 4000
+          });
+        } else {
+          // Fallback: use the agentPreview state as config
+          const fallbackConfig = {
+            name: updatedPreview.name,
+            displayName: updatedPreview.displayName,
+            domain: updatedPreview.domain,
+            model: updatedPreview.model,
+            temperature: updatedPreview.temperature,
+            maxTokens: updatedPreview.maxTokens,
+            tools: updatedPreview.tools,
+            capabilities: updatedPreview.capabilities,
+            systemPrompt: updatedPreview.systemPrompt
+          };
+          if (fallbackConfig.name) {
+            setParsedAgentConfig(fallbackConfig);
+            setShowConfirmation(true);
+            toast('Agent creation detected! Review the configuration.', {
+              icon: '🎖️',
+              duration: 4000
+            });
+          } else {
+            toast('Agent creation detected, but no configuration found. Ask Gunny to provide the JSON config.', {
+              icon: '🎖️',
+              duration: 4000
+            });
+          }
+        }
       }
     } catch (error) {
       console.error('Chat error:', error);
@@ -366,13 +477,7 @@ What would you like to create today?`
           <div className="max-w-6xl mx-auto p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-              <div className="w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 border-amber-500/30">
-                <img
-                  src="/Gunny_Logo.png"
-                  alt="Gunny - Agent Builder"
-                  className="w-full h-full object-cover"
-                />
-              </div>
+              <GunnyAvatar size={56} />
               <div>
                 <h1 className="text-xl font-bold text-gradient">Gunny</h1>
                 <p className="text-sm text-slate-400">Agent Builder</p>
@@ -553,11 +658,7 @@ What would you like to create today?`
                   {message.role === 'user' ? (
                     <User className="w-5 h-5 text-white" />
                   ) : (
-                    <img
-                      src="/Gunny_Logo.png"
-                      alt="Gunny"
-                      className="w-full h-full object-cover"
-                    />
+                    <span className="text-lg" role="img" aria-label="Gunny">🎯</span>
                   )}
                 </div>
 
@@ -603,13 +704,7 @@ What would you like to create today?`
           {loading && (
             <div className="flex justify-start animate-fade-in">
               <div className="flex items-start space-x-3 max-w-3xl">
-                <div className="flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 border-amber-500/30">
-                  <img
-                    src="/Gunny_Logo.png"
-                    alt="Gunny"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+                <GunnyAvatar size={40} />
                 <div className="flex-1 rounded-2xl p-4 bg-gradient-to-br from-slate-800/80 to-slate-700/80 border border-slate-600/30">
                   <div className="flex items-center space-x-2 text-slate-400">
                     <Loader className="w-4 h-4 animate-spin" />
@@ -662,7 +757,7 @@ What would you like to create today?`
       </div>
 
       {/* Agent Preview Panel */}
-      {showPreview && (
+      {showPreview && !showConfirmation && (
         <AgentPreview
           preview={agentPreview}
           onConfirm={handleCreateAgent}
@@ -671,15 +766,162 @@ What would you like to create today?`
       )}
 
       {/* Toggle Preview Button */}
-      <button
-        onClick={() => setShowPreview(!showPreview)}
-        className={`fixed right-4 top-24 z-50 btn-secondary p-2 transition-all ${
-          showPreview ? 'translate-x-0' : 'translate-x-0'
-        }`}
-        title={showPreview ? 'Hide Preview' : 'Show Preview'}
-      >
-        {showPreview ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-      </button>
+      {!showConfirmation && (
+        <button
+          onClick={() => setShowPreview(!showPreview)}
+          className={`fixed right-4 top-24 z-50 btn-secondary p-2 transition-all ${
+            showPreview ? 'translate-x-0' : 'translate-x-0'
+          }`}
+          title={showPreview ? 'Hide Preview' : 'Show Preview'}
+        >
+          {showPreview ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+        </button>
+      )}
+
+      {/* Deploy Confirmation Panel */}
+      {showConfirmation && parsedAgentConfig && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-lg mx-4 rounded-2xl border border-slate-700/50 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-purple-500/10 overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 bg-gradient-to-r from-purple-500/10 to-pink-500/10">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                  <Rocket className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Deploy Agent</h2>
+                  <p className="text-xs text-slate-400">Review configuration before deploying</p>
+                </div>
+              </div>
+              <button
+                onClick={handleContinueEditing}
+                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Config Details */}
+            <div className="px-6 py-5 space-y-4 max-h-[60vh] overflow-y-auto">
+              {/* Name & Display Name */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Agent Name</label>
+                <p className="text-white font-medium text-lg">
+                  {parsedAgentConfig.avatar && <span className="mr-2">{parsedAgentConfig.avatar}</span>}
+                  {parsedAgentConfig.displayName || parsedAgentConfig.name || 'Unnamed Agent'}
+                </p>
+                {parsedAgentConfig.title && (
+                  <p className="text-sm text-slate-400">{parsedAgentConfig.title}</p>
+                )}
+              </div>
+
+              {/* Domain & Model */}
+              <div className="grid grid-cols-2 gap-4">
+                {parsedAgentConfig.domain && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Domain</label>
+                    <div className="flex items-center space-x-2">
+                      <Shield className="w-4 h-4 text-purple-400" />
+                      <span className="text-sm text-slate-200 capitalize">{parsedAgentConfig.domain}</span>
+                    </div>
+                  </div>
+                )}
+                {(parsedAgentConfig.model || agentPreview.model) && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Model</label>
+                    <div className="flex items-center space-x-2">
+                      <Cpu className="w-4 h-4 text-cyan-400" />
+                      <span className="text-sm text-slate-200">{(parsedAgentConfig.model || agentPreview.model || 'gpt-4-turbo').split('/').pop()}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Capabilities */}
+              {parsedAgentConfig.capabilities && parsedAgentConfig.capabilities.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Capabilities</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parsedAgentConfig.capabilities.map((cap, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-300 text-xs border border-purple-500/20"
+                      >
+                        {cap}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tools */}
+              {parsedAgentConfig.tools && parsedAgentConfig.tools.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tools</label>
+                  <div className="space-y-1.5">
+                    {parsedAgentConfig.tools.map((tool, idx) => (
+                      <div key={idx} className="flex items-center space-x-2 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/30">
+                        <Wrench className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+                        <span className="text-sm text-slate-200">{typeof tool === 'string' ? tool : tool.name || tool}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Parameters */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Temperature</label>
+                  <p className="text-sm text-slate-200">{parsedAgentConfig.temperature ?? agentPreview.temperature ?? 0.7}</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Max Tokens</label>
+                  <p className="text-sm text-slate-200">{(parsedAgentConfig.maxTokens || agentPreview.maxTokens || 4096).toLocaleString()}</p>
+                </div>
+              </div>
+
+              {/* System Prompt Preview */}
+              {parsedAgentConfig.systemPrompt && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">System Prompt</label>
+                  <div className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/30 max-h-24 overflow-y-auto">
+                    <p className="text-xs text-slate-400 leading-relaxed">{parsedAgentConfig.systemPrompt}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="px-6 py-4 border-t border-slate-700/50 flex items-center justify-end space-x-3">
+              <button
+                onClick={handleContinueEditing}
+                disabled={isDeploying}
+                className="px-4 py-2.5 rounded-lg text-sm font-medium text-slate-300 bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:text-white disabled:opacity-50 transition-all"
+              >
+                Continue Editing
+              </button>
+              <button
+                onClick={handleDeployAgent}
+                disabled={isDeploying}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-purple-500/20"
+              >
+                {isDeploying ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    <span>Deploying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Rocket className="w-4 h-4" />
+                    <span>Deploy Agent</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -37,7 +37,7 @@ const ApiKeyCard = ({ apiKey, onRevoke, onViewDetails }) => {
   };
 
   const isExpired = apiKey.expiresAt && new Date(apiKey.expiresAt) < new Date();
-  const isActive = apiKey.isActive && !isExpired;
+  const isActive = (apiKey.isActive !== undefined ? apiKey.isActive : true) && !isExpired;
 
   return (
     <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-slate-600 transition-colors">

@@ -98,7 +98,7 @@ const AgentArchitectureDiagram = ({ agent }) => {
         data: {
           label: 'System Prompt',
           icon: <FileText className="w-6 h-6" />,
-          details: [agent.systemPrompt?.substring(0, 40) + '...' || 'No prompt set'],
+          details: [agent.systemPrompt ? agent.systemPrompt.substring(0, 40) + '...' : 'No prompt set'],
           className: 'bg-gradient-to-br from-purple-500 to-violet-500 border-purple-400',
         },
       },

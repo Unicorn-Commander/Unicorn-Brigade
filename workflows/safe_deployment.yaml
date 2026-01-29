@@ -1,0 +1,175 @@
+# Safe Deployment Workflow
+# Production deployment with approval gates
+
+id: safe_deployment
+name: Safe Deployment
+description: Deploy to production with safety checks and approval gates
+version: "1.0"
+
+metadata:
+  category: operations
+  tags:
+    - deployment
+    - production
+    - operations
+  author: Unicorn Brigade
+  requires_approval: true  # Always requires approval for production
+
+inputs:
+  - name: environment
+    type: string
+    description: Target environment (staging, production)
+    required: true
+  - name: version
+    type: string
+    description: Version or commit to deploy
+    required: true
+  - name: service
+    type: string
+    description: Service name to deploy
+    required: true
+  - name: rollback_plan
+    type: text
+    description: Rollback procedure
+    required: true
+
+outputs:
+  - name: deployment_status
+    type: json
+    description: Deployment result and status
+  - name: health_check
+    type: json
+    description: Post-deployment health check results
+  - name: rollback_ready
+    type: boolean
+    description: Whether rollback is ready if needed
+
+steps:
+  - id: validate_inputs
+    name: Validate Deployment Inputs
+    description: Verify all inputs are valid
+    worker_type: ops
+    tool: llm
+    timeout: 30
+    requires_approval: false
+    parameters:
+      environment: "{{inputs.environment}}"
+      version: "{{inputs.version}}"
+      service: "{{inputs.service}}"
+    expected_outputs:
+      - validation_result
+      - warnings
+
+  - id: check_prerequisites
+    name: Check Prerequisites
+    description: Verify all prerequisites are met
+    worker_type: ops
+    tool: api
+    timeout: 60
+    requires_approval: false
+    depends_on:
+      - validate_inputs
+    parameters:
+      checks:
+        - build_exists
+        - tests_passed
+        - staging_verified
+      service: "{{inputs.service}}"
+      version: "{{inputs.version}}"
+    expected_outputs:
+      - prereq_status
+      - blocking_issues
+
+  - id: create_rollback_point
+    name: Create Rollback Point
+    description: Snapshot current state for rollback
+    worker_type: ops
+    tool: shell
+    timeout: 120
+    requires_approval: true  # Approval before touching production
+    depends_on:
+      - check_prerequisites
+    parameters:
+      service: "{{inputs.service}}"
+      environment: "{{inputs.environment}}"
+    expected_outputs:
+      - rollback_snapshot
+      - rollback_id
+
+  - id: deploy
+    name: Deploy to Environment
+    description: Execute the deployment
+    worker_type: ops
+    tool: shell
+    timeout: 300
+    requires_approval: true  # Final approval before deployment
+    depends_on:
+      - create_rollback_point
+    parameters:
+      service: "{{inputs.service}}"
+      version: "{{inputs.version}}"
+      environment: "{{inputs.environment}}"
+    expected_outputs:
+      - deployment_id
+      - deployment_status
+
+  - id: health_check
+    name: Post-Deployment Health Check
+    description: Verify deployment is healthy
+    worker_type: ops
+    tool: api
+    timeout: 120
+    requires_approval: false
+    depends_on:
+      - deploy
+    parameters:
+      service: "{{inputs.service}}"
+      environment: "{{inputs.environment}}"
+      checks:
+        - endpoint_health
+        - error_rate
+        - latency
+    expected_outputs:
+      - health_status
+      - metrics
+
+  - id: verify_deployment
+    name: Verify Deployment Success
+    description: Final verification of deployment
+    worker_type: ops
+    tool: llm
+    timeout: 60
+    requires_approval: false
+    depends_on:
+      - health_check
+    parameters:
+      deployment_status: "{{deploy.deployment_status}}"
+      health_status: "{{health_check.health_status}}"
+      rollback_id: "{{create_rollback_point.rollback_id}}"
+    expected_outputs:
+      - verification_result
+      - rollback_ready
+      - recommendations
+
+verification:
+  required: true
+  min_confidence: 0.95  # High confidence required for deployments
+  checks:
+    - deployment_successful
+    - health_passing
+    - rollback_available
+
+rollback:
+  enabled: true
+  trigger_on:
+    - health_check_failed
+    - verification_failed
+  steps:
+    - id: execute_rollback
+      name: Execute Rollback
+      worker_type: ops
+      tool: shell
+      timeout: 180
+      parameters:
+        rollback_id: "{{create_rollback_point.rollback_id}}"
+        service: "{{inputs.service}}"

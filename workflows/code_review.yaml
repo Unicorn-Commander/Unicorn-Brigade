@@ -1,0 +1,124 @@
+# Code Review Workflow
+# Comprehensive code review with security and quality checks
+
+id: code_review
+name: Code Review
+description: Review code for quality, security, and best practices
+version: "1.0"
+
+metadata:
+  category: development
+  tags:
+    - code
+    - review
+    - security
+  author: Unicorn Brigade
+  requires_approval: false
+
+inputs:
+  - name: code
+    type: text
+    description: Source code to review
+    required: true
+  - name: language
+    type: string
+    description: Programming language
+    required: false
+  - name: focus
+    type: list
+    description: Specific areas to focus on
+    default:
+      - security
+      - performance
+      - maintainability
+
+outputs:
+  - name: review_report
+    type: text
+    description: Complete review report
+  - name: issues
+    type: json
+    description: List of identified issues
+  - name: suggestions
+    type: json
+    description: Improvement suggestions
+
+steps:
+  - id: analyze_code
+    name: Initial Analysis
+    description: Parse and understand the code structure
+    worker_type: code
+    tool: llm
+    timeout: 60
+    requires_approval: false
+    parameters:
+      code: "{{inputs.code}}"
+      language: "{{inputs.language}}"
+      task_type: analyze
+    expected_outputs:
+      - code_structure
+      - dependencies
+      - complexity_metrics
+
+  - id: security_review
+    name: Security Review
+    description: Check for security vulnerabilities
+    worker_type: code
+    tool: llm
+    timeout: 90
+    requires_approval: false
+    depends_on:
+      - analyze_code
+    parameters:
+      code: "{{inputs.code}}"
+      structure: "{{analyze_code.code_structure}}"
+      focus: security
+    expected_outputs:
+      - security_issues
+      - vulnerability_report
+
+  - id: quality_review
+    name: Quality Review
+    description: Review code quality and best practices
+    worker_type: code
+    tool: llm
+    timeout: 90
+    requires_approval: false
+    depends_on:
+      - analyze_code
+    parameters:
+      code: "{{inputs.code}}"
+      structure: "{{analyze_code.code_structure}}"
+      focus: quality
+    expected_outputs:
+      - quality_issues
+      - best_practices
+
+  - id: generate_report
+    name: Generate Report
+    description: Compile all findings into a report
+    worker_type: report
+    tool: llm
+    timeout: 120
+    requires_approval: false
+    depends_on:
+      - security_review
+      - quality_review
+    parameters:
+      security_findings: "{{security_review.security_issues}}"
+      quality_findings: "{{quality_review.quality_issues}}"
+      code_structure: "{{analyze_code.code_structure}}"
+      report_type: technical
+      audience: developer
+    expected_outputs:
+      - review_report
+      - issues
+      - suggestions
+
+verification:
+  required: true
+  min_confidence: 0.8
+  checks:
+    - security_checked
+    - quality_checked
+    - actionable_feedback

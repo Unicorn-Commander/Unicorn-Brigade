@@ -1,0 +1,142 @@
+# Research Brief Workflow
+# Comprehensive research with executive summary
+
+id: research_brief
+name: Research Brief
+description: Deep research on a topic with executive summary
+version: "1.0"
+
+metadata:
+  category: research
+  tags:
+    - research
+    - analysis
+    - brief
+  author: Unicorn Brigade
+  requires_approval: false
+
+inputs:
+  - name: topic
+    type: string
+    description: Research topic or question
+    required: true
+  - name: depth
+    type: string
+    description: Research depth (quick, standard, deep)
+    default: standard
+  - name: audience
+    type: string
+    description: Target audience (executive, technical, general)
+    default: general
+  - name: constraints
+    type: text
+    description: Any constraints or focus areas
+    required: false
+
+outputs:
+  - name: brief
+    type: text
+    description: Complete research brief
+  - name: executive_summary
+    type: text
+    description: Executive summary (1 page max)
+  - name: key_findings
+    type: json
+    description: List of key findings
+
+steps:
+  - id: initial_research
+    name: Initial Research
+    description: Broad research on the topic
+    worker_type: research
+    tool: llm
+    timeout: 180
+    requires_approval: false
+    parameters:
+      topic: "{{inputs.topic}}"
+      depth: broad
+      constraints: "{{inputs.constraints}}"
+    expected_outputs:
+      - initial_findings
+      - subtopics
+      - sources
+
+  - id: deep_dive
+    name: Deep Dive Analysis
+    description: In-depth analysis of key subtopics
+    worker_type: deep_research
+    tool: llm
+    timeout: 300
+    requires_approval: false
+    depends_on:
+      - initial_research
+    condition: "{{inputs.depth}} != 'quick'"
+    parameters:
+      topic: "{{inputs.topic}}"
+      subtopics: "{{initial_research.subtopics}}"
+      initial_findings: "{{initial_research.initial_findings}}"
+    expected_outputs:
+      - detailed_analysis
+      - key_insights
+      - recommendations
+
+  - id: synthesize
+    name: Synthesize Findings
+    description: Combine all research into coherent analysis
+    worker_type: research
+    tool: llm
+    timeout: 120
+    requires_approval: false
+    depends_on:
+      - initial_research
+      - deep_dive
+    parameters:
+      initial: "{{initial_research.initial_findings}}"
+      detailed: "{{deep_dive.detailed_analysis}}"
+      insights: "{{deep_dive.key_insights}}"
+    expected_outputs:
+      - synthesized_findings
+      - key_findings
+
+  - id: generate_brief
+    name: Generate Research Brief
+    description: Create the final research brief document
+    worker_type: report
+    tool: llm
+    timeout: 180
+    requires_approval: false
+    depends_on:
+      - synthesize
+    parameters:
+      findings: "{{synthesize.synthesized_findings}}"
+      key_findings: "{{synthesize.key_findings}}"
+      recommendations: "{{deep_dive.recommendations}}"
+      report_type: detailed
+      audience: "{{inputs.audience}}"
+    expected_outputs:
+      - brief
+      - sections
+
+  - id: executive_summary
+    name: Create Executive Summary
+    description: Generate concise executive summary
+    worker_type: summary
+    tool: llm
+    timeout: 60
+    requires_approval: false
+    depends_on:
+      - generate_brief
+    parameters:
+      source: "{{generate_brief.brief}}"
+      max_length: 300
+      audience: executive
+    expected_outputs:
+      - executive_summary
+
+verification:
+  required: true
+  min_confidence: 0.75
+  checks:
+    - topic_addressed
+    - evidence_based
+    - actionable_recommendations

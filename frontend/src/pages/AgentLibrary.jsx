@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import AgentCard from '../components/AgentCard';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 // Domain Icons and Colors
 const domainConfig = {

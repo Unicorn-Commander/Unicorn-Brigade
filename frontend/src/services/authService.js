@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 class AuthService {
   constructor() {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Cpu, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 // Fallback hardcoded models if API fails
 const FALLBACK_MODELS = [
@@ -56,11 +56,15 @@ const ModelSelector = ({
   const loadModels = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE}/providers`);
-      if (response.data && Array.isArray(response.data)) {
-        const grouped = groupModelsByProvider(response.data);
-        setModelGroups(grouped);
+      const response = await axios.get(`${API_BASE}/agent-builder/info`);
+      const availableModels = response.data?.capabilities?.availableModels;
+      if (availableModels && Array.isArray(availableModels) && availableModels.length > 0) {
+        const grouped = groupModelsByProvider(availableModels);
+        if (grouped.length > 0) {
+          setModelGroups(grouped);
+        }
       }
+      // If availableModels is empty or not present, keep fallback models silently
     } catch (error) {
       console.error('Failed to load models, using fallback:', error);
       setError('Using cached model list');

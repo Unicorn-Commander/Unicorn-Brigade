@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import { X, Key, Shield, Zap, Clock } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import axios from 'axios';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 const GenerateApiKeyModal = ({ agentId, onSuccess, onClose }) => {
   const [form, setForm] = useState({
@@ -58,45 +62,18 @@ const GenerateApiKeyModal = ({ agentId, onSuccess, onClose }) => {
         expiresAt.setDate(expiresAt.getDate() + days);
       }
 
-      // Mock API call - replace with actual API endpoint
-      // POST /api/agents/:agentId/api-keys
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
-      const response = await fetch(`${API_BASE}/agents/${agentId}/api-keys`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: form.name,
-          permissions: form.permissions,
-          rateLimit: form.rateLimit,
-          expiresAt: expiresAt
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to generate API key');
-      }
-
-      const data = await response.json();
-      onSuccess(data);
-    } catch (error) {
-      console.error('Failed to generate API key:', error);
-
-      // For demo purposes, generate a mock API key
-      const mockKey = {
-        id: `key-${Date.now()}`,
+      // POST /agents/:agentId/api-keys
+      const response = await axios.post(`${API_BASE}/agents/${agentId}/api-keys`, {
         name: form.name,
-        key: `sk-agent-${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`,
-        keyPrefix: 'sk-agent-' + Math.random().toString(36).substring(2, 8),
         permissions: form.permissions,
         rateLimit: form.rateLimit,
-        expiresAt: form.expiresAt ? new Date(Date.now() + parseInt(form.expiresAt) * 24 * 60 * 60 * 1000) : null,
-        createdAt: new Date(),
-        isActive: true
-      };
+        expiresAt: expiresAt
+      });
 
-      onSuccess(mockKey);
+      onSuccess(response.data);
+    } catch (error) {
+      console.error('Failed to generate API key:', error);
+      toast.error('Failed to generate API key');
     } finally {
       setLoading(false);
     }

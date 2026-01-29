@@ -19,8 +19,9 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
+import { GeneralAvatar, GunnyAvatar } from '../components/UnicornBrigadeLogo';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -261,13 +262,7 @@ const Dashboard = () => {
             {/* The General Card */}
             <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
               <div className="flex items-center space-x-3 mb-4">
-                <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 border-purple-500/30">
-                  <img
-                    src="/The_General_Logo.png"
-                    alt="The General"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+                <GeneralAvatar size={64} />
                 <div>
                   <h3 className="font-bold text-white">The General</h3>
                   <p className="text-sm text-purple-400">Commanding</p>
@@ -288,13 +283,7 @@ const Dashboard = () => {
             {/* Gunny Card */}
             <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
               <div className="flex items-center space-x-3 mb-4">
-                <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 border-amber-500/30">
-                  <img
-                    src="/Gunny_Logo.png"
-                    alt="Gunny"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+                <GunnyAvatar size={64} />
                 <div>
                   <h3 className="font-bold text-white">Gunny</h3>
                   <p className="text-sm text-emerald-400">Ready</p>

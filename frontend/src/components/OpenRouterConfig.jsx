@@ -37,7 +37,7 @@ const OpenRouterConfig = () => {
     setTestResult(null);
 
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
       const response = await fetch(`${API_BASE}/medical-test/test-openrouter`, {
         method: 'POST',
         headers: {
@@ -75,7 +75,7 @@ const OpenRouterConfig = () => {
     setTestResult(null);
 
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
       const response = await fetch(`${API_BASE}/medical-test/test-consultation`, {
         method: 'POST',
         headers: {

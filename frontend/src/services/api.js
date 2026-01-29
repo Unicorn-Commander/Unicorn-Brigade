@@ -2,7 +2,7 @@
 
 class APIService {
   constructor() {
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
     this.token = localStorage.getItem('token');
   }
 

@@ -12,7 +12,7 @@ import GenerateApiKeyModal from '../components/GenerateApiKeyModal';
 import KeyRevealModal from '../components/KeyRevealModal';
 import AgentConfigurationTab from '../components/AgentConfigurationTab';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 const AgentDetail = () => {
   const { id } = useParams();
@@ -343,14 +343,14 @@ const AgentDetail = () => {
             <div>
               {editMode ? (
                 <textarea
-                  value={editedAgent.systemPrompt}
+                  value={editedAgent.systemPrompt || ''}
                   onChange={(e) => setEditedAgent({ ...editedAgent, systemPrompt: e.target.value })}
                   className="w-full h-96 p-4 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent font-mono text-sm resize-none"
                 />
               ) : (
                 <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
                   <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown>{currentAgent.systemPrompt}</ReactMarkdown>
+                    <ReactMarkdown>{currentAgent.systemPrompt || '*No system prompt defined*'}</ReactMarkdown>
                   </div>
                 </div>
               )}

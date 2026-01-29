@@ -5,8 +5,10 @@ import { toast } from 'react-hot-toast';
 const KeyRevealModal = ({ apiKey, onClose }) => {
   const [copied, setCopied] = useState(false);
 
+  const keyValue = apiKey.key || '';
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(apiKey.key);
+    navigator.clipboard.writeText(keyValue);
     setCopied(true);
     toast.success('Copied to clipboard!');
     setTimeout(() => setCopied(false), 2000);
@@ -45,7 +47,7 @@ const KeyRevealModal = ({ apiKey, onClose }) => {
               <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
                 <div className="flex items-center justify-between">
                   <code className="text-sm font-mono text-unicorn-400 flex-1 break-all pr-3">
-                    {apiKey.key}
+                    {keyValue}
                   </code>
                   <button
                     onClick={handleCopy}
@@ -112,7 +114,7 @@ const KeyRevealModal = ({ apiKey, onClose }) => {
                 <span className="text-emerald-400">-X POST</span>{' '}
                 <span className="text-slate-300">https://api.unicornbrigade.com/agents/invoke</span> \<br />
                 {'  '}<span className="text-emerald-400">-H</span>{' '}
-                <span className="text-amber-300">"Authorization: Bearer {apiKey.key.substring(0, 20)}..."</span> \<br />
+                <span className="text-amber-300">"Authorization: Bearer {keyValue.substring(0, 20)}..."</span> \<br />
                 {'  '}<span className="text-emerald-400">-H</span>{' '}
                 <span className="text-amber-300">"Content-Type: application/json"</span>
               </code>

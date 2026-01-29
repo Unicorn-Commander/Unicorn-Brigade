@@ -1,526 +1,502 @@
 <div align="center">
 
-# 🦄⚔️ Unicorn Brigade
+<img src="frontend/public/The_General_Logo.png" width="180"/>
 
-### *Agent Infrastructure Platform*
+# Unicorn Brigade
 
-**The Future of AI Agent Development and Orchestration**
+### **The AI Agent Factory**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-18.3-blue.svg)](https://reactjs.org/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
+*Build. Deploy. Orchestrate. Dominate.*
 
-**Part of [Magic Unicorn Unconventional Technology & Stuff Inc.](https://magicunicorn.tech)**  
-Explore our product suite at [Unicorn Commander](https://unicorncommander.com)
+[![Python](https://img.shields.io/badge/Python-3.12-blue?style=for-the-badge&logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-teal?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)](https://react.dev)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791?style=for-the-badge&logo=postgresql)](https://postgresql.org)
+
+[![A2A Protocol](https://img.shields.io/badge/A2A-Protocol-green?style=for-the-badge)](https://github.com/google/a2a-spec)
+[![MCP](https://img.shields.io/badge/MCP-Anthropic-orange?style=for-the-badge)](https://modelcontextprotocol.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)](LICENSE)
+
+**[Live Demo](https://brigade.unicorncommander.ai)** |
+**[Quick Start](#-quick-start)** |
+**[API Docs](#-api-reference)** |
+**[Architecture](#-architecture)**
+
+---
+
+**18 Production Agents** | **15 Working Tools** | **A2A + MCP Protocols** | **3D Orchestration**
 
 </div>
 
 ---
 
-## 📸 Screenshots
+## What is Unicorn Brigade?
+
+Unicorn Brigade is a **production-ready AI agent orchestration platform** where you can:
+
+**Build** custom AI agents through conversation with Gunny, or via API
+**Deploy** agents with real-world tools - email, web search, databases, code execution
+**Orchestrate** multi-agent workflows through The General's 3D command center
+**Federate** agents across systems using A2A and MCP protocols
+
+This isn't a toy. **It sends real emails. It searches the real web. It coordinates real workflows.**
+
+---
+
+## Screenshots
 
 <div align="center">
 
 ### Dashboard
-![Unicorn Brigade Dashboard](.github/images/Unicorn_Brigade_Dashboard.jpeg)
+*18 agents across 8 domains, all systems operational*
+
+![Dashboard](.github/images/dashboard.png)
+
+### 3D Orchestration Command Center
+*The General's real-time view of agent operations*
+
+![Orchestration](.github/images/orchestration.png)
 
 ### Tool Library
-![Tool Library](.github/images/Unicorn_Brigade_Tool_library.jpeg)
+*Built-in tools ready for agent assignment*
 
-### System Monitoring
-![System Monitoring](.github/images/Unicorn_Brigade_Monitoring.jpeg)
+![Tool Library](.github/images/tool-library.png)
 
 </div>
 
 ---
 
-## 🚀 What is Unicorn Brigade?
+## Features That Actually Work
 
-**Unicorn Brigade** is a comprehensive agent infrastructure platform that revolutionizes how you build, deploy, and orchestrate AI agents. As part of the **UC-Cloud ecosystem**, Brigade serves as the **"Agent Factory"** - where you build and manage AI agents that can be used across all UC-Cloud services.
+### Real Tool Integration
 
-Unlike simple agent builders, Unicorn Brigade provides a complete ecosystem for agent development with:
+| Tool | Provider | Status |
+|------|----------|--------|
+| **Web Search** | Serper.dev | Working |
+| **Email** | Microsoft 365 Graph API | Working |
+| **Calculator** | Local | Working |
+| **HTTP Requests** | httpx | Working |
+| **Memory** | mem0 + Qdrant | Working |
+| **JSON Parser** | Local | Working |
+| **DateTime** | Local | Working |
+| **Shell Commands** | Subprocess | Working |
+| **File Operations** | Local | Working |
+| **Code Execution** | Sandboxed | Working |
+| **Text Processing** | Local | Working |
+| **Image Analysis** | Vision models | Working |
+| **Database Queries** | PostgreSQL | Working |
+| **Notifications** | Multi-channel | Working |
+| **QR Code Generation** | Local | Working |
 
-- 🎖️ **The General** - Orchestrator of orchestrators, managing agent workflows and coordinating your entire Brigade
-- 🎯 **Gunny** - Your conversational Agent Builder who helps you create agents through natural dialogue
-- 📚 **47+ Pre-built Agents** - Domain-specific agents ready to deploy across financial, legal, medical, cybersecurity, and more
-- 🔧 **Extensible Tool System** - Integrate with APIs, databases, web search, code execution, and custom tools
-- 🌐 **Multi-Provider LLM Support** - Works with OpenAI, Anthropic, Google, Meta, and 100+ models via LiteLLM
-- 🔗 **A2A Protocol** - Linux Foundation's Agent-to-Agent communication standard
-- 📊 **Built-in Monitoring** - Real-time system health, metrics, and performance tracking
-- 🎨 **Beautiful UI** - Glass morphism design with purple/pink gradients
-
----
-
-## 🎖️ Meet The Characters
-
-### The General - Orchestrator of Orchestrators
-
-<img src=".github/images/The_General_Logo.png" width="150" align="left" style="margin-right: 20px;">
-
-**The General** is the strategic command center of Unicorn Brigade. He coordinates multi-agent workflows, manages complex orchestrations, and ensures your entire Brigade operates in perfect harmony. Think of him as the conductor of your AI symphony.
-
-**Key Capabilities:**
-- Multi-agent workflow orchestration
-- Strategic coordination and planning
-- Brigade-level management
-- High-level decision making
-- Resource allocation and optimization
-
-<br clear="left"/>
-
-### Gunny - Your Agent Builder
-
-<img src=".github/images/Gunny_Logo.png" width="150" align="left" style="margin-right: 20px;">
-
-**Gunny** is your hands-on Agent Builder. Through natural conversation, he guides you through creating sophisticated AI agents tailored to your specific needs. No code required - just tell him what you want to build.
-
-**Key Capabilities:**
-- Conversational agent creation
-- 4-phase build process (Discovery → Design → Review → Created)
-- Real-time agent preview
-- Tool recommendation and integration
-- Domain expertise across all verticals
-
-<br clear="left"/>
-
----
-
-## ✨ Key Features
-
-### 🤖 Agent Management
-- **Browse 47+ Pre-built Agents** - Financial analysts, legal researchers, cybersecurity specialists, and more
-- **Build Custom Agents** - Chat with Gunny to create agents through conversation
-- **Agent Library** - Organized by domain with advanced filtering and search
-- **Visual Architecture** - Interactive React Flow diagrams showing agent internals
-- **Build History Timeline** - See how each agent was created
-
-### 🔧 Tool Integration
-- **12+ Built-in Tools** - Web Search, Database Query, Code Executor, File System, API Client
-- **Tool Library** - Browse, search, and manage available tools
-- **Drag-and-Drop Assignment** - Easily assign tools to agents
-- **MCP Support** - Model Context Protocol for standardized tool integration
-- **Custom Tools** - Create your own tools with simple configuration
-
-### 🎨 Developer Experience
-- **Interactive API Documentation** - Code examples in cURL, JavaScript, and Python
-- **Agent Preferences** - Control model, temperature, max tokens, and more
-- **Real-time Preview** - See your agent configuration as it's being built
-- **System Monitoring** - Track API requests, LLM calls, response times
-- **Enhanced Configuration** - Full LLM parameter control (top-p, penalties, stop sequences)
-
-### 🔗 Interoperability
-- **A2A Protocol** - Linux Foundation standard for agent-to-agent communication
-- **Agent Cards** - Standardized agent metadata format
-- **Multi-Provider** - OpenAI, Anthropic, Google, Ollama, and 100+ models via LiteLLM
-- **RESTful API** - Comprehensive API for programmatic access
-- **WebSocket Support** - Real-time updates and streaming responses
-
----
-
-## 🏗️ Architecture
+### Protocol Support
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Unicorn Brigade                         │
-│                   Agent Infrastructure                       │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                    ┌─────────┴─────────┐
-                    │                   │
-            ┌───────▼───────┐   ┌──────▼──────┐
-            │  The General  │   │    Gunny     │
-            │  Orchestrator │   │Agent Builder │
-            └───────┬───────┘   └──────┬───────┘
-                    │                   │
-        ┌───────────┼───────────────────┼──────────┐
-        │           │                   │          │
-    ┌───▼───┐  ┌───▼───┐          ┌────▼────┐ ┌──▼───┐
-    │Agent 1│  │Agent 2│   ...    │Agent 46 │ │Agent │
-    │Financial│ │ Legal │          │Cyber Sec│ │  47  │
-    └───┬───┘  └───┬───┘          └────┬────┘ └──┬───┘
-        │          │                    │          │
-        └──────────┴────────────────────┴──────────┘
-                          │
-                  ┌───────┴────────┐
-                  │                │
-            ┌─────▼─────┐    ┌────▼─────┐
-            │   Tools    │    │   LLMs   │
-            │ (12+ types)│    │(100+ models)│
-            └────────────┘    └──────────┘
+A2A (Agent-to-Agent Protocol)     MCP (Model Context Protocol)
+├── Agent Discovery                ├── Tool Registration
+├── External Invocation            ├── Direct Tool Execution
+├── Agent Cards                    ├── Schema Validation
+└── Federated Workflows            └── Result Formatting
 ```
 
----
+Both protocols are **fully operational** with tested endpoints.
 
-## 🛠️ Tech Stack
+### Agent Roster
 
-### Frontend
-- **React 18.3** - Modern UI framework
-- **Vite** - Lightning-fast build tool
-- **Tailwind CSS** - Utility-first styling
-- **React Flow** - Interactive node diagrams
-- **React Router** - Client-side routing
-- **Axios** - HTTP client
-- **React Hot Toast** - Beautiful notifications
-- **Lucide React** - Icon system
+**18 production-ready agents** organized by domain:
 
-### Backend
-- **Node.js 18+** - JavaScript runtime
-- **Express.js** - Web framework
-- **Prisma** - Next-generation ORM
-- **SQLite** - Embedded database
-- **LiteLLM** - Multi-provider LLM proxy
-- **OpenRouter** - Access to 100+ models
+| Domain | Agents |
+|--------|--------|
+| **Command** | The General (orchestrator), Gunny (agent builder) |
+| **Operations** | Col. Pipeline, Sgt. Major Executor, Cpl. Monitor |
+| **Research** | Dr. Analyst, Lt. Webster, Cpl. Librarian |
+| **Engineering** | Sgt. Coder, Cpl. Debugger, Pvt. Tester |
+| **Security** | Capt. Fortress, Sgt. Audit |
+| **Finance** | Col. Finance, Lt. Budget |
+| **Medical** | Dr. Vitals, Nurse Navigator |
+| **Training** | Sgt. Instructor |
 
-### Infrastructure
-- **A2A Protocol** - Agent-to-agent communication
-- **Model Context Protocol (MCP)** - Standardized tool integration
-- **RESTful API** - Complete programmatic access
-- **WebSocket** - Real-time updates
+All agents are stored in **PostgreSQL** with full CRUD operations.
 
 ---
 
-## 📦 Installation
+## Quick Start
 
-### Deployment Modes
+### Prerequisites
 
-Unicorn Brigade can be deployed in two ways:
+- Python 3.11+
+- PostgreSQL 15+
+- Node.js 18+ (for frontend)
+- Qdrant (for memory)
 
-#### **1. UC-Cloud Integration (Recommended - Production)**
+### Installation
 
-Brigade is designed to integrate with the UC-Cloud ecosystem for production deployment.
-
-**Prerequisites:**
-- UC-Cloud infrastructure running (PostgreSQL, Redis, Keycloak, Traefik)
-- Docker and Docker Compose installed
-
-**Quick Start:**
-
-\`\`\`bash
-# Navigate to UC-Cloud directory
-cd /path/to/UC-Cloud
-
-# Build Brigade images
-docker compose -f docker-compose.brigade.yml build
-
-# Start Brigade services
-docker compose -f docker-compose.brigade.yml up -d
-
-# Initialize database
-cd Unicorn-Brigade
-npx prisma db push
-
-# Verify deployment
-docker ps | grep brigade
-docker logs unicorn-brigade --tail 20
-\`\`\`
-
-**Access:**
-- **Production**: https://brigade.unicorncommander.ai
-- **Local**: http://localhost:8102
-
-**See** [UC-CLOUD-INTEGRATION.md](./UC-CLOUD-INTEGRATION.md) for complete deployment guide.
-
----
-
-#### **2. Standalone Development (Local Testing)**
-
-For local development without UC-Cloud infrastructure.
-
-**Prerequisites:**
-- Node.js 18 or higher
-- npm or yarn
-- Git
-
-**Quick Start:**
-
-\`\`\`bash
-# Clone the repository
+```bash
+# Clone
 git clone https://github.com/Unicorn-Commander/Unicorn-Brigade.git
 cd Unicorn-Brigade
 
-# Install backend dependencies
-npm install
+# Python environment
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 
-# Set up environment variables
+# Configure
 cp .env.example .env
+# Edit .env with your API keys (see Configuration section)
 
-# Add your OpenRouter API key to .env
-echo "OPENROUTER_API_KEY=your_key_here" >> .env
+# Database
+# Ensure PostgreSQL is running, then:
+python -c "from app.db.database import init_db; import asyncio; asyncio.run(init_db())"
 
-# Initialize database (SQLite for development)
-npx prisma db push
+# Start backend
+uvicorn app.main:app --host 0.0.0.0 --port 8100
+```
 
-# Start backend (port 8112)
-npm start
-\`\`\`
+### Frontend
 
-In a new terminal:
-
-\`\`\`bash
-# Install frontend dependencies
+```bash
 cd frontend
 npm install
-
-# Start frontend (port 8113)
 npm run dev
-\`\`\`
-
-Open your browser to \`http://localhost:8113\` 🎉
-
-**Note:** Standalone mode uses SQLite and local authentication (not Keycloak SSO).
-
----
-
-## 🎯 Quick Start Guide
-
-### 1. Build Your First Agent with Gunny
-
-1. Navigate to **Build Agent** in the sidebar
-2. Chat with Gunny: *"I need a financial analyst agent that can analyze market data and generate reports"*
-3. Gunny will guide you through the 4-phase build process
-4. Review your agent in the real-time preview panel
-5. Click **Create Agent** when ready
-
-### 2. Browse the Agent Library
-
-- Explore 47+ pre-built agents across 11 domains
-- Filter by domain, status, or type
-- Sort by newest, most used, or A-Z
-- Click any agent to view details, architecture, and build history
-
-### 3. Manage Tools
-
-- Visit the **Tool Library** to see available tools
-- Drag tools from "Available" to "Assigned" for any agent
-- Configure tool-specific settings
-- Create custom tools with the tool creator
-
-### 4. Monitor Your Brigade
-
-- Check the **Monitoring** dashboard for system health
-- View API request volume, active agents, LLM call metrics
-- Monitor resource usage (CPU, memory, disk)
-- Track recent errors and warnings
-
----
-
-## 📚 API Documentation
-
-### Authentication
-
-All API requests require authentication with an agent-specific API key:
-
-\`\`\`bash
-curl -H "X-API-Key: your_api_key_here" \\
-     http://localhost:8112/api/agents-new
-\`\`\`
-
-### Key Endpoints
-
-#### List All Agents
-\`\`\`bash
-GET /api/agents-new
-\`\`\`
-
-#### Get Agent Details
-\`\`\`bash
-GET /api/agents-new/:id
-\`\`\`
-
-#### Create New Agent
-\`\`\`bash
-POST /api/agents-new
-Content-Type: application/json
-
-{
-  "name": "financial-analyst",
-  "displayName": "Financial Analyst",
-  "domain": "financial",
-  "model": "gpt-4-turbo",
-  "temperature": 0.7,
-  "systemPrompt": "You are a financial analyst..."
-}
-\`\`\`
-
-#### Invoke Agent
-\`\`\`bash
-POST /api/agents-new/:id/invoke
-Content-Type: application/json
-
-{
-  "message": "Analyze the latest market trends",
-  "sessionId": "session-123"
-}
-\`\`\`
-
-#### Chat with Gunny
-\`\`\`bash
-POST /api/agent-builder/chat
-Content-Type: application/json
-
-{
-  "message": "I want to build a legal research agent",
-  "sessionId": "session-456",
-  "userId": "user-789"
-}
-\`\`\`
-
-#### Get Agent Card (A2A Protocol)
-\`\`\`bash
-GET /api/agents-new/:id/card
-\`\`\`
-
-Full API documentation available at \`http://localhost:8113/docs\`
-
----
-
-## 🏆 What Makes Unicorn Brigade Different?
-
-| Feature | Unicorn Brigade | OpenAI AgentKit | Anthropic SDK |
-|---------|----------------|-----------------|---------------|
-| **Builder Type** | ✅ Conversational + Visual | Visual drag-drop | Code-first |
-| **Agent Hosting** | ✅ Full platform | ❌ No | ❌ No |
-| **Pre-built Agents** | ✅ 47+ agents | ❌ No | ❌ No |
-| **Multi-Provider** | ✅ 100+ models | ❌ OpenAI only | ❌ Anthropic only |
-| **A2A Protocol** | ✅ Yes | ❌ No | ❌ No |
-| **Orchestration** | ✅ The General | ❌ No | ❌ No |
-| **Built-in Monitoring** | ✅ Yes | ❌ No | ❌ No |
-| **Tool Library** | ✅ Extensible | Limited | Limited |
-| **API Documentation** | ✅ Interactive | Basic | Basic |
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how you can help:
-
-1. **Fork the repository**
-2. **Create a feature branch** (\`git checkout -b feature/amazing-feature\`)
-3. **Commit your changes** (\`git commit -m 'Add amazing feature'\`)
-4. **Push to the branch** (\`git push origin feature/amazing-feature\`)
-5. **Open a Pull Request**
-
-### Development Guidelines
-
-- Follow the existing code style
-- Write clear commit messages
-- Add tests for new features
-- Update documentation as needed
-- Test across different browsers
-
----
-
-## 🗺️ Roadmap
-
-### Phase 1: Foundation (✅ Complete)
-- [x] Agent Library with 47+ agents
-- [x] Gunny Agent Builder
-- [x] Tool Library and management
-- [x] API documentation
-- [x] System monitoring
-
-### Phase 2: Orchestration (🚧 In Progress)
-- [ ] The General orchestration interface
-- [ ] Multi-agent workflow designer
-- [ ] Visual flow builder
-- [ ] Conditional logic and branching
-- [ ] LangGraph integration
-
-### Phase 3: Advanced Features (📋 Planned)
-- [ ] Agent Templates marketplace
-- [ ] Custom MCP server management
-- [ ] Usage analytics and cost tracking
-- [ ] Agent versioning and rollback
-- [ ] Deployment automation
-
-### Phase 4: Enterprise (🔮 Future)
-- [ ] Team collaboration features
-- [ ] Role-based access control
-- [ ] Audit logs and compliance
-- [ ] SLA monitoring
-- [ ] White-label options
-
----
-
-## 🏗️ UC-Cloud Integration
-
-### Brigade's Role in the Ecosystem
-
-```
-UC-Cloud Ecosystem
-│
-├── Ops-Center (Main Dashboard)
-│   ├── Service monitoring
-│   ├── Billing (Lago)
-│   └── User management
-│
-├── Open-WebUI (Chat Interface)
-│   ├── Conversations
-│   └── Agent usage
-│
-├── **Unicorn Brigade** (Agent Management) ← Agent Factory
-│   ├── Build agents (Gunny)
-│   ├── Browse agent library
-│   └── Agent API endpoints
-│
-└── Center-Deep (Search)
-    └── Metasearch engine
 ```
 
-### Shared Infrastructure
-
-Brigade integrates with UC-Cloud by sharing:
-
-- **PostgreSQL** - brigade_db in shared unicorn-postgresql
-- **Redis** - Shared cache for sessions
-- **Keycloak** - SSO authentication (uchub realm)
-- **Traefik** - SSL/TLS reverse proxy
-- **Ops-Center** - LLM routing and billing
-
-### Production Status
-
-- ✅ **Deployed**: brigade.unicorncommander.ai
-- ✅ **Authentication**: Keycloak SSO fully operational
-- ✅ **Database**: brigade_db initialized and operational
-- ✅ **SSL/TLS**: Let's Encrypt certificates active
-- ✅ **Monitoring**: Integrated with Ops-Center
-
-**Latest Update**: October 15, 2025 - Production deployment complete
+Open http://localhost:5173
 
 ---
 
-## 📄 License
+## Configuration
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Required API Keys
+
+```bash
+# .env file
+
+# Database
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5434/unicorn_brigade
+
+# LLM Provider (pick one or more)
+OPS_CENTER_URL=https://unicorncommander.ai  # Our routing service
+OPENROUTER_API_KEY=sk-or-v1-000000000000000000000000000000000000             # 200+ models
+ANTHROPIC_API_KEY=sk-ant-...                # Claude direct
+
+# Web Search
+SERPER_API_KEY=...
+
+# Email (Microsoft 365)
+MS365_CLIENT_ID=...
+MS365_TENANT_ID=...
+MS365_CLIENT_SECRET=...
+MS365_USER_EMAIL=your@email.com
+
+# Memory
+QDRANT_URL=http://localhost:6333
+```
+
+### Tool Configuration
+
+Tools are automatically registered on startup. To customize:
+
+```python
+# app/llm/extended_tools.py
+
+MY_TOOL = ToolDefinition(
+    name="my_tool",
+    description="What this tool does (LLM reads this)",
+    parameters=[
+        ToolParameter(name="input", type="string", required=True),
+    ],
+    handler=my_async_handler,
+)
+
+EXTENDED_TOOLS = [..., MY_TOOL]  # Add to the list
+```
 
 ---
 
-## 🙏 Acknowledgments
+## API Reference
 
-- **OpenAI** - For GPT models and inspiration
-- **Anthropic** - For Claude models
-- **Linux Foundation** - For the A2A Protocol standard
-- **React Flow** - For beautiful diagram components
-- **LiteLLM** - For multi-provider abstraction
-- **The Open Source Community** - For all the amazing tools
+### Agent Operations
+
+```bash
+# List all agents
+GET /api/v1/agents
+
+# Get agent details
+GET /api/v1/agents/{agent_id}
+
+# Chat with agent (function calling enabled)
+POST /api/v1/agents/{agent_id}/chat
+{
+  "message": "Search for AI market trends and email me a summary",
+  "stream": false
+}
+
+# Response includes tool calls
+{
+  "content": "I found the data and sent you an email...",
+  "toolCalls": [
+    {"name": "web_search", "arguments": {...}, "result": {...}},
+    {"name": "email", "arguments": {...}, "result": {"success": true}}
+  ],
+  "model": "openai/gpt-4o"
+}
+```
+
+### A2A Protocol (Agent-to-Agent)
+
+```bash
+# Get agent card for discovery
+GET /api/v1/a2a/agent-card
+
+# Invoke agent from external system
+POST /api/v1/a2a/invoke
+{
+  "agent_id": "col-finance",
+  "task": "Calculate CAGR from $7.63B to $10.91B over 2 years",
+  "tools": ["calculator"]
+}
+
+# Response
+{
+  "result": "The CAGR is 19.6%...",
+  "tool_calls": [
+    {"tool": "calculator", "input": {...}, "output": {"result": 19.58}}
+  ]
+}
+```
+
+### MCP Protocol (Tool Execution)
+
+```bash
+# List available tools
+GET /api/v1/mcp/tools
+
+# Execute tool directly
+POST /api/v1/mcp/tools/call
+{
+  "name": "web_search",
+  "arguments": {"query": "AI agent market size 2026"}
+}
+
+# Send email via MCP
+POST /api/v1/mcp/tools/call
+{
+  "name": "email",
+  "arguments": {
+    "to": "team@example.com",
+    "subject": "Report",
+    "body": "Here is the analysis..."
+  }
+}
+```
 
 ---
 
-## 📞 Contact & Support
+## Architecture
 
-- **Website**: [magicunicorn.tech](https://magicunicorn.tech)
-- **Product Suite**: [unicorncommander.com](https://unicorncommander.com)
+```
+                    Unicorn Brigade Platform
+    ┌────────────────────────────────────────────────────────┐
+    │                                                        │
+    │   ┌──────────────┐          ┌──────────────┐          │
+    │   │   React UI   │◄────────►│   FastAPI    │          │
+    │   │   + Three.js │  HTTP/WS │   Backend    │          │
+    │   └──────────────┘          └──────┬───────┘          │
+    │                                    │                   │
+    │         ┌──────────────────────────┼─────────────┐    │
+    │         │                          │             │    │
+    │   ┌─────▼─────┐  ┌─────────┐  ┌───▼────┐  ┌────▼───┐ │
+    │   │    A2A    │  │   MCP   │  │ Agents │  │  Tools │ │
+    │   │  Server   │  │ Server  │  │  CRUD  │  │ Engine │ │
+    │   └───────────┘  └─────────┘  └───┬────┘  └────┬───┘ │
+    │                                    │            │     │
+    │   ┌────────────────────────────────┴────────────┤     │
+    │   │                                             │     │
+    │   │              LLM Client Layer               │     │
+    │   │  ┌────────┐ ┌────────┐ ┌────────┐         │     │
+    │   │  │Ops-Ctr │ │OpenAI/ │ │Anthropic│         │     │
+    │   │  │(Router)│ │OpenRtr │ │ Direct │         │     │
+    │   │  └────────┘ └────────┘ └────────┘         │     │
+    │   └─────────────────────────────────────────────┘     │
+    │                                                        │
+    │   ┌────────────┐  ┌────────────┐  ┌────────────┐      │
+    │   │ PostgreSQL │  │   Qdrant   │  │   Redis    │      │
+    │   │  (Agents)  │  │  (Memory)  │  │  (Cache)   │      │
+    │   └────────────┘  └────────────┘  └────────────┘      │
+    │                                                        │
+    └────────────────────────────────────────────────────────┘
+```
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | React 18, Vite 6, Tailwind CSS 4, Three.js, react-force-graph-3d |
+| **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0, Pydantic v2 |
+| **Database** | PostgreSQL 15 (agents, tools, executions) |
+| **Memory** | Qdrant + mem0 (vector storage, conversation memory) |
+| **LLM** | OpenRouter, Anthropic, OpenAI, Local MLX |
+| **Protocols** | A2A (Linux Foundation), MCP (Anthropic) |
+
+---
+
+## Real-World Examples
+
+### Research + Email Workflow
+
+Agent researches a topic and emails the results:
+
+```bash
+curl -X POST http://localhost:8100/api/v1/agents/col-finance/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Research AI agent market size 2026 and email summary to aaron@magicunicorn.tech"}'
+```
+
+**What happens internally:**
+1. LLM decides to use `web_search` tool
+2. Serper API returns market data (Deloitte, IBM research)
+3. LLM synthesizes findings
+4. LLM decides to use `email` tool
+5. MS365 Graph API sends email via OAuth2
+6. Returns confirmation with tool execution log
+
+### External A2A Invocation
+
+Another platform invokes your agent:
+
+```bash
+curl -X POST http://localhost:8100/api/v1/a2a/invoke \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id": "sgt-coder",
+    "task": "Write a Python function to calculate compound interest",
+    "tools": ["code"]
+  }'
+```
+
+---
+
+## 3D Orchestration
+
+The General's command center provides real-time visualization:
+
+- **Domain-colored nodes** - Agents grouped by specialty
+- **Particle animations** - Data flow between collaborating agents
+- **Live activity** - Pulsing nodes indicate active agents
+- **Interactive controls** - Rotate, zoom, filter by domain
+
+Access at `/orchestration` in the UI.
+
+---
+
+## Deployment
+
+### Docker Compose
+
+```yaml
+services:
+  brigade:
+    build: .
+    ports:
+      - "8100:8100"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/brigade
+      - QDRANT_URL=http://qdrant:6333
+    depends_on:
+      - postgres
+      - qdrant
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: unicorn_brigade
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+
+  qdrant:
+    image: qdrant/qdrant
+    ports:
+      - "6333:6333"
+```
+
+### Production URLs
+
+- **Frontend**: https://brigade.unicorncommander.ai
+- **API**: https://api.brigade.unicorncommander.ai
+
+---
+
+## Comparison
+
+| Feature | Unicorn Brigade | LangChain | CrewAI |
+|---------|----------------|-----------|--------|
+| **Agent Builder UI** | Conversational (Gunny) | Code only | Code only |
+| **Pre-built Agents** | 18 production-ready | None | None |
+| **Real Email Integration** | MS365 Graph API | Manual | Manual |
+| **Real Web Search** | Serper (works now) | Needs config | Needs config |
+| **A2A Protocol** | Full support | No | No |
+| **MCP Protocol** | Full support | Partial | No |
+| **3D Visualization** | Yes (Three.js) | No | No |
+| **Database Persistence** | PostgreSQL | In-memory | In-memory |
+| **Production Deployed** | Yes | Framework only | Framework only |
+
+---
+
+## Roadmap
+
+### Q1 2026
+- [ ] Google Workspace email integration
+- [ ] Slack tool
+- [ ] Visual workflow builder
+- [ ] Agent marketplace
+
+### Q2 2026
+- [ ] Voice interface
+- [ ] Knowledge graphs (FalkorDB)
+- [ ] Multi-tenant SaaS
+- [ ] Advanced memory retrieval
+
+---
+
+## Contributing
+
+```bash
+# Setup dev environment
+pip install -r requirements-dev.txt
+
+# Run tests
+pytest
+
+# Lint
+ruff check .
+
+# Format
+black .
+```
+
+PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## License
+
+MIT - see [LICENSE](LICENSE)
+
+---
+
+## Support
+
+- **Docs**: [docs/](docs/)
 - **Issues**: [GitHub Issues](https://github.com/Unicorn-Commander/Unicorn-Brigade/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Unicorn-Commander/Unicorn-Brigade/discussions)
+- **Email**: support@magicunicorn.tech
 
 ---
 
 <div align="center">
 
-**Built with 💜 by Magic Unicorn Unconventional Technology & Stuff Inc.**
+**Built by [Magic Unicorn Unconventional Technology & Stuff Inc](https://magicunicorn.tech)**
 
-*Transforming Ideas into Magic with AI & Innovation*
+*"Where AI agents come to life"*
 
 [![Star on GitHub](https://img.shields.io/github/stars/Unicorn-Commander/Unicorn-Brigade?style=social)](https://github.com/Unicorn-Commander/Unicorn-Brigade)
 

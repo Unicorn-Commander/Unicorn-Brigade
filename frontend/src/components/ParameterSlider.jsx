@@ -1,4 +1,44 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+const sliderStylesInjected = { current: false };
+
+function injectSliderStyles() {
+  if (sliderStylesInjected.current) return;
+  sliderStylesInjected.current = true;
+
+  const style = document.createElement('style');
+  style.setAttribute('data-parameter-slider', '');
+  style.textContent = `
+    .parameter-slider-thumb::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgb(139, 92, 246), rgb(6, 182, 212));
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      transition: transform 0.2s;
+    }
+    .parameter-slider-thumb::-webkit-slider-thumb:hover {
+      transform: scale(1.1);
+    }
+    .parameter-slider-thumb::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgb(139, 92, 246), rgb(6, 182, 212));
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      transition: transform 0.2s;
+    }
+    .parameter-slider-thumb::-moz-range-thumb:hover {
+      transform: scale(1.1);
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 const ParameterSlider = ({
   label,
@@ -14,13 +54,18 @@ const ParameterSlider = ({
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
-  const percentage = ((value - min) / (max - min)) * 100;
+  useEffect(() => {
+    injectSliderStyles();
+  }, []);
+
+  const safeValue = value !== undefined && value !== null ? value : min;
+  const percentage = ((safeValue - min) / (max - min)) * 100;
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <label className="text-sm font-medium text-slate-300">{label}</label>
-        <span className="text-sm font-mono text-unicorn-400">{value.toFixed(step < 1 ? 1 : 0)}</span>
+        <span className="text-sm font-mono text-unicorn-400">{safeValue.toFixed(step < 1 ? 1 : 0)}</span>
       </div>
 
       <div className="relative">
@@ -29,12 +74,12 @@ const ParameterSlider = ({
           min={min}
           max={max}
           step={step}
-          value={value}
+          value={safeValue}
           onChange={(e) => onChange(parseFloat(e.target.value))}
           onMouseEnter={() => setShowTooltip(true)}
           onMouseLeave={() => setShowTooltip(false)}
           disabled={disabled}
-          className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer slider-thumb disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer parameter-slider-thumb disabled:opacity-50 disabled:cursor-not-allowed"
           style={{
             background: `linear-gradient(to right, rgb(139, 92, 246) 0%, rgb(139, 92, 246) ${percentage}%, rgb(51, 65, 85) ${percentage}%, rgb(51, 65, 85) 100%)`
           }}
@@ -51,38 +96,6 @@ const ParameterSlider = ({
       {description && (
         <p className="text-xs text-slate-400 leading-relaxed">{description}</p>
       )}
-
-      <style jsx>{`
-        .slider-thumb::-webkit-slider-thumb {
-          appearance: none;
-          width: 16px;
-          height: 16px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, rgb(139, 92, 246), rgb(6, 182, 212));
-          cursor: pointer;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-          transition: transform 0.2s;
-        }
-
-        .slider-thumb::-webkit-slider-thumb:hover {
-          transform: scale(1.1);
-        }
-
-        .slider-thumb::-moz-range-thumb {
-          width: 16px;
-          height: 16px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, rgb(139, 92, 246), rgb(6, 182, 212));
-          cursor: pointer;
-          border: none;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-          transition: transform 0.2s;
-        }
-
-        .slider-thumb::-moz-range-thumb:hover {
-          transform: scale(1.1);
-        }
-      `}</style>
     </div>
   );
 };

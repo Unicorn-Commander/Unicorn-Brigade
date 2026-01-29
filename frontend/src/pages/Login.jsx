@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import { LogIn, Sparkles, Shield, Zap } from 'lucide-react';
+import { BrigadeLogo } from '../components/UnicornBrigadeLogo';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -44,17 +45,8 @@ export default function Login() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-slate-900 to-blue-900">
         <div className="text-center">
-          <div className="mb-6">
-            <div className="w-20 h-20 mx-auto rounded-xl overflow-hidden border-2 border-purple-500/50 shadow-lg">
-              <img
-                src="/The_General_Logo.png"
-                alt="The General - Unicorn Brigade"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                }}
-              />
-            </div>
+          <div className="mb-6 flex justify-center">
+            <BrigadeLogo size={80} className="shadow-lg shadow-purple-500/30" />
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">🦄 Unicorn Brigade</h2>
           <p className="text-purple-300 mb-6">Redirecting to Unicorn Commander SSO...</p>
@@ -82,16 +74,7 @@ export default function Login() {
           {/* Logo & Title */}
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <div className="w-20 h-20 rounded-xl overflow-hidden border-2 border-purple-500/50 shadow-lg">
-                <img
-                  src="/The_General_Logo.png"
-                  alt="The General - Unicorn Brigade"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                  }}
-                />
-              </div>
+              <BrigadeLogo size={80} className="shadow-lg shadow-purple-500/30" />
             </div>
 
             <h1 className="text-4xl font-bold mb-2">

@@ -5,7 +5,7 @@ import axios from 'axios';
 import ToolCard from './ToolCard';
 import ToolConfigModal from './ToolConfigModal';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8112/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 // Mock data for when API isn't ready
 const mockTools = [
@@ -112,7 +112,8 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
     try {
       // Try to fetch from API, fall back to mock data
       const response = await axios.get(`${API_BASE}/tools`);
-      setAvailableTools(response.data.tools || mockTools);
+      const tools = Array.isArray(response.data) ? response.data : (response.data.tools || response.data);
+      setAvailableTools(Array.isArray(tools) ? tools : mockTools);
     } catch (error) {
       console.log('API not ready, using mock data');
       setAvailableTools(mockTools);
@@ -123,7 +124,7 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
 
   const handleAdd = async (tool) => {
     try {
-      // POST /api/agents/:agentId/tools
+      // POST /agents/:agentId/tools
       await axios.post(`${API_BASE}/agents/${agentId}/tools`, {
         toolId: tool.id
       });
@@ -139,7 +140,7 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
 
   const handleRemove = async (tool) => {
     try {
-      // DELETE /api/agents/:agentId/tools/:toolId
+      // DELETE /agents/:agentId/tools/:toolId
       await axios.delete(`${API_BASE}/agents/${agentId}/tools/${tool.id}`);
 
       setAssigned(assigned.filter(t => t.id !== tool.id));
@@ -160,7 +161,7 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
 
   const handleSaveConfig = async (config) => {
     try {
-      // PATCH /api/agents/:agentId/tools/:toolId
+      // PATCH /agents/:agentId/tools/:toolId
       await axios.patch(`${API_BASE}/agents/${agentId}/tools/${configTool.id}`, {
         config
       });

@@ -1,0 +1,140 @@
+# Data Extraction Workflow
+# Extract structured data from unstructured sources
+
+id: data_extraction
+name: Data Extraction
+description: Extract structured data from documents or text
+version: "1.0"
+
+metadata:
+  category: extraction
+  tags:
+    - extraction
+    - data
+    - structured
+  author: Unicorn Brigade
+  requires_approval: false
+
+inputs:
+  - name: source
+    type: text
+    description: Source text or document content
+    required: true
+  - name: schema
+    type: json
+    description: Expected output schema
+    required: false
+  - name: fields
+    type: list
+    description: Specific fields to extract
+    required: false
+  - name: entity_types
+    type: list
+    description: Entity types to extract
+    default:
+      - PERSON
+      - ORGANIZATION
+      - DATE
+      - MONEY
+
+outputs:
+  - name: extracted_data
+    type: json
+    description: Extracted structured data
+  - name: entities
+    type: json
+    description: Extracted named entities
+  - name: confidence_scores
+    type: json
+    description: Confidence scores per field
+
+steps:
+  - id: preprocess
+    name: Preprocess Source
+    description: Clean and normalize source text
+    worker_type: ops
+    tool: llm
+    timeout: 30
+    requires_approval: false
+    parameters:
+      text: "{{inputs.source}}"
+      operation: normalize
+    expected_outputs:
+      - cleaned_text
+      - text_stats
+
+  - id: extract_entities
+    name: Extract Entities
+    description: Extract named entities from text
+    worker_type: entity_extractor
+    tool: llm
+    timeout: 90
+    requires_approval: false
+    depends_on:
+      - preprocess
+    parameters:
+      text: "{{preprocess.cleaned_text}}"
+      entity_types: "{{inputs.entity_types}}"
+    expected_outputs:
+      - entities
+      - entity_counts
+
+  - id: extract_structured
+    name: Extract Structured Data
+    description: Extract data matching the schema
+    worker_type: extractor
+    tool: llm
+    timeout: 120
+    requires_approval: false
+    depends_on:
+      - preprocess
+    parameters:
+      text: "{{preprocess.cleaned_text}}"
+      schema: "{{inputs.schema}}"
+      fields: "{{inputs.fields}}"
+    expected_outputs:
+      - extracted_data
+      - validation_result
+
+  - id: extract_tables
+    name: Extract Tables
+    description: Extract any tabular data
+    worker_type: table_extractor
+    tool: llm
+    timeout: 90
+    requires_approval: false
+    depends_on:
+      - preprocess
+    condition: contains_table
+    parameters:
+      text: "{{preprocess.cleaned_text}}"
+    expected_outputs:
+      - tables
+      - table_metadata
+
+  - id: merge_results
+    name: Merge Extraction Results
+    description: Combine all extraction results
+    worker_type: ops
+    tool: llm
+    timeout: 30
+    requires_approval: false
+    depends_on:
+      - extract_entities
+      - extract_structured
+      - extract_tables
+    parameters:
+      entities: "{{extract_entities.entities}}"
+      structured: "{{extract_structured.extracted_data}}"
+      tables: "{{extract_tables.tables}}"
+    expected_outputs:
+      - merged_data
+      - confidence_scores
+
+verification:
+  required: true
+  min_confidence: 0.8
+  checks:
+    - schema_valid
+    - no_missing_required
+    - entities_normalized
