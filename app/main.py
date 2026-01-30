@@ -23,6 +23,7 @@ from app.api.apikey_routes import router as apikey_router
 from app.api.conversation_routes import router as conversation_router
 from app.api.mcp_routes import router as mcp_router
 from app.api.a2a_routes import router as a2a_router, init_a2a_routes
+from app.api.orchestration_routes import router as orchestration_router, init_orchestration_routes
 from app.db.database import init_db, close_db
 from app.db.init_db import seed_agents
 
@@ -78,6 +79,7 @@ async def lifespan(app: FastAPI):
     init_system_routes(model_catalog, llm_client)
     init_builder_routes(llm_client)
     init_a2a_routes(llm_client)
+    init_orchestration_routes(llm_client)
     # apikey_routes and conversation_routes use Depends(get_session) directly
     logger.info("All route modules initialized")
 
@@ -117,6 +119,7 @@ app.include_router(apikey_router, prefix="/api/v1", tags=["api-keys"])
 app.include_router(conversation_router, prefix="/api/v1", tags=["conversations"])
 app.include_router(mcp_router, prefix="/api/v1", tags=["mcp"])
 app.include_router(a2a_router, prefix="/api/v1", tags=["a2a"])
+app.include_router(orchestration_router, prefix="/api/v1", tags=["orchestration"])
 
 @app.get("/")
 async def root():

@@ -17,6 +17,14 @@ from app.db.repositories import AgentRepository, ToolExecutionRepository
 from app.llm.ops_center_client import OpsCenterLLMClient, ToolCall, ToolResult
 from app.llm.tool_resolver import get_tools_for_agent
 from app.llm.mlx_provider import MLXLLMClient
+from app.orchestration import (
+    emit_agent_started,
+    emit_agent_thinking,
+    emit_tool_call,
+    emit_tool_result,
+    emit_agent_completed,
+)
+import asyncio
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -233,6 +241,14 @@ async def chat_with_agent(
     # Non-streaming
     try:
         tool_calls_log = []
+        agent_name = agent.get("displayName", agent["name"])
+
+        # Emit agent started event for real-time orchestration
+        await emit_agent_started(
+            agent_id=agent["id"],
+            agent_name=agent_name,
+            task=request.message[:100],
+        )
 
         if agent_tools:
             # ---- Function calling path ----
@@ -243,6 +259,13 @@ async def chat_with_agent(
                     "arguments": tc.arguments,
                 })
                 logger.info(f"Tool call: {tc.name}({tc.arguments})")
+                # Emit to orchestration event bus
+                asyncio.create_task(emit_tool_call(
+                    agent_id=agent["id"],
+                    agent_name=agent_name,
+                    tool_name=tc.name,
+                    arguments=tc.arguments,
+                ))
 
             def on_tool_result(tr: ToolResult):
                 # Attach result to the matching tool call entry
@@ -252,6 +275,13 @@ async def chat_with_agent(
                         entry["error"] = tr.error
                         break
                 logger.info(f"Tool result: {tr.name} -> {'error: ' + tr.error if tr.error else 'ok'}")
+                # Emit to orchestration event bus
+                asyncio.create_task(emit_tool_result(
+                    agent_id=agent["id"],
+                    agent_name=agent_name,
+                    tool_name=tr.name,
+                    result=tr.result if not tr.error else {"error": tr.error},
+                ))
 
             response = await llm_client.execute_tool_loop(
                 messages=messages,
@@ -313,6 +343,13 @@ async def chat_with_agent(
                     )
             except Exception as log_err:
                 logger.warning(f"Failed to log tool executions: {log_err}")
+
+        # Emit agent completed event
+        await emit_agent_completed(
+            agent_id=agent["id"],
+            agent_name=agent_name,
+            result=content[:200] if content else "",
+        )
 
         return result
 

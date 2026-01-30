@@ -116,8 +116,11 @@ const Orchestration = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [filterDomain, setFilterDomain] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSimulating, setIsSimulating] = useState(true);
+  const [isLive, setIsLive] = useState(true);
   const [missions, setMissions] = useState(mockMissions);
+  const [events, setEvents] = useState([]);
+  const [agentStates, setAgentStates] = useState({});
+  const [isConnected, setIsConnected] = useState(false);
 
   // Fetch agents from API
   useEffect(() => {
@@ -148,30 +151,109 @@ const Orchestration = () => {
     fetchAgents();
   }, []);
 
-  // Simulate agent activity
+  // Connect to real-time orchestration events via SSE
   useEffect(() => {
-    if (!isSimulating || agents.length === 0) return;
+    if (!isLive) return;
 
-    const interval = setInterval(() => {
-      setActiveAgents((current) => {
-        const activeCount = Math.floor(Math.random() * 4) + 2;
-        const shuffled = [...agents].sort(() => Math.random() - 0.5);
-        return shuffled.slice(0, activeCount).map(a => a.id);
-      });
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+    const eventSource = new EventSource(`${apiUrl}/orchestration/events`);
 
-      // Update mission progress
-      setMissions((current) =>
-        current.map((m) => ({
-          ...m,
-          progress: m.status === 'active'
-            ? Math.min(100, m.progress + Math.floor(Math.random() * 5))
-            : m.progress,
-        }))
-      );
-    }, 3000);
+    eventSource.onopen = () => {
+      console.log('Connected to orchestration stream');
+      setIsConnected(true);
+    };
 
-    return () => clearInterval(interval);
-  }, [isSimulating, agents]);
+    eventSource.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+
+        // Skip connection confirmation
+        if (event.type === 'connected') return;
+
+        // Add to events list (keep last 50)
+        setEvents(prev => [event, ...prev].slice(0, 50));
+
+        // Update active agents based on event
+        if (event.agentId) {
+          setAgentStates(prev => ({
+            ...prev,
+            [event.agentId]: {
+              status: event.type === 'agent_completed' ? 'idle' : 'active',
+              lastEvent: event.type,
+              message: event.message,
+              timestamp: event.timestamp,
+            }
+          }));
+
+          // Update activeAgents list
+          if (['agent_started', 'agent_thinking', 'tool_call'].includes(event.type)) {
+            setActiveAgents(prev => [...new Set([...prev, event.agentId])]);
+          } else if (event.type === 'agent_completed') {
+            // Remove after a delay so user can see completion
+            setTimeout(() => {
+              setActiveAgents(prev => prev.filter(id => id !== event.agentId));
+            }, 3000);
+          }
+        }
+
+        // Update missions if applicable
+        if (event.missionId && event.type.startsWith('mission_')) {
+          setMissions(prev => {
+            const idx = prev.findIndex(m => m.id === event.missionId);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...event.data };
+              return updated;
+            } else if (event.type === 'mission_created') {
+              return [...prev, event.data];
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to parse event:', err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error('SSE error:', err);
+      setIsConnected(false);
+    };
+
+    return () => {
+      eventSource.close();
+      setIsConnected(false);
+    };
+  }, [isLive]);
+
+  // Fallback: Fetch initial orchestration state
+  useEffect(() => {
+    const fetchOrchestrationState = async () => {
+      try {
+        const response = await api.get('/orchestration/state');
+        const state = response.data;
+
+        if (state.missions?.length > 0) {
+          setMissions(state.missions);
+        }
+        if (state.agentStates?.length > 0) {
+          const stateMap = {};
+          state.agentStates.forEach(s => {
+            stateMap[s.agentId] = s;
+          });
+          setAgentStates(stateMap);
+          setActiveAgents(state.agentStates.filter(s => s.status !== 'idle').map(s => s.agentId));
+        }
+        if (state.recentEvents?.length > 0) {
+          setEvents(state.recentEvents);
+        }
+      } catch (err) {
+        console.log('Orchestration state not available, using defaults');
+      }
+    };
+
+    fetchOrchestrationState();
+  }, []);
 
   // Get unique domains
   const domains = useMemo(() => {
@@ -252,15 +334,21 @@ const Orchestration = () => {
               </div>
 
               <div className="flex items-center space-x-3">
+                {isConnected && (
+                  <span className="flex items-center space-x-1 text-xs text-green-400">
+                    <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                    <span>Connected</span>
+                  </span>
+                )}
                 <button
-                  onClick={() => setIsSimulating(!isSimulating)}
+                  onClick={() => setIsLive(!isLive)}
                   className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
-                    isSimulating
+                    isLive
                       ? 'bg-green-500/20 text-green-400 border border-green-500/30'
                       : 'bg-slate-800 text-slate-400 border border-slate-700'
                   }`}
                 >
-                  {isSimulating ? (
+                  {isLive ? (
                     <>
                       <Activity className="w-4 h-4 animate-pulse" />
                       <span>Live</span>
@@ -361,7 +449,7 @@ const Orchestration = () => {
             isFullscreen={isFullscreen}
             onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
             showLabels={true}
-            animate={isSimulating}
+            animate={isLive}
           />
         </motion.div>
 
@@ -461,6 +549,51 @@ const Orchestration = () => {
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-500" />
                 </button>
+              </div>
+            </div>
+
+            {/* Activity Feed - Real-time Events */}
+            <div className="card glass">
+              <h3 className="flex items-center space-x-2 text-sm font-semibold text-white mb-4">
+                <Activity className="w-4 h-4 text-cyan-400" />
+                <span>Activity Feed</span>
+                {events.length > 0 && (
+                  <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400">
+                    {events.length} events
+                  </span>
+                )}
+              </h3>
+
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {events.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">
+                    No activity yet. Start chatting with an agent to see real-time events.
+                  </p>
+                ) : (
+                  events.slice(0, 10).map((event, idx) => (
+                    <div
+                      key={event.id || idx}
+                      className="flex items-start space-x-2 p-2 rounded-lg bg-slate-800/30 border border-slate-700/30"
+                    >
+                      <div className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
+                        event.type === 'agent_started' ? 'bg-green-400' :
+                        event.type === 'tool_call' ? 'bg-yellow-400' :
+                        event.type === 'tool_result' ? 'bg-blue-400' :
+                        event.type === 'agent_completed' ? 'bg-purple-400' :
+                        'bg-slate-400'
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-slate-300 truncate">
+                          <span className="text-slate-500">{event.agentName || event.agentId}:</span>{' '}
+                          {event.message || event.type.replace(/_/g, ' ')}
+                        </p>
+                        <p className="text-[10px] text-slate-600">
+                          {event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : 'now'}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 

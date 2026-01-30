@@ -18,6 +18,8 @@
 ### Working Features
 
 - **Function Calling** - Agents automatically use assigned tools during conversations
+- **Real-Time Orchestration** - SSE event streaming, live agent activity monitoring
+- **Dynamic Agent Creation** - The General can spawn new agents/teams via MetaAgent
 - **Web Search** - Serper.dev integration (tested, working)
 - **Email** - Microsoft 365 Graph API with OAuth2 (tested, sending real emails)
 - **A2A Protocol** - External agent invocation working
@@ -45,11 +47,15 @@ Unicorn-Brigade/
 ├── app/                          # Python backend (FastAPI)
 │   ├── api/                      # API route handlers
 │   │   ├── agent_routes.py       # Agent CRUD + chat (function calling)
+│   │   ├── orchestration_routes.py # Real-time SSE streaming + The General
 │   │   ├── a2a_routes.py         # A2A protocol endpoints
 │   │   ├── mcp_routes.py         # MCP tool endpoints
 │   │   ├── builder_routes.py     # Gunny agent builder
 │   │   ├── system_routes.py      # Health, stats
 │   │   └── apikey_routes.py      # API key management
+│   ├── orchestration/            # Real-time event system
+│   │   ├── event_bus.py          # SSE event bus + agent state tracking
+│   │   └── __init__.py           # Module exports
 │   ├── db/                       # Database layer
 │   │   ├── database.py           # Async SQLAlchemy engine
 │   │   ├── models.py             # ORM models (Agent, Tool, etc.)
@@ -113,6 +119,17 @@ Unicorn-Brigade/
 **`app/llm/extended_tools.py`** - Extended tools:
 - email (MS365), file, code, text, image, database, notify, qrcode
 
+### Real-Time Orchestration
+**`app/orchestration/event_bus.py`**
+- `OrchestrationEventBus` singleton - Central event hub with SSE streaming
+- `emit_agent_started/completed/tool_call/tool_result()` - Helper functions
+- `AgentState`, `ActiveMission` - State tracking dataclasses
+
+**`app/api/orchestration_routes.py`**
+- `GET /orchestration/events` - SSE stream for frontend
+- `POST /orchestration/command` - The General processes natural language commands
+- `POST /orchestration/missions` - Create missions with auto-agent-assignment
+
 ### A2A Protocol
 **`app/api/a2a_routes.py`**
 - `GET /api/v1/a2a/agent-card` - Agent discovery
@@ -152,6 +169,17 @@ POST   /api/v1/a2a/invoke          # External invocation
 GET    /api/v1/mcp/tools           # List tools
 POST   /api/v1/mcp/tools/call      # Execute tool
 POST   /api/v1/mcp/register        # Register tool
+```
+
+### Orchestration (Real-Time)
+```
+GET    /api/v1/orchestration/events       # SSE stream of agent activity
+GET    /api/v1/orchestration/state        # Current state snapshot
+GET    /api/v1/orchestration/missions     # List missions
+POST   /api/v1/orchestration/missions     # Create mission (auto-assign agents)
+POST   /api/v1/orchestration/command      # Send command to The General
+POST   /api/v1/orchestration/agents/create # Dynamic agent creation
+GET    /api/v1/orchestration/agents/active # Currently active agents
 ```
 
 ### System
@@ -215,6 +243,26 @@ curl -X POST http://localhost:8100/api/v1/agents/col-finance/chat \
   -d '{"message": "Search for AI market trends"}'
 ```
 
+### Test Real-Time Orchestration
+
+```bash
+# Get current orchestration state
+curl http://localhost:8100/api/v1/orchestration/state
+
+# Connect to SSE stream (in another terminal)
+curl -N http://localhost:8100/api/v1/orchestration/events
+
+# Send command to The General
+curl -X POST http://localhost:8100/api/v1/orchestration/command \
+  -H "Content-Type: application/json" \
+  -d '{"command": "Create a new agent to handle customer support"}'
+
+# Create a mission with auto-assigned agents
+curl -X POST http://localhost:8100/api/v1/orchestration/missions \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Market Research", "task": "Analyze Q4 tech sector trends", "auto_assign": true}'
+```
+
 ### Test A2A Invocation
 
 ```bash
@@ -253,22 +301,26 @@ PGPASSWORD=leads_password_dev psql -h localhost -p 5434 -U leads_user -d unicorn
 
 ## Recent Changes (Jan 2026)
 
-1. **Function Calling Wired** - `execute_tool_loop()` now used in agent chat
-2. **MS365 Email** - OAuth2 token caching, Graph API sendMail
-3. **DB Migration** - Agents moved from in-memory JSON to PostgreSQL
-4. **3D Orchestration** - react-force-graph-3d (replaced reagraph for React 18 compat)
-5. **Tool Resolver** - Maps agent tool names to ToolDefinition objects
+1. **Real-Time Orchestration** - SSE event bus for live agent activity streaming
+2. **The General Commands** - `/orchestration/command` endpoint for natural language orchestration
+3. **Dynamic Agent Creation** - MetaAgent integration for spawning agents on-the-fly
+4. **Mission System** - Create multi-agent missions with auto-assignment
+5. **Function Calling Wired** - `execute_tool_loop()` now used in agent chat
+6. **MS365 Email** - OAuth2 token caching, Graph API sendMail
+7. **DB Migration** - Agents moved from in-memory JSON to PostgreSQL
+8. **3D Orchestration** - react-force-graph-3d (replaced reagraph for React 18 compat)
+9. **Tool Resolver** - Maps agent tool names to ToolDefinition objects
 
 ---
 
 ## Next Steps
 
+- [ ] Langflow integration for visual workflow building
+- [ ] Frontend tool call visualization (show tool cards in chat)
 - [ ] Google Workspace email provider
 - [ ] Slack tool integration
-- [ ] Visual workflow builder
-- [ ] Frontend tool call visualization (show tool cards in chat)
 
 ---
 
-**Last Updated**: January 29, 2026
-**Status**: Production-ready with working function calling, A2A, MCP, email, web search
+**Last Updated**: January 30, 2026
+**Status**: Production-ready with real-time orchestration, function calling, A2A, MCP, email, web search

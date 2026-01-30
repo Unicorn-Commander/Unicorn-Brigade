@@ -1,0 +1,415 @@
+"""
+Orchestration API Routes - Real-time agent activity streaming
+
+Endpoints:
+- GET /api/v1/orchestration/events - SSE stream of agent events
+- GET /api/v1/orchestration/state - Current orchestration state
+- GET /api/v1/orchestration/missions - Active missions
+- POST /api/v1/orchestration/missions - Create mission
+- POST /api/v1/orchestration/command - Send command to The General
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
+import logging
+import json
+
+from app.db.database import get_session
+from app.db.repositories import AgentRepository
+from app.orchestration import (
+    event_bus,
+    emit_agent_started,
+    emit_agent_completed,
+    emit_agent_message,
+    emit_agent_created,
+    EventType,
+    OrchestrationEvent,
+)
+from app.engine.meta_agent import MetaAgent
+from app.llm.ops_center_client import OpsCenterLLMClient
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/orchestration", tags=["orchestration"])
+
+# Will be set by main.py
+llm_client: OpsCenterLLMClient = None
+meta_agent: MetaAgent = None
+
+
+def init_orchestration_routes(client: OpsCenterLLMClient):
+    """Initialize with LLM client"""
+    global llm_client, meta_agent
+    llm_client = client
+    meta_agent = MetaAgent(client)
+    logger.info("Orchestration routes initialized with LLM client")
+
+
+# ============================================================================
+# SSE Event Stream
+# ============================================================================
+
+@router.get("/events")
+async def stream_events():
+    """
+    Server-Sent Events stream of orchestration activity.
+
+    Connect to this endpoint to receive real-time updates about:
+    - Agent activity (started, thinking, tool calls, completed)
+    - Mission progress
+    - Agent creation/delegation
+    """
+    async def generate():
+        # Send initial connection event
+        yield f"data: {json.dumps({'type': 'connected', 'message': 'Connected to orchestration stream'})}\n\n"
+
+        # Stream events as they come
+        async for event in event_bus.subscribe():
+            yield event.to_sse()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )
+
+
+# ============================================================================
+# State Endpoints
+# ============================================================================
+
+@router.get("/state")
+async def get_orchestration_state(
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get current orchestration state.
+
+    Returns:
+    - Active missions
+    - Agent states
+    - Recent events
+    - Statistics
+    """
+    # Get state from event bus
+    state = event_bus.get_state_snapshot()
+
+    # Add agent info from database
+    repo = AgentRepository(session)
+    agents = await repo.list_all()
+
+    # Merge with real agent data (agents are already dicts)
+    agent_map = {a["id"]: a for a in agents}
+    for agent_state in state["agentStates"]:
+        agent_id = agent_state["agentId"]
+        if agent_id in agent_map:
+            agent_state["agent"] = agent_map[agent_id]
+
+    # Add total agent count
+    state["totalAgents"] = len(agents)
+
+    return state
+
+
+@router.get("/agents/active")
+async def get_active_agents():
+    """Get currently active agents"""
+    return {
+        "agents": [s.to_dict() for s in event_bus.get_active_agents()]
+    }
+
+
+# ============================================================================
+# Mission Management
+# ============================================================================
+
+class CreateMissionRequest(BaseModel):
+    name: str = Field(..., description="Mission name")
+    description: str = Field("", description="Mission description")
+    task: str = Field(..., description="Task to accomplish")
+    agents: List[str] = Field(default_factory=list, description="Agent IDs to assign")
+    auto_assign: bool = Field(True, description="Let The General assign agents")
+
+
+@router.get("/missions")
+async def get_missions(
+    status: Optional[str] = Query(None, description="Filter by status (active, completed, failed)")
+):
+    """Get all missions"""
+    missions = event_bus.get_all_missions()
+
+    if status:
+        missions = [m for m in missions if m.status == status]
+
+    return {
+        "missions": [m.to_dict() for m in missions]
+    }
+
+
+@router.get("/missions/{mission_id}")
+async def get_mission(mission_id: str):
+    """Get mission details"""
+    mission = event_bus.get_mission(mission_id)
+    if not mission:
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    return mission.to_dict()
+
+
+@router.post("/missions")
+async def create_mission(
+    request: CreateMissionRequest,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Create a new mission.
+
+    If auto_assign is True, The General will analyze the task
+    and assign appropriate agents.
+    """
+    # Create the mission
+    mission = event_bus.create_mission(
+        name=request.name,
+        description=request.description,
+        agents=request.agents,
+        lead_agent="the-general",
+    )
+
+    # If auto-assign, have The General pick agents
+    if request.auto_assign and llm_client:
+        try:
+            # Get available agents
+            repo = AgentRepository(session)
+            agents = await repo.list_all()
+            agent_info = [
+                {"id": a.id, "name": a.display_name, "domain": a.domain, "tools": a.tools}
+                for a in agents
+            ]
+
+            # Ask The General to assign agents
+            general_prompt = f"""You are The General, orchestrator of Unicorn Brigade.
+
+A new mission has been created:
+- Name: {request.name}
+- Task: {request.task}
+
+Available agents:
+{json.dumps(agent_info, indent=2)}
+
+Select the best agents for this mission. Return a JSON object:
+{{
+  "selected_agents": ["agent-id-1", "agent-id-2"],
+  "reasoning": "Why these agents were selected",
+  "approach": "How they should work together"
+}}"""
+
+            response = await llm_client.chat_completion(
+                messages=[{"role": "user", "content": general_prompt}],
+                model="openai/gpt-4o-mini",
+                temperature=0.3,
+            )
+
+            content = response.get("content", "")
+
+            # Parse response
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            if json_match:
+                assignment = json.loads(json_match.group())
+                mission.agents = assignment.get("selected_agents", [])
+
+                # Emit assignment event
+                await emit_agent_message(
+                    agent_id="the-general",
+                    agent_name="The General",
+                    message=f"Assigned agents to mission: {', '.join(mission.agents)}",
+                    mission_id=mission.id,
+                )
+
+        except Exception as e:
+            logger.error(f"Auto-assign failed: {e}")
+
+    return {
+        "mission": mission.to_dict(),
+        "message": f"Mission '{request.name}' created"
+    }
+
+
+# ============================================================================
+# The General Commands
+# ============================================================================
+
+class CommandRequest(BaseModel):
+    command: str = Field(..., description="Natural language command")
+    context: Dict[str, Any] = Field(default_factory=dict, description="Additional context")
+
+
+@router.post("/command")
+async def send_command(
+    request: CommandRequest,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Send a command to The General.
+
+    The General can:
+    - Create new agents
+    - Assign agents to tasks
+    - Create workflows
+    - Coordinate multi-agent operations
+    """
+    if not llm_client:
+        raise HTTPException(status_code=503, detail="LLM client not initialized")
+
+    # Get available agents
+    repo = AgentRepository(session)
+    agents = await repo.list_all()
+    agent_info = [
+        {"id": a.id, "name": a.display_name, "domain": a.domain}
+        for a in agents
+    ]
+
+    # Emit that The General is processing
+    await emit_agent_started(
+        agent_id="the-general",
+        agent_name="The General",
+        task=request.command,
+    )
+
+    # The General's system prompt
+    system_prompt = f"""You are The General, supreme orchestrator of Unicorn Brigade.
+
+Your capabilities:
+1. CREATE_AGENT - Create new specialized agents for tasks
+2. ASSIGN_TASK - Assign tasks to existing agents
+3. CREATE_MISSION - Create multi-agent missions
+4. COORDINATE - Coordinate between agents
+
+Available agents:
+{json.dumps(agent_info, indent=2)}
+
+When responding, indicate any actions to take as JSON:
+```json
+{{
+  "action": "CREATE_AGENT|ASSIGN_TASK|CREATE_MISSION|COORDINATE|RESPOND",
+  "details": {{ ... }},
+  "response": "Your response to the user"
+}}
+```
+
+Be strategic and efficient. Delegate appropriately."""
+
+    try:
+        response = await llm_client.chat_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": request.command},
+            ],
+            model="openai/gpt-4o",
+            temperature=0.7,
+        )
+
+        content = response.get("content", "")
+
+        # Parse The General's response
+        result = {"response": content, "actions": []}
+
+        import re
+        json_match = re.search(r'```json\s*([\s\S]*?)\s*```', content)
+        if json_match:
+            try:
+                action_data = json.loads(json_match.group(1))
+                result["action"] = action_data.get("action")
+                result["details"] = action_data.get("details", {})
+                result["response"] = action_data.get("response", content)
+
+                # Execute action if needed
+                if result["action"] == "CREATE_AGENT" and meta_agent:
+                    # Use meta-agent to create new agent
+                    new_agent_spec = result["details"]
+                    created = await meta_agent.create_agent(
+                        description=new_agent_spec.get("description", ""),
+                        capabilities=new_agent_spec.get("capabilities", []),
+                    )
+                    if created:
+                        await emit_agent_created(
+                            creator_id="the-general",
+                            creator_name="The General",
+                            new_agent=created.model_dump() if hasattr(created, 'model_dump') else {},
+                        )
+                        result["created_agent"] = created.model_dump() if hasattr(created, 'model_dump') else str(created)
+
+            except json.JSONDecodeError:
+                pass
+
+        # Emit completion
+        await emit_agent_completed(
+            agent_id="the-general",
+            agent_name="The General",
+            result=result["response"][:200],
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Command failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Dynamic Agent Creation
+# ============================================================================
+
+class CreateAgentRequest(BaseModel):
+    description: str = Field(..., description="What the agent should do")
+    name: Optional[str] = Field(None, description="Optional name")
+    tools: List[str] = Field(default_factory=list, description="Tools the agent needs")
+    parent_mission: Optional[str] = Field(None, description="Mission this agent is for")
+
+
+@router.post("/agents/create")
+async def create_dynamic_agent(
+    request: CreateAgentRequest,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Dynamically create a new agent using The General.
+
+    The General will design the agent's personality, capabilities,
+    and system prompt based on the description.
+    """
+    if not meta_agent:
+        raise HTTPException(status_code=503, detail="Meta agent not initialized")
+
+    try:
+        # Have meta-agent create the agent
+        agent_def = await meta_agent.create_agent(
+            description=request.description,
+            capabilities=request.tools,
+        )
+
+        if not agent_def:
+            raise HTTPException(status_code=500, detail="Failed to create agent")
+
+        # Emit creation event
+        await emit_agent_created(
+            creator_id="the-general",
+            creator_name="The General",
+            new_agent=agent_def.model_dump() if hasattr(agent_def, 'model_dump') else {"name": str(agent_def)},
+            mission_id=request.parent_mission,
+        )
+
+        return {
+            "agent": agent_def.model_dump() if hasattr(agent_def, 'model_dump') else {"description": str(agent_def)},
+            "message": f"Agent created successfully"
+        }
+
+    except Exception as e:
+        logger.error(f"Agent creation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
