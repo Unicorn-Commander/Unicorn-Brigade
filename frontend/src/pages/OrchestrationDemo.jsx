@@ -44,19 +44,19 @@ const getDomainEmoji = (domain) => {
   return emojis[domain] || '🦄';
 };
 
-// Generate synthetic agents with realistic properties - Colonel-centric layout
+// Generate synthetic agents with realistic properties - The General at center
 const generateAgents = (count) => {
   const domains = ['financial', 'legal', 'medical', 'technology', 'intelligence', 'investigation', 'cybersecurity', 'operations'];
 
   const agents = [];
 
-  // 1. The Colonel at center (0, 0, 0) - Command Center
+  // 1. The General at center (0, 0, 0) - Command Center
   agents.push({
-    id: 'the-colonel',
-    name: 'The Colonel',
-    displayName: 'The Colonel',
+    id: 'the-general',
+    name: 'The General',
+    displayName: 'The General',
     domain: 'command',
-    avatar: '⭐',
+    avatar: '/The_General_Logo.png',
     agentType: 'local',
     title: 'Supreme Commander',
     bio: 'Orchestrates all mission operations from Command Center',
@@ -66,7 +66,23 @@ const generateAgents = (count) => {
     isOrchestrator: true,
   });
 
-  // 2. Team Leads in a ring around The Colonel (8 domains, radius ~200)
+  // 2. Gunny (meta-agent advisor) - positioned near The General
+  agents.push({
+    id: 'gunny',
+    name: 'Gunny',
+    displayName: 'Gunny',
+    domain: 'meta',
+    avatar: '/Gunny_Logo.png',
+    agentType: 'local',
+    title: 'Agent Builder & Advisor',
+    bio: 'Builds new agents and advises on operations',
+    x: 50,
+    y: 30,
+    z: 50,
+    isAdvisor: true,
+  });
+
+  // 3. Team Leads in a ring around The General (8 domains, radius ~200)
   domains.forEach((domain, i) => {
     const angle = (i / domains.length) * Math.PI * 2;
     const radius = 200;
@@ -87,7 +103,7 @@ const generateAgents = (count) => {
     });
   });
 
-  // 3. Workers clustered around their Team Leads (20 workers per domain)
+  // 4. Workers clustered around their Team Leads (20 workers per domain)
   domains.forEach((domain, domainIdx) => {
     const angle = (domainIdx / domains.length) * Math.PI * 2;
     const leadX = Math.cos(angle) * 200;
@@ -115,7 +131,7 @@ const generateAgents = (count) => {
     }
   });
 
-  // 4. Data Source agents (shared resources, clustered in center)
+  // 5. Data Source agents (shared resources, clustered in center)
   for (let d = 0; d < 50; d++) {
     const angle = Math.random() * Math.PI * 2;
     const radius = 50 + Math.random() * 80;
@@ -136,7 +152,7 @@ const generateAgents = (count) => {
     });
   }
 
-  // Total: 1 Colonel + 8 Team Leads + 160 Workers + 50 Data Sources = 219 agents
+  // Total: 1 General + 1 Gunny + 8 Team Leads + 160 Workers + 50 Data Sources = 220 agents
   return agents;
 };
 
@@ -167,7 +183,7 @@ const StatCard = ({ label, value, icon: Icon, color = 'purple' }) => (
 const OrchestrationDemo = () => {
   const [agents, setAgents] = useState([]);
   const [connections, setConnections] = useState([]);
-  const [activeAgents, setActiveAgents] = useState(['the-colonel']); // Colonel always active
+  const [activeAgents, setActiveAgents] = useState(['the-general']); // The General always active
   const [isPlaying, setIsPlaying] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fgRef = useRef();
@@ -185,12 +201,12 @@ const OrchestrationDemo = () => {
     const teamLead = agents.find(a => a.id === teamLeadId);
     if (!teamLead) return;
 
-    // Phase 1: Colonel → Team Lead (1s)
+    // Phase 1: The General → Team Lead (1s)
     setTimeout(() => {
-      setActiveAgents(prev => [...new Set([...prev, 'the-colonel', teamLeadId])]);
+      setActiveAgents(prev => [...new Set([...prev, 'the-general', teamLeadId])]);
       setConnections(prev => [...prev, {
-        id: `colonel-${teamLeadId}-${Date.now()}`,
-        source: 'the-colonel',
+        id: `general-${teamLeadId}-${Date.now()}`,
+        source: 'the-general',
         target: teamLeadId,
         color: 'rgba(139, 92, 246, 0.8)',
         protocol: 'internal',
@@ -262,12 +278,12 @@ const OrchestrationDemo = () => {
       setConnections(prev => [...prev, ...backConns]);
     }, 4000);
 
-    // Phase 5: Team Lead → Colonel (6s)
+    // Phase 5: Team Lead → The General (6s)
     setTimeout(() => {
       setConnections(prev => [...prev, {
-        id: `result-${teamLeadId}-colonel-${Date.now()}`,
+        id: `result-${teamLeadId}-general-${Date.now()}`,
         source: teamLeadId,
-        target: 'the-colonel',
+        target: 'the-general',
         color: 'rgba(34, 197, 94, 0.6)', // GREEN
         protocol: 'internal',
         createdAt: Date.now(),
@@ -280,7 +296,7 @@ const OrchestrationDemo = () => {
         prev.filter(c => Date.now() - c.createdAt < 5000)
       );
       setActiveAgents(prev =>
-        prev.filter(id => id === 'the-colonel' || agents.find(a => a.id === id && a.isTeamLead))
+        prev.filter(id => id === 'the-general' || agents.find(a => a.id === id && a.isTeamLead))
       );
     }, 7000);
   }, [agents]);
@@ -319,7 +335,7 @@ const OrchestrationDemo = () => {
 
   // Reset demo
   const handleReset = () => {
-    setActiveAgents(['the-colonel']);
+    setActiveAgents(['the-general']);
     setConnections([]);
     setIsPlaying(false);
     workflowIntervalsRef.current.forEach(interval => clearInterval(interval));
@@ -347,7 +363,7 @@ const OrchestrationDemo = () => {
               </div>
               <div>
                 <h1 className="text-4xl font-bold text-white mb-2">
-                  The Colonel's Command Center
+                  The General's Command Center
                 </h1>
                 <p className="text-slate-400">
                   Orchestrating {agents.length} agents across {WORKFLOWS.length} concurrent workflows
@@ -485,7 +501,7 @@ const OrchestrationDemo = () => {
                     <span className="text-sm text-slate-300">Delegation (Outward)</span>
                   </div>
                   <p className="text-xs text-slate-500 ml-5">
-                    Colonel → Team Lead → Workers
+                    The General → Team Lead → Workers
                   </p>
                 </div>
                 <div>
@@ -503,7 +519,7 @@ const OrchestrationDemo = () => {
                     <span className="text-sm text-slate-300">Results (Return)</span>
                   </div>
                   <p className="text-xs text-slate-500 ml-5">
-                    Workers → Team Lead → Colonel
+                    Workers → Team Lead → The General
                   </p>
                 </div>
               </div>
