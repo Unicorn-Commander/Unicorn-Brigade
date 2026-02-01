@@ -630,11 +630,10 @@ const WorkflowVisualization3D = ({
             enableNodeDrag={false}
             enableNavigationControls={true}
             showNavInfo={false}
-            warmupTicks={0}
-            cooldownTicks={0}
+            warmupTicks={1}
+            cooldownTicks={1}
             d3AlphaDecay={1}
             d3VelocityDecay={1}
-            dagMode={null}
             numDimensions={viewMode === '3d' ? 3 : 2}
           />
         ) : (
