@@ -20,7 +20,8 @@ import {
   ChevronDown,
   Bot,
   Menu,
-  X as CloseIcon
+  X as CloseIcon,
+  Sparkles
 } from 'lucide-react';
 import { Tooltip } from 'react-tooltip';
 import UserProfile from './auth/UserProfile';
@@ -54,6 +55,7 @@ const Navigation = () => {
     '/chat': 'Start a conversation with any agent',
     '/conversations': 'Browse and manage all conversation history',
     '/orchestration': 'Real-time agent orchestration and command center',
+    '/orchestration/demo': 'Hollywood-style demo with 1000+ agents and automated workflows',
     '/workflows': 'Execute and monitor hierarchical workflow templates',
     '/ralph-monitor': 'Monitor self-correcting workflow executions',
     '/knowledge': 'Explore the AI-native knowledge graph (FalkorDB)',
@@ -204,6 +206,16 @@ const Navigation = () => {
             >
               <Globe className="w-4 h-4" />
               <span className="text-sm font-medium">Orchestration</span>
+            </NavLink>
+            <NavLink
+              to="/orchestration/demo"
+              className={navLinkClass}
+              data-tooltip-id="nav-tooltip"
+              data-tooltip-content={TOOLTIP_CONTENT['/orchestration/demo']}
+              data-tooltip-place="right"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span className="text-sm font-medium">Demo Mode</span>
             </NavLink>
             <NavLink
               to="/workflows"

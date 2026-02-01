@@ -9,6 +9,7 @@ import AgentLibrary from './pages/AgentLibrary';
 import AgentDetail from './pages/AgentDetail';
 import Conversations from './pages/Conversations';
 import Orchestration from './pages/Orchestration';
+import OrchestrationDemo from './pages/OrchestrationDemo';
 import KnowledgeGraph from './pages/KnowledgeGraph';
 import ToolLibrary from './pages/ToolLibrary';
 import MCPServers from './pages/MCPServers';
@@ -153,6 +154,14 @@ function App() {
               <ProtectedRoute>
                 <AppLayout>
                   <Orchestration />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/orchestration/demo" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <OrchestrationDemo />
                 </AppLayout>
               </ProtectedRoute>
             } />
