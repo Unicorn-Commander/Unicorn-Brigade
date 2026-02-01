@@ -13,10 +13,67 @@ import os
 from datetime import datetime
 import httpx
 import asyncssh
+from asyncssh import SSHClientConnectionOptions
 import docker
 from docker.errors import DockerException
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def get_known_hosts_path(config: Dict[str, Any]) -> str:
+    """
+    Get the known_hosts file path for SSH connections.
+
+    Priority:
+    1. User-specified path in config
+    2. Environment variable SSH_KNOWN_HOSTS
+    3. Default system paths (~/.ssh/known_hosts)
+
+    Returns path string or None if trust_first_connect is enabled.
+    """
+    conn_config = config.get("connection", {})
+
+    # Check if user wants to trust on first connect (less secure but convenient)
+    if conn_config.get("trust_first_connect", False):
+        logger.warning(
+            "SSH trust_first_connect is enabled - host key verification disabled. "
+            "This is less secure and should only be used in trusted environments."
+        )
+        return None
+
+    # User-specified known_hosts file
+    if conn_config.get("known_hosts_file"):
+        path = Path(conn_config["known_hosts_file"]).expanduser()
+        if path.exists():
+            return str(path)
+        logger.warning(f"Specified known_hosts file not found: {path}")
+
+    # Environment variable
+    env_path = os.getenv("SSH_KNOWN_HOSTS")
+    if env_path:
+        path = Path(env_path).expanduser()
+        if path.exists():
+            return str(path)
+        logger.warning(f"SSH_KNOWN_HOSTS file not found: {path}")
+
+    # Default system paths
+    default_paths = [
+        Path.home() / ".ssh" / "known_hosts",
+        Path("/etc/ssh/ssh_known_hosts"),
+    ]
+
+    for path in default_paths:
+        if path.exists():
+            return str(path)
+
+    # No known_hosts found - require explicit trust_first_connect or fail
+    raise ValueError(
+        "No known_hosts file found. Either:\n"
+        "1. Add the host to ~/.ssh/known_hosts (ssh-keyscan hostname >> ~/.ssh/known_hosts)\n"
+        "2. Specify a known_hosts_file in your server config\n"
+        "3. Set trust_first_connect: true in config (less secure)"
+    )
 
 
 class RemoteExecutor:
@@ -186,14 +243,17 @@ class RemoteExecutor:
         remote_file = f"{workspace}/{temp_filename}"
 
         try:
-            # Connect via SSH
+            # Get known_hosts path for host key verification
+            known_hosts_path = get_known_hosts_path(config)
+
+            # Connect via SSH with proper host key verification
             async with asyncssh.connect(
                 host=conn_config.get("host"),
                 port=conn_config.get("port", 22),
                 username=conn_config.get("username"),
                 client_keys=[conn_config.get("keyPath")] if conn_config.get("keyPath") else None,
                 password=conn_config.get("password") if not conn_config.get("keyPath") else None,
-                known_hosts=None  # TODO: Add proper host key verification
+                known_hosts=known_hosts_path  # Properly verify host keys
             ) as conn:
 
                 # Create workspace if needed
@@ -230,11 +290,11 @@ class RemoteExecutor:
                     username=conn_config.get("username"),
                     client_keys=[conn_config.get("keyPath")] if conn_config.get("keyPath") else None,
                     password=conn_config.get("password"),
-                    known_hosts=None
+                    known_hosts=known_hosts_path  # Reuse the same host key verification
                 ) as conn:
                     await conn.run(f"rm -f {remote_file}", check=False)
-            except:
-                pass
+            except Exception:
+                pass  # Cleanup is best-effort
             raise
 
     async def _execute_docker(
@@ -448,6 +508,7 @@ class RemoteExecutor:
         conn_config = config.get("connection", {})
         workspace = conn_config.get("workspaceRoot", "/tmp")
         safe_path = self._sanitize_path(path, workspace)
+        known_hosts_path = get_known_hosts_path(config)
 
         async with asyncssh.connect(
             host=conn_config.get("host"),
@@ -455,7 +516,7 @@ class RemoteExecutor:
             username=conn_config.get("username"),
             client_keys=[conn_config.get("keyPath")] if conn_config.get("keyPath") else None,
             password=conn_config.get("password"),
-            known_hosts=None
+            known_hosts=known_hosts_path
         ) as conn:
             async with conn.start_sftp_client() as sftp:
                 async with sftp.open(safe_path, 'r') as f:
@@ -466,6 +527,7 @@ class RemoteExecutor:
         conn_config = config.get("connection", {})
         workspace = conn_config.get("workspaceRoot", "/tmp")
         safe_path = self._sanitize_path(path, workspace)
+        known_hosts_path = get_known_hosts_path(config)
 
         async with asyncssh.connect(
             host=conn_config.get("host"),
@@ -473,7 +535,7 @@ class RemoteExecutor:
             username=conn_config.get("username"),
             client_keys=[conn_config.get("keyPath")] if conn_config.get("keyPath") else None,
             password=conn_config.get("password"),
-            known_hosts=None
+            known_hosts=known_hosts_path
         ) as conn:
             # Ensure directory exists
             dir_path = os.path.dirname(safe_path)

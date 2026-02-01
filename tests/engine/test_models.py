@@ -5,9 +5,10 @@ Tests for workflow engine models
 import pytest
 from datetime import datetime, timedelta
 from app.engine.models import (
-    TaskIntent, RiskLevel, WorkerType, ToolType,
+    TaskIntent, RiskLevel, Priority, WorkerType, ToolType,
+    ApprovalState, ExecutionStatus,
     RoutingResult, WorkflowStep, WorkflowPlan,
-    StepResult, StepStatus, ExecutionResult,
+    StepResult, ExecutionResult,
     VerificationResult, ResumeToken, Task, TaskResult,
 )
 
@@ -18,30 +19,47 @@ class TestTaskIntent:
     def test_all_intents_exist(self):
         """Verify all expected intents are defined"""
         assert TaskIntent.RESEARCH
-        assert TaskIntent.CODE
+        assert TaskIntent.CODING
         assert TaskIntent.EXTRACTION
         assert TaskIntent.REPORT
         assert TaskIntent.OPS
-        assert TaskIntent.GENERAL
+        assert TaskIntent.SCRAPE
+        assert TaskIntent.OUTREACH
+        assert TaskIntent.QA
+        assert TaskIntent.UNKNOWN
 
     def test_intent_values(self):
         """Verify intent string values"""
         assert TaskIntent.RESEARCH.value == "research"
-        assert TaskIntent.CODE.value == "code"
+        assert TaskIntent.CODING.value == "coding"
 
 
 class TestRiskLevel:
     """Tests for RiskLevel enum"""
 
-    def test_risk_ordering(self):
-        """Risk levels should be comparable"""
-        levels = [RiskLevel.LOW, RiskLevel.MEDIUM, RiskLevel.HIGH, RiskLevel.CRITICAL]
-        assert len(levels) == 4
+    def test_risk_levels_exist(self):
+        """Risk levels should exist"""
+        assert RiskLevel.LOW
+        assert RiskLevel.MEDIUM
+        assert RiskLevel.HIGH
 
     def test_risk_values(self):
         """Verify risk string values"""
         assert RiskLevel.LOW.value == "low"
-        assert RiskLevel.CRITICAL.value == "critical"
+        assert RiskLevel.HIGH.value == "high"
+
+
+class TestExecutionStatus:
+    """Tests for ExecutionStatus enum"""
+
+    def test_all_statuses_exist(self):
+        """Verify all execution statuses exist"""
+        assert ExecutionStatus.PENDING
+        assert ExecutionStatus.RUNNING
+        assert ExecutionStatus.BLOCKED
+        assert ExecutionStatus.COMPLETED
+        assert ExecutionStatus.FAILED
+        assert ExecutionStatus.APPROVAL_REQUIRED
 
 
 class TestRoutingResult:
@@ -52,26 +70,29 @@ class TestRoutingResult:
         result = RoutingResult(
             intent=TaskIntent.RESEARCH,
             risk=RiskLevel.LOW,
-            worker=WorkerType.RESEARCH,
-            requires_approval=False,
-            reasoning="Simple research task",
+            suggested_worker=WorkerType.RESEARCH,
+            needs_human_approval=False,
+            reason="Simple research task",
+            confidence=0.9,
         )
 
         assert result.intent == TaskIntent.RESEARCH
         assert result.risk == RiskLevel.LOW
-        assert result.requires_approval is False
+        assert result.needs_human_approval is False
+        assert result.confidence == 0.9
 
     def test_high_risk_requires_approval(self):
         """High risk tasks should typically require approval"""
         result = RoutingResult(
             intent=TaskIntent.OPS,
             risk=RiskLevel.HIGH,
-            worker=WorkerType.OPS,
-            requires_approval=True,
-            reasoning="Risky operation",
+            suggested_worker=WorkerType.OPS,
+            needs_human_approval=True,
+            reason="Risky operation",
+            confidence=0.85,
         )
 
-        assert result.requires_approval is True
+        assert result.needs_human_approval is True
 
 
 class TestWorkflowStep:
@@ -80,31 +101,32 @@ class TestWorkflowStep:
     def test_create_step(self):
         """Create a basic workflow step"""
         step = WorkflowStep(
-            id="step_1",
-            name="Research task",
-            description="Gather information",
-            worker_type=WorkerType.RESEARCH,
+            id=1,
+            action="Research AI trends",
             tool=ToolType.LLM,
-            timeout=120,
+            worker=WorkerType.RESEARCH,
+            timeout_seconds=120,
         )
 
-        assert step.id == "step_1"
-        assert step.timeout == 120
-        assert step.requires_approval is False
-        assert step.depends_on == []
+        assert step.id == 1
+        assert step.timeout_seconds == 120
+        assert step.approval_required is False
+        assert step.status == ExecutionStatus.PENDING
 
-    def test_step_with_dependencies(self):
-        """Create step with dependencies"""
+    def test_step_with_inputs_outputs(self):
+        """Create step with inputs and outputs"""
         step = WorkflowStep(
-            id="step_2",
-            name="Analysis",
-            description="Analyze results",
-            worker_type=WorkerType.REPORT,
+            id=2,
+            action="Analyze results",
             tool=ToolType.LLM,
-            depends_on=["step_1"],
+            worker=WorkerType.REPORT,
+            inputs=["research_data"],
+            outputs=["analysis_report"],
+            success_criteria=["report_generated"],
         )
 
-        assert "step_1" in step.depends_on
+        assert "research_data" in step.inputs
+        assert "analysis_report" in step.outputs
 
 
 class TestWorkflowPlan:
@@ -114,58 +136,45 @@ class TestWorkflowPlan:
         """Create a basic workflow plan"""
         steps = [
             WorkflowStep(
-                id="step_1",
-                name="Step 1",
-                description="First step",
-                worker_type=WorkerType.RESEARCH,
+                id=1,
+                action="Step 1",
                 tool=ToolType.LLM,
+                worker=WorkerType.RESEARCH,
             ),
             WorkflowStep(
-                id="step_2",
-                name="Step 2",
-                description="Second step",
-                worker_type=WorkerType.REPORT,
+                id=2,
+                action="Step 2",
                 tool=ToolType.LLM,
-                depends_on=["step_1"],
+                worker=WorkerType.REPORT,
             ),
         ]
 
         plan = WorkflowPlan(
-            task_id="task_123",
+            name="Test Plan",
+            objective="Test objective",
             steps=steps,
         )
 
-        assert plan.task_id == "task_123"
+        assert plan.name == "Test Plan"
         assert len(plan.steps) == 2
+        assert plan.id is not None  # Auto-generated UUID
 
-    def test_plan_estimated_time(self):
-        """Plan should calculate estimated time"""
+    def test_plan_with_assumptions(self):
+        """Create plan with assumptions"""
         steps = [
-            WorkflowStep(
-                id="step_1",
-                name="Step 1",
-                description="First step",
-                worker_type=WorkerType.RESEARCH,
-                tool=ToolType.LLM,
-                timeout=60,
-            ),
-            WorkflowStep(
-                id="step_2",
-                name="Step 2",
-                description="Second step",
-                worker_type=WorkerType.REPORT,
-                tool=ToolType.LLM,
-                timeout=30,
-            ),
+            WorkflowStep(id=1, action="Step 1", tool=ToolType.LLM),
         ]
 
         plan = WorkflowPlan(
-            task_id="task_123",
+            name="Test Plan",
+            objective="Test objective",
             steps=steps,
-            estimated_time=90,
+            assumptions=["User has access", "API is available"],
+            stop_conditions=["Error rate > 50%"],
         )
 
-        assert plan.estimated_time == 90
+        assert len(plan.assumptions) == 2
+        assert len(plan.stop_conditions) == 1
 
 
 class TestStepResult:
@@ -174,25 +183,37 @@ class TestStepResult:
     def test_successful_result(self):
         """Create a successful step result"""
         result = StepResult(
-            step_id="step_1",
-            status=StepStatus.COMPLETED,
+            step_id=1,
+            status=ExecutionStatus.COMPLETED,
             output="Research complete",
-            artifacts=[{"name": "findings", "type": "text", "content": "..."}],
+            artifacts=["findings.txt"],
         )
 
-        assert result.status == StepStatus.COMPLETED
+        assert result.status == ExecutionStatus.COMPLETED
         assert len(result.artifacts) == 1
 
     def test_failed_result(self):
         """Create a failed step result"""
         result = StepResult(
-            step_id="step_1",
-            status=StepStatus.FAILED,
+            step_id=1,
+            status=ExecutionStatus.FAILED,
             error="Timeout exceeded",
         )
 
-        assert result.status == StepStatus.FAILED
+        assert result.status == ExecutionStatus.FAILED
         assert result.error == "Timeout exceeded"
+
+    def test_blocked_result(self):
+        """Create a blocked step result"""
+        result = StepResult(
+            step_id=1,
+            status=ExecutionStatus.BLOCKED,
+            blocker="Missing API key",
+            needed="OPENAI_API_KEY environment variable",
+        )
+
+        assert result.status == ExecutionStatus.BLOCKED
+        assert result.blocker == "Missing API key"
 
 
 class TestTask:
@@ -201,23 +222,33 @@ class TestTask:
     def test_create_task(self):
         """Create a basic task"""
         task = Task(
-            task="Research AI trends",
+            content="Research AI trends",
             user_id="user_123",
         )
 
-        assert task.task == "Research AI trends"
+        assert task.content == "Research AI trends"
         assert task.user_id == "user_123"
         assert task.id is not None  # Auto-generated
 
     def test_task_with_context(self):
         """Create task with context"""
         task = Task(
-            task="Analyze code",
+            content="Analyze code",
             user_id="user_123",
             context={"language": "python", "file": "main.py"},
         )
 
         assert task.context["language"] == "python"
+
+    def test_task_with_hints(self):
+        """Create task with suggested intent"""
+        task = Task(
+            content="Write a Python script",
+            user_id="user_123",
+            suggested_intent=TaskIntent.CODING,
+        )
+
+        assert task.suggested_intent == TaskIntent.CODING
 
 
 class TestResumeToken:
@@ -227,54 +258,79 @@ class TestResumeToken:
         """Create a resume token"""
         token = ResumeToken(
             workflow_id="wf_123",
-            step_id="step_5",
-            step_name="Deploy to production",
-            context={"version": "1.0.0"},
+            step_id=5,
+            step_description="Deploy to production",
+            state={"version": "1.0.0"},
         )
 
         assert token.workflow_id == "wf_123"
-        assert token.step_id == "step_5"
-        assert token.approved is False
+        assert token.step_id == 5
+        assert token.approval_state == ApprovalState.PENDING
 
     def test_token_expiration(self):
         """Token should have expiration"""
         token = ResumeToken(
             workflow_id="wf_123",
-            step_id="step_5",
-            step_name="Deploy",
+            step_id=5,
+            step_description="Deploy",
             expires_at=datetime.utcnow() + timedelta(hours=1),
         )
 
         assert token.expires_at is not None
 
-    def test_token_is_valid(self):
-        """Check token validity"""
-        # Valid token
-        valid_token = ResumeToken(
-            workflow_id="wf_123",
-            step_id="step_5",
-            step_name="Deploy",
-            expires_at=datetime.utcnow() + timedelta(hours=1),
-        )
-        assert valid_token.is_valid() is True
 
-        # Expired token
-        expired_token = ResumeToken(
-            workflow_id="wf_123",
-            step_id="step_5",
-            step_name="Deploy",
-            expires_at=datetime.utcnow() - timedelta(hours=1),
-        )
-        assert expired_token.is_valid() is False
+class TestExecutionResult:
+    """Tests for ExecutionResult model"""
 
-        # Used token
-        used_token = ResumeToken(
+    def test_create_execution_result(self):
+        """Create an execution result"""
+        step_results = [
+            StepResult(step_id=1, status=ExecutionStatus.COMPLETED, output="Done"),
+            StepResult(step_id=2, status=ExecutionStatus.COMPLETED, output="Done"),
+        ]
+
+        result = ExecutionResult(
             workflow_id="wf_123",
-            step_id="step_5",
-            step_name="Deploy",
-            used=True,
+            status=ExecutionStatus.COMPLETED,
+            step_results=step_results,
+            final_output="Workflow completed successfully",
         )
-        assert used_token.is_valid() is False
+
+        assert result.status == ExecutionStatus.COMPLETED
+        assert len(result.step_results) == 2
+        assert result.final_output is not None
+
+
+class TestVerificationResult:
+    """Tests for VerificationResult model"""
+
+    def test_create_verification_result(self):
+        """Create a verification result"""
+        result = VerificationResult(
+            confidence=0.92,
+            issues=[],
+            hallucination_risk=RiskLevel.LOW,
+            security_risk=RiskLevel.LOW,
+            next_action="continue",
+        )
+
+        assert result.confidence == 0.92
+        assert result.next_action == "continue"
+        assert result.retry_recommended is False
+
+    def test_verification_with_issues(self):
+        """Create verification with issues"""
+        result = VerificationResult(
+            confidence=0.65,
+            issues=["Output contains unverified claims", "Missing citations"],
+            hallucination_risk=RiskLevel.MEDIUM,
+            security_risk=RiskLevel.LOW,
+            retry_recommended=True,
+            next_action="retry",
+        )
+
+        assert len(result.issues) == 2
+        assert result.retry_recommended is True
 
 
 class TestTaskResult:
@@ -284,28 +340,27 @@ class TestTaskResult:
         """Create a successful task result"""
         result = TaskResult(
             task_id="task_123",
-            status="completed",
+            status=ExecutionStatus.COMPLETED,
             output="Task completed successfully",
-            tokens_used={"input": 100, "output": 50},
+            total_tokens={"input": 100, "output": 50},
         )
 
-        assert result.status == "completed"
+        assert result.status == ExecutionStatus.COMPLETED
         assert result.output is not None
 
     def test_task_result_with_verification(self):
         """Create task result with verification"""
         verification = VerificationResult(
-            verified=True,
             confidence=0.92,
             issues=[],
+            next_action="continue",
         )
 
         result = TaskResult(
             task_id="task_123",
-            status="completed",
+            status=ExecutionStatus.COMPLETED,
             output="Task completed",
             verification=verification,
         )
 
-        assert result.verification.verified is True
         assert result.verification.confidence == 0.92

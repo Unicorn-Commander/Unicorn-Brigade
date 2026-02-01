@@ -6,7 +6,7 @@ Provides full CRUD for agents and real-time chat with function calling via Ops-C
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 import json
 import logging
@@ -17,6 +17,10 @@ from app.db.repositories import AgentRepository, ToolExecutionRepository
 from app.llm.ops_center_client import OpsCenterLLMClient, ToolCall, ToolResult
 from app.llm.tool_resolver import get_tools_for_agent
 from app.llm.mlx_provider import MLXLLMClient
+from app.auth.middleware import require_api_key, require_operator, require_admin, AuthUser
+from app.auth.roles import UserRole
+from app.security.rate_limit import rate_limit
+from app.security.request_limits import max_body_size
 from app.orchestration import (
     emit_agent_started,
     emit_agent_thinking,
@@ -24,6 +28,8 @@ from app.orchestration import (
     emit_tool_result,
     emit_agent_completed,
 )
+from app.observability import get_tracer
+from app.agents.deep_research import DeepResearchAgent, ResearchDepth
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -36,6 +42,11 @@ llm_client: OpsCenterLLMClient = None
 def init_agent_routes(client: OpsCenterLLMClient):
     global llm_client
     llm_client = client
+
+
+def _ensure_agent_access(user: AuthUser, agent_id: str) -> None:
+    if not user.can_access_agent(agent_id):
+        raise HTTPException(status_code=403, detail="Access to agent denied")
 
 
 # ---- Pydantic Models ----
@@ -99,13 +110,40 @@ class ChatCompletionRequest(BaseModel):
     maxTokens: Optional[int] = 1000
 
 
+class DeepResearchRequest(BaseModel):
+    """Request model for deep research"""
+    topic: str
+    depth: Optional[str] = "medium"  # quick, medium, thorough
+    user_id: Optional[str] = "anonymous"
+
+
+class DeepResearchResponse(BaseModel):
+    """Response model for deep research"""
+    session_id: str
+    status: str
+    topic: str
+    depth: str
+    report: Optional[str] = None
+    sources: Optional[List[Dict[str, str]]] = None
+    queries_executed: Optional[List[str]] = None
+    result_count: Optional[int] = None
+    error: Optional[str] = None
+
+
 # ---- Agent CRUD (DB-backed) ----
 
 @router.get("/agents")
-async def list_agents(session: AsyncSession = Depends(get_session)):
+async def list_agents(
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """List all agents."""
     repo = AgentRepository(session)
-    agents = await repo.list_all()
+    if user and user.role != UserRole.ADMIN and user.agent_id:
+        agent = await repo.get(user.agent_id)
+        agents = [agent] if agent else []
+    else:
+        agents = await repo.list_all()
     for agent in agents:
         agent.setdefault("_count", {"messages": 0, "tasks": 0, "apiKeys": 0})
         agent.setdefault("agentTools", [])
@@ -113,16 +151,30 @@ async def list_agents(session: AsyncSession = Depends(get_session)):
 
 
 @router.get("/agents/domains")
-async def list_domains(session: AsyncSession = Depends(get_session)):
+async def list_domains(
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """Get domain summary with agent counts."""
     repo = AgentRepository(session)
-    domains = await repo.get_domains()
+    if user and user.role != UserRole.ADMIN and user.agent_id:
+        agent = await repo.get(user.agent_id)
+        if not agent:
+            return {"domains": []}
+        domains = [{"name": agent.get("domain", "general"), "count": 1}]
+    else:
+        domains = await repo.get_domains()
     return {"domains": domains}
 
 
 @router.get("/agents/{agent_id}")
-async def get_agent(agent_id: str, session: AsyncSession = Depends(get_session)):
+async def get_agent(
+    agent_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """Get agent detail by ID."""
+    _ensure_agent_access(user, agent_id)
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -134,7 +186,11 @@ async def get_agent(agent_id: str, session: AsyncSession = Depends(get_session))
 
 
 @router.post("/agents", status_code=201)
-async def create_agent(request: AgentCreateRequest, session: AsyncSession = Depends(get_session)):
+async def create_agent(
+    request: AgentCreateRequest,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """Create a new agent."""
     repo = AgentRepository(session)
     data = request.model_dump(exclude_none=True)
@@ -143,7 +199,12 @@ async def create_agent(request: AgentCreateRequest, session: AsyncSession = Depe
 
 
 @router.put("/agents/{agent_id}")
-async def update_agent(agent_id: str, request: AgentUpdateRequest, session: AsyncSession = Depends(get_session)):
+async def update_agent(
+    agent_id: str,
+    request: AgentUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+):
     """Update an existing agent."""
     repo = AgentRepository(session)
     updates = request.model_dump(exclude_none=True)
@@ -156,7 +217,11 @@ async def update_agent(agent_id: str, request: AgentUpdateRequest, session: Asyn
 
 
 @router.delete("/agents/{agent_id}")
-async def delete_agent(agent_id: str, session: AsyncSession = Depends(get_session)):
+async def delete_agent(
+    agent_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+):
     """Delete an agent."""
     repo = AgentRepository(session)
     success = await repo.delete(agent_id)
@@ -168,7 +233,10 @@ async def delete_agent(agent_id: str, session: AsyncSession = Depends(get_sessio
 # ---- Export / Import ----
 
 @router.get("/agents/export/json")
-async def export_agents(session: AsyncSession = Depends(get_session)):
+async def export_agents(
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+):
     """Export all agents as JSON array (same format as seed_agents.json)."""
     repo = AgentRepository(session)
     agents = await repo.list_all()
@@ -176,7 +244,12 @@ async def export_agents(session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/agents/import/json")
-async def import_agents(agents: List[Dict[str, Any]], session: AsyncSession = Depends(get_session)):
+async def import_agents(
+    agents: List[Dict[str, Any]],
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+    _size: Annotated[None, max_body_size(5 * 1024 * 1024)] = None,
+):
     """Import agents from JSON array. Upserts by ID."""
     repo = AgentRepository(session)
     created = 0
@@ -201,8 +274,12 @@ async def chat_with_agent(
     agent_id: str,
     request: ChatRequest,
     session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+    _rl: Annotated[None, rate_limit("agent_chat", 60, 60)] = None,
+    _size: Annotated[None, max_body_size(100 * 1024)] = None,
 ):
     """Chat with a specific agent. Supports function calling when agent has tools."""
+    _ensure_agent_access(user, agent_id)
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -243,6 +320,19 @@ async def chat_with_agent(
         tool_calls_log = []
         agent_name = agent.get("displayName", agent["name"])
 
+        # Initialize Langfuse tracer for observability
+        tracer = get_tracer(
+            agent_id=agent["id"],
+            session_id=None,  # Could be passed from request
+            user_id=request.user_id,
+        )
+        tracer.start_trace(
+            name=f"chat:{agent['id']}",
+            input_data={"message": request.message, "model": model},
+            metadata={"agent_name": agent_name, "tools": [t.name for t in agent_tools]},
+            tags=["chat", agent.get("domain", "general")],
+        )
+
         # Emit agent started event for real-time orchestration
         await emit_agent_started(
             agent_id=agent["id"],
@@ -269,12 +359,21 @@ async def chat_with_agent(
 
             def on_tool_result(tr: ToolResult):
                 # Attach result to the matching tool call entry
+                matched_entry = None
                 for entry in tool_calls_log:
                     if entry["id"] == tr.tool_call_id:
                         entry["result"] = tr.result
                         entry["error"] = tr.error
+                        matched_entry = entry
                         break
                 logger.info(f"Tool result: {tr.name} -> {'error: ' + tr.error if tr.error else 'ok'}")
+                # Log to Langfuse observability
+                tracer.log_tool_call(
+                    tool_name=tr.name,
+                    tool_input=matched_entry.get("arguments", {}) if matched_entry else {},
+                    tool_output=tr.result,
+                    success=not tr.error,
+                )
                 # Emit to orchestration event bus
                 asyncio.create_task(emit_tool_result(
                     agent_id=agent["id"],
@@ -344,6 +443,19 @@ async def chat_with_agent(
             except Exception as log_err:
                 logger.warning(f"Failed to log tool executions: {log_err}")
 
+        # Log LLM generation to Langfuse
+        tracer.log_generation(
+            name="chat_completion",
+            model=response.get("model", model),
+            input_messages=messages,
+            output=content,
+            usage={
+                "input": usage.get("prompt_tokens", 0),
+                "output": usage.get("completion_tokens", 0),
+            },
+            metadata={"tool_calls": len(tool_calls_log)},
+        )
+
         # Emit agent completed event
         await emit_agent_completed(
             agent_id=agent["id"],
@@ -351,10 +463,21 @@ async def chat_with_agent(
             result=content[:200] if content else "",
         )
 
+        # End Langfuse trace
+        tracer.end_trace(
+            output={"content": content[:500] if content else "", "tools_used": len(tool_calls_log)},
+            status="success",
+        )
+
         return result
 
     except Exception as e:
         logger.error(f"Chat error with agent {agent_id}: {e}")
+        # End trace with error status
+        try:
+            tracer.end_trace(output={"error": str(e)}, status="error")
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -483,8 +606,13 @@ class UpdateToolConfigRequest(BaseModel):
 
 
 @router.get("/agents/{agent_id}/tools")
-async def get_agent_tools(agent_id: str, session: AsyncSession = Depends(get_session)):
+async def get_agent_tools(
+    agent_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """Get tools attached to an agent."""
+    _ensure_agent_access(user, agent_id)
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -493,8 +621,14 @@ async def get_agent_tools(agent_id: str, session: AsyncSession = Depends(get_ses
 
 
 @router.post("/agents/{agent_id}/tools")
-async def attach_tool(agent_id: str, request: AttachToolRequest, session: AsyncSession = Depends(get_session)):
+async def attach_tool(
+    agent_id: str,
+    request: AttachToolRequest,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """Attach a tool to an agent."""
+    _ensure_agent_access(user, agent_id)
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -516,8 +650,14 @@ async def attach_tool(agent_id: str, request: AttachToolRequest, session: AsyncS
 
 
 @router.delete("/agents/{agent_id}/tools/{tool_id}")
-async def detach_tool(agent_id: str, tool_id: str, session: AsyncSession = Depends(get_session)):
+async def detach_tool(
+    agent_id: str,
+    tool_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """Detach a tool from an agent."""
+    _ensure_agent_access(user, agent_id)
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -530,8 +670,15 @@ async def detach_tool(agent_id: str, tool_id: str, session: AsyncSession = Depen
 
 
 @router.patch("/agents/{agent_id}/tools/{tool_id}")
-async def update_tool_config(agent_id: str, tool_id: str, request: UpdateToolConfigRequest, session: AsyncSession = Depends(get_session)):
+async def update_tool_config(
+    agent_id: str,
+    tool_id: str,
+    request: UpdateToolConfigRequest,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """Update tool configuration for an agent."""
+    _ensure_agent_access(user, agent_id)
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -543,11 +690,18 @@ async def update_tool_config(agent_id: str, tool_id: str, request: UpdateToolCon
 # ---- Direct Chat ----
 
 @router.post("/chat/completions")
-async def direct_chat_completion(request: ChatCompletionRequest, session: AsyncSession = Depends(get_session)):
+async def direct_chat_completion(
+    request: ChatCompletionRequest,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+    _rl: Annotated[None, rate_limit("chat_completions", 60, 60)] = None,
+    _size: Annotated[None, max_body_size(100 * 1024)] = None,
+):
     """Direct chat completion. Optionally loads agent persona if agentId provided."""
     messages = list(request.messages)
 
     if request.agentId:
+        _ensure_agent_access(user, request.agentId)
         repo = AgentRepository(session)
         agent = await repo.get(request.agentId)
         if agent:
@@ -604,6 +758,7 @@ async def chat_with_agent_local(
     agent_id: str,
     request: MLXChatRequest,
     session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Chat with agent using local MLX inference (Granite 3.3 2B/8B).
@@ -611,6 +766,7 @@ async def chat_with_agent_local(
     Bypasses Ops-Center for testing and local development.
     Supports function calling with local models.
     """
+    _ensure_agent_access(user, agent_id)
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -710,7 +866,9 @@ async def chat_with_agent_local(
 
 
 @router.get("/models/local")
-async def list_local_models():
+async def list_local_models(
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """List available local MLX models."""
     return {
         "models": [
@@ -735,4 +893,252 @@ async def list_local_models():
         ],
         "provider": "mlx",
         "platform": "Apple Silicon Mac",
+    }
+
+
+# ---- Text-to-SQL Agent ----
+
+class TextToSQLRequest(BaseModel):
+    """Request for natural language to SQL conversion."""
+    question: str
+    explain: Optional[bool] = True
+    row_limit: Optional[int] = 100
+
+
+class TextToSQLResponse(BaseModel):
+    """Response from text-to-SQL agent."""
+    question: str
+    sql: str
+    results: List[Dict[str, Any]]
+    columns: List[str]
+    row_count: int
+    truncated: bool = False
+    explanation: Optional[str] = None
+    execution_time_ms: float = 0.0
+    error: Optional[str] = None
+    safety_level: str = "safe"
+
+
+@router.post("/agents/sql", response_model=TextToSQLResponse)
+async def text_to_sql(
+    request: TextToSQLRequest,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+    _rl: Annotated[None, rate_limit("text_to_sql", 30, 60)] = None,
+    _size: Annotated[None, max_body_size(10 * 1024)] = None,
+):
+    """
+    Convert natural language question to SQL and execute.
+
+    This endpoint:
+    1. Analyzes the database schema
+    2. Converts the question to a safe SELECT query
+    3. Executes the query with timeout and row limits
+    4. Returns results with optional natural language explanation
+
+    Security:
+    - Only SELECT queries allowed (no INSERT/UPDATE/DELETE)
+    - SQL injection patterns blocked
+    - Query timeout: 30 seconds
+    - Row limit: configurable, max 10,000
+    """
+    from app.agents.text_to_sql import get_text_to_sql_agent
+
+    logger.info(f"Text-to-SQL request: {request.question[:100]}...")
+
+    try:
+        # Get agent instance (uses global LLM client)
+        agent = get_text_to_sql_agent(llm_client)
+
+        # Execute the text-to-SQL pipeline
+        result = await agent.execute({
+            "question": request.question,
+            "explain": request.explain,
+            "row_limit": min(request.row_limit or 100, 10000),
+            "user_id": user.user_id if user else "anonymous",
+        })
+
+        return TextToSQLResponse(
+            question=result.get("question", request.question),
+            sql=result.get("sql", ""),
+            results=result.get("results", []),
+            columns=result.get("columns", []),
+            row_count=result.get("row_count", 0),
+            truncated=result.get("truncated", False),
+            explanation=result.get("explanation"),
+            execution_time_ms=result.get("execution_time_ms", 0.0),
+            error=result.get("error"),
+            safety_level=result.get("safety_level", "safe"),
+        )
+
+    except Exception as e:
+        logger.error(f"Text-to-SQL error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agents/sql/schema")
+async def get_database_schema(
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
+    """
+    Get the database schema used for SQL generation.
+
+    Returns table names, columns, types, and relationships.
+    Useful for understanding what data can be queried.
+    """
+    from app.agents.text_to_sql import get_text_to_sql_agent
+
+    try:
+        agent = get_text_to_sql_agent(llm_client)
+        schema = await agent.get_schema(force_refresh=True)
+        return {"schema": schema}
+    except Exception as e:
+        logger.error(f"Error fetching schema: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---- Deep Research Agent ----
+
+class DeepResearchRequest(BaseModel):
+    """Request model for deep research"""
+    topic: str
+    depth: Optional[str] = "medium"  # quick, medium, thorough
+    user_id: Optional[str] = "anonymous"
+
+
+class DeepResearchResponse(BaseModel):
+    """Response model for deep research"""
+    session_id: str
+    status: str
+    topic: str
+    depth: str
+    report: Optional[str] = None
+    sources: Optional[List[Dict[str, str]]] = None
+    queries_executed: Optional[List[str]] = None
+    result_count: Optional[int] = None
+    error: Optional[str] = None
+
+
+@router.post("/agents/research", response_model=DeepResearchResponse)
+async def deep_research(
+    request: DeepResearchRequest,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+    _rl: Annotated[None, rate_limit("deep_research", 10, 60)] = None,
+    _size: Annotated[None, max_body_size(10 * 1024)] = None,
+):
+    """
+    Execute deep research on a topic.
+
+    Performs multi-step autonomous research:
+    1. Plans multiple search queries to cover different angles
+    2. Executes web searches using the web_search tool
+    3. Synthesizes findings into a comprehensive report
+    4. Includes proper source citations with URLs
+
+    Depth options:
+    - quick: 2-3 queries, fast synthesis (~30 seconds)
+    - medium: 4-6 queries, balanced depth (~1 minute)
+    - thorough: 8-12 queries, comprehensive analysis (~2-3 minutes)
+
+    Returns:
+        Research report with sources and executed queries
+    """
+    # Validate depth
+    valid_depths = ["quick", "medium", "thorough"]
+    depth = request.depth.lower() if request.depth else "medium"
+    if depth not in valid_depths:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid depth. Must be one of: {', '.join(valid_depths)}"
+        )
+
+    logger.info(f"Deep research request: topic='{request.topic}', depth={depth}")
+
+    # Emit research started event
+    await emit_agent_started(
+        agent_id="deep-researcher",
+        agent_name="Deep Researcher",
+        task=f"Researching: {request.topic[:100]}",
+    )
+
+    try:
+        # Initialize the deep research agent with the shared LLM client
+        research_agent = DeepResearchAgent(
+            llm_client=llm_client,
+            model="openai/gpt-4o",  # Use capable model for research
+        )
+
+        # Execute research
+        result = await research_agent.research(
+            topic=request.topic,
+            depth=depth,
+            user_id=request.user_id or "anonymous",
+        )
+
+        # Emit completion event
+        await emit_agent_completed(
+            agent_id="deep-researcher",
+            agent_name="Deep Researcher",
+            result=f"Research complete: {len(result.get('sources', []))} sources, {len(result.get('queries_executed', []))} queries",
+        )
+
+        return DeepResearchResponse(
+            session_id=result.get("session_id", ""),
+            status=result.get("status", "error"),
+            topic=result.get("topic", request.topic),
+            depth=result.get("depth", depth),
+            report=result.get("report"),
+            sources=result.get("sources"),
+            queries_executed=result.get("queries_executed"),
+            result_count=result.get("result_count"),
+            error=result.get("error"),
+        )
+
+    except Exception as e:
+        logger.error(f"Deep research error: {e}")
+        await emit_agent_completed(
+            agent_id="deep-researcher",
+            agent_name="Deep Researcher",
+            result=f"Error: {str(e)}",
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agents/research/sessions")
+async def list_research_sessions(
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
+    """List all research sessions in memory."""
+    sessions = DeepResearchAgent.list_sessions()
+    return {
+        "sessions": sessions,
+        "count": len(sessions),
+    }
+
+
+@router.get("/agents/research/sessions/{session_id}")
+async def get_research_session(
+    session_id: str,
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
+    """Get details of a specific research session."""
+    session = DeepResearchAgent.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+    return {
+        "session_id": session.session_id,
+        "topic": session.topic,
+        "depth": session.depth.value,
+        "status": session.status,
+        "queries_planned": session.queries_planned,
+        "queries_executed": session.queries_executed,
+        "result_count": len(session.search_results),
+        "synthesis": session.synthesis,
+        "sources": session.sources,
+        "created_at": session.created_at.isoformat(),
+        "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+        "error": session.error,
     }

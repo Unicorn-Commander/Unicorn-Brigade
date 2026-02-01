@@ -147,6 +147,10 @@
     animation: fade-in 0.3s ease-out;
   }
 
+  .animate-fadeIn {
+    animation: fade-in 0.3s ease-out;
+  }
+
   .animate-pulse-soft {
     animation: pulse-soft 2s ease-in-out infinite;
   }
@@ -165,4 +169,94 @@
     );
     background-size: 1000px 100%;
   }
+
+  /* Tool Call Card Animations */
+  @keyframes tool-pulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 4px rgba(234, 179, 8, 0);
+    }
+  }
+
+  @keyframes tool-success {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes expand-in {
+    from {
+      opacity: 0;
+      transform: scaleY(0.95);
+      transform-origin: top;
+    }
+    to {
+      opacity: 1;
+      transform: scaleY(1);
+      transform-origin: top;
+    }
+  }
+
+  @keyframes status-dot {
+    0%, 80%, 100% {
+      transform: scale(0.6);
+      opacity: 0.5;
+    }
+    40% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .animate-tool-pulse {
+    animation: tool-pulse 2s ease-in-out infinite;
+  }
+
+  .animate-tool-success {
+    animation: tool-success 0.3s ease-out;
+  }
+
+  .animate-expand-in {
+    animation: expand-in 0.2s ease-out;
+  }
+
+  .animate-status-dot-1 {
+    animation: status-dot 1.4s ease-in-out infinite;
+    animation-delay: 0s;
+  }
+
+  .animate-status-dot-2 {
+    animation: status-dot 1.4s ease-in-out infinite;
+    animation-delay: 0.2s;
+  }
+
+  .animate-status-dot-3 {
+    animation: status-dot 1.4s ease-in-out infinite;
+    animation-delay: 0.4s;
+  }
+
+  /* Tool card hover effects */
+  .tool-card-hover {
+    @apply transition-all duration-200;
+  }
+
+  .tool-card-hover:hover {
+    @apply bg-slate-700/30 shadow-md;
+  }
+
+  /* Syntax highlighting color scheme for tool results */
+  .syntax-string { @apply text-emerald-400; }
+  .syntax-number { @apply text-amber-400; }
+  .syntax-boolean { @apply text-cyan-400; }
+  .syntax-null { @apply text-slate-500; }
+  .syntax-key { @apply text-purple-400; }
+  .syntax-punctuation { @apply text-slate-500; }
 }

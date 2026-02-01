@@ -1,0 +1,13 @@
+# MLX Embeddings Server Dependencies
+# For Apple Silicon Macs with MLX acceleration
+
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pydantic>=2.0.0
+sentence-transformers>=3.0.0
+torch>=2.0.0
+numpy>=1.24.0
+einops>=0.8.0
+
+# MLX for Apple Silicon (optional, sentence-transformers can use PyTorch backend)
+mlx>=0.20.0

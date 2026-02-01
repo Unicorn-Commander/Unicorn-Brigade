@@ -1,6 +1,7 @@
 /**
  * Brigade OIDC Authentication Service
  * Handles Keycloak authentication flow and user session management
+ * Also supports API key authentication via X-API-Key header
  */
 
 import axios from 'axios';
@@ -11,6 +12,27 @@ class AuthService {
   constructor() {
     // Configure axios to send cookies with every request
     axios.defaults.withCredentials = true;
+
+    // Set up axios interceptor to add X-API-Key header when available
+    this.setupAxiosInterceptor();
+  }
+
+  /**
+   * Set up axios interceptor to automatically add X-API-Key header
+   */
+  setupAxiosInterceptor() {
+    axios.interceptors.request.use(
+      (config) => {
+        const apiKey = localStorage.getItem('apiKey');
+        if (apiKey) {
+          config.headers['X-API-Key'] = apiKey;
+        }
+        return config;
+      },
+      (error) => {
+        return Promise.reject(error);
+      }
+    );
   }
 
   /**
@@ -157,6 +179,9 @@ class AuthService {
    */
   async logout() {
     try {
+      // Clear API key from localStorage
+      localStorage.removeItem('apiKey');
+
       await axios.post(`${API_URL}/auth/oidc/logout`, {}, {
         withCredentials: true
       });
@@ -165,9 +190,105 @@ class AuthService {
       window.location.href = '/login';
     } catch (error) {
       console.error('Logout failed:', error);
+      // Clear API key even on error
+      localStorage.removeItem('apiKey');
       // Force redirect even on error
       window.location.href = '/login';
     }
+  }
+
+  // ==========================================
+  // Native Email/Password Authentication
+  // ==========================================
+
+  /**
+   * Register a new user with email and password
+   * @param {string} email - User email
+   * @param {string} password - User password (min 8 chars, must have letters and numbers)
+   * @param {string} name - User display name
+   * @returns {Promise<Object>} User object with apiKey
+   */
+  async registerUser(email, password, name) {
+    try {
+      const { data } = await axios.post(`${API_URL}/users/register`, {
+        email,
+        password,
+        name
+      });
+
+      // Store the API key for subsequent requests
+      if (data.apiKey) {
+        localStorage.setItem('apiKey', data.apiKey);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[AuthService] Registration failed:', error);
+      throw new Error(error.response?.data?.detail || error.response?.data?.error || 'Registration failed');
+    }
+  }
+
+  /**
+   * Login with email and password
+   * @param {string} email - User email
+   * @param {string} password - User password
+   * @returns {Promise<Object>} User object with apiKey
+   */
+  async loginWithPassword(email, password) {
+    try {
+      const { data } = await axios.post(`${API_URL}/users/login`, {
+        email,
+        password
+      });
+
+      // Store the API key for subsequent requests
+      if (data.apiKey) {
+        localStorage.setItem('apiKey', data.apiKey);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[AuthService] Login failed:', error);
+      throw new Error(error.response?.data?.detail || error.response?.data?.error || 'Login failed');
+    }
+  }
+
+  /**
+   * Get current user via API key (for native auth)
+   * @returns {Promise<Object|null>} User object or null if not authenticated
+   */
+  async getCurrentUserByApiKey() {
+    const apiKey = localStorage.getItem('apiKey');
+    if (!apiKey) {
+      return null;
+    }
+
+    try {
+      const { data } = await axios.get(`${API_URL}/users/me`);
+      return data;
+    } catch (error) {
+      console.error('[AuthService] Failed to get user by API key:', error);
+      // Clear invalid API key
+      if (error.response?.status === 401) {
+        localStorage.removeItem('apiKey');
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Check if user has an API key stored
+   * @returns {boolean} True if API key exists
+   */
+  hasApiKey() {
+    return !!localStorage.getItem('apiKey');
+  }
+
+  /**
+   * Clear stored API key (logout for native auth)
+   */
+  clearApiKey() {
+    localStorage.removeItem('apiKey');
   }
 }
 

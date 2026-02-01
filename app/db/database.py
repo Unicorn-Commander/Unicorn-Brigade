@@ -37,10 +37,11 @@ async def get_session() -> AsyncSession:
 
 
 async def init_db():
-    """Create all tables."""
+    """Create all tables (skips existing ones)."""
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables created")
+        # checkfirst=True prevents errors when indexes/tables already exist
+        await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
+    logger.info("Database tables created/verified")
 
 
 async def close_db():

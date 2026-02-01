@@ -1,0 +1,123 @@
+# Zep Memory System Docker Compose
+# Extends the base docker-compose.yml for Zep memory backend
+#
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.zep.yml up -d
+#
+# Note: Zep Community Edition was deprecated in April 2025.
+# This configuration uses the last available open-source images.
+# For production use, consider Zep Cloud (https://www.getzep.com)
+
+version: '3.8'
+
+services:
+  # Zep Memory Server
+  zep:
+    image: ghcr.io/getzep/zep:latest
+    container_name: brigade-zep
+    volumes:
+      - ./config/zep/config.yaml:/app/config.yaml:ro
+    environment:
+      # Core required env vars (Zep 0.27 legacy format)
+      - ZEP_OPENAI_API_KEY=sk-local-ollama-not-needed
+      - ZEP_STORE_TYPE=postgres
+      - ZEP_STORE_POSTGRES_DSN=postgres://${ZEP_POSTGRES_USER:-zep}:${ZEP_POSTGRES_PASSWORD:-REMOVED}@zep-postgres:5432/${ZEP_POSTGRES_DB:-zep}?sslmode=disable
+
+      # Server
+      - ZEP_SERVER_HOST=0.0.0.0
+      - ZEP_SERVER_PORT=8000
+      - ZEP_SERVER_WEB_ENABLED=true
+
+      # Auth (optional for self-hosted)
+      - ZEP_AUTH_SECRET=${ZEP_AUTH_SECRET:-your-zep-auth-secret-change-in-production}
+      - ZEP_AUTH_REQUIRED=${ZEP_AUTH_REQUIRED:-false}
+
+      # LLM - Using local Ollama
+      - ZEP_LLM_SERVICE=openai
+      - ZEP_LLM_OPENAI_API_KEY=sk-local-ollama
+      - ZEP_LLM_OPENAI_ORG_ID=local
+      - ZEP_LLM_OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+      - ZEP_LLM_MODEL=gpt-3.5-turbo
+
+      # Embeddings - Using local MLX server
+      - ZEP_EXTRACTORS_EMBEDDINGS_SERVICE=openai
+      - ZEP_EXTRACTORS_EMBEDDINGS_OPENAI_API_KEY=sk-local-embeddings
+      - ZEP_EXTRACTORS_EMBEDDINGS_OPENAI_BASE_URL=http://host.docker.internal:8234/v1
+      - ZEP_EXTRACTORS_EMBEDDINGS_MODEL=nomic-embed-text-v1.5
+      - ZEP_EXTRACTORS_EMBEDDINGS_DIMENSIONS=768
+
+      # Memory extractors
+      - ZEP_EXTRACTORS_MESSAGES_SUMMARIZER_ENABLED=true
+      - ZEP_EXTRACTORS_MESSAGES_ENTITIES_ENABLED=true
+      - ZEP_EXTRACTORS_MESSAGES_INTENT_ENABLED=true
+
+      # Logging
+      - ZEP_LOG_LEVEL=${ZEP_LOG_LEVEL:-info}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${ZEP_PORT:-8001}:8000"
+    depends_on:
+      zep-postgres:
+        condition: service_healthy
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Zep's dedicated PostgreSQL with pgvector
+  zep-postgres:
+    image: ghcr.io/getzep/postgres:latest
+    container_name: brigade-zep-postgres
+    environment:
+      - POSTGRES_USER=${ZEP_POSTGRES_USER:-zep}
+      - POSTGRES_PASSWORD=${ZEP_POSTGRES_PASSWORD:-REMOVED}
+      - POSTGRES_DB=${ZEP_POSTGRES_DB:-zep}
+    ports:
+      - "${ZEP_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - brigade-zep-postgres-data:/var/lib/postgresql/data
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ZEP_POSTGRES_USER:-zep} -d ${ZEP_POSTGRES_DB:-zep}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Zep NLP Server for local embeddings (reduces OpenAI API costs)
+  # Uncomment if you want to use local embeddings instead of OpenAI
+  # zep-nlp:
+  #   image: ghcr.io/getzep/zep-nlp-server:latest
+  #   container_name: brigade-zep-nlp
+  #   environment:
+  #     - ENABLE_EMBEDDINGS=true
+  #   ports:
+  #     - "5557:5557"
+  #   networks:
+  #     - brigade-network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "nc", "-z", "127.0.0.1", "5557"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   # Note: Requires ~1GB memory for the NLP models
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 1500M
+
+volumes:
+  brigade-zep-postgres-data:
+
+# Network is defined in base docker-compose.yml
+networks:
+  brigade-network:
+    external: true

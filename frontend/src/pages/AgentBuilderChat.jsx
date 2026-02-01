@@ -8,11 +8,13 @@ import AgentPreview from '../components/AgentPreview';
 import ModelSelector from '../components/ModelSelector';
 import ParameterSlider from '../components/ParameterSlider';
 import { GunnyAvatar } from '../components/UnicornBrigadeLogo';
+import useAuth from '../hooks/useAuth';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 const AgentBuilderChat = () => {
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -237,7 +239,7 @@ What would you like to build?`
         avatar: parsedAgentConfig.avatar,
         title: parsedAgentConfig.title,
         bio: parsedAgentConfig.bio,
-        createdBy: 'demo-user',
+        createdBy: user?.id || 'guest-user',
         createdByAgent: 'the-general-001'
       };
 
@@ -285,7 +287,7 @@ What would you like to build?`
       const requestData = {
         message: userMessage,
         sessionId: sessionId,
-        userId: 'demo-user', // TODO: Get from auth context
+        userId: user?.id || 'guest-user',
         preferences: preferences.model === 'ai-choice' ? {} : preferences
       };
 
@@ -403,7 +405,7 @@ What would you like to create today?`
         tools: agentPreview.tools,
         capabilities: agentPreview.capabilities,
         systemPrompt: agentPreview.systemPrompt,
-        createdBy: 'demo-user',
+        createdBy: user?.id || 'guest-user',
         createdByAgent: 'the-general-001'
       });
 

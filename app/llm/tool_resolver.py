@@ -27,6 +27,32 @@ from app.llm.extended_tools import (
     NOTIFY_TOOL,
     QRCODE_TOOL,
 )
+from app.llm.advanced_tools import (
+    BROWSER_TOOL,
+    CODE_SANDBOX_TOOL,
+    SANDBOX_SESSION_TOOL,
+    SCREENSHOT_TOOL,
+    PDF_EXTRACT_TOOL,
+    DOC_GENERATE_TOOL,
+    DATA_ANALYZE_TOOL,
+    URL_PREVIEW_TOOL,
+    KG_QUERY_TOOL,
+)
+from app.llm.knowledge_tools import (
+    KNOWLEDGE_STORE_TOOL,
+    KNOWLEDGE_QUERY_TOOL,
+)
+from app.llm.slack_tools import (
+    SLACK_TOOL,
+)
+from app.llm.business_tools import (
+    CSV_TOOL,
+    RSS_TOOL,
+    TRANSLATE_TOOL,
+    WEATHER_TOOL,
+    SCHEDULE_TOOL,
+    COMPANY_TOOL,
+)
 
 # Registry mapping tool names to their definitions
 TOOL_REGISTRY: Dict[str, ToolDefinition] = {
@@ -47,6 +73,28 @@ TOOL_REGISTRY: Dict[str, ToolDefinition] = {
     "database": DATABASE_TOOL,
     "notify": NOTIFY_TOOL,
     "qrcode": QRCODE_TOOL,
+    # Advanced tools (cutting-edge capabilities)
+    "browser": BROWSER_TOOL,
+    "code_sandbox": CODE_SANDBOX_TOOL,
+    "sandbox_session": SANDBOX_SESSION_TOOL,
+    "screenshot": SCREENSHOT_TOOL,
+    "pdf_extract": PDF_EXTRACT_TOOL,
+    "doc_generate": DOC_GENERATE_TOOL,
+    "data_analyze": DATA_ANALYZE_TOOL,
+    "url_preview": URL_PREVIEW_TOOL,
+    "kg_query": KG_QUERY_TOOL,
+    # Knowledge graph tools (FalkorDB)
+    "knowledge_store": KNOWLEDGE_STORE_TOOL,
+    "knowledge_query": KNOWLEDGE_QUERY_TOOL,
+    # Slack integration
+    "slack": SLACK_TOOL,
+    # Business tools
+    "csv": CSV_TOOL,
+    "rss": RSS_TOOL,
+    "translate": TRANSLATE_TOOL,
+    "weather": WEATHER_TOOL,
+    "schedule": SCHEDULE_TOOL,
+    "company": COMPANY_TOOL,
 }
 
 
@@ -72,3 +120,21 @@ def get_tools_for_agent(agent: Dict[str, Any]) -> List[ToolDefinition]:
 def get_tool_by_name(name: str) -> ToolDefinition:
     """Get a single tool definition by name."""
     return TOOL_REGISTRY.get(name)
+
+
+def get_tools_by_names(names: List[str]) -> List[ToolDefinition]:
+    """
+    Get multiple tool definitions by their names.
+
+    Args:
+        names: List of tool name strings
+
+    Returns:
+        List of ToolDefinition objects (only includes tools that exist)
+    """
+    tools = []
+    for name in names:
+        tool_def = TOOL_REGISTRY.get(name)
+        if tool_def:
+            tools.append(tool_def)
+    return tools

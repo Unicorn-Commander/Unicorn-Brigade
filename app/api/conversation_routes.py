@@ -4,11 +4,13 @@ Provides CRUD for conversations and messages.
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Annotated
 import logging
 
 from app.db.database import get_session, AsyncSession
 from app.db.repositories import ConversationRepository
+from app.auth.middleware import require_api_key, require_operator, require_admin, AuthUser
+from app.auth.roles import UserRole
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -46,8 +48,11 @@ async def list_conversations(
     user_id: str = "anonymous",
     limit: int = 50,
     session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """List conversations for a user."""
+    if user and user.role != UserRole.ADMIN:
+        user_id = user.id
     repo = ConversationRepository(session)
     conversations = await repo.list_for_user(user_id=user_id, limit=limit)
     return {"conversations": conversations}
@@ -57,12 +62,15 @@ async def list_conversations(
 async def get_conversation(
     conversation_id: str,
     session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get a conversation with all messages."""
     repo = ConversationRepository(session)
     conv = await repo.get(conversation_id, include_messages=True)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    if user and user.role != UserRole.ADMIN and conv.get("user_id") != user.id:
+        raise HTTPException(status_code=403, detail="Access to conversation denied")
     return conv
 
 
@@ -70,10 +78,14 @@ async def get_conversation(
 async def create_conversation(
     request: CreateConversationRequest,
     session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Create a new conversation."""
     repo = ConversationRepository(session)
-    conv = await repo.create(request.model_dump())
+    data = request.model_dump()
+    if user and user.role != UserRole.ADMIN:
+        data["user_id"] = user.id
+    conv = await repo.create(data)
     return conv
 
 
@@ -82,15 +94,19 @@ async def update_conversation(
     conversation_id: str,
     request: UpdateConversationRequest,
     session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
 ):
     """Update conversation metadata."""
     repo = ConversationRepository(session)
+    conv = await repo.get(conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if user and user.role != UserRole.ADMIN and conv.get("user_id") != user.id:
+        raise HTTPException(status_code=403, detail="Access to conversation denied")
     updates = request.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     conv = await repo.update(conversation_id, updates)
-    if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
     return conv
 
 
@@ -98,9 +114,15 @@ async def update_conversation(
 async def delete_conversation(
     conversation_id: str,
     session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
 ):
     """Delete a conversation and all its messages."""
     repo = ConversationRepository(session)
+    conv = await repo.get(conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if user and user.role != UserRole.ADMIN and conv.get("user_id") != user.id:
+        raise HTTPException(status_code=403, detail="Access to conversation denied")
     success = await repo.delete(conversation_id)
     if not success:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -112,6 +134,7 @@ async def add_message(
     conversation_id: str,
     request: AddMessageRequest,
     session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Add a message to a conversation."""
     repo = ConversationRepository(session)
@@ -120,6 +143,8 @@ async def add_message(
     conv = await repo.get(conversation_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    if user and user.role != UserRole.ADMIN and conv.get("user_id") != user.id:
+        raise HTTPException(status_code=403, detail="Access to conversation denied")
 
     msg = await repo.add_message(conversation_id, request.model_dump())
     return msg

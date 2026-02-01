@@ -12,7 +12,7 @@ from sqlalchemy import select, func, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import Agent, Conversation, Message, ApiKey, BuilderSession, ToolExecution
+from app.db.models import Agent, Conversation, Message, ApiKey, BuilderSession, ToolExecution, User, UserApiKey, CodeAttribution
 
 logger = logging.getLogger(__name__)
 
@@ -328,6 +328,181 @@ class BuilderSessionRepository:
         return bs.to_dict()
 
 
+# ── User Repository ───────────────────────────────────────────────
+
+class UserRepository:
+    """Repository for User CRUD operations"""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_by_id(self, user_id: str) -> Optional[Dict]:
+        """Get user by ID"""
+        result = await self.session.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        return user.to_dict() if user else None
+
+    async def get_by_email(self, email: str) -> Optional[User]:
+        """Get user by email (returns ORM object for password verification)"""
+        result = await self.session.execute(
+            select(User).where(User.email == email.lower())
+        )
+        return result.scalar_one_or_none()
+
+    async def email_exists(self, email: str) -> bool:
+        """Check if email is already registered"""
+        result = await self.session.execute(
+            select(func.count(User.id)).where(User.email == email.lower())
+        )
+        return (result.scalar() or 0) > 0
+
+    async def create(self, data: Dict[str, Any]) -> Dict:
+        """Create a new user"""
+        user = User(
+            email=data["email"].lower(),
+            password_hash=data["password_hash"],
+            name=data["name"],
+            role=data.get("role", "operator"),
+            is_active=data.get("is_active", True),
+        )
+        self.session.add(user)
+        await self.session.commit()
+        await self.session.refresh(user)
+        return user.to_dict()
+
+    async def update(self, user_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
+        """Update user profile"""
+        result = await self.session.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            return None
+
+        # Only allow updating safe fields
+        allowed_fields = {"name", "email", "password_hash"}
+        for key, value in updates.items():
+            if key in allowed_fields and hasattr(user, key):
+                if key == "email":
+                    value = value.lower()
+                setattr(user, key, value)
+
+        user.updated_at = datetime.utcnow()
+        await self.session.commit()
+        await self.session.refresh(user)
+        return user.to_dict()
+
+    async def deactivate(self, user_id: str) -> bool:
+        """Deactivate user account"""
+        result = await self.session.execute(
+            select(User).where(User.id == user_id)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            return False
+        user.is_active = False
+        user.updated_at = datetime.utcnow()
+        await self.session.commit()
+        return True
+
+    async def count(self) -> int:
+        """Count total users"""
+        result = await self.session.execute(select(func.count(User.id)))
+        return result.scalar() or 0
+
+
+# ── User API Key Repository ───────────────────────────────────────
+
+class UserApiKeyRepository:
+    """Repository for user API key operations"""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def generate(self, user_id: str, data: Dict[str, Any]) -> Dict:
+        """Generate a new API key for a user"""
+        raw_key = f"ubk-{secrets.token_urlsafe(32)}"
+        key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        key_prefix = raw_key[:8]
+
+        expires_at = None
+        if data.get("expiresInDays"):
+            expires_at = datetime.utcnow() + timedelta(days=data["expiresInDays"])
+
+        api_key = UserApiKey(
+            user_id=user_id,
+            name=data["name"],
+            key_prefix=key_prefix,
+            key_hash=key_hash,
+            permissions=data.get("permissions", ["chat", "read"]),
+            rate_limit=data.get("rateLimit", 100),
+            expires_at=expires_at,
+        )
+        self.session.add(api_key)
+        await self.session.commit()
+        await self.session.refresh(api_key)
+
+        result = api_key.to_dict()
+        result["key"] = raw_key  # Only returned on creation
+        return result
+
+    async def list_for_user(self, user_id: str) -> List[Dict]:
+        """List all API keys for a user"""
+        result = await self.session.execute(
+            select(UserApiKey)
+            .where(UserApiKey.user_id == user_id, UserApiKey.is_active == True)
+            .order_by(UserApiKey.created_at.desc())
+        )
+        return [k.to_dict() for k in result.scalars().all()]
+
+    async def get(self, key_id: str) -> Optional[Dict]:
+        """Get API key by ID"""
+        result = await self.session.execute(
+            select(UserApiKey).where(UserApiKey.id == key_id)
+        )
+        key = result.scalar_one_or_none()
+        return key.to_dict() if key else None
+
+    async def revoke(self, user_id: str, key_id: str) -> bool:
+        """Revoke an API key"""
+        result = await self.session.execute(
+            select(UserApiKey).where(UserApiKey.id == key_id, UserApiKey.user_id == user_id)
+        )
+        key = result.scalar_one_or_none()
+        if not key:
+            return False
+        key.is_active = False
+        await self.session.commit()
+        return True
+
+    async def validate_key(self, api_key: str) -> Optional[UserApiKey]:
+        """Validate an API key and return the key object if valid"""
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        result = await self.session.execute(
+            select(UserApiKey).where(
+                UserApiKey.key_hash == key_hash,
+                UserApiKey.is_active == True,
+            )
+        )
+        db_key = result.scalar_one_or_none()
+
+        if not db_key:
+            return None
+
+        # Check expiration
+        if db_key.expires_at and db_key.expires_at < datetime.utcnow():
+            return None
+
+        # Update usage stats
+        db_key.last_used_at = datetime.utcnow()
+        db_key.usage_count = (db_key.usage_count or 0) + 1
+        await self.session.commit()
+
+        return db_key
+
+
 # ── Tool Execution Repository ─────────────────────────────────────
 
 class ToolExecutionRepository:
@@ -369,3 +544,219 @@ class ToolExecutionRepository:
             .order_by(ToolExecution.created_at)
         )
         return [te.to_dict() for te in result.scalars().all()]
+
+
+# ── Code Attribution Repository (Agent Trace) ─────────────────────
+
+class CodeAttributionRepository:
+    """Repository for code attribution tracking"""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def create(self, data: Dict[str, Any]) -> Dict:
+        """Record a code attribution"""
+        import hashlib
+
+        # Generate code hash (first 32 chars of SHA-256)
+        code_hash = hashlib.sha256(data["generated_code"].encode()).hexdigest()[:32]
+
+        attribution = CodeAttribution(
+            session_id=data["session_id"],
+            agent_id=data.get("agent_id"),
+            agent_name=data["agent_name"],
+            model=data["model"],
+            file_path=data["file_path"],
+            start_line=data["start_line"],
+            end_line=data["end_line"],
+            change_type=data.get("change_type", "generation"),
+            code_hash=code_hash,
+            prompt=data.get("prompt"),
+            generated_code=data["generated_code"],
+            metadata_=data.get("metadata", {}),
+        )
+        self.session.add(attribution)
+        await self.session.commit()
+        await self.session.refresh(attribution)
+        return attribution.to_dict()
+
+    async def get_by_file(
+        self,
+        file_path: str,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Get all attributions for a specific file"""
+        # Normalize file path to handle both /path and path formats
+        normalized_path = file_path if file_path.startswith("/") else f"/{file_path}"
+        result = await self.session.execute(
+            select(CodeAttribution)
+            .where(CodeAttribution.file_path == normalized_path)
+            .order_by(CodeAttribution.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return [a.to_dict() for a in result.scalars().all()]
+
+    async def get_by_agent(
+        self,
+        agent_id: str,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Get all code attributions by a specific agent"""
+        result = await self.session.execute(
+            select(CodeAttribution)
+            .where(CodeAttribution.agent_id == agent_id)
+            .order_by(CodeAttribution.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return [a.to_dict() for a in result.scalars().all()]
+
+    async def get_by_session(
+        self,
+        session_id: str,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Get all code attributions in a session"""
+        result = await self.session.execute(
+            select(CodeAttribution)
+            .where(CodeAttribution.session_id == session_id)
+            .order_by(CodeAttribution.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return [a.to_dict() for a in result.scalars().all()]
+
+    async def get_recent(
+        self,
+        days: int = 1,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict]:
+        """Get recent attributions within the last N days"""
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        result = await self.session.execute(
+            select(CodeAttribution)
+            .where(CodeAttribution.created_at >= cutoff)
+            .order_by(CodeAttribution.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return [a.to_dict() for a in result.scalars().all()]
+
+    async def get_stats(self) -> Dict[str, Any]:
+        """Get attribution statistics"""
+        # Total lines of code
+        total_lines_result = await self.session.execute(
+            select(func.sum(CodeAttribution.end_line - CodeAttribution.start_line + 1))
+        )
+        total_lines = total_lines_result.scalar() or 0
+
+        # Total attributions
+        total_attributions_result = await self.session.execute(
+            select(func.count(CodeAttribution.id))
+        )
+        total_attributions = total_attributions_result.scalar() or 0
+
+        # Unique agents
+        unique_agents_result = await self.session.execute(
+            select(func.count(func.distinct(CodeAttribution.agent_id)))
+        )
+        unique_agents = unique_agents_result.scalar() or 0
+
+        # Unique files
+        unique_files_result = await self.session.execute(
+            select(func.count(func.distinct(CodeAttribution.file_path)))
+        )
+        unique_files = unique_files_result.scalar() or 0
+
+        # By change type (operation)
+        operations_result = await self.session.execute(
+            select(
+                CodeAttribution.change_type,
+                func.count(CodeAttribution.id).label("count")
+            )
+            .group_by(CodeAttribution.change_type)
+        )
+        operations = {row.change_type: row.count for row in operations_result.all()}
+
+        # Top agents by lines of code
+        top_agents_result = await self.session.execute(
+            select(
+                CodeAttribution.agent_name,
+                func.sum(CodeAttribution.end_line - CodeAttribution.start_line + 1).label("total_lines"),
+                func.count(CodeAttribution.id).label("attribution_count")
+            )
+            .group_by(CodeAttribution.agent_name)
+            .order_by(func.sum(CodeAttribution.end_line - CodeAttribution.start_line + 1).desc())
+            .limit(10)
+        )
+        top_agents = [
+            {
+                "agentName": row.agent_name,
+                "totalLines": int(row.total_lines or 0),
+                "attributionCount": row.attribution_count
+            }
+            for row in top_agents_result.all()
+        ]
+
+        # Top files by attribution count
+        top_files_result = await self.session.execute(
+            select(
+                CodeAttribution.file_path,
+                func.count(CodeAttribution.id).label("attribution_count"),
+                func.sum(CodeAttribution.end_line - CodeAttribution.start_line + 1).label("total_lines")
+            )
+            .group_by(CodeAttribution.file_path)
+            .order_by(func.count(CodeAttribution.id).desc())
+            .limit(10)
+        )
+        top_files = [
+            {
+                "filePath": row.file_path,
+                "attributionCount": row.attribution_count,
+                "totalLines": int(row.total_lines or 0)
+            }
+            for row in top_files_result.all()
+        ]
+
+        return {
+            "totalLines": int(total_lines),
+            "totalAttributions": total_attributions,
+            "uniqueAgents": unique_agents,
+            "uniqueFiles": unique_files,
+            "byOperation": operations,
+            "topAgents": top_agents,
+            "topFiles": top_files,
+        }
+
+    async def search(
+        self,
+        agent_id: Optional[str] = None,
+        file_path: Optional[str] = None,
+        operation: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict]:
+        """Search attributions with filters"""
+        query = select(CodeAttribution)
+
+        if agent_id:
+            query = query.where(CodeAttribution.agent_id == agent_id)
+        if file_path:
+            query = query.where(CodeAttribution.file_path.like(f"%{file_path}%"))
+        if operation:
+            query = query.where(CodeAttribution.change_type == operation)
+        if start_date:
+            query = query.where(CodeAttribution.created_at >= start_date)
+        if end_date:
+            query = query.where(CodeAttribution.created_at <= end_date)
+
+        query = query.order_by(CodeAttribution.created_at.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(query)
+        return [a.to_dict() for a in result.scalars().all()]

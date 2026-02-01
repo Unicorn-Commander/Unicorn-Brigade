@@ -480,65 +480,74 @@ JSON_TOOL = ToolDefinition(
 )
 
 
-# ============== Shell Command Tool (Sandboxed) ==============
+# ============== Shell Command Tool (SANDBOXED VIA DOCKER) ==============
+#
+# SECURITY NOTE: The shell tool executes commands in a Docker container,
+# NOT on the host system. This is critical for preventing RCE attacks.
+#
+# The old implementation used asyncio.create_subprocess_shell which would
+# execute commands directly on the host - this was a critical security flaw.
+#
 
 async def shell_handler(
     command: str,
     timeout: int = 30,
     working_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Execute a shell command (sandboxed)"""
-    logger.info(f"Shell command: {command}")
+    """
+    Execute a shell command in a sandboxed Docker container.
 
-    # Security: Block dangerous commands
-    BLOCKED_PATTERNS = [
-        "rm -rf /", "dd if=/dev/zero", ":(){ :|:& };:",
-        "mkfs", "format", "> /dev/sda", "sudo", "su ",
-    ]
+    SECURITY: This runs in an isolated container, not on the host.
+    """
+    logger.info(f"Shell command (sandboxed): {command}")
 
-    for pattern in BLOCKED_PATTERNS:
-        if pattern in command.lower():
-            return {
-                "error": f"Command blocked for security: contains '{pattern}'",
-                "success": False,
-            }
-
+    # Import sandbox executor (lazy import to avoid circular deps)
     try:
-        process = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=working_dir,
+        from app.mcp.sandbox_executor import sandbox_executor
+    except ImportError:
+        return {
+            "error": "Shell execution disabled: sandbox executor not available",
+            "success": False,
+        }
+
+    # Check if Docker is available
+    docker_available = await sandbox_executor.check_docker()
+    if not docker_available:
+        return {
+            "error": "Shell execution disabled: Docker sandbox not available. "
+                     "Use the code sandbox API or enable Docker.",
+            "success": False,
+        }
+
+    # Execute in sandbox
+    try:
+        result = await sandbox_executor.execute(
+            code=command,
+            language="bash",
+            timeout=min(timeout, 60),  # Cap at 60s for safety
         )
 
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=timeout
-            )
-        except asyncio.TimeoutError:
-            process.kill()
-            return {"error": f"Command timed out after {timeout}s", "success": False}
-
         return {
-            "stdout": stdout.decode('utf-8', errors='replace'),
-            "stderr": stderr.decode('utf-8', errors='replace'),
-            "exit_code": process.returncode,
-            "success": process.returncode == 0,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "exit_code": result.exit_code,
+            "success": result.success,
+            "sandbox": "docker",  # Indicate this ran in sandbox
         }
 
     except Exception as e:
+        logger.error(f"Sandboxed shell execution failed: {e}")
         return {"error": str(e), "success": False}
 
 
 SHELL_TOOL = ToolDefinition(
     name="shell",
-    description="Execute a shell command. Use for file operations, running scripts, etc. Some commands are blocked for security.",
+    description="Execute a shell command in a sandboxed Docker container. Use for running scripts, installing packages, etc. Commands run in isolation, not on the host system.",
     parameters=[
         ToolParameter(
             name="command",
             type="string",
-            description="The shell command to execute",
+            description="The shell command to execute (runs in Docker container)",
             required=True,
         ),
         ToolParameter(
@@ -626,14 +635,18 @@ MEMORY_TOOL = ToolDefinition(
 # ============== Tool Registry ==============
 
 def get_default_tools() -> List[ToolDefinition]:
-    """Get the default set of built-in tools"""
+    """
+    Get the default set of built-in tools.
+
+    NOTE: Shell tool is excluded by default for security reasons.
+    Use get_all_tools() if shell access is needed.
+    """
     return [
         WEB_SEARCH_TOOL,
         HTTP_REQUEST_TOOL,
         CALCULATOR_TOOL,
         DATETIME_TOOL,
         JSON_TOOL,
-        SHELL_TOOL,
         MEMORY_TOOL,
     ]
 
@@ -655,5 +668,23 @@ def get_research_tools() -> List[ToolDefinition]:
         HTTP_REQUEST_TOOL,
         CALCULATOR_TOOL,
         DATETIME_TOOL,
+        MEMORY_TOOL,
+    ]
+
+
+def get_all_tools() -> List[ToolDefinition]:
+    """
+    Get all built-in tools including shell (sandboxed).
+
+    WARNING: Only use when Docker sandbox is available.
+    Shell commands run in containers, not on host.
+    """
+    return [
+        WEB_SEARCH_TOOL,
+        HTTP_REQUEST_TOOL,
+        CALCULATOR_TOOL,
+        DATETIME_TOOL,
+        JSON_TOOL,
+        SHELL_TOOL,
         MEMORY_TOOL,
     ]

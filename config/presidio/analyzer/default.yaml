@@ -1,0 +1,148 @@
+# Presidio Analyzer Configuration for Unicorn Brigade
+# This configuration defines PII entities to detect and custom recognizers
+
+# Supported entities to detect
+supported_entities:
+  # Standard PII
+  - PERSON
+  - EMAIL_ADDRESS
+  - PHONE_NUMBER
+  - CREDIT_CARD
+  - CRYPTO  # Cryptocurrency addresses
+  - DATE_TIME
+  - DOMAIN_NAME
+  - IP_ADDRESS
+  - URL
+
+  # US-Specific
+  - US_SSN
+  - US_DRIVER_LICENSE
+  - US_PASSPORT
+  - US_BANK_NUMBER
+  - US_ITIN  # Individual Taxpayer Identification Number
+
+  # Medical/Healthcare
+  - MEDICAL_LICENSE
+  - NRP  # National Registration Number (UK NHS)
+
+  # Financial
+  - IBAN_CODE
+  - SWIFT
+
+  # Location
+  - LOCATION
+  - ADDRESS
+
+  # Custom (defined below)
+  - API_KEY
+  - AWS_ACCESS_KEY
+  - GITHUB_TOKEN
+
+# NLP Engine Configuration
+nlp_engine_name: spacy
+models:
+  - lang_code: en
+    model_name: en_core_web_lg
+
+# Score thresholds
+# Only entities with scores above this threshold will be returned
+default_score_threshold: 0.5
+
+# Custom recognizers for Unicorn Brigade
+recognizers:
+  # API Key patterns
+  - name: ApiKeyRecognizer
+    supported_entity: API_KEY
+    supported_language: en
+    patterns:
+      - name: generic_api_key
+        regex: (?i)(api[_-]?key|apikey|api_token)[\\s]*[=:][\\s]*['\"]?([a-zA-Z0-9_-]{20,64})['\"]?
+        score: 0.8
+      - name: bearer_token
+        regex: (?i)bearer[\\s]+[a-zA-Z0-9_-]{20,}
+        score: 0.85
+
+  # AWS Access Keys
+  - name: AwsAccessKeyRecognizer
+    supported_entity: AWS_ACCESS_KEY
+    supported_language: en
+    patterns:
+      - name: aws_access_key_id
+        regex: (?i)(AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}
+        score: 0.9
+      - name: aws_secret_key
+        regex: (?i)aws[_-]?secret[_-]?(access[_-]?)?key[\\s]*[=:][\\s]*['\"]?([a-zA-Z0-9/+]{40})['\"]?
+        score: 0.9
+
+  # GitHub Personal Access Tokens
+  - name: GithubTokenRecognizer
+    supported_entity: GITHUB_TOKEN
+    supported_language: en
+    patterns:
+      - name: github_pat
+        regex: ghp_[a-zA-Z0-9]{36}
+        score: 0.95
+      - name: github_oauth
+        regex: gho_[a-zA-Z0-9]{36}
+        score: 0.95
+      - name: github_app
+        regex: ghu_[a-zA-Z0-9]{36}
+        score: 0.95
+      - name: github_refresh
+        regex: ghr_[a-zA-Z0-9]{36}
+        score: 0.95
+
+  # OpenAI API Keys
+  - name: OpenAIKeyRecognizer
+    supported_entity: API_KEY
+    supported_language: en
+    patterns:
+      - name: openai_key
+        regex: sk-[a-zA-Z0-9]{48}
+        score: 0.95
+      - name: openai_proj_key
+        regex: sk-proj-[a-zA-Z0-9_-]{48,}
+        score: 0.95
+
+  # Anthropic API Keys
+  - name: AnthropicKeyRecognizer
+    supported_entity: API_KEY
+    supported_language: en
+    patterns:
+      - name: anthropic_key
+        regex: sk-ant-[a-zA-Z0-9_-]{40,}
+        score: 0.95
+
+# Deny list - words that should always be detected
+deny_list_recognizers:
+  - name: PasswordDenyList
+    supported_entity: PASSWORD
+    supported_language: en
+    deny_list:
+      - password
+      - passwd
+      - pwd
+    context:
+      - password
+      - secret
+      - credential
+
+# Context words that increase detection confidence
+context_words:
+  CREDIT_CARD:
+    - credit card
+    - cc number
+    - card number
+    - visa
+    - mastercard
+    - amex
+  US_SSN:
+    - social security
+    - ssn
+    - social
+  API_KEY:
+    - api key
+    - api_key
+    - apikey
+    - secret key
+    - access token

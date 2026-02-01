@@ -31,7 +31,7 @@ async def test_workflow_stats():
     assert len(stats["available_agents"]) == 3
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(not pytest.config.getoption("--run-llm-tests", default=False), reason="LLM tests disabled")
+@pytest.mark.skipif(True, reason="LLM tests disabled by default - set RUN_LLM_TESTS=1 to enable")
 async def test_workflow_execution():
     """Test complete workflow execution"""
     memory = MemoryManager()

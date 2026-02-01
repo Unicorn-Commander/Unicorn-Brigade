@@ -1,0 +1,518 @@
+"""
+User registration and authentication routes.
+
+Provides endpoints for:
+- User registration (public, rate limited)
+- User login (returns API key)
+- Profile management (authenticated)
+- User API key management
+"""
+
+import re
+import time
+import logging
+from collections import defaultdict
+from datetime import datetime
+from typing import Optional, List, Annotated
+
+from fastapi import APIRouter, HTTPException, Depends, Request, status
+from pydantic import BaseModel, EmailStr, field_validator
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.database import get_session
+from app.db.repositories import UserRepository, UserApiKeyRepository
+from app.db.models import User
+from app.auth.middleware import get_current_user, AuthUser
+from app.auth.roles import UserRole
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+# ---- Password Hashing with passlib ----
+try:
+    from passlib.context import CryptContext
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+    def hash_password(password: str) -> str:
+        """Hash a password using bcrypt"""
+        return pwd_context.hash(password)
+
+    def verify_password(plain_password: str, hashed_password: str) -> bool:
+        """Verify a password against a hash"""
+        return pwd_context.verify(plain_password, hashed_password)
+
+except ImportError:
+    # Fallback to hashlib if passlib not installed (not recommended for production)
+    import hashlib
+    import secrets
+
+    logger.warning("passlib not installed - using hashlib fallback (NOT recommended for production)")
+
+    def hash_password(password: str) -> str:
+        """Hash a password using hashlib (fallback)"""
+        salt = secrets.token_hex(16)
+        hashed = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+        return f"{salt}${hashed.hex()}"
+
+    def verify_password(plain_password: str, hashed_password: str) -> bool:
+        """Verify a password against a hash (fallback)"""
+        try:
+            salt, stored_hash = hashed_password.split('$')
+            computed_hash = hashlib.pbkdf2_hmac('sha256', plain_password.encode(), salt.encode(), 100000)
+            return computed_hash.hex() == stored_hash
+        except (ValueError, AttributeError):
+            return False
+
+
+# ---- Rate Limiting ----
+
+class RateLimiter:
+    """Simple in-memory rate limiter for registration endpoint"""
+
+    def __init__(self, max_requests: int = 5, window_seconds: int = 3600):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.requests: dict = defaultdict(list)
+
+    def is_allowed(self, identifier: str) -> bool:
+        """Check if request is allowed for this identifier (IP or email)"""
+        now = time.time()
+        window_start = now - self.window_seconds
+
+        # Clean old requests
+        self.requests[identifier] = [
+            ts for ts in self.requests[identifier] if ts > window_start
+        ]
+
+        # Check limit
+        if len(self.requests[identifier]) >= self.max_requests:
+            return False
+
+        # Record this request
+        self.requests[identifier].append(now)
+        return True
+
+    def get_retry_after(self, identifier: str) -> int:
+        """Get seconds until next allowed request"""
+        if not self.requests[identifier]:
+            return 0
+        oldest = min(self.requests[identifier])
+        return max(0, int(oldest + self.window_seconds - time.time()))
+
+
+# Rate limiter: 5 registrations per IP per hour
+registration_limiter = RateLimiter(max_requests=5, window_seconds=3600)
+
+
+# ---- Request/Response Models ----
+
+class UserRegisterRequest(BaseModel):
+    """User registration request"""
+    email: EmailStr
+    password: str
+    name: str
+
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        """Validate password strength"""
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        if not re.search(r'[A-Za-z]', v):
+            raise ValueError('Password must contain at least one letter')
+        if not re.search(r'[0-9]', v):
+            raise ValueError('Password must contain at least one number')
+        return v
+
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        """Validate name"""
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError('Name must be at least 2 characters long')
+        if len(v) > 100:
+            raise ValueError('Name must be at most 100 characters long')
+        return v
+
+
+class UserLoginRequest(BaseModel):
+    """User login request"""
+    email: EmailStr
+    password: str
+
+
+class UserUpdateRequest(BaseModel):
+    """User profile update request"""
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    current_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+    @field_validator('new_password')
+    @classmethod
+    def validate_new_password(cls, v: Optional[str]) -> Optional[str]:
+        """Validate new password strength"""
+        if v is None:
+            return v
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        if not re.search(r'[A-Za-z]', v):
+            raise ValueError('Password must contain at least one letter')
+        if not re.search(r'[0-9]', v):
+            raise ValueError('Password must contain at least one number')
+        return v
+
+
+class CreateApiKeyRequest(BaseModel):
+    """Create API key request"""
+    name: str
+    permissions: Optional[List[str]] = ["chat", "read"]
+    rateLimit: Optional[int] = 100
+    expiresInDays: Optional[int] = 90
+
+
+class UserResponse(BaseModel):
+    """User response (no password hash)"""
+    id: str
+    email: str
+    name: str
+    role: str
+    isActive: bool
+    createdAt: Optional[str] = None
+    updatedAt: Optional[str] = None
+
+
+class LoginResponse(BaseModel):
+    """Login response with API key"""
+    user: UserResponse
+    apiKey: str
+    keyPrefix: str
+
+
+# ---- Helper Functions ----
+
+def get_client_ip(request: Request) -> str:
+    """Get client IP from request, handling proxies"""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+# ---- Endpoints ----
+
+@router.post("/users/register", response_model=UserResponse, status_code=201)
+async def register_user(
+    request: Request,
+    body: UserRegisterRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Register a new user account.
+
+    - **email**: Valid email address (unique)
+    - **password**: At least 8 characters with letters and numbers
+    - **name**: Display name (2-100 characters)
+
+    Rate limited to 5 registrations per IP per hour.
+    """
+    # Rate limit by IP
+    client_ip = get_client_ip(request)
+    if not registration_limiter.is_allowed(client_ip):
+        retry_after = registration_limiter.get_retry_after(client_ip)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many registration attempts. Try again in {retry_after} seconds.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    repo = UserRepository(session)
+
+    # Check if email already exists
+    if await repo.email_exists(body.email):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        )
+
+    # Hash password and create user
+    password_hash = hash_password(body.password)
+    user_data = {
+        "email": body.email,
+        "password_hash": password_hash,
+        "name": body.name,
+        "role": "operator",  # Default role
+    }
+
+    user = await repo.create(user_data)
+    logger.info(f"New user registered: {user['email']} (ID: {user['id']})")
+
+    return UserResponse(**user)
+
+
+@router.post("/users/login", response_model=LoginResponse)
+async def login_user(
+    body: UserLoginRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Authenticate user and return an API key.
+
+    - **email**: Registered email address
+    - **password**: Account password
+
+    Returns user profile and a new API key for authentication.
+    """
+    repo = UserRepository(session)
+    key_repo = UserApiKeyRepository(session)
+
+    # Get user by email (returns ORM object for password check)
+    user = await repo.get_by_email(body.email)
+
+    if not user:
+        # Use same error message to prevent email enumeration
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
+    # Verify password
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
+    # Check if user is active
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is deactivated",
+        )
+
+    # Generate a new API key for this login session
+    key_data = {
+        "name": f"Login session - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+        "permissions": _get_permissions_for_role(user.role),
+        "rateLimit": 1000,
+        "expiresInDays": 30,
+    }
+    api_key = await key_repo.generate(str(user.id), key_data)
+
+    logger.info(f"User logged in: {user.email} (ID: {user.id})")
+
+    return LoginResponse(
+        user=UserResponse(**user.to_dict()),
+        apiKey=api_key["key"],
+        keyPrefix=api_key["keyPrefix"],
+    )
+
+
+@router.get("/users/me", response_model=UserResponse)
+async def get_current_user_profile(
+    session: AsyncSession = Depends(get_session),
+    current_user: Annotated[AuthUser, Depends(get_current_user)] = None,
+):
+    """
+    Get the current authenticated user's profile.
+
+    Requires authentication via API key.
+    """
+    if not current_user or current_user.id in ("anonymous", "dev-bypass"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    repo = UserRepository(session)
+    user = await repo.get_by_id(current_user.id)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return UserResponse(**user)
+
+
+@router.put("/users/me", response_model=UserResponse)
+async def update_current_user_profile(
+    body: UserUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: Annotated[AuthUser, Depends(get_current_user)] = None,
+):
+    """
+    Update the current authenticated user's profile.
+
+    - **name**: New display name (optional)
+    - **email**: New email address (optional)
+    - **current_password**: Required if changing password
+    - **new_password**: New password (optional)
+
+    Requires authentication via API key.
+    """
+    if not current_user or current_user.id in ("anonymous", "dev-bypass"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    repo = UserRepository(session)
+
+    # Get current user from DB (need ORM object for password verification)
+    user_dict = await repo.get_by_id(current_user.id)
+    if not user_dict:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # For password change, we need the ORM object
+    db_user = await repo.get_by_email(user_dict["email"])
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    updates = {}
+
+    # Update name if provided
+    if body.name is not None:
+        name = body.name.strip()
+        if len(name) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Name must be at least 2 characters",
+            )
+        updates["name"] = name
+
+    # Update email if provided
+    if body.email is not None and body.email.lower() != db_user.email:
+        # Check if new email is taken
+        if await repo.email_exists(body.email):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already in use",
+            )
+        updates["email"] = body.email
+
+    # Update password if provided
+    if body.new_password is not None:
+        if body.current_password is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password required to change password",
+            )
+        if not verify_password(body.current_password, db_user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Current password is incorrect",
+            )
+        updates["password_hash"] = hash_password(body.new_password)
+
+    if not updates:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No updates provided",
+        )
+
+    updated_user = await repo.update(current_user.id, updates)
+    logger.info(f"User profile updated: {current_user.id}")
+
+    return UserResponse(**updated_user)
+
+
+@router.post("/users/me/api-keys", status_code=201)
+async def create_user_api_key(
+    body: CreateApiKeyRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: Annotated[AuthUser, Depends(get_current_user)] = None,
+):
+    """
+    Create a new API key for the current user.
+
+    - **name**: Descriptive name for the key
+    - **permissions**: List of permissions (default: ["chat", "read"])
+    - **rateLimit**: Requests per minute (default: 100)
+    - **expiresInDays**: Days until expiration (default: 90)
+
+    The full API key is only returned once - store it securely!
+    """
+    if not current_user or current_user.id in ("anonymous", "dev-bypass"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    repo = UserApiKeyRepository(session)
+    result = await repo.generate(current_user.id, body.model_dump())
+
+    logger.info(f"User {current_user.id} created API key: {result['keyPrefix']}...")
+
+    return result
+
+
+@router.get("/users/me/api-keys")
+async def list_user_api_keys(
+    session: AsyncSession = Depends(get_session),
+    current_user: Annotated[AuthUser, Depends(get_current_user)] = None,
+):
+    """
+    List all API keys for the current user.
+
+    Keys are returned without the full key value (only prefix shown).
+    """
+    if not current_user or current_user.id in ("anonymous", "dev-bypass"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    repo = UserApiKeyRepository(session)
+    keys = await repo.list_for_user(current_user.id)
+
+    return {"keys": keys}
+
+
+@router.delete("/users/me/api-keys/{key_id}")
+async def revoke_user_api_key(
+    key_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: Annotated[AuthUser, Depends(get_current_user)] = None,
+):
+    """
+    Revoke (deactivate) one of the current user's API keys.
+    """
+    if not current_user or current_user.id in ("anonymous", "dev-bypass"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    repo = UserApiKeyRepository(session)
+    success = await repo.revoke(current_user.id, key_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="API key not found",
+        )
+
+    logger.info(f"User {current_user.id} revoked API key: {key_id}")
+
+    return {"message": "API key revoked", "id": key_id}
+
+
+# ---- Helper Functions ----
+
+def _get_permissions_for_role(role: str) -> List[str]:
+    """Get default permissions based on user role"""
+    if role == "admin":
+        return ["admin", "write", "chat", "read"]
+    elif role == "operator":
+        return ["write", "chat", "read"]
+    else:  # viewer
+        return ["read"]

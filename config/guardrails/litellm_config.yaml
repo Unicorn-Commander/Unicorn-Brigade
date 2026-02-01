@@ -1,0 +1,275 @@
+# LiteLLM Proxy Configuration with Guardrails
+# This is a template for Ops-Center LiteLLM configuration
+#
+# Copy this to your Ops-Center configuration directory and customize as needed.
+# Sensitive values should be set via environment variables.
+
+# ==============================================
+# Model List - Available LLM providers
+# ==============================================
+model_list:
+  # OpenAI Models
+  - model_name: gpt-4
+    litellm_params:
+      model: openai/gpt-4
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4-turbo
+    litellm_params:
+      model: openai/gpt-4-turbo
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  # Anthropic Models
+  - model_name: claude-3-opus
+    litellm_params:
+      model: anthropic/claude-3-opus-20240229
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: claude-3-5-haiku
+    litellm_params:
+      model: anthropic/claude-3-5-haiku-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # Local/Self-hosted via vLLM or Ollama
+  - model_name: local-llama
+    litellm_params:
+      model: ollama/llama3.2
+      api_base: http://ollama:11434
+
+  # Llama Guard for content safety (internal use)
+  - model_name: llama-guard
+    litellm_params:
+      model: ollama/llama-guard3:1b
+      api_base: http://llama-guard:11434
+
+# ==============================================
+# Guardrails Configuration
+# ==============================================
+guardrails:
+  # -----------------------------------------
+  # Tier 1: Built-in Guardrails (Fast)
+  # -----------------------------------------
+
+  # Keyword blocking - Blocks known jailbreak attempts
+  - guardrail_name: "keyword-filter"
+    litellm_params:
+      guardrail: keyword
+      mode: pre_call
+      blocked_keywords:
+        # Jailbreak attempts
+        - "jailbreak"
+        - "ignore previous instructions"
+        - "ignore all previous"
+        - "disregard your instructions"
+        - "DAN mode"
+        - "developer mode"
+        - "pretend you are"
+        - "act as if you have no restrictions"
+        # Prompt injection
+        - "system prompt"
+        - "reveal your instructions"
+        - "what are your rules"
+      default_on: true
+
+  # Pattern-based filtering - Regex for suspicious patterns
+  - guardrail_name: "pattern-filter"
+    litellm_params:
+      guardrail: regex
+      mode: pre_call
+      patterns:
+        # Prompt injection attempts
+        - "(?i)ignore.*previous.*instructions"
+        - "(?i)bypass.*safety"
+        - "(?i)pretend.*you.*are"
+        - "(?i)you.*are.*now"
+        - "(?i)new.*persona"
+        - "(?i)roleplay.*as"
+        # Base64 encoded content (potential bypass)
+        - "(?i)decode.*base64"
+        - "(?i)eval\\s*\\("
+      default_on: true
+
+  # -----------------------------------------
+  # Tier 2: Presidio PII Protection
+  # -----------------------------------------
+
+  # PII detection and masking
+  - guardrail_name: "pii-masking"
+    litellm_params:
+      guardrail: presidio
+      mode: [pre_call, post_call]
+      presidio_analyzer_api_base: "http://presidio-analyzer:5001"
+      presidio_anonymizer_api_base: "http://presidio-anonymizer:5002"
+      # Mask PII in both input and output
+      output_parse_pii: true
+      # Entities to detect
+      pii_entities_to_detect:
+        - PERSON
+        - EMAIL_ADDRESS
+        - PHONE_NUMBER
+        - CREDIT_CARD
+        - US_SSN
+        - US_DRIVER_LICENSE
+        - IP_ADDRESS
+        - API_KEY
+        - AWS_ACCESS_KEY
+        - GITHUB_TOKEN
+        - IBAN_CODE
+        - LOCATION
+      # Anonymization method
+      anonymizer_config:
+        DEFAULT:
+          type: "replace"
+          new_value: "[REDACTED]"
+        EMAIL_ADDRESS:
+          type: "mask"
+          masking_char: "*"
+          chars_to_mask: 5
+          from_end: false
+        CREDIT_CARD:
+          type: "mask"
+          masking_char: "*"
+          chars_to_mask: 12
+          from_end: false
+      default_on: true
+
+  # -----------------------------------------
+  # Tier 3: Guardrails AI Validators
+  # -----------------------------------------
+
+  # Content validation with Guardrails AI
+  - guardrail_name: "content-validators"
+    litellm_params:
+      guardrail: guardrails_ai
+      guard_name: "input"  # Use input guard for pre_call
+      mode: pre_call
+      api_base: "http://guardrails-ai:8000"
+      timeout: 5
+      default_on: true
+
+  - guardrail_name: "output-validators"
+    litellm_params:
+      guardrail: guardrails_ai
+      guard_name: "output"  # Use output guard for post_call
+      mode: post_call
+      api_base: "http://guardrails-ai:8000"
+      timeout: 5
+      default_on: true
+
+  # -----------------------------------------
+  # Tier 4: Llama Guard Content Safety
+  # -----------------------------------------
+
+  # Content safety check with Llama Guard
+  - guardrail_name: "content-safety"
+    litellm_params:
+      guardrail: custom
+      mode: [pre_call, post_call]
+      api_base: "http://llama-guard-service:8080"
+      custom_callback: "llama_guard_callback"
+      timeout: 10
+      # Action on unsafe content
+      on_fail: "block"  # or "log" for monitoring mode
+      default_on: true
+
+  # -----------------------------------------
+  # Optional: Strict Mode Guard
+  # -----------------------------------------
+
+  # Strict validation for sensitive operations
+  - guardrail_name: "strict-mode"
+    litellm_params:
+      guardrail: guardrails_ai
+      guard_name: "strict"
+      mode: [pre_call, post_call]
+      api_base: "http://guardrails-ai:8000"
+      timeout: 10
+      default_on: false  # Enable per-request with guardrails=["strict-mode"]
+
+# ==============================================
+# General Settings
+# ==============================================
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+
+  # Guardrail behavior on failure
+  guardrail_failure_action: block  # block, log, or allow
+
+  # Timeout for guardrail checks (ms)
+  guardrail_timeout_ms: 15000
+
+  # Enable guardrail caching
+  cache_guardrail_results: true
+  cache_ttl_seconds: 300
+
+# ==============================================
+# LiteLLM Settings
+# ==============================================
+litellm_settings:
+  # Drop unsupported params instead of erroring
+  drop_params: true
+
+  # Logging verbosity
+  set_verbose: false
+
+  # Callbacks for observability
+  callbacks:
+    - langfuse  # Requires LANGFUSE_* env vars
+
+  # Rate limiting
+  rate_limit_policy:
+    requests_per_minute: 100
+    tokens_per_minute: 100000
+
+  # Retry configuration
+  num_retries: 2
+  timeout: 120
+
+# ==============================================
+# Callback Configuration
+# ==============================================
+callbacks:
+  # Langfuse for LLM observability
+  langfuse:
+    public_key: os.environ/LANGFUSE_PUBLIC_KEY
+    secret_key: os.environ/LANGFUSE_SECRET_KEY
+    host: os.environ/LANGFUSE_HOST
+
+# ==============================================
+# Environment Variables Required
+# ==============================================
+# The following environment variables must be set:
+#
+# LLM Providers:
+#   OPENAI_API_KEY
+#   ANTHROPIC_API_KEY
+#
+# LiteLLM:
+#   LITELLM_MASTER_KEY
+#   DATABASE_URL
+#
+# Observability (optional):
+#   LANGFUSE_PUBLIC_KEY
+#   LANGFUSE_SECRET_KEY
+#   LANGFUSE_HOST
+#
+# Guardrail Services (auto-configured in Docker):
+#   Presidio: http://presidio-analyzer:5001, http://presidio-anonymizer:5002
+#   Guardrails AI: http://guardrails-ai:8000
+#   Llama Guard: http://llama-guard-service:8080

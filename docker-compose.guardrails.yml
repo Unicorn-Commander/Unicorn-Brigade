@@ -1,0 +1,163 @@
+# Docker Compose Overlay for Guardrails Services
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.guardrails.yml up -d
+#
+# This overlay adds:
+# - Microsoft Presidio (PII detection/anonymization)
+# - Llama Guard 3 via Ollama (content safety)
+# - Guardrails AI service (validators)
+# - Redis for caching guardrail results
+
+version: '3.8'
+
+services:
+  # ============================================
+  # Microsoft Presidio - PII Detection
+  # ============================================
+
+  presidio-analyzer:
+    image: mcr.microsoft.com/presidio-analyzer:latest
+    container_name: brigade-presidio-analyzer
+    ports:
+      - "5001:5001"
+    environment:
+      - ANALYZER_DEFAULT_LANGUAGE=en
+      # Enable custom recognizers
+      - PRESIDIO_ANALYZER_RECOGNIZER_REGISTRY=presidio_analyzer.nlp_engine.recognizer_registry_provider.RecognizerRegistryProvider
+    volumes:
+      - ./config/presidio/analyzer:/home/app/presidio-analyzer/conf
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  presidio-anonymizer:
+    image: mcr.microsoft.com/presidio-anonymizer:latest
+    container_name: brigade-presidio-anonymizer
+    ports:
+      - "5002:5002"
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # Llama Guard 3 - Content Safety
+  # ============================================
+
+  llama-guard:
+    image: ollama/ollama:latest
+    container_name: brigade-llama-guard
+    ports:
+      - "11435:11434"  # Different port to avoid conflict with main Ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_KEEP_ALIVE=24h
+      # GPU support (uncomment for NVIDIA)
+      # - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - brigade-llama-guard-data:/root/.ollama
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    # Pull Llama Guard model on startup
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /bin/ollama serve &
+        sleep 10
+        /bin/ollama pull llama-guard3:1b
+        wait
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s  # Allow time for model download
+
+  # Llama Guard HTTP Service (FastAPI wrapper)
+  llama-guard-service:
+    build:
+      context: ./services/llama-guard
+      dockerfile: Dockerfile
+    container_name: brigade-llama-guard-service
+    ports:
+      - "8085:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://llama-guard:11434
+      - MODEL_NAME=llama-guard3:1b
+      - LOG_LEVEL=INFO
+    depends_on:
+      llama-guard:
+        condition: service_healthy
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # Guardrails AI - Validators Service
+  # ============================================
+
+  guardrails-ai:
+    build:
+      context: ./services/guardrails-ai
+      dockerfile: Dockerfile
+    container_name: brigade-guardrails-ai
+    ports:
+      - "8086:8000"
+    environment:
+      - GUARDRAILS_LOG_LEVEL=INFO
+      - GUARDRAILS_PROCESS_COUNT=4
+      # OpenAI for LLM-based validators (optional)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      - ./config/guardrails:/app/guards
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================
+  # Redis Cache for Guardrails
+  # ============================================
+
+  guardrails-cache:
+    image: redis:7.4-alpine
+    container_name: brigade-guardrails-cache
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6380:6379"
+    volumes:
+      - brigade-guardrails-cache-data:/data
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  brigade-network:
+    external: true
+
+volumes:
+  brigade-llama-guard-data:
+  brigade-guardrails-cache-data:

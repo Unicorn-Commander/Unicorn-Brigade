@@ -135,6 +135,13 @@ class MCPServer:
         self.tools: Dict[str, MCPTool] = {}
         self.resources: Dict[str, MCPResource] = {}
         self.handlers: Dict[str, Callable[..., Awaitable[Any]]] = {}
+        self._resource_manager = None  # Lazy-loaded MCPResourceManager
+
+    def get_resource_manager(self):
+        """Get or create the resource manager"""
+        if self._resource_manager is None:
+            self._resource_manager = MCPResourceManager()
+        return self._resource_manager
 
     def register_tool(
         self,
@@ -249,11 +256,18 @@ class MCPServer:
 
         elif method == "resources/read":
             uri = params.get("uri")
-            resource = self.resources.get(uri)
-            if not resource:
-                return {"error": f"Resource not found: {uri}"}
-            # TODO: Implement resource reading
-            return {"contents": [{"uri": uri, "text": "Resource content here"}]}
+            if not uri:
+                return {"error": "Missing 'uri' parameter"}
+
+            # Try using the resource manager to read the URI
+            try:
+                result = await self.get_resource_manager().read(uri)
+                if "error" in result:
+                    return result
+                return result
+            except Exception as e:
+                logger.error(f"Error reading resource {uri}: {e}")
+                return {"error": str(e)}
 
         else:
             return {"error": f"Unknown method: {method}"}
@@ -383,37 +397,85 @@ class MCPClient:
         )
 
     async def _initialize(self):
-        """Initialize connection by fetching tools and resources"""
-        # Get available tools
-        tools_response = await self.request("tools/list", {})
-        if "tools" in tools_response:
-            for tool_data in tools_response["tools"]:
-                tool = MCPTool(
-                    name=tool_data["name"],
-                    description=tool_data.get("description", ""),
-                    parameters=[
-                        MCPToolParameter(
-                            name=name,
-                            type=props.get("type", "string"),
-                            description=props.get("description", ""),
-                            required=name in tool_data.get("input_schema", {}).get("required", []),
-                        )
-                        for name, props in tool_data.get("input_schema", {}).get("properties", {}).items()
-                    ]
-                )
-                self._tools[tool.name] = tool
+        """
+        Initialize MCP connection with proper handshake.
+
+        MCP Protocol initialization sequence:
+        1. Client sends 'initialize' request with client info
+        2. Server responds with server capabilities
+        3. Client sends 'initialized' notification
+        4. Client can now call tools/list, resources/list, etc.
+        """
+        try:
+            # Step 1 & 2: Send initialize request and get server capabilities
+            init_response = await self.request("initialize", {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "roots": {"listChanged": True},
+                    "sampling": {}
+                },
+                "clientInfo": {
+                    "name": "unicorn-brigade",
+                    "version": "1.0.0"
+                }
+            })
+
+            logger.info(f"MCP server initialized: {init_response.get('serverInfo', {}).get('name', 'unknown')}")
+
+            # Step 3: Send initialized notification (no response expected)
+            # Note: Notifications don't have an 'id' and don't expect a response
+            if self.config.transport == ProtocolMCPTransport.STDIO and self._process:
+                notification = {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/initialized",
+                    "params": {}
+                }
+                notification_json = json.dumps(notification) + "\n"
+                self._process.stdin.write(notification_json.encode())
+                self._process.stdin.flush()
+
+            # Small delay to let server process the notification
+            await asyncio.sleep(0.1)
+
+        except Exception as e:
+            logger.warning(f"MCP initialize handshake failed, continuing anyway: {e}")
+
+        # Step 4: Now fetch tools and resources
+        try:
+            tools_response = await self.request("tools/list", {})
+            if "tools" in tools_response:
+                for tool_data in tools_response["tools"]:
+                    tool = MCPTool(
+                        name=tool_data["name"],
+                        description=tool_data.get("description", ""),
+                        parameters=[
+                            MCPToolParameter(
+                                name=name,
+                                type=props.get("type", "string"),
+                                description=props.get("description", ""),
+                                required=name in tool_data.get("input_schema", {}).get("required", []),
+                            )
+                            for name, props in tool_data.get("input_schema", {}).get("properties", {}).items()
+                        ]
+                    )
+                    self._tools[tool.name] = tool
+        except Exception as e:
+            logger.error(f"Failed to fetch tools: {e}")
 
         # Get available resources
-        resources_response = await self.request("resources/list", {})
-        if "resources" in resources_response:
-            for res_data in resources_response["resources"]:
-                resource = MCPResource(
-                    uri=res_data["uri"],
-                    name=res_data.get("name", res_data["uri"]),
-                    description=res_data.get("description", ""),
-                    mime_type=res_data.get("mimeType", "text/plain"),
-                )
-                self._resources[resource.uri] = resource
+        try:
+            resources_response = await self.request("resources/list", {})
+            if "resources" in resources_response:
+                for res_data in resources_response["resources"]:
+                    resource = MCPResource(
+                        uri=res_data["uri"],
+                        name=res_data.get("name", res_data["uri"]),
+                        description=res_data.get("description", ""),
+                        mime_type=res_data.get("mimeType", "text/plain"),
+                    )
+                    self._resources[resource.uri] = resource
+        except Exception as e:
+            logger.error(f"Failed to fetch resources: {e}")
 
         logger.info(f"MCP client initialized: {len(self._tools)} tools, {len(self._resources)} resources")
 

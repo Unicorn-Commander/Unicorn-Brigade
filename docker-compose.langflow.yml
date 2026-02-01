@@ -1,0 +1,87 @@
+# Langflow Visual Workflow Builder Stack
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.langflow.yml up -d
+#
+# Langflow provides a visual interface for building LLM workflows that can be
+# integrated with Unicorn Brigade agents.
+
+version: '3.8'
+
+services:
+  # Update API with Langflow environment variables
+  brigade-api:
+    environment:
+      - LANGFLOW_ENABLED=true
+      - LANGFLOW_HOST=http://langflow:7860
+      - LANGFLOW_API_KEY=${LANGFLOW_API_KEY:-}
+    depends_on:
+      langflow:
+        condition: service_healthy
+
+  # Langflow Visual Workflow Builder
+  langflow:
+    image: langflowai/langflow:latest
+    container_name: brigade-langflow
+    ports:
+      - "7860:7860"
+    environment:
+      # Database - uses Brigade's PostgreSQL
+      - LANGFLOW_DATABASE_URL=postgresql://${POSTGRES_USER:-brigade}:${POSTGRES_PASSWORD}@brigade-postgres:5432/${LANGFLOW_DB_NAME:-langflow}
+      # Configuration
+      - LANGFLOW_HOST=0.0.0.0
+      - LANGFLOW_PORT=7860
+      - LANGFLOW_CONFIG_DIR=/app/langflow
+      - LANGFLOW_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Superuser for initial setup
+      - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER:-admin}
+      - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD:-changeme}
+      # Secret key for session encryption
+      - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY:-your-secret-key-change-in-production}
+      # Auto-login for development (disable in production)
+      - LANGFLOW_AUTO_LOGIN=${LANGFLOW_AUTO_LOGIN:-false}
+      # Store settings
+      - LANGFLOW_STORE=true
+      - LANGFLOW_STORE_ENVIRONMENT_VARIABLES=true
+      # Worker settings
+      - LANGFLOW_WORKERS=2
+      # OpenAI/Anthropic keys for flow components
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    volumes:
+      - langflow-data:/app/langflow
+    depends_on:
+      brigade-postgres:
+        condition: service_healthy
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # PostgreSQL database initialization for Langflow
+  langflow-db-init:
+    image: postgres:16-alpine
+    container_name: langflow-db-init
+    environment:
+      - PGPASSWORD=${POSTGRES_PASSWORD}
+    entrypoint: >
+      /bin/sh -c "
+      until pg_isready -h brigade-postgres -U ${POSTGRES_USER:-brigade}; do
+        echo 'Waiting for PostgreSQL...';
+        sleep 2;
+      done;
+      psql -h brigade-postgres -U ${POSTGRES_USER:-brigade} -d postgres -c \"CREATE DATABASE ${LANGFLOW_DB_NAME:-langflow}\" || true;
+      echo 'Langflow database ready';
+      "
+    depends_on:
+      brigade-postgres:
+        condition: service_healthy
+    networks:
+      - brigade-network
+
+volumes:
+  langflow-data:

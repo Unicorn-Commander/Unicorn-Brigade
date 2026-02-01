@@ -673,7 +673,7 @@ const APIKeysPage = () => {
 
 url = "https://api.brigade.ai/v1/agents"
 headers = {
-    "Authorization": "Bearer YOUR_API_KEY",
+    "X-API-Key": "YOUR_API_KEY",
     "Content-Type": "application/json"
 }
 

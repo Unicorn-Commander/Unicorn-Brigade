@@ -6,6 +6,7 @@ import {
   Bot,
   Sparkles,
   ChevronDown,
+  ChevronUp,
   Copy,
   Check,
   Loader2,
@@ -15,59 +16,21 @@ import {
   Zap,
   Plus,
   Wrench,
-  ChevronRight
+  ChevronRight,
+  Phone,
+  AlertTriangle,
+  RefreshCw,
+  Info,
+  Settings,
+  X
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'react-hot-toast';
+import ToolCallCard, { getToolIcon } from '../components/ToolCallCard';
+import VoiceCallButton from '../components/VoiceCallButton';
+import VoiceCallModal from '../components/VoiceCallModal';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-
-// Tool call card — shows tool name, args, and collapsible result
-const ToolCallCard = ({ toolCall }) => {
-  const [expanded, setExpanded] = useState(false);
-  const hasResult = toolCall.result !== undefined || toolCall.error;
-  const isError = !!toolCall.error;
-
-  return (
-    <div className="my-2 rounded-lg border border-slate-700/50 bg-slate-800/40 overflow-hidden">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center space-x-2 px-3 py-2 text-left hover:bg-slate-700/30 transition-colors"
-      >
-        <Wrench className={`w-3.5 h-3.5 flex-shrink-0 ${isError ? 'text-red-400' : hasResult ? 'text-green-400' : 'text-yellow-400 animate-pulse'}`} />
-        <span className="text-xs font-medium text-slate-300">{toolCall.name}</span>
-        {hasResult && (
-          <span className={`text-[10px] px-1.5 py-0.5 rounded ${isError ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
-            {isError ? 'error' : 'done'}
-          </span>
-        )}
-        {!hasResult && (
-          <Loader2 className="w-3 h-3 text-yellow-400 animate-spin" />
-        )}
-        <div className="flex-1" />
-        <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-      </button>
-      {expanded && (
-        <div className="px-3 pb-2 space-y-1.5 border-t border-slate-700/30">
-          <div className="pt-1.5">
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider">Arguments</p>
-            <pre className="text-[11px] text-slate-400 bg-slate-900/50 rounded p-1.5 mt-0.5 overflow-x-auto">
-              {JSON.stringify(toolCall.arguments, null, 2)}
-            </pre>
-          </div>
-          {hasResult && (
-            <div>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">{isError ? 'Error' : 'Result'}</p>
-              <pre className={`text-[11px] ${isError ? 'text-red-400' : 'text-slate-400'} bg-slate-900/50 rounded p-1.5 mt-0.5 overflow-x-auto max-h-40`}>
-                {isError ? toolCall.error : JSON.stringify(toolCall.result, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 const AgentChat = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -85,6 +48,16 @@ const AgentChat = () => {
   const [conversationId, setConversationId] = useState(null);
   const [conversationTitle, setConversationTitle] = useState(null);
   const [loadingConversation, setLoadingConversation] = useState(false);
+
+  // Voice call state
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [isInVoiceCall, setIsInVoiceCall] = useState(false);
+
+  // UI state for new features
+  const [showToolsPanel, setShowToolsPanel] = useState(false);
+  const [isExecutingTool, setIsExecutingTool] = useState(false);
+  const [currentToolName, setCurrentToolName] = useState(null);
+  const [retryMessage, setRetryMessage] = useState(null);
 
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
@@ -254,6 +227,8 @@ const AgentChat = () => {
     setInput('');
     setIsThinking(true);
     setIsStreaming(true);
+    setIsExecutingTool(false);
+    setCurrentToolName(null);
 
     // Reset textarea height
     if (textareaRef.current) {
@@ -336,8 +311,10 @@ const AgentChat = () => {
                 setIsThinking(false);
               }
             } else if (event.type === 'tool_call') {
-              // Tool is being called — show it in the message
+              // Tool is being called - show it in the message
               setIsThinking(false);
+              setIsExecutingTool(true);
+              setCurrentToolName(event.name);
               setMessages(prev =>
                 prev.map(m =>
                   m.id === assistantId
@@ -352,7 +329,9 @@ const AgentChat = () => {
                 )
               );
             } else if (event.type === 'tool_result') {
-              // Tool returned a result — update the matching tool call
+              // Tool returned a result - update the matching tool call
+              setIsExecutingTool(false);
+              setCurrentToolName(null);
               setMessages(prev =>
                 prev.map(m => {
                   if (m.id !== assistantId) return m;
@@ -368,6 +347,7 @@ const AgentChat = () => {
               if (!gotFirstToken) {
                 gotFirstToken = true;
                 setIsThinking(false);
+                setIsExecutingTool(false);
               }
               accumulated += event.content;
               setMessages(prev =>
@@ -423,6 +403,7 @@ const AgentChat = () => {
     } catch (err) {
       console.error('Chat error:', err);
       setIsThinking(false);
+      setIsExecutingTool(false);
 
       // If we already added an empty assistant message, update it with error
       setMessages(prev => {
@@ -434,7 +415,8 @@ const AgentChat = () => {
                   ...m,
                   content: `Sorry, I encountered an error: ${err.message}`,
                   isError: true,
-                  isStreaming: false
+                  isStreaming: false,
+                  errorDetails: err.message
                 }
               : m
           );
@@ -445,13 +427,15 @@ const AgentChat = () => {
             ...assistantMsg,
             content: `Sorry, I encountered an error: ${err.message}`,
             isError: true,
-            isStreaming: false
+            isStreaming: false,
+            errorDetails: err.message
           }
         ];
       });
     } finally {
       setIsStreaming(false);
       setIsThinking(false);
+      setIsExecutingTool(false);
     }
   }, [input, selectedAgent, isStreaming, messages, conversationId]);
 
@@ -475,6 +459,241 @@ const AgentChat = () => {
     setSearchParams({});
     toast.success('Chat cleared');
   };
+
+  // Retry the last failed message
+  const retryLastMessage = useCallback(async (messageToRetry) => {
+    if (!messageToRetry || isStreaming) return;
+
+    // Find the user message before the failed message
+    const messageIndex = messages.findIndex(m => m.id === messageToRetry.id);
+    if (messageIndex <= 0) return;
+
+    const userMessage = messages[messageIndex - 1];
+    if (userMessage.role !== 'user') return;
+
+    // Remove the failed message
+    setMessages(prev => prev.filter(m => m.id !== messageToRetry.id));
+
+    // Resend the user message
+    setInput(userMessage.content);
+    // Use setTimeout to allow state to update before sending
+    setTimeout(() => {
+      setInput('');
+      // We need to manually trigger the send with the content
+      sendMessageWithContent(userMessage.content);
+    }, 0);
+  }, [messages, isStreaming]);
+
+  // Separate send function that takes content directly
+  const sendMessageWithContent = useCallback(async (content) => {
+    if (!content.trim() || !selectedAgent || isStreaming) return;
+
+    const userMsg = {
+      id: Date.now(),
+      role: 'user',
+      content: content.trim(),
+      timestamp: new Date().toISOString()
+    };
+
+    const history = messages.map(m => ({
+      role: m.role,
+      content: m.content
+    }));
+
+    setMessages(prev => [...prev, userMsg]);
+    setIsThinking(true);
+    setIsStreaming(true);
+    setIsExecutingTool(false);
+    setCurrentToolName(null);
+
+    // Create conversation on first message if none exists
+    let activeConvId = conversationId;
+    if (!activeConvId && messages.length === 0) {
+      activeConvId = await createConversation(selectedAgent.id, selectedAgent.model);
+    }
+
+    // Save user message
+    saveMessage(activeConvId, 'user', userMsg.content);
+
+    // Create placeholder for assistant message
+    const assistantId = Date.now() + 1;
+    const assistantMsg = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      toolCalls: [],
+      agent: {
+        id: selectedAgent.id,
+        name: selectedAgent.displayName || selectedAgent.name,
+        avatar: selectedAgent.avatar || '🦄',
+      },
+      model: selectedAgent.model || 'unknown',
+      timestamp: new Date().toISOString(),
+      usage: null,
+      isStreaming: true
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/agents/${selectedAgent.id}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMsg.content,
+          stream: true,
+          history,
+          model: selectedAgent.model,
+          temperature: selectedAgent.temperature
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = '';
+      let gotFirstToken = false;
+      let finalModel = selectedAgent.model;
+
+      // Add the empty assistant message
+      setMessages(prev => [...prev, assistantMsg]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') continue;
+
+          try {
+            const event = JSON.parse(payload);
+
+            if (event.type === 'start') {
+              if (event.tools && event.tools.length > 0) {
+                // Agent has tools - keep thinking indicator while tools execute
+              } else {
+                setIsThinking(false);
+              }
+            } else if (event.type === 'tool_call') {
+              setIsThinking(false);
+              setIsExecutingTool(true);
+              setCurrentToolName(event.name);
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        toolCalls: [
+                          ...(m.toolCalls || []),
+                          { name: event.name, arguments: event.arguments }
+                        ]
+                      }
+                    : m
+                )
+              );
+            } else if (event.type === 'tool_result') {
+              setIsExecutingTool(false);
+              setCurrentToolName(null);
+              setMessages(prev =>
+                prev.map(m => {
+                  if (m.id !== assistantId) return m;
+                  const updatedCalls = (m.toolCalls || []).map(tc =>
+                    tc.name === event.name && tc.result === undefined
+                      ? { ...tc, result: event.result, error: event.error }
+                      : tc
+                  );
+                  return { ...m, toolCalls: updatedCalls };
+                })
+              );
+            } else if (event.type === 'token') {
+              if (!gotFirstToken) {
+                gotFirstToken = true;
+                setIsThinking(false);
+                setIsExecutingTool(false);
+              }
+              accumulated += event.content;
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === assistantId
+                    ? { ...m, content: accumulated }
+                    : m
+                )
+              );
+            } else if (event.type === 'complete') {
+              const finalContent = event.content || accumulated;
+              finalModel = event.model || selectedAgent.model;
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        content: finalContent,
+                        model: finalModel,
+                        toolCalls: event.toolCalls || m.toolCalls || [],
+                        isStreaming: false
+                      }
+                    : m
+                )
+              );
+              saveMessage(activeConvId, 'assistant', finalContent, finalModel, event.usage?.total_tokens);
+            } else if (event.type === 'error') {
+              throw new Error(event.error);
+            }
+          } catch (parseErr) {
+            // Skip unparseable lines
+          }
+        }
+      }
+
+      // Finalize
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === assistantId ? { ...m, isStreaming: false } : m
+        )
+      );
+    } catch (err) {
+      console.error('Chat error:', err);
+      setIsThinking(false);
+      setIsExecutingTool(false);
+
+      setMessages(prev => {
+        const hasAssistant = prev.some(m => m.id === assistantId);
+        if (hasAssistant) {
+          return prev.map(m =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: `Sorry, I encountered an error: ${err.message}`,
+                  isError: true,
+                  isStreaming: false,
+                  errorDetails: err.message
+                }
+              : m
+          );
+        }
+        return [
+          ...prev,
+          {
+            ...assistantMsg,
+            content: `Sorry, I encountered an error: ${err.message}`,
+            isError: true,
+            isStreaming: false,
+            errorDetails: err.message
+          }
+        ];
+      });
+    } finally {
+      setIsStreaming(false);
+      setIsThinking(false);
+      setIsExecutingTool(false);
+    }
+  }, [selectedAgent, isStreaming, messages, conversationId]);
 
   // Group agents by domain for picker
   const agentsByDomain = agents.reduce((acc, agent) => {
@@ -571,12 +790,31 @@ const AgentChat = () => {
           {/* Actions */}
           <div className="flex items-center space-x-2">
             {selectedAgent && (
-              <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40">
-                <Cpu className="w-3 h-3 text-slate-400" />
-                <span className="text-xs text-slate-400">
-                  {(selectedAgent.model || 'gpt-4o-mini').split('/').pop()}
-                </span>
-              </div>
+              <>
+                <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40">
+                  <Cpu className="w-3 h-3 text-slate-400" />
+                  <span className="text-xs text-slate-400">
+                    {(selectedAgent.model || 'gpt-4o-mini').split('/').pop()}
+                  </span>
+                </div>
+                {/* Tools toggle button */}
+                {(selectedAgent.tools?.length > 0 || selectedAgent.agentTools?.length > 0) && (
+                  <button
+                    onClick={() => setShowToolsPanel(!showToolsPanel)}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                      showToolsPanel
+                        ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
+                        : 'bg-slate-800/60 text-slate-400 border border-slate-700/40 hover:text-white hover:border-purple-500/40'
+                    }`}
+                    title="View available tools"
+                  >
+                    <Wrench className="w-3 h-3" />
+                    <span className="text-xs hidden sm:inline">
+                      {selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0} Tools
+                    </span>
+                  </button>
+                )}
+              </>
             )}
             <button
               onClick={startNewConversation}
@@ -594,9 +832,68 @@ const AgentChat = () => {
             >
               <Trash2 className="w-4 h-4" />
             </button>
+            {/* Voice Call Button */}
+            {selectedAgent && (
+              <VoiceCallButton
+                onClick={() => setShowVoiceModal(true)}
+                isConnecting={false}
+                isConnected={isInVoiceCall}
+                disabled={!selectedAgent || isStreaming}
+                size="md"
+              />
+            )}
           </div>
         </div>
       </div>
+
+      {/* Tools Panel - Collapsible */}
+      <AnimatePresence>
+        {showToolsPanel && selectedAgent && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden border-b border-slate-700/50 bg-slate-900/60"
+          >
+            <div className="px-6 py-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <Wrench className="w-4 h-4 text-purple-400" />
+                  <span className="text-sm font-medium text-white">Available Tools</span>
+                  <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-xs">
+                    {selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowToolsPanel(false)}
+                  className="p-1 rounded hover:bg-slate-700/50 text-slate-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(selectedAgent.tools || selectedAgent.agentTools || []).map((tool, idx) => {
+                  const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name || 'tool');
+                  const ToolIcon = getToolIcon(toolName);
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50"
+                    >
+                      <ToolIcon className="w-3.5 h-3.5 text-cyan-400" />
+                      <span className="text-xs text-slate-300">{toolName}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-xs text-slate-500">
+                These tools will be automatically used when relevant to your questions.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Close dropdown on outside click */}
       {showAgentPicker && (
@@ -623,12 +920,51 @@ const AgentChat = () => {
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
                 <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-6">
-                  <Sparkles className="w-10 h-10 text-purple-400" />
+                  {selectedAgent ? (
+                    <span className="text-4xl">{selectedAgent.avatar || '🦄'}</span>
+                  ) : (
+                    <Sparkles className="w-10 h-10 text-purple-400" />
+                  )}
                 </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Start a Conversation</h2>
-                <p className="text-slate-400 max-w-md mb-6">
-                  Select an agent from the dropdown and ask anything. Your messages are sent to real AI models through Ops-Center.
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  {selectedAgent ? `Chat with ${selectedAgent.displayName || selectedAgent.name}` : 'Start a Conversation'}
+                </h2>
+                <p className="text-slate-400 max-w-md mb-4">
+                  {selectedAgent
+                    ? selectedAgent.bio || selectedAgent.title || 'Ready to assist you with your questions.'
+                    : 'Select an agent from the dropdown and ask anything.'}
                 </p>
+
+                {/* Show agent tools summary */}
+                {selectedAgent && (selectedAgent.tools?.length > 0 || selectedAgent.agentTools?.length > 0) && (
+                  <div className="mb-6 px-4 py-3 rounded-xl bg-slate-800/40 border border-slate-700/30 max-w-md">
+                    <div className="flex items-center justify-center space-x-2 mb-2">
+                      <Wrench className="w-4 h-4 text-cyan-400" />
+                      <span className="text-sm font-medium text-slate-300">
+                        {selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0} Tools Available
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 justify-center">
+                      {(selectedAgent.tools || selectedAgent.agentTools || []).slice(0, 5).map((tool, idx) => {
+                        const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name || 'tool');
+                        return (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 rounded bg-slate-700/50 text-xs text-slate-400"
+                          >
+                            {toolName}
+                          </span>
+                        );
+                      })}
+                      {(selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0) > 5 && (
+                        <span className="px-2 py-0.5 rounded bg-slate-700/50 text-xs text-slate-500">
+                          +{(selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0) - 5} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {selectedAgent && (
                   <div className="flex flex-wrap gap-2 justify-center">
                     {['Tell me about yourself', 'What can you help with?', 'Show me what you can do'].map(
@@ -740,9 +1076,30 @@ const AgentChat = () => {
                               ) : null}
                             </div>
 
-                            {/* Copy button */}
-                            {msg.content && !msg.isStreaming && (
-                              <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Error message with retry */}
+                            {msg.isError && !msg.isStreaming && (
+                              <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                                <div className="flex items-start space-x-2">
+                                  <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                                  <div className="flex-1">
+                                    <p className="text-xs text-red-400 font-medium mb-1">Something went wrong</p>
+                                    <p className="text-xs text-red-300/70">{msg.errorDetails || 'An error occurred while processing your request.'}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => retryLastMessage(msg)}
+                                  disabled={isStreaming}
+                                  className="mt-2 flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-medium transition-colors disabled:opacity-50"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                  <span>Retry</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Copy button - always visible for non-error messages */}
+                            {msg.content && !msg.isStreaming && !msg.isError && (
+                              <div className="mt-2 flex items-center space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   onClick={() => copyToClipboard(msg.content, msg.id)}
                                   className="flex items-center space-x-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
@@ -755,7 +1112,7 @@ const AgentChat = () => {
                                   ) : (
                                     <>
                                       <Copy className="w-3 h-3" />
-                                      <span>Copy</span>
+                                      <span>Copy response</span>
                                     </>
                                   )}
                                 </button>
@@ -768,8 +1125,8 @@ const AgentChat = () => {
                   </motion.div>
                 ))}
 
-                {/* Thinking indicator */}
-                {isThinking && (
+                {/* Thinking / Tool Execution indicator */}
+                {(isThinking || isExecutingTool) && (
                   <motion.div
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -779,16 +1136,36 @@ const AgentChat = () => {
                       <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-slate-700 to-slate-600 flex items-center justify-center text-lg">
                         {selectedAgent?.avatar || '🦄'}
                       </div>
-                      <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-slate-800/60 border border-slate-700/40">
+                      <div className={`px-4 py-3 rounded-2xl rounded-bl-md border ${
+                        isExecutingTool
+                          ? 'bg-amber-500/10 border-amber-500/30'
+                          : 'bg-slate-800/60 border-slate-700/40'
+                      }`}>
                         <div className="flex items-center space-x-2">
-                          <div className="flex space-x-1">
-                            <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                            <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                            <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                          </div>
-                          <span className="text-xs text-slate-500">
-                            {selectedAgent?.displayName || 'Agent'} is thinking...
-                          </span>
+                          {isExecutingTool ? (
+                            <>
+                              <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
+                              <div className="flex flex-col">
+                                <span className="text-xs text-amber-400 font-medium">
+                                  Executing tool: {currentToolName}
+                                </span>
+                                <span className="text-[10px] text-amber-400/60">
+                                  Running tool and processing results...
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex space-x-1">
+                                <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                                <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                                <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                              </div>
+                              <span className="text-xs text-slate-500">
+                                {selectedAgent?.displayName || 'Agent'} is thinking...
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -838,6 +1215,21 @@ const AgentChat = () => {
           </p>
         </div>
       </div>
+
+      {/* Voice Call Modal */}
+      <VoiceCallModal
+        isOpen={showVoiceModal}
+        onClose={() => setShowVoiceModal(false)}
+        agent={selectedAgent}
+        onCallStart={() => {
+          setIsInVoiceCall(true);
+          toast.success(`Voice call started with ${selectedAgent?.displayName || selectedAgent?.name}`);
+        }}
+        onCallEnd={() => {
+          setIsInVoiceCall(false);
+          toast.success('Voice call ended');
+        }}
+      />
     </div>
   );
 };

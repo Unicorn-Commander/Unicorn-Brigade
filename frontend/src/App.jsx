@@ -9,11 +9,19 @@ import AgentLibrary from './pages/AgentLibrary';
 import AgentDetail from './pages/AgentDetail';
 import Conversations from './pages/Conversations';
 import Orchestration from './pages/Orchestration';
+import KnowledgeGraph from './pages/KnowledgeGraph';
 import ToolLibrary from './pages/ToolLibrary';
+import MCPServers from './pages/MCPServers';
+import LangflowFlows from './pages/LangflowFlows';
+import Workflows from './pages/Workflows';
 import ApiDocs from './pages/ApiDocs';
+import MCPDocs from './pages/MCPDocs';
+import CodeAttribution from './pages/CodeAttribution';
 import Monitoring from './pages/Monitoring';
+import RalphMonitor from './pages/RalphMonitor';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import AuthCallback from './pages/AuthCallback';
 import Navigation from './components/Navigation';
 import CommandPalette from './components/CommandPalette';
@@ -76,6 +84,7 @@ function App() {
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
 
           {/* Protected Routes */}
@@ -107,6 +116,14 @@ function App() {
             <ProtectedRoute>
               <AppLayout>
                 <Orchestration />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/knowledge" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <KnowledgeGraph />
               </AppLayout>
             </ProtectedRoute>
           } />
@@ -143,10 +160,58 @@ function App() {
             </ProtectedRoute>
           } />
 
+          <Route path="/mcp-servers" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <MCPServers />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/langflow" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <LangflowFlows />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/workflows" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <Workflows />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/ralph-monitor" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <RalphMonitor />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
           <Route path="/docs" element={
             <ProtectedRoute>
               <AppLayout>
                 <ApiDocs />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/mcp-docs" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <MCPDocs />
+              </AppLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/code-attribution" element={
+            <ProtectedRoute>
+              <AppLayout>
+                <CodeAttribution />
               </AppLayout>
             </ProtectedRoute>
           } />

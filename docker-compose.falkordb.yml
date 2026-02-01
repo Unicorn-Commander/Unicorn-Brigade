@@ -1,0 +1,44 @@
+# FalkorDB Knowledge Graph Stack
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.falkordb.yml up -d
+
+version: '3.8'
+
+services:
+  # Update API with FalkorDB environment variables
+  brigade-api:
+    environment:
+      - FALKORDB_ENABLED=true
+      - FALKORDB_HOST=brigade-falkordb
+      - FALKORDB_PORT=6380
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-}
+    depends_on:
+      - brigade-falkordb
+
+  # FalkorDB Graph Database
+  # AI-native knowledge graph with GraphRAG support
+  brigade-falkordb:
+    image: falkordb/falkordb:latest
+    container_name: brigade-falkordb
+    ports:
+      - "6380:6379"  # Redis protocol (6380 to avoid conflict with brigade-redis)
+      - "3002:3000"  # FalkorDB Browser UI
+    environment:
+      # Optional authentication
+      - REDIS_ARGS=${FALKORDB_PASSWORD:+--requirepass ${FALKORDB_PASSWORD}}
+      # FalkorDB-specific settings
+      - FALKORDB_CACHE_SIZE=256
+      - FALKORDB_OMP_THREAD_COUNT=8
+      - FALKORDB_MAX_QUEUED_QUERIES=50
+    volumes:
+      - brigade-falkordb-data:/var/lib/falkordb/data
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  brigade-falkordb-data:

@@ -9,7 +9,14 @@ import {
   Settings,
   MessageSquare,
   MessagesSquare,
-  Globe
+  Globe,
+  Workflow,
+  Network,
+  GitBranch,
+  Server,
+  FileText,
+  Zap,
+  FileCode
 } from 'lucide-react';
 import UserProfile from './auth/UserProfile';
 import { BrigadeLogo } from './UnicornBrigadeLogo';
@@ -20,9 +27,16 @@ const Navigation = () => {
     { path: '/chat', icon: MessageSquare, label: 'Chat', section: 'MAIN' },
     { path: '/conversations', icon: MessagesSquare, label: 'Conversations', section: 'MAIN' },
     { path: '/orchestration', icon: Globe, label: 'Orchestration', section: 'COMMAND' },
+    { path: '/workflows', icon: GitBranch, label: 'Workflows', section: 'COMMAND' },
+    { path: '/ralph-monitor', icon: Zap, label: 'Ralph Monitor', section: 'COMMAND' },
+    { path: '/knowledge', icon: Network, label: 'Knowledge Graph', section: 'COMMAND' },
     { path: '/library', icon: BookOpen, label: 'Agent Library', section: 'AGENTS' },
     { path: '/tools', icon: Wrench, label: 'Tool Library', section: 'TOOLS' },
+    { path: '/mcp-servers', icon: Server, label: 'MCP Servers', section: 'TOOLS' },
+    { path: '/mcp-docs', icon: FileText, label: 'MCP Docs', section: 'TOOLS' },
+    { path: '/langflow', icon: Workflow, label: 'Langflow Flows', section: 'TOOLS' },
     { path: '/docs', icon: Book, label: 'API Docs', section: 'TOOLS' },
+    { path: '/code-attribution', icon: FileCode, label: 'Code Attribution', section: 'SYSTEM' },
     { path: '/monitoring', icon: Activity, label: 'Monitoring', section: 'SYSTEM' },
     { path: '/settings', icon: Settings, label: 'Settings', section: 'SYSTEM' },
   ];

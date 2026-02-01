@@ -163,6 +163,79 @@ class Message(Base):
         }
 
 
+class User(Base):
+    """User account model for authentication"""
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    email = Column(String(255), unique=True, nullable=False)  # unique implies index
+    password_hash = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=False)
+    role = Column(String(50), default="operator", index=True)  # admin, operator, viewer
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    api_keys = relationship("UserApiKey", back_populates="user", cascade="all, delete-orphan")
+
+    def to_dict(self):
+        """Convert to dictionary without exposing password hash"""
+        return {
+            "id": str(self.id),
+            "email": self.email,
+            "name": self.name,
+            "role": self.role,
+            "isActive": self.is_active,
+            "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() + "Z" if self.updated_at else None,
+        }
+
+
+class UserApiKey(Base):
+    """API keys owned by users (not agents)"""
+    __tablename__ = "user_api_keys"
+
+    id = Column(String(255), primary_key=True, default=lambda: uuid.uuid4().hex[:16])
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    key_prefix = Column(String(20), nullable=False)
+    key_hash = Column(String(255), nullable=False)
+    permissions = Column(JSON, default=lambda: ["chat", "read"])
+    rate_limit = Column(Integer, default=100)
+    expires_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+    usage_count = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="api_keys")
+
+    __table_args__ = (
+        Index("ix_user_api_keys_user_id", "user_id"),
+        Index("ix_user_api_keys_key_hash", "key_hash"),
+    )
+
+    def to_dict(self, include_hash=False):
+        d = {
+            "id": self.id,
+            "userId": str(self.user_id),
+            "name": self.name,
+            "keyPrefix": self.key_prefix,
+            "permissions": self.permissions or ["chat", "read"],
+            "rateLimit": self.rate_limit,
+            "expiresAt": self.expires_at.isoformat() if self.expires_at else None,
+            "lastUsedAt": self.last_used_at.isoformat() if self.last_used_at else None,
+            "usageCount": self.usage_count,
+            "isActive": self.is_active,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+        }
+        if include_hash:
+            d["keyHash"] = self.key_hash
+        return d
+
+
 class ApiKey(Base):
     __tablename__ = "api_keys"
 
@@ -260,4 +333,55 @@ class ToolExecution(Base):
             "status": self.status,
             "duration_ms": self.duration_ms,
             "created_at": self.created_at.isoformat() + "Z" if self.created_at else None,
+        }
+
+
+class CodeAttribution(Base):
+    """
+    Code attribution tracking for agent-generated code.
+
+    Implements the Agent Trace spec (https://agent-trace.dev/) for tracking
+    which AI agents/models generated which code.
+    """
+    __tablename__ = "code_attributions"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    session_id = Column(String(255), nullable=False, index=True)  # Conversation or session ID
+    agent_id = Column(String(255), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_name = Column(String(255), nullable=False)
+    model = Column(String(255), nullable=False)
+    file_path = Column(String(1000), nullable=False, index=True)
+    start_line = Column(Integer, nullable=False)
+    end_line = Column(Integer, nullable=False)
+    change_type = Column(String(50), nullable=False, default="generation")  # generation, edit, deletion
+    code_hash = Column(String(32), nullable=False, index=True)  # SHA-256 hash (first 16 chars)
+    prompt = Column(Text, nullable=True)  # User prompt that generated this code
+    generated_code = Column(Text, nullable=False)  # The actual generated code
+    metadata_ = Column("metadata", JSON, default=dict)  # Tool calls, tokens, language, etc.
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index("ix_code_attributions_session_id", "session_id"),
+        Index("ix_code_attributions_agent_id", "agent_id"),
+        Index("ix_code_attributions_file_path", "file_path"),
+        Index("ix_code_attributions_code_hash", "code_hash"),
+        Index("ix_code_attributions_created_at", "created_at"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "sessionId": self.session_id,
+            "agentId": self.agent_id,
+            "agentName": self.agent_name,
+            "model": self.model,
+            "filePath": self.file_path,
+            "startLine": self.start_line,
+            "endLine": self.end_line,
+            "changeType": self.change_type,
+            "codeHash": self.code_hash,
+            "prompt": self.prompt,
+            "generatedCode": self.generated_code,
+            "metadata": self.metadata_,
+            "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
         }

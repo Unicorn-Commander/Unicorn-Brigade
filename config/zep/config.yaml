@@ -1,0 +1,38 @@
+log:
+  level: info
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  web_enabled: true
+
+store:
+  type: postgres
+  postgres:
+    dsn: postgres://zep:REMOVED@zep-postgres:5432/zep?sslmode=disable
+
+auth:
+  required: false
+  secret: your-zep-auth-secret-change-in-production
+
+llm:
+  service: openai
+  model: gpt-3.5-turbo
+  openai_api_key: sk-local-ollama
+  openai_org_id: local
+  openai_base_url: http://host.docker.internal:11434/v1
+
+extractors:
+  embeddings:
+    service: openai
+    model: nomic-embed-text-v1.5
+    dimensions: 768
+    openai_api_key: sk-local-embeddings
+    openai_base_url: http://host.docker.internal:8234/v1
+  messages:
+    summarizer:
+      enabled: true
+    entities:
+      enabled: true
+    intent:
+      enabled: true

@@ -51,8 +51,35 @@ Given a description of what the agent should do, create a complete agent definit
 2. Description: What the agent does
 3. Capabilities: List of specific capabilities
 4. System Prompt: The instructions for the agent
-5. Tools: Which tools it needs (llm, shell, browser, api, filesystem, database)
+5. Tools: Which tools it needs from built-in tools and MCP servers
 6. Recommended model and temperature
+
+## Available Tools
+
+**Built-in Tools (23)**:
+- web_search, http_request, calculator, shell, memory, json, datetime
+- email, file, code, text, image, database, notify, qrcode, agentic_rag
+- browser, code_sandbox, screenshot, pdf_extract, doc_generate, data_analyze, url_preview, knowledge_graph
+
+**MCP Servers (46 servers, ~1,360 tools)**:
+- Infrastructure: GitHub, Vercel, Cloudflare, Supabase, Git, Playwright, Puppeteer
+- CRM: Salesforce, HubSpot, Zendesk, Intercom
+- Marketing: Mailchimp, ActiveCampaign, Ahrefs, SEMrush, Calendly, DocuSign
+- Analytics: Amplitude, Mixpanel, Segment, PostHog, Heap, Pendo, FullStory, Hotjar
+- Productivity: Notion, Linear, Stripe, Jira, Asana, Trello, QuickBooks
+- Database: PostgreSQL, MongoDB
+- Communications: Slack, Twilio
+- E-commerce: Shopify
+- Monitoring: Sentry
+- Search: Brave Search
+- Storage: Google Drive, Filesystem
+- Automation: Zapier, Make
+- Memory: Built-in memory MCP
+
+When selecting tools, consider:
+1. Start with built-in tools for common operations (search, email, calculations)
+2. Add MCP server tools for specialized integrations (GitHub, Slack, Stripe, etc.)
+3. Use the most specific tools for the agent's domain
 
 Output as JSON:
 ```json
@@ -60,14 +87,14 @@ Output as JSON:
     "name": "AgentName",
     "description": "What the agent does",
     "capabilities": ["capability1", "capability2"],
-    "system_prompt": "Detailed instructions for the agent...",
-    "tools": ["llm", "browser"],
+    "system_prompt": "Detailed instructions for the agent. Include information about available MCP tools if relevant to the agent's domain.",
+    "tools": ["web_search", "github", "slack"],
     "model": "default",
     "temperature": 0.7
 }
 ```
 
-Be specific and detailed in the system prompt. Include guardrails and constraints."""
+Be specific and detailed in the system prompt. Include guardrails and constraints. When the agent will use MCP servers, mention the relevant MCP tools in the system prompt so the agent knows how to use them."""
 
 
 class MetaAgent:

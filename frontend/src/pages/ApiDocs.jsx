@@ -40,12 +40,12 @@ const ApiDocs = () => {
       },
       examples: {
         curl: `curl -X GET "${API_BASE}/api/agents" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json"`,
         javascript: `const response = await fetch('${API_BASE}/api/agents', {
   method: 'GET',
   headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
+    'X-API-Key': 'YOUR_API_KEY',
     'Content-Type': 'application/json'
   }
 });
@@ -56,7 +56,7 @@ console.log(data.agents);`,
 response = requests.get(
     '${API_BASE}/api/agents',
     headers={
-        'Authorization': 'Bearer YOUR_API_KEY',
+        'X-API-Key': 'YOUR_API_KEY',
         'Content-Type': 'application/json'
     }
 )
@@ -89,7 +89,7 @@ print(agents)`
       },
       examples: {
         curl: `curl -X POST "${API_BASE}/api/agents" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "name": "my-agent",
@@ -101,7 +101,7 @@ print(agents)`
         javascript: `const response = await fetch('${API_BASE}/api/agents', {
   method: 'POST',
   headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
+    'X-API-Key': 'YOUR_API_KEY',
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
@@ -119,7 +119,7 @@ console.log(data.agent);`,
 response = requests.post(
     '${API_BASE}/api/agents',
     headers={
-        'Authorization': 'Bearer YOUR_API_KEY',
+        'X-API-Key': 'YOUR_API_KEY',
         'Content-Type': 'application/json'
     },
     json={
@@ -156,12 +156,12 @@ print(agent)`
       },
       examples: {
         curl: `curl -X GET "${API_BASE}/api/agents/AGENT_ID/card" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json"`,
         javascript: `const response = await fetch('${API_BASE}/api/agents/AGENT_ID/card', {
   method: 'GET',
   headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
+    'X-API-Key': 'YOUR_API_KEY',
     'Content-Type': 'application/json'
   }
 });
@@ -172,7 +172,7 @@ console.log(card);`,
 response = requests.get(
     '${API_BASE}/api/agents/AGENT_ID/card',
     headers={
-        'Authorization': 'Bearer YOUR_API_KEY',
+        'X-API-Key': 'YOUR_API_KEY',
         'Content-Type': 'application/json'
     }
 )
@@ -204,7 +204,7 @@ print(card)`
       },
       examples: {
         curl: `curl -X POST "${API_BASE}/api/agents/AGENT_ID/invoke" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "message": "Hello, agent!",
@@ -213,7 +213,7 @@ print(card)`
         javascript: `const response = await fetch('${API_BASE}/api/agents/AGENT_ID/invoke', {
   method: 'POST',
   headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
+    'X-API-Key': 'YOUR_API_KEY',
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
@@ -228,7 +228,7 @@ console.log(data.response);`,
 response = requests.post(
     '${API_BASE}/api/agents/AGENT_ID/invoke',
     headers={
-        'Authorization': 'Bearer YOUR_API_KEY',
+        'X-API-Key': 'YOUR_API_KEY',
         'Content-Type': 'application/json'
     },
     json={
@@ -258,7 +258,7 @@ print(data['response'])`
       },
       examples: {
         curl: `curl -X POST "${API_BASE}/api/agent-builder/chat" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "message": "Create a financial analysis agent"
@@ -266,7 +266,7 @@ print(data['response'])`
         javascript: `const response = await fetch('${API_BASE}/api/agent-builder/chat', {
   method: 'POST',
   headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
+    'X-API-Key': 'YOUR_API_KEY',
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
@@ -280,7 +280,7 @@ console.log(data.response);`,
 response = requests.post(
     '${API_BASE}/api/agent-builder/chat',
     headers={
-        'Authorization': 'Bearer YOUR_API_KEY',
+        'X-API-Key': 'YOUR_API_KEY',
         'Content-Type': 'application/json'
     },
     json={
@@ -308,12 +308,12 @@ print(data['response'])`
       },
       examples: {
         curl: `curl -X GET "${API_BASE}/api/agents/domains" \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json"`,
         javascript: `const response = await fetch('${API_BASE}/api/agents/domains', {
   method: 'GET',
   headers: {
-    'Authorization': 'Bearer YOUR_API_KEY',
+    'X-API-Key': 'YOUR_API_KEY',
     'Content-Type': 'application/json'
   }
 });
@@ -324,7 +324,7 @@ console.log(data.domains);`,
 response = requests.get(
     '${API_BASE}/api/agents/domains',
     headers={
-        'Authorization': 'Bearer YOUR_API_KEY',
+        'X-API-Key': 'YOUR_API_KEY',
         'Content-Type': 'application/json'
     }
 )
@@ -377,7 +377,7 @@ print(domains)`
                 <h3 className="font-semibold text-white">2. Make Request</h3>
               </div>
               <p className="text-sm text-slate-400">
-                Send HTTP requests with your API key in the Authorization header
+                Send HTTP requests with your API key in the X-API-Key header
               </p>
             </div>
             <div className="p-4 bg-slate-800/50 rounded-lg">
@@ -399,17 +399,17 @@ print(domains)`
             <h2 className="text-xl font-bold text-white">Authentication</h2>
           </div>
           <p className="text-slate-400 mb-4">
-            All API requests must include an API key in the Authorization header:
+            All API requests must include an API key in the X-API-Key header:
           </p>
           <div className="bg-slate-800/50 rounded-lg p-4 font-mono text-sm relative">
             <button
-              onClick={() => copyToClipboard('Authorization: Bearer YOUR_API_KEY')}
+              onClick={() => copyToClipboard('X-API-Key: YOUR_API_KEY')}
               className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
             >
               <Copy className="w-4 h-4 text-slate-400" />
             </button>
             <code className="text-slate-300">
-              <span className="text-purple-400">Authorization:</span> Bearer YOUR_API_KEY
+              <span className="text-purple-400">X-API-Key:</span> YOUR_API_KEY
             </code>
           </div>
         </div>

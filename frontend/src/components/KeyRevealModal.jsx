@@ -114,7 +114,7 @@ const KeyRevealModal = ({ apiKey, onClose }) => {
                 <span className="text-emerald-400">-X POST</span>{' '}
                 <span className="text-slate-300">https://api.unicornbrigade.com/agents/invoke</span> \<br />
                 {'  '}<span className="text-emerald-400">-H</span>{' '}
-                <span className="text-amber-300">"Authorization: Bearer {keyValue.substring(0, 20)}..."</span> \<br />
+                <span className="text-amber-300">"X-API-Key: {keyValue.substring(0, 20)}..."</span> \<br />
                 {'  '}<span className="text-emerald-400">-H</span>{' '}
                 <span className="text-amber-300">"Content-Type: application/json"</span>
               </code>

@@ -1,0 +1,90 @@
+# LiveKit Voice Agent Stack
+# Deploy with: docker-compose -f docker-compose.yml -f docker-compose.livekit.yml up -d
+#
+# This stack provides:
+# - LiveKit Server: Real-time WebRTC/SFU server for voice/video
+# - Voice Agent Worker: Python agent that joins rooms and handles conversations
+#
+# Required environment variables (add to .env):
+# - LIVEKIT_API_KEY: API key for LiveKit authentication
+# - LIVEKIT_API_SECRET: Secret for JWT signing
+# - VOICE_STT_PROVIDER: Speech-to-text provider (deepgram/whisper)
+# - VOICE_TTS_PROVIDER: Text-to-speech provider (elevenlabs/openai)
+# - DEEPGRAM_API_KEY: Deepgram API key (if using deepgram STT)
+# - ELEVENLABS_API_KEY: ElevenLabs API key (if using elevenlabs TTS)
+
+version: '3.8'
+
+services:
+  # LiveKit Server - WebRTC SFU
+  livekit-server:
+    image: livekit/livekit-server:latest
+    container_name: brigade-livekit
+    command: --config /etc/livekit.yaml
+    ports:
+      # WebSocket port for signaling
+      - "7880:7880"
+      # RTC/UDP port range for media
+      - "7881:7881"
+      # UDP port range for WebRTC
+      - "50000-50100:50000-50100/udp"
+    volumes:
+      - ./config/livekit.yaml:/etc/livekit.yaml:ro
+    environment:
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-REMOVED}
+    networks:
+      - brigade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7880"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # LiveKit Voice Agent Worker
+  # This worker connects to LiveKit rooms and handles voice conversations
+  livekit-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.livekit-agent
+    container_name: brigade-livekit-agent
+    environment:
+      # LiveKit connection
+      - LIVEKIT_URL=ws://livekit-server:7880
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-REMOVED}
+      # Voice providers
+      - VOICE_STT_PROVIDER=${VOICE_STT_PROVIDER:-deepgram}
+      - VOICE_TTS_PROVIDER=${VOICE_TTS_PROVIDER:-openai}
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Brigade API connection
+      - BRIGADE_API_URL=http://brigade-api:8100
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - livekit-server
+      - brigade-api
+    networks:
+      - brigade-network
+    restart: unless-stopped
+
+  # Redis for LiveKit (optional - for multi-node deployments)
+  # livekit-redis:
+  #   image: redis:7.4-alpine
+  #   container_name: brigade-livekit-redis
+  #   command: redis-server --appendonly yes
+  #   volumes:
+  #     - livekit-redis-data:/data
+  #   networks:
+  #     - brigade-network
+  #   restart: unless-stopped
+
+networks:
+  brigade-network:
+    external: true
+
+# volumes:
+#   livekit-redis-data:

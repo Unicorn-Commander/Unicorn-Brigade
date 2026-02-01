@@ -7,15 +7,18 @@ Implements endpoints for:
 - UCP (Universal Commerce Protocol) - Commerce sessions and payments
 """
 
-from fastapi import APIRouter, HTTPException, status, Header, Request
+from fastapi import APIRouter, HTTPException, status, Header, Request, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from app.protocols.a2a import A2AProtocol, AgentCard, A2AInvokeRequest, A2AInvokeResponse
-from app.protocols.mcp import MCPServer, mcp_server
+from app.protocols.mcp import MCPServer, mcp_server, MCPResourceManager
 from app.protocols.ucp import UCPPayment, CommerceSession
+from app.db.database import get_session
+from app.db.repositories import AgentRepository
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,9 @@ ucp_router = APIRouter(prefix="/ucp", tags=["UCP Protocol"])
 # Protocol instances
 a2a_protocol = A2AProtocol()
 ucp_handler = UCPPayment()
+
+# Resource manager for MCP resource reading
+resource_manager = MCPResourceManager()
 
 
 # =============================================================================
@@ -76,18 +82,113 @@ async def invoke_agent(
     agent_id: str,
     request: A2AInvokeRequest,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    session: AsyncSession = Depends(get_session),
 ):
     """
     Invoke an agent using A2A protocol.
 
     This is the standard endpoint for agent-to-agent communication.
+    Routes to the actual agent chat endpoint for execution with function calling.
     """
     try:
         start_time = datetime.utcnow()
 
-        # TODO: Route to actual agent execution
-        # For now, return mock response
+        # First, try to use the agent chat system (preferred - supports function calling)
+        from app.api.agent_routes import llm_client
+        from app.llm.tool_resolver import get_tools_for_agent
 
+        repo = AgentRepository(session)
+        agent = await repo.get(agent_id)
+
+        if agent and llm_client:
+            # Build system message from agent config
+            system_parts = []
+            if agent.get("persona"):
+                system_parts.append(agent["persona"])
+            if agent.get("systemPrompt"):
+                system_parts.append(agent["systemPrompt"])
+            system_content = "\n\n".join(system_parts) if system_parts else (
+                f"You are {agent.get('displayName', agent['name'])}, a specialized AI agent."
+            )
+
+            # Build messages for LLM
+            messages = [
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": request.task},
+            ]
+
+            # Add context if provided
+            if request.context:
+                context_str = "\n".join(f"- {k}: {v}" for k, v in request.context.items())
+                messages[1]["content"] = f"Context:\n{context_str}\n\nTask: {request.task}"
+
+            # Resolve agent tools
+            agent_tools = get_tools_for_agent(agent)
+
+            model = agent.get("model", "openai/gpt-4o-mini")
+            temperature = agent.get("temperature", 0.7)
+            max_tokens = agent.get("maxTokens", 2000)
+
+            tool_calls_log = []
+
+            if agent_tools:
+                # Execute with function calling
+                from app.llm.ops_center_client import ToolCall, ToolResult
+
+                def on_tool_call(tc: ToolCall):
+                    tool_calls_log.append({
+                        "id": tc.id,
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                    })
+
+                def on_tool_result(tr: ToolResult):
+                    for entry in tool_calls_log:
+                        if entry["id"] == tr.tool_call_id:
+                            entry["result"] = tr.result
+                            entry["error"] = tr.error
+                            break
+
+                response = await llm_client.execute_tool_loop(
+                    messages=messages,
+                    tools=agent_tools,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    user_id=request.user_id or "a2a-caller",
+                    on_tool_call=on_tool_call,
+                    on_tool_result=on_tool_result,
+                )
+            else:
+                # Plain chat without tools
+                response = await llm_client.chat_completion(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    user_id=request.user_id or "a2a-caller",
+                )
+
+            content = llm_client.get_response_content(response)
+            usage = response.get("usage", {})
+            duration = (datetime.utcnow() - start_time).total_seconds()
+
+            result_data = {
+                "output": content,
+                "model": response.get("model", model),
+            }
+            if tool_calls_log:
+                result_data["tool_calls"] = tool_calls_log
+
+            return A2AInvokeResponse(
+                status="success",
+                result=result_data,
+                task_id=f"a2a_{agent_id}_{datetime.utcnow().timestamp()}",
+                tokens_used=usage.get("total_tokens", 0),
+                duration_seconds=duration,
+            ).model_dump()
+
+        # Fallback to workflow engine if agent not found or llm_client not available
         from app.engine.models import Task
         from app.api.workflow_routes import workflow_engine
 
@@ -110,7 +211,14 @@ async def invoke_agent(
                 duration_seconds=duration,
             ).model_dump()
 
-        # Mock response when engine not available
+        # Agent not found
+        if not agent:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent not found: {agent_id}"
+            )
+
+        # Mock response when neither agent chat nor engine available
         duration = (datetime.utcnow() - start_time).total_seconds()
 
         return A2AInvokeResponse(
@@ -120,6 +228,8 @@ async def invoke_agent(
             duration_seconds=duration,
         ).model_dump()
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"A2A invoke failed: {e}")
         return A2AInvokeResponse(
@@ -132,44 +242,64 @@ async def invoke_agent(
 async def discover_agents(
     capability: Optional[str] = None,
     domain: Optional[str] = None,
+    session: AsyncSession = Depends(get_session),
 ):
     """
     Discover available agents.
 
     Returns a list of Agent Cards matching the criteria.
+    Queries the database for actual agents and converts them to A2A format.
     """
-    # TODO: Query database for agents
-    # For now, return sample agents
-    agents = [
-        {
-            "name": "Research Agent",
-            "description": "Information gathering and synthesis",
-            "version": "1.0.0",
-            "invoke_url": "/api/v1/a2a/agents/research/invoke",
-            "capabilities": [{"name": "research", "description": "Research topics"}],
-            "pricing_model": "free",
-            "domain": "research",
-        },
-        {
-            "name": "Code Agent",
-            "description": "Code generation and analysis",
-            "version": "1.0.0",
-            "invoke_url": "/api/v1/a2a/agents/code/invoke",
-            "capabilities": [{"name": "code", "description": "Generate code"}],
-            "pricing_model": "per_call",
-            "price_per_call": 0.01,
-            "domain": "development",
-        },
-    ]
+    repo = AgentRepository(session)
+    db_agents = await repo.list_all()
 
-    # Filter by criteria
+    # Convert database agents to A2A Agent Card format
+    agents = []
+    for agent in db_agents:
+        # Skip inactive agents
+        if agent.get("status") != "active":
+            continue
+
+        # Build capabilities from agent's tools and capabilities list
+        capabilities = []
+        for cap in agent.get("capabilities", []):
+            capabilities.append({
+                "name": cap,
+                "description": f"Agent capability: {cap}",
+            })
+
+        # Add tool-based capabilities
+        for tool in agent.get("tools", []):
+            capabilities.append({
+                "name": tool,
+                "description": f"Tool: {tool}",
+            })
+
+        agent_card = {
+            "id": agent["id"],
+            "name": agent.get("displayName") or agent.get("name"),
+            "description": agent.get("bio") or agent.get("persona") or f"AI agent: {agent.get('name')}",
+            "version": "1.0.0",
+            "invoke_url": f"/api/v1/a2a/agents/{agent['id']}/invoke",
+            "capabilities": capabilities,
+            "pricing_model": "free",  # Default to free; could be stored in agent config
+            "domain": agent.get("domain", "general"),
+            "avatar": agent.get("avatar", ""),
+            "agent_type": agent.get("agentType", "analysis"),
+        }
+
+        agents.append(agent_card)
+
+    # Filter by capability
     if capability:
         agents = [a for a in agents if any(
-            c["name"] == capability for c in a.get("capabilities", [])
+            c["name"] == capability or c["name"].lower() == capability.lower()
+            for c in a.get("capabilities", [])
         )]
 
+    # Filter by domain
     if domain:
-        agents = [a for a in agents if a.get("domain") == domain]
+        agents = [a for a in agents if a.get("domain") == domain or a.get("domain", "").lower() == domain.lower()]
 
     return {
         "agents": agents,
@@ -243,20 +373,52 @@ async def list_mcp_resources():
 
 @mcp_router.get("/resources/{uri:path}")
 async def read_mcp_resource(uri: str):
-    """Read an MCP resource"""
+    """
+    Read an MCP resource.
+
+    Supports multiple URI schemes:
+    - file:// - Local file system resources
+    - http:// / https:// - Remote HTTP resources
+    - Custom schemes registered with the resource manager
+    """
+    # Check if resource is registered (optional - allows reading unregistered URIs too)
     resource = mcp_server.resources.get(uri)
 
-    if not resource:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Resource not found: {uri}"
-        )
+    # Use the resource manager to read the content
+    try:
+        result = await resource_manager.read(uri)
 
-    # TODO: Implement actual resource reading
-    return {
-        "uri": uri,
-        "contents": [{"uri": uri, "text": "Resource content"}],
-    }
+        if "error" in result:
+            # Resource read failed
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"]
+            )
+
+        # Return in MCP format
+        contents = result.get("contents", [])
+
+        # If resource is registered, include its metadata
+        response = {
+            "uri": uri,
+            "contents": contents,
+        }
+
+        if resource:
+            response["name"] = resource.name
+            response["description"] = resource.description
+            response["mimeType"] = resource.mime_type
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"MCP resource read failed for {uri}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to read resource: {str(e)}"
+        )
 
 
 @mcp_router.post("/handle")

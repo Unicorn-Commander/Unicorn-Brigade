@@ -24,7 +24,7 @@
 
 ---
 
-**18 Production Agents** | **15 Working Tools** | **A2A + MCP Protocols** | **3D Orchestration**
+**11 Production Agents** | **23 Working Tools** | **17 Workflow Templates** | **A2A + MCP Protocols** | **3D Orchestration** | **Visual Workflow Builder**
 
 </div>
 
@@ -68,25 +68,43 @@ This isn't a toy. **It sends real emails. It searches the real web. It coordinat
 
 ## Features That Actually Work
 
-### Real Tool Integration
+### Real Tool Integration (23 Tools)
 
+**Built-in Tools (7)**
 | Tool | Provider | Status |
 |------|----------|--------|
-| **Web Search** | Serper.dev | Working |
-| **Email** | Microsoft 365 Graph API | Working |
-| **Calculator** | Local | Working |
-| **HTTP Requests** | httpx | Working |
-| **Memory** | mem0 + Qdrant | Working |
-| **JSON Parser** | Local | Working |
-| **DateTime** | Local | Working |
-| **Shell Commands** | Subprocess | Working |
-| **File Operations** | Local | Working |
-| **Code Execution** | Sandboxed | Working |
-| **Text Processing** | Local | Working |
-| **Image Analysis** | Vision models | Working |
-| **Database Queries** | PostgreSQL | Working |
-| **Notifications** | Multi-channel | Working |
-| **QR Code Generation** | Local | Working |
+| **Web Search** | Serper.dev | ✅ Working |
+| **HTTP Request** | httpx | ✅ Working |
+| **Calculator** | Python | ✅ Working |
+| **DateTime** | Python | ✅ Working |
+| **JSON** | Python | ✅ Working |
+| **Memory** | mem0 + Qdrant | ✅ Working |
+| **Shell** | Docker Sandbox | ✅ Working |
+
+**Extended Tools (9)**
+| Tool | Provider | Status |
+|------|----------|--------|
+| **Email** | MS365/Google | ✅ Working |
+| **File Operations** | Local | ✅ Working |
+| **Code Execution** | Docker/E2B | ✅ Working |
+| **Text Processing** | Python | ✅ Working |
+| **Image Generation** | AI Models | ✅ Working |
+| **Database** | PostgreSQL/MySQL | ✅ Working |
+| **Notifications** | Multi-channel | ✅ Working |
+| **QR Code** | Python qrcode | ✅ Working |
+| **Agentic RAG** | Vector DB | ✅ Working |
+
+**Advanced Tools (8)**
+| Tool | Provider | Status |
+|------|----------|--------|
+| **Browser Automation** | Playwright + AI | ✅ Working |
+| **Code Sandbox** | Docker + E2B | ✅ Working |
+| **Screenshot** | Playwright | ✅ Working |
+| **PDF Extract** | PyPDF2 | ✅ Working |
+| **Doc Generate** | python-docx | ✅ Working |
+| **Data Analyze** | Pandas/NumPy | ✅ Working |
+| **URL Preview** | BeautifulSoup | ✅ Working |
+| **Knowledge Graph** | FalkorDB | ✅ Working |
 
 ### Protocol Support
 

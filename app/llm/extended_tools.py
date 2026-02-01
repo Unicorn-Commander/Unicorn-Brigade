@@ -27,79 +27,10 @@ logger = logging.getLogger(__name__)
 
 # ============== Email Tool ==============
 
-EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "ms365")  # resend, sendgrid, ms365
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
+# Import the email provider abstraction
+from app.llm.email_providers import get_email_provider, get_available_providers
 
-# Microsoft 365 OAuth2 (Client Credentials Flow)
-MS365_CLIENT_ID = os.getenv("MS365_CLIENT_ID", "")
-MS365_TENANT_ID = os.getenv("MS365_TENANT_ID", "")
-MS365_CLIENT_SECRET = os.getenv("MS365_CLIENT_SECRET", "")
-MS365_USER_EMAIL = os.getenv("MS365_USER_EMAIL", "")  # The mailbox to send from
-
-# Cache for MS365 access token
-_ms365_token_cache = {"token": None, "expires_at": 0}
-
-
-async def _get_ms365_token() -> str:
-    """Get Microsoft Graph API access token using client credentials."""
-    import time
-
-    # Return cached token if still valid
-    if _ms365_token_cache["token"] and _ms365_token_cache["expires_at"] > time.time() + 60:
-        return _ms365_token_cache["token"]
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(
-            f"https://login.microsoftonline.com/{MS365_TENANT_ID}/oauth2/v2.0/token",
-            data={
-                "client_id": MS365_CLIENT_ID,
-                "client_secret": MS365_CLIENT_SECRET,
-                "scope": "https://graph.microsoft.com/.default",
-                "grant_type": "client_credentials",
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        _ms365_token_cache["token"] = data["access_token"]
-        _ms365_token_cache["expires_at"] = time.time() + data.get("expires_in", 3600)
-
-        return data["access_token"]
-
-
-async def _send_via_ms365(to: str, subject: str, body: str, from_email: str, html: bool) -> Dict[str, Any]:
-    """Send email via Microsoft Graph API."""
-    token = await _get_ms365_token()
-
-    # Use the from_email as the sender mailbox, or fall back to configured user
-    sender = from_email or MS365_USER_EMAIL
-
-    message = {
-        "message": {
-            "subject": subject,
-            "body": {
-                "contentType": "HTML" if html else "Text",
-                "content": body,
-            },
-            "toRecipients": [{"emailAddress": {"address": to}}],
-        },
-        "saveToSentItems": "true",
-    }
-
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(
-            f"https://graph.microsoft.com/v1.0/users/{sender}/sendMail",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-            },
-            json=message,
-        )
-
-        if response.status_code == 202:
-            return {"provider": "ms365", "from": sender, "to": to, "success": True}
-        return {"error": response.text, "status_code": response.status_code, "success": False}
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "ms365")  # ms365, google, resend, sendgrid
 
 
 async def email_handler(
@@ -107,83 +38,105 @@ async def email_handler(
     subject: str,
     body: str,
     from_email: Optional[str] = None,
+    cc: Optional[str] = None,
+    bcc: Optional[str] = None,
     html: bool = False,
     provider: Optional[str] = None,
+    operation: str = "send",
+    message_id: Optional[str] = None,
+    query: Optional[str] = None,
+    max_results: int = 10,
 ) -> Dict[str, Any]:
-    """Send an email via configured provider."""
-    logger.info(f"Email: to={to}, subject={subject[:30]}...")
+    """
+    Email operations via configured provider (MS365, Google, Resend, SendGrid).
 
-    use_provider = provider or EMAIL_PROVIDER
-
-    # Check which provider to use
-    if use_provider == "ms365" and MS365_CLIENT_ID and MS365_CLIENT_SECRET:
-        try:
-            return await _send_via_ms365(to, subject, body, from_email, html)
-        except Exception as e:
-            logger.error(f"MS365 email error: {e}")
-            return {"error": str(e), "success": False}
-
-    if not RESEND_API_KEY and not SENDGRID_API_KEY and not MS365_CLIENT_ID:
-        return {
-            "error": "No email provider configured. Set MS365_*, RESEND_API_KEY, or SENDGRID_API_KEY.",
-            "success": False,
-        }
+    Supports:
+    - send: Send an email
+    - get: Get a specific email by message_id
+    - list: List emails with optional query filter
+    - search: Search emails with provider-specific query syntax
+    """
+    logger.info(f"Email operation: {operation}, provider={provider or EMAIL_PROVIDER}")
 
     try:
-        if RESEND_API_KEY and use_provider == "resend":
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    "https://api.resend.com/emails",
-                    headers={
-                        "Authorization": f"Bearer {RESEND_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "from": from_email or "noreply@unicorncommander.ai",
-                        "to": [to],
-                        "subject": subject,
-                        "html" if html else "text": body,
-                    },
-                )
-                if response.status_code == 200:
-                    return {"message_id": response.json().get("id"), "provider": "resend", "success": True}
-                return {"error": response.text, "success": False}
+        # Get the email provider
+        email_provider = get_email_provider(provider)
 
-        elif SENDGRID_API_KEY and use_provider == "sendgrid":
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(
-                    "https://api.sendgrid.com/v3/mail/send",
-                    headers={
-                        "Authorization": f"Bearer {SENDGRID_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "personalizations": [{"to": [{"email": to}]}],
-                        "from": {"email": from_email or "noreply@unicorncommander.ai"},
-                        "subject": subject,
-                        "content": [{"type": "text/html" if html else "text/plain", "value": body}],
-                    },
-                )
-                if response.status_code in [200, 202]:
-                    return {"provider": "sendgrid", "success": True}
-                return {"error": response.text, "success": False}
+        if not email_provider.is_configured():
+            return {
+                "success": False,
+                "error": f"Email provider '{email_provider.name}' is not configured. "
+                         f"Available providers: {', '.join(get_available_providers())}",
+            }
 
-        return {"error": f"Provider '{use_provider}' not configured", "success": False}
+        # Handle different operations
+        if operation == "send":
+            logger.info(f"Email: to={to}, subject={subject[:30] if subject else 'N/A'}...")
+            return await email_provider.send_email(
+                to=to,
+                subject=subject,
+                body=body,
+                from_email=from_email,
+                cc=cc,
+                bcc=bcc,
+                html=html,
+            )
+
+        elif operation == "get":
+            if not message_id:
+                return {"success": False, "error": "message_id required for get operation"}
+            return await email_provider.get_email(message_id)
+
+        elif operation == "list":
+            return await email_provider.list_emails(query=query, max_results=max_results)
+
+        elif operation == "search":
+            if not query:
+                return {"success": False, "error": "query required for search operation"}
+            return await email_provider.search_emails(query=query, max_results=max_results)
+
+        else:
+            return {"success": False, "error": f"Unknown operation: {operation}"}
 
     except Exception as e:
-        return {"error": str(e), "success": False}
+        logger.error(f"Email handler error: {e}")
+        return {"success": False, "error": str(e)}
 
 
 EMAIL_TOOL = ToolDefinition(
     name="email",
-    description="Send an email via Microsoft 365. Do NOT specify from_email or provider - the system will use the configured defaults automatically.",
+    description=(
+        "Email operations via configured provider (MS365 or Google Workspace). "
+        "Operations: send (default), get, list, search. "
+        "For send: provide to, subject, body. For get: provide message_id. "
+        "For list/search: optionally provide query and max_results."
+    ),
     parameters=[
-        ToolParameter(name="to", type="string", description="Recipient email address", required=True),
-        ToolParameter(name="subject", type="string", description="Email subject", required=True),
-        ToolParameter(name="body", type="string", description="Email body content", required=True),
-        ToolParameter(name="from_email", type="string", description="DO NOT USE - system uses configured sender", required=False),
+        ToolParameter(
+            name="operation",
+            type="string",
+            description="Operation: 'send' (default), 'get', 'list', 'search'",
+            required=False,
+            default="send",
+            enum=["send", "get", "list", "search"],
+        ),
+        ToolParameter(name="to", type="string", description="Recipient email address (for send)", required=False),
+        ToolParameter(name="subject", type="string", description="Email subject (for send)", required=False),
+        ToolParameter(name="body", type="string", description="Email body content (for send)", required=False),
+        ToolParameter(name="cc", type="string", description="CC recipients, comma-separated (for send)", required=False),
+        ToolParameter(name="bcc", type="string", description="BCC recipients, comma-separated (for send)", required=False),
         ToolParameter(name="html", type="boolean", description="Send as HTML (default: plain text)", required=False, default=False),
-        ToolParameter(name="provider", type="string", description="DO NOT USE - system uses ms365", required=False, enum=["ms365", "resend", "sendgrid"]),
+        ToolParameter(name="message_id", type="string", description="Message ID (for get operation)", required=False),
+        ToolParameter(name="query", type="string", description="Search query (for list/search operations)", required=False),
+        ToolParameter(name="max_results", type="number", description="Max results for list/search (default 10)", required=False, default=10),
+        ToolParameter(name="from_email", type="string", description="DO NOT USE - system uses configured sender", required=False),
+        ToolParameter(
+            name="provider",
+            type="string",
+            description="Email provider override (default from EMAIL_PROVIDER env)",
+            required=False,
+            enum=["ms365", "google", "resend", "sendgrid"],
+        ),
     ],
     handler=email_handler,
 )
@@ -718,6 +671,160 @@ QRCODE_TOOL = ToolDefinition(
 )
 
 
+# ============== Agentic RAG Tool ==============
+
+# Lazy import to avoid circular dependencies
+_agentic_rag = None
+
+
+def _get_agentic_rag():
+    """Lazy-load AgenticRAG to avoid circular imports"""
+    global _agentic_rag
+    if _agentic_rag is None:
+        from app.agents.agentic_rag import get_agentic_rag
+        _agentic_rag = get_agentic_rag()
+    return _agentic_rag
+
+
+async def agentic_rag_handler(
+    query: str,
+    mode: str = "agentic",
+    user_id: str = "system",
+    max_iterations: int = 5,
+    include_graph: bool = True,
+    include_memory: bool = True,
+) -> Dict[str, Any]:
+    """
+    Execute an Agentic RAG query that combines knowledge graph and memory retrieval.
+
+    This tool provides comprehensive question answering by:
+    1. Parsing the query to understand intent
+    2. Querying the FalkorDB knowledge graph for entities and relationships
+    3. Querying Qdrant (via mem0) for semantically similar content
+    4. Fusing results and generating an answer with provenance
+
+    Modes:
+    - agentic: Full agentic behavior with iterative tool use (slower, more thorough)
+    - simple: Direct retrieval and answer generation (faster, less flexible)
+    - retrieve: Only retrieve context, no answer generation
+    """
+    logger.info(f"Agentic RAG query: mode={mode}, query={query[:50]}...")
+
+    try:
+        rag = _get_agentic_rag()
+
+        if mode == "agentic":
+            # Full agentic behavior with tool use
+            response = await rag.query(
+                query=query,
+                user_id=user_id,
+                max_iterations=max_iterations
+            )
+            return response.to_dict()
+
+        elif mode == "simple":
+            # Direct retrieval and answer
+            return await rag.simple_query(
+                query=query,
+                user_id=user_id
+            )
+
+        elif mode == "retrieve":
+            # Only retrieve context
+            context = await rag.retrieve_context(
+                query=query,
+                user_id=user_id,
+                include_graph=include_graph,
+                include_memory=include_memory
+            )
+            return {
+                "success": True,
+                "context": {
+                    "entities": context.graph_entities,
+                    "relationships": context.graph_relationships,
+                    "paths": context.graph_paths,
+                    "memories": context.vector_memories,
+                    "context_text": context.context_text,
+                    "sources": context.sources
+                }
+            }
+
+        else:
+            return {"success": False, "error": f"Unknown mode: {mode}"}
+
+    except Exception as e:
+        logger.error(f"Agentic RAG error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+AGENTIC_RAG_TOOL = ToolDefinition(
+    name="agentic_rag",
+    description="""Agentic RAG - Retrieval-Augmented Generation combining knowledge graph and memory.
+
+This tool answers questions by:
+1. Parsing natural language to understand entities and relationships
+2. Querying the FalkorDB knowledge graph for structured data
+3. Querying memory (Qdrant) for semantically similar content
+4. Fusing results to generate comprehensive answers with sources
+
+Use this for questions like:
+- "What companies is John connected to?"
+- "Find all entities related to Project X"
+- "What do we know about Acme Corp?"
+- "How is Alice connected to Bob?"
+
+Modes:
+- agentic: Full iterative tool use (thorough, slower)
+- simple: Direct retrieval and answer (faster)
+- retrieve: Only get context, no answer""",
+    parameters=[
+        ToolParameter(
+            name="query",
+            type="string",
+            description="Natural language question to answer",
+            required=True
+        ),
+        ToolParameter(
+            name="mode",
+            type="string",
+            description="Query mode: 'agentic' (iterative), 'simple' (fast), 'retrieve' (context only)",
+            required=False,
+            default="agentic",
+            enum=["agentic", "simple", "retrieve"]
+        ),
+        ToolParameter(
+            name="user_id",
+            type="string",
+            description="User ID for memory context (default: system)",
+            required=False,
+            default="system"
+        ),
+        ToolParameter(
+            name="max_iterations",
+            type="number",
+            description="Maximum tool use iterations for agentic mode (default 5)",
+            required=False,
+            default=5
+        ),
+        ToolParameter(
+            name="include_graph",
+            type="boolean",
+            description="Include knowledge graph results (default true)",
+            required=False,
+            default=True
+        ),
+        ToolParameter(
+            name="include_memory",
+            type="boolean",
+            description="Include memory results (default true)",
+            required=False,
+            default=True
+        ),
+    ],
+    handler=agentic_rag_handler,
+)
+
+
 # ============== Export all extended tools ==============
 
 EXTENDED_TOOLS = [
@@ -729,4 +836,5 @@ EXTENDED_TOOLS = [
     DATABASE_TOOL,
     NOTIFY_TOOL,
     QRCODE_TOOL,
+    AGENTIC_RAG_TOOL,
 ]

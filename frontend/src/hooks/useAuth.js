@@ -31,11 +31,12 @@ const useAuth = create((set, get) => ({
   /**
    * Load user on app start
    * Called from App.jsx useEffect
+   * Tries API key auth first, then falls back to OIDC
    */
   loadUser: async () => {
     set({ isLoading: true, error: null });
 
-    // Dev mode: skip Keycloak and auto-authenticate
+    // Dev mode: skip auth and auto-authenticate
     if (DEV_MODE) {
       set({
         user: DEV_USER,
@@ -46,6 +47,27 @@ const useAuth = create((set, get) => ({
       return;
     }
 
+    // First, try API key authentication (native auth)
+    if (authService.hasApiKey()) {
+      try {
+        const user = await authService.getCurrentUserByApiKey();
+        if (user) {
+          set({
+            user,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null
+          });
+          return;
+        }
+      } catch (error) {
+        console.log('[useAuth] API key auth failed, trying OIDC:', error);
+        // API key invalid, clear it and try OIDC
+        authService.clearApiKey();
+      }
+    }
+
+    // Fall back to OIDC authentication
     try {
       const user = await authService.getCurrentUser();
       set({
@@ -190,7 +212,7 @@ const useAuth = create((set, get) => ({
   },
 
   /**
-   * Initiate login flow
+   * Initiate OIDC login flow (SSO)
    */
   login: async () => {
     try {
@@ -202,10 +224,63 @@ const useAuth = create((set, get) => ({
   },
 
   /**
+   * Login with email and password (native auth)
+   * @param {string} email - User email
+   * @param {string} password - User password
+   */
+  loginWithPassword: async (email, password) => {
+    set({ isLoading: true, error: null });
+    try {
+      const data = await authService.loginWithPassword(email, password);
+      set({
+        user: data.user || data,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null
+      });
+      return data;
+    } catch (error) {
+      set({
+        isLoading: false,
+        error: error.message
+      });
+      throw error;
+    }
+  },
+
+  /**
+   * Register a new user with email and password
+   * @param {string} email - User email
+   * @param {string} password - User password
+   * @param {string} name - User display name
+   */
+  register: async (email, password, name) => {
+    set({ isLoading: true, error: null });
+    try {
+      const data = await authService.registerUser(email, password, name);
+      set({
+        user: data.user || data,
+        isAuthenticated: true,
+        isLoading: false,
+        error: null
+      });
+      return data;
+    } catch (error) {
+      set({
+        isLoading: false,
+        error: error.message
+      });
+      throw error;
+    }
+  },
+
+  /**
    * Logout from Brigade
    */
   logout: async () => {
     try {
+      // Clear API key first
+      authService.clearApiKey();
       await authService.logout();
       set({
         user: null,
@@ -215,6 +290,7 @@ const useAuth = create((set, get) => ({
     } catch (error) {
       console.error('Logout failed:', error);
       // Clear state anyway
+      authService.clearApiKey();
       set({
         user: null,
         isAuthenticated: false,

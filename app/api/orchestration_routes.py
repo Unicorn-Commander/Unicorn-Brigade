@@ -13,12 +13,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Annotated
 import logging
 import json
 
 from app.db.database import get_session
 from app.db.repositories import AgentRepository
+from app.auth.middleware import require_api_key, require_operator, require_admin, AuthUser
+from app.security.rate_limit import rate_limit
 from app.orchestration import (
     event_bus,
     emit_agent_started,
@@ -32,6 +34,31 @@ from app.engine.meta_agent import MetaAgent
 from app.llm.ops_center_client import OpsCenterLLMClient
 
 logger = logging.getLogger(__name__)
+
+
+def extract_content(response: Dict[str, Any]) -> str:
+    """
+    Extract content from LLM response.
+
+    Handles both OpenAI format (choices[0].message.content) and
+    simplified format (content at top level).
+    """
+    # OpenAI format: {"choices": [{"message": {"content": "..."}}]}
+    if "choices" in response and len(response["choices"]) > 0:
+        choice = response["choices"][0]
+        if "message" in choice and "content" in choice["message"]:
+            return choice["message"]["content"] or ""
+        # Delta format for streaming
+        if "delta" in choice and "content" in choice["delta"]:
+            return choice["delta"]["content"] or ""
+
+    # Simplified format: {"content": "..."}
+    if "content" in response:
+        return response["content"] or ""
+
+    # Fallback: stringify the response
+    logger.warning(f"Unexpected response format, no content found: {list(response.keys())}")
+    return ""
 router = APIRouter(prefix="/orchestration", tags=["orchestration"])
 
 # Will be set by main.py
@@ -52,7 +79,9 @@ def init_orchestration_routes(client: OpsCenterLLMClient):
 # ============================================================================
 
 @router.get("/events")
-async def stream_events():
+async def stream_events(
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """
     Server-Sent Events stream of orchestration activity.
 
@@ -86,7 +115,8 @@ async def stream_events():
 
 @router.get("/state")
 async def get_orchestration_state(
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Get current orchestration state.
@@ -118,7 +148,9 @@ async def get_orchestration_state(
 
 
 @router.get("/agents/active")
-async def get_active_agents():
+async def get_active_agents(
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """Get currently active agents"""
     return {
         "agents": [s.to_dict() for s in event_bus.get_active_agents()]
@@ -139,7 +171,8 @@ class CreateMissionRequest(BaseModel):
 
 @router.get("/missions")
 async def get_missions(
-    status: Optional[str] = Query(None, description="Filter by status (active, completed, failed)")
+    status: Optional[str] = Query(None, description="Filter by status (active, completed, failed)"),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get all missions"""
     missions = event_bus.get_all_missions()
@@ -153,7 +186,10 @@ async def get_missions(
 
 
 @router.get("/missions/{mission_id}")
-async def get_mission(mission_id: str):
+async def get_mission(
+    mission_id: str,
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """Get mission details"""
     mission = event_bus.get_mission(mission_id)
     if not mission:
@@ -165,7 +201,8 @@ async def get_mission(mission_id: str):
 @router.post("/missions")
 async def create_mission(
     request: CreateMissionRequest,
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Create a new mission.
@@ -188,7 +225,7 @@ async def create_mission(
             repo = AgentRepository(session)
             agents = await repo.list_all()
             agent_info = [
-                {"id": a.id, "name": a.display_name, "domain": a.domain, "tools": a.tools}
+                {"id": a["id"], "name": a.get("displayName", a.get("name")), "domain": a.get("domain"), "tools": a.get("tools", [])}
                 for a in agents
             ]
 
@@ -215,7 +252,7 @@ Select the best agents for this mission. Return a JSON object:
                 temperature=0.3,
             )
 
-            content = response.get("content", "")
+            content = extract_content(response)
 
             # Parse response
             import re
@@ -253,7 +290,8 @@ class CommandRequest(BaseModel):
 @router.post("/command")
 async def send_command(
     request: CommandRequest,
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Send a command to The General.
@@ -271,7 +309,7 @@ async def send_command(
     repo = AgentRepository(session)
     agents = await repo.list_all()
     agent_info = [
-        {"id": a.id, "name": a.display_name, "domain": a.domain}
+        {"id": a["id"], "name": a.get("displayName", a.get("name")), "domain": a.get("domain")}
         for a in agents
     ]
 
@@ -315,7 +353,7 @@ Be strategic and efficient. Delegate appropriately."""
             temperature=0.7,
         )
 
-        content = response.get("content", "")
+        content = extract_content(response)
 
         # Parse The General's response
         result = {"response": content, "actions": []}
@@ -376,7 +414,9 @@ class CreateAgentRequest(BaseModel):
 @router.post("/agents/create")
 async def create_dynamic_agent(
     request: CreateAgentRequest,
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+    _rl: Annotated[None, rate_limit("dynamic_agent_create", 5, 60)] = None,
 ):
     """
     Dynamically create a new agent using The General.

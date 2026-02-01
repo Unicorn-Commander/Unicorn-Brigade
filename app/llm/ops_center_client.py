@@ -10,6 +10,11 @@ import json
 logger = logging.getLogger(__name__)
 
 
+class ModelUnavailableError(Exception):
+    """Raised when a requested model is not available (e.g., Ollama not running)"""
+    pass
+
+
 @dataclass
 class ToolParameter:
     """Parameter definition for a tool"""
@@ -19,6 +24,7 @@ class ToolParameter:
     required: bool = True
     enum: Optional[List[str]] = None
     default: Any = None
+    items: Optional[Dict[str, Any]] = None  # For array types: {"type": "string"} or {"type": "object", ...}
 
 
 @dataclass
@@ -41,6 +47,12 @@ class ToolDefinition:
             }
             if param.enum:
                 prop["enum"] = param.enum
+            # Add items for array types (required by OpenAI)
+            if param.type == "array" and param.items:
+                prop["items"] = param.items
+            elif param.type == "array":
+                # Default to string items if not specified
+                prop["items"] = {"type": "string"}
             properties[param.name] = prop
 
             if param.required:
@@ -227,17 +239,38 @@ class OpsCenterLLMClient:
                 json=payload,
                 headers=headers
             ) as response:
-                response.raise_for_status()
-
                 content_type = response.headers.get("content-type", "")
 
-                # Check if response is SSE-wrapped (text/event-stream)
+                # Handle error responses first
+                if response.status_code >= 400:
+                    # For streaming responses, read all bytes first
+                    error_bytes = b""
+                    async for chunk in response.aiter_bytes():
+                        error_bytes += chunk
+                    error_text = error_bytes.decode() if error_bytes else "Unknown error"
+                    logger.error(f"Ops-Center error {response.status_code}: {error_text}")
+                    logger.error(f"Request model: {model}")
+
+                    # Check if this is an Ollama model error - trigger fallback to API models
+                    if "ollama" in model.lower():
+                        raise ModelUnavailableError(f"Local Ollama model {model} unavailable: {error_text[:200]}")
+
+                    # For non-Ollama errors, raise HTTP error
+                    raise httpx.HTTPStatusError(
+                        message=error_text,
+                        request=response.request,
+                        response=response
+                    )
+
+                # Parse successful response based on content-type
                 if "text/event-stream" in content_type:
                     result = await self._parse_sse_response(response)
                 else:
-                    # Standard JSON response (internal/direct access)
-                    body = await response.aread()
-                    result = json.loads(body) if body else {}
+                    # Standard JSON response - read all bytes for streaming context
+                    body_bytes = b""
+                    async for chunk in response.aiter_bytes():
+                        body_bytes += chunk
+                    result = json.loads(body_bytes) if body_bytes else {}
 
             # Log token usage for billing
             if "usage" in result:
@@ -433,19 +466,40 @@ class OpsCenterLLMClient:
                 json=payload,
                 headers=headers
             ) as response:
-                if response.status_code >= 400:
-                    error_body = await response.aread()
-                    logger.error(f"Ops-Center error {response.status_code}: {error_body.decode()}")
-                    logger.error(f"Request payload (first 2000 chars): {json.dumps(payload)[:2000]}")
-                response.raise_for_status()
-
+                # Read response body first (fixes httpx streaming error)
                 content_type = response.headers.get("content-type", "")
 
+                # Handle error responses before checking content-type
+                if response.status_code >= 400:
+                    # For streaming responses, we need to read all bytes first
+                    error_bytes = b""
+                    async for chunk in response.aiter_bytes():
+                        error_bytes += chunk
+                    error_text = error_bytes.decode() if error_bytes else "Unknown error"
+                    logger.error(f"Ops-Center error {response.status_code}: {error_text}")
+                    logger.error(f"Request model: {model}")
+                    logger.error(f"Request payload (first 2000 chars): {json.dumps(payload)[:2000]}")
+
+                    # Check if this is an Ollama model error - trigger fallback to API models
+                    if "ollama" in model.lower():
+                        raise ModelUnavailableError(f"Local Ollama model {model} unavailable: {error_text[:200]}")
+
+                    # For non-Ollama errors, raise HTTP error
+                    raise httpx.HTTPStatusError(
+                        message=error_text,
+                        request=response.request,
+                        response=response
+                    )
+
+                # Parse successful response based on content-type
                 if "text/event-stream" in content_type:
                     result = await self._parse_sse_response(response)
                 else:
-                    body = await response.aread()
-                    result = json.loads(body) if body else {}
+                    # For streaming responses, read all bytes first
+                    body_bytes = b""
+                    async for chunk in response.aiter_bytes():
+                        body_bytes += chunk
+                    result = json.loads(body_bytes) if body_bytes else {}
 
             return result
 
@@ -543,6 +597,9 @@ class OpsCenterLLMClient:
         on_tool_call: Optional[Callable[[ToolCall], None]] = None,
         on_tool_result: Optional[Callable[[ToolResult], None]] = None,
         use_user_message_fallback: bool = True,  # Use user messages for tool results (works with more providers)
+        trace_recorder=None,  # Optional AgentTraceRecorder for code attribution
+        agent_id: Optional[str] = None,  # Agent ID for tracing
+        agent_name: Optional[str] = None,  # Agent name for tracing
     ) -> Dict[str, Any]:
         """
         Execute a complete tool use loop.
@@ -565,6 +622,9 @@ class OpsCenterLLMClient:
             on_tool_result: Callback when a tool returns
             use_user_message_fallback: If True, use user messages for tool results
                 (more compatible but less structured than OpenAI tool format)
+            trace_recorder: Optional AgentTraceRecorder for code attribution tracking
+            agent_id: Agent ID for tracing (required if trace_recorder provided)
+            agent_name: Agent name for tracing (required if trace_recorder provided)
 
         Returns:
             Final response from LLM
@@ -606,6 +666,35 @@ class OpsCenterLLMClient:
             # Check for tool calls
             if not self.has_tool_calls(response):
                 logger.info(f"No tool calls in response, completing loop")
+
+                # Record code attribution if tracing is enabled
+                if trace_recorder and agent_id and agent_name:
+                    try:
+                        response_text = self.get_response_content(response)
+                        if response_text:
+                            # Extract prompt from original user message
+                            user_prompt = None
+                            for msg in messages:
+                                if msg.get("role") == "user":
+                                    user_prompt = msg.get("content", "")
+                                    break
+
+                            # Auto-extract and record code from response
+                            await trace_recorder.record_from_llm_response(
+                                agent_id=agent_id,
+                                agent_name=agent_name,
+                                model=model,
+                                prompt=user_prompt or "",
+                                response=response_text,
+                                metadata={
+                                    "temperature": temperature,
+                                    "max_tokens": max_tokens,
+                                    "user_id": user_id,
+                                },
+                            )
+                    except Exception as e:
+                        logger.warning(f"Error recording code attribution: {e}")
+
                 return response
 
             # Parse tool calls

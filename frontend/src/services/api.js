@@ -3,7 +3,7 @@
 class APIService {
   constructor() {
     this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-    this.token = localStorage.getItem('token');
+    this.apiKey = localStorage.getItem('apiKey');
   }
 
   async request(endpoint, options = {}) {
@@ -12,7 +12,7 @@ class APIService {
         ...options,
         headers: {
           'Content-Type': 'application/json',
-          ...(this.token && { 'Authorization': `Bearer ${this.token}` }),
+          ...(this.apiKey && { 'X-API-Key': this.apiKey }),
           ...options.headers,
         },
       });
@@ -152,9 +152,9 @@ class APIService {
       body: JSON.stringify({ username, password }),
     });
 
-    if (response.token) {
-      this.token = response.token;
-      localStorage.setItem('token', response.token);
+    if (response.apiKey) {
+      this.apiKey = response.apiKey;
+      localStorage.setItem('apiKey', response.apiKey);
       localStorage.setItem('user', JSON.stringify(response.user));
     }
 
@@ -166,9 +166,26 @@ class APIService {
       method: 'POST',
     });
 
-    this.token = null;
-    localStorage.removeItem('token');
+    this.apiKey = null;
+    localStorage.removeItem('apiKey');
     localStorage.removeItem('user');
+  }
+
+  // Set API key manually (for direct API key entry)
+  setApiKey(apiKey) {
+    this.apiKey = apiKey;
+    localStorage.setItem('apiKey', apiKey);
+  }
+
+  // Get current API key
+  getApiKey() {
+    return this.apiKey;
+  }
+
+  // Clear API key
+  clearApiKey() {
+    this.apiKey = null;
+    localStorage.removeItem('apiKey');
   }
 
   async register(username, email, password) {
