@@ -225,17 +225,8 @@ const WorkflowVisualization3D = ({
     if (onAgentClick) {
       onAgentClick(node);
     }
-    // Focus on node
-    if (fgRef.current && viewMode === '3d') {
-      const distance = 200;
-      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
-      fgRef.current.cameraPosition(
-        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-        node,
-        1000
-      );
-    }
-  }, [onAgentClick, viewMode]);
+    // Do NOT move camera - user has full manual control
+  }, [onAgentClick]);
 
   // Handle link click
   const handleLinkClick = useCallback((link) => {
@@ -249,11 +240,9 @@ const WorkflowVisualization3D = ({
     setViewMode(viewMode === '3d' ? '2d' : '3d');
   };
 
-  // Reset camera
+  // Reset camera (disabled in demo mode for full manual control)
   const resetCamera = () => {
-    if (fgRef.current) {
-      fgRef.current.cameraPosition({ x: 0, y: 0, z: 500 }, { x: 0, y: 0, z: 0 }, 1000);
-    }
+    // Camera reset disabled - user has full manual control
   };
 
   // Toggle animation
@@ -638,13 +627,14 @@ const WorkflowVisualization3D = ({
             linkDirectionalParticleColor={link => link.particleColor || '#c084fc'}
             onNodeClick={handleNodeClick}
             onLinkClick={handleLinkClick}
-            enableNodeDrag={true}
+            enableNodeDrag={false}
             enableNavigationControls={true}
             showNavInfo={false}
-            warmupTicks={100}
-            cooldownTicks={50}
-            d3AlphaDecay={0.02}
-            d3VelocityDecay={0.3}
+            warmupTicks={0}
+            cooldownTicks={0}
+            d3AlphaDecay={1}
+            d3VelocityDecay={1}
+            dagMode={null}
             numDimensions={viewMode === '3d' ? 3 : 2}
           />
         ) : (
