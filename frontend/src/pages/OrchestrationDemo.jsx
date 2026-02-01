@@ -36,160 +36,118 @@ const getDomainEmoji = (domain) => {
     content: '📝',
     devops: '🚀',
     support: '🎧',
-    data: '📉',
-    ai: '🤖',
+    data: '💾',
+    'data-science': '📉',
+    security: '🛡️',
+    compliance: '✅',
   };
   return emojis[domain] || '🦄';
 };
 
-// Generate synthetic agents with realistic properties
+// Generate synthetic agents with realistic properties - Colonel-centric layout
 const generateAgents = (count) => {
-  const domains = [
-    'financial', 'legal', 'medical', 'technology', 'intelligence',
-    'investigation', 'cybersecurity', 'operations', 'research', 'sales',
-    'marketing', 'content', 'devops', 'support', 'data', 'ai'
-  ];
-  const ranks = ['General', 'Colonel', 'Major', 'Captain', 'Lieutenant', 'Sergeant', 'Specialist', 'Corporal'];
-  const specialties = [
-    'Analyst', 'Coordinator', 'Specialist', 'Expert', 'Officer',
-    'Director', 'Manager', 'Lead', 'Engineer', 'Scientist'
-  ];
+  const domains = ['financial', 'legal', 'medical', 'technology', 'intelligence', 'investigation', 'cybersecurity', 'operations'];
 
   const agents = [];
 
-  // Create The General as the main orchestrator
+  // 1. The Colonel at center (0, 0, 0) - Command Center
   agents.push({
-    id: 'the-general',
-    name: 'The General',
-    displayName: 'The General',
-    domain: 'operations',
+    id: 'the-colonel',
+    name: 'The Colonel',
+    displayName: 'The Colonel',
+    domain: 'command',
     avatar: '⭐',
     agentType: 'local',
     title: 'Supreme Commander',
-    bio: 'Orchestrates all mission operations',
+    bio: 'Orchestrates all mission operations from Command Center',
     x: 0,
     y: 0,
     z: 0,
+    isOrchestrator: true,
   });
 
-  // Generate domain leaders (one per domain)
-  domains.forEach((domain, idx) => {
-    const rank = ranks[idx % ranks.length];
+  // 2. Team Leads in a ring around The Colonel (8 domains, radius ~200)
+  domains.forEach((domain, i) => {
+    const angle = (i / domains.length) * Math.PI * 2;
+    const radius = 200;
+
     agents.push({
       id: `${domain}-lead`,
-      name: `${rank} ${domain.charAt(0).toUpperCase() + domain.slice(1)}`,
-      displayName: `${rank} ${domain.charAt(0).toUpperCase() + domain.slice(1)}`,
-      domain,
+      name: `${domain.charAt(0).toUpperCase() + domain.slice(1)} Team Lead`,
+      displayName: `${domain.charAt(0).toUpperCase() + domain.slice(1)} Lead`,
+      domain: domain,
       avatar: getDomainEmoji(domain),
-      agentType: idx % 3 === 0 ? 'federated' : 'local',
+      agentType: 'local',
       title: `${domain.charAt(0).toUpperCase() + domain.slice(1)} Team Lead`,
       bio: `Coordinates ${domain} operations`,
-      // Position domain leaders in a circle around The General
-      x: Math.cos((idx / domains.length) * 2 * Math.PI) * 150,
-      y: Math.sin((idx / domains.length) * 2 * Math.PI) * 150,
-      z: (Math.random() - 0.5) * 50,
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius * 0.3, // Flatten vertically
+      z: Math.sin(angle) * radius,
+      isTeamLead: true,
     });
   });
 
-  // Generate remaining agents distributed across domains
-  for (let i = agents.length; i < count; i++) {
-    const domain = domains[i % domains.length];
-    const domainIndex = domains.indexOf(domain);
-    const rank = ranks[Math.floor(Math.random() * ranks.length)];
-    const specialty = specialties[Math.floor(Math.random() * specialties.length)];
+  // 3. Workers clustered around their Team Leads (20 workers per domain)
+  domains.forEach((domain, domainIdx) => {
+    const angle = (domainIdx / domains.length) * Math.PI * 2;
+    const leadX = Math.cos(angle) * 200;
+    const leadY = Math.sin(angle) * 200 * 0.3;
+    const leadZ = Math.sin(angle) * 200;
 
-    // Determine agent type distribution
-    let agentType = 'local';
-    const typeRoll = Math.random();
-    if (typeRoll < 0.05) agentType = 'external-paid';
-    else if (typeRoll < 0.15) agentType = 'external-free';
-    else if (typeRoll < 0.30) agentType = 'federated';
+    for (let w = 0; w < 20; w++) {
+      const workerAngle = (w / 20) * Math.PI * 2;
+      const workerRadius = 80 + Math.random() * 40;
 
-    // Position agents in clusters by domain
-    const clusterAngle = (domainIndex / domains.length) * 2 * Math.PI;
-    const clusterRadius = 150 + Math.random() * 200;
-    const clusterSpread = 80;
+      agents.push({
+        id: `${domain}-worker-${w}`,
+        name: `${domain} Worker ${w}`,
+        displayName: `Worker ${w}`,
+        domain: domain,
+        avatar: '🔧',
+        agentType: Math.random() > 0.8 ? 'federated' : 'local',
+        title: `${domain.charAt(0).toUpperCase() + domain.slice(1)} Worker`,
+        bio: `Executes ${domain} tasks`,
+        x: leadX + Math.cos(workerAngle) * workerRadius,
+        y: leadY + (Math.random() - 0.5) * 60,
+        z: leadZ + Math.sin(workerAngle) * workerRadius,
+        isWorker: true,
+      });
+    }
+  });
+
+  // 4. Data Source agents (shared resources, clustered in center)
+  for (let d = 0; d < 50; d++) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 50 + Math.random() * 80;
 
     agents.push({
-      id: `agent-${i}`,
-      name: `${rank} ${specialty}`,
-      displayName: `${rank} ${specialty} #${i}`,
-      domain,
-      avatar: getDomainEmoji(domain),
-      agentType,
-      title: `${domain.charAt(0).toUpperCase() + domain.slice(1)} ${specialty}`,
-      bio: `Specialized in ${domain} tasks`,
-      x: Math.cos(clusterAngle) * clusterRadius + (Math.random() - 0.5) * clusterSpread,
-      y: Math.sin(clusterAngle) * clusterRadius + (Math.random() - 0.5) * clusterSpread,
-      z: (Math.random() - 0.5) * 100,
+      id: `data-source-${d}`,
+      name: `Data Source ${d}`,
+      displayName: `Data ${d}`,
+      domain: 'data',
+      avatar: '💾',
+      agentType: 'local',
+      title: 'Data Source',
+      bio: 'Provides data to workers',
+      x: Math.cos(angle) * radius,
+      y: (Math.random() - 0.5) * 40,
+      z: Math.sin(angle) * radius,
+      isDataSource: true,
     });
   }
 
+  // Total: 1 Colonel + 8 Team Leads + 160 Workers + 50 Data Sources = 219 agents
   return agents;
 };
 
-// Workflow scenarios
-const SCENARIOS = [
-  {
-    id: 'market-research',
-    name: 'Market Research Campaign',
-    orchestrator: 'the-general',
-    domain: 'research',
-    teamLeadCount: 5,
-    workerCount: 20,
-    protocol: 'internal',
-    duration: 7000,
-  },
-  {
-    id: 'financial-analysis',
-    name: 'Financial Analysis',
-    orchestrator: 'financial-lead',
-    domain: 'financial',
-    teamLeadCount: 8,
-    workerCount: 25,
-    protocol: 'internal',
-    duration: 7000,
-  },
-  {
-    id: 'cybersecurity-incident',
-    name: 'Cybersecurity Incident Response',
-    orchestrator: 'cybersecurity-lead',
-    domain: 'cybersecurity',
-    teamLeadCount: 10,
-    workerCount: 30,
-    protocol: 'internal',
-    duration: 7000,
-  },
-  {
-    id: 'legal-review',
-    name: 'Legal Compliance Review',
-    orchestrator: 'legal-lead',
-    domain: 'legal',
-    teamLeadCount: 6,
-    workerCount: 15,
-    protocol: 'internal',
-    duration: 7000,
-  },
-  {
-    id: 'medical-diagnosis',
-    name: 'Medical Diagnosis Workflow',
-    orchestrator: 'medical-lead',
-    domain: 'medical',
-    teamLeadCount: 7,
-    workerCount: 22,
-    protocol: 'internal',
-    duration: 7000,
-  },
-  {
-    id: 'multi-domain',
-    name: 'Multi-Domain Coordination',
-    orchestrator: 'the-general',
-    domain: 'all',
-    teamLeadCount: 16,
-    workerCount: 50,
-    protocol: 'peer',
-    duration: 8000,
-  },
+// Workflow definitions for simultaneous execution (staggered start times)
+const WORKFLOWS = [
+  { id: 'financial', domain: 'financial', interval: 12000, offset: 0 },
+  { id: 'intelligence', domain: 'intelligence', interval: 15000, offset: 3000 },
+  { id: 'cybersecurity', domain: 'cybersecurity', interval: 10000, offset: 5000 },
+  { id: 'legal', domain: 'legal', interval: 18000, offset: 7000 },
+  { id: 'medical', domain: 'medical', interval: 14000, offset: 9000 },
+  { id: 'technology', domain: 'technology', interval: 16000, offset: 11000 },
 ];
 
 const StatCard = ({ label, value, icon: Icon, color = 'purple' }) => (
@@ -209,168 +167,174 @@ const StatCard = ({ label, value, icon: Icon, color = 'purple' }) => (
 const OrchestrationDemo = () => {
   const [agents, setAgents] = useState([]);
   const [connections, setConnections] = useState([]);
-  const [activeAgents, setActiveAgents] = useState([]);
-  const [currentScene, setCurrentScene] = useState(0);
+  const [activeAgents, setActiveAgents] = useState(['the-colonel']); // Colonel always active
   const [isPlaying, setIsPlaying] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fgRef = useRef();
-  const scenarioTimeoutRef = useRef();
-  const connectionTimeoutRefs = useRef([]);
+  const workflowIntervalsRef = useRef([]);
 
   // Generate agents on mount
   useEffect(() => {
-    const syntheticAgents = generateAgents(1500);
+    const syntheticAgents = generateAgents(220);
     setAgents(syntheticAgents);
   }, []);
 
-  // Execute a workflow scenario
-  const executeWorkflow = useCallback((scenario) => {
-    const { orchestrator, domain, teamLeadCount, workerCount, protocol } = scenario;
+  // Execute a single workflow with proper delegation flow
+  const executeWorkflow = useCallback((domain) => {
+    const teamLeadId = `${domain}-lead`;
+    const teamLead = agents.find(a => a.id === teamLeadId);
+    if (!teamLead) return;
 
-    // Clear existing timeouts
-    connectionTimeoutRefs.current.forEach(clearTimeout);
-    connectionTimeoutRefs.current = [];
-
-    // 1. Activate orchestrator
-    setActiveAgents([orchestrator]);
-
-    // 2. After 1s, delegate to team leads
-    const timeout1 = setTimeout(() => {
-      const leads = agents
-        .filter(a => domain === 'all' ? a.id.endsWith('-lead') : a.domain === domain)
-        .slice(0, teamLeadCount)
-        .map(a => a.id);
-
-      setActiveAgents([orchestrator, ...leads]);
-
-      // Create connections to team leads
-      const leadConnections = leads.map(lead => ({
-        id: `${orchestrator}-${lead}-${Date.now()}`,
-        source: orchestrator,
-        target: lead,
-        label: 'delegates',
-        protocol: 'internal',
+    // Phase 1: Colonel → Team Lead (1s)
+    setTimeout(() => {
+      setActiveAgents(prev => [...new Set([...prev, 'the-colonel', teamLeadId])]);
+      setConnections(prev => [...prev, {
+        id: `colonel-${teamLeadId}-${Date.now()}`,
+        source: 'the-colonel',
+        target: teamLeadId,
         color: 'rgba(139, 92, 246, 0.8)',
-        particleColor: '#c084fc',
-        temporary: true,
+        protocol: 'internal',
+        createdAt: Date.now(),
+      }]);
+    }, 0);
+
+    // Phase 2: Team Lead → Workers (2s)
+    setTimeout(() => {
+      const workers = agents
+        .filter(a => a.domain === domain && a.isWorker)
+        .slice(0, 5); // Pick 5 workers
+
+      const workerIds = workers.map(w => w.id);
+      setActiveAgents(prev => [...new Set([...prev, ...workerIds])]);
+
+      const newConns = workers.map(w => ({
+        id: `${teamLeadId}-${w.id}-${Date.now()}`,
+        source: teamLeadId,
+        target: w.id,
+        color: 'rgba(139, 92, 246, 0.8)',
+        protocol: 'internal',
+        createdAt: Date.now(),
+      }));
+      setConnections(prev => [...prev, ...newConns]);
+    }, 1000);
+
+    // Phase 3: Workers ↔ Data Sources (3s) - PEER-TO-PEER YELLOW
+    setTimeout(() => {
+      const workers = agents
+        .filter(a => a.domain === domain && a.isWorker)
+        .slice(0, 5);
+
+      const dataSources = agents
+        .filter(a => a.isDataSource)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 3);
+
+      const peerConns = workers.flatMap(w =>
+        dataSources.map(ds => ({
+          id: `peer-${w.id}-${ds.id}-${Date.now()}`,
+          source: w.id,
+          target: ds.id,
+          color: 'rgba(251, 191, 36, 0.8)', // YELLOW
+          protocol: 'peer',
+          createdAt: Date.now(),
+        }))
+      );
+
+      setConnections(prev => [...prev, ...peerConns]);
+      setActiveAgents(prev => [...new Set([...prev, ...dataSources.map(ds => ds.id)])]);
+    }, 2000);
+
+    // Phase 4: Results flow back - Workers → Team Lead (5s)
+    setTimeout(() => {
+      const workers = agents
+        .filter(a => a.domain === domain && a.isWorker)
+        .slice(0, 5);
+
+      const backConns = workers.map(w => ({
+        id: `back-${w.id}-${teamLeadId}-${Date.now()}`,
+        source: w.id,
+        target: teamLeadId,
+        color: 'rgba(34, 197, 94, 0.6)', // GREEN (results)
+        protocol: 'internal',
+        createdAt: Date.now(),
       }));
 
-      setConnections(leadConnections);
-    }, 1000);
-    connectionTimeoutRefs.current.push(timeout1);
+      setConnections(prev => [...prev, ...backConns]);
+    }, 4000);
 
-    // 3. After 2.5s, delegate to workers
-    const timeout2 = setTimeout(() => {
-      const leads = agents
-        .filter(a => domain === 'all' ? a.id.endsWith('-lead') : a.domain === domain)
-        .slice(0, teamLeadCount);
+    // Phase 5: Team Lead → Colonel (6s)
+    setTimeout(() => {
+      setConnections(prev => [...prev, {
+        id: `result-${teamLeadId}-colonel-${Date.now()}`,
+        source: teamLeadId,
+        target: 'the-colonel',
+        color: 'rgba(34, 197, 94, 0.6)', // GREEN
+        protocol: 'internal',
+        createdAt: Date.now(),
+      }]);
+    }, 5000);
 
-      const workers = [];
-      const workerConnections = [];
-
-      leads.forEach(lead => {
-        const domainWorkers = agents
-          .filter(a => a.domain === lead.domain && a.id !== lead.id && !a.id.endsWith('-lead'))
-          .slice(0, Math.ceil(workerCount / teamLeadCount));
-
-        workers.push(...domainWorkers.map(w => w.id));
-
-        // Create peer-to-peer connections (yellow) or hierarchical (purple)
-        domainWorkers.forEach(worker => {
-          workerConnections.push({
-            id: `${lead.id}-${worker.id}-${Date.now()}`,
-            source: lead.id,
-            target: worker.id,
-            label: 'assigns',
-            protocol: protocol === 'peer' ? 'peer' : 'internal',
-            color: protocol === 'peer' ? 'rgba(251, 191, 36, 0.8)' : 'rgba(139, 92, 246, 0.6)',
-            particleColor: protocol === 'peer' ? '#fbbf24' : '#c084fc',
-            temporary: true,
-          });
-        });
-      });
-
-      setActiveAgents(prev => [...prev, ...workers]);
-      setConnections(prev => [...prev, ...workerConnections]);
-    }, 2500);
-    connectionTimeoutRefs.current.push(timeout2);
-
-    // 4. After 5.5s, fade connections and complete
-    const timeout3 = setTimeout(() => {
-      setConnections([]);
-    }, 5500);
-    connectionTimeoutRefs.current.push(timeout3);
-
-    // 5. After 6.5s, clear active agents
-    const timeout4 = setTimeout(() => {
-      setActiveAgents([]);
-    }, 6500);
-    connectionTimeoutRefs.current.push(timeout4);
+    // Phase 6: Cleanup (8s)
+    setTimeout(() => {
+      setConnections(prev =>
+        prev.filter(c => Date.now() - c.createdAt < 5000)
+      );
+      setActiveAgents(prev =>
+        prev.filter(id => id === 'the-colonel' || agents.find(a => a.id === id && a.isTeamLead))
+      );
+    }, 7000);
   }, [agents]);
 
-  // Zoom camera to cluster
-  const zoomToCluster = useCallback((domain) => {
-    if (!fgRef.current || !agents.length) return;
+  // Set initial camera position (manual control enabled)
+  useEffect(() => {
+    if (!fgRef.current) return;
 
-    if (domain === 'all') {
-      // Zoom out to see everything
-      fgRef.current.cameraPosition(
-        { x: 0, y: 500, z: 600 },
-        { x: 0, y: 0, z: 0 },
-        2000
-      );
-    } else {
-      // Find center of domain cluster
-      const domainAgents = agents.filter(a => a.domain === domain);
-      if (domainAgents.length === 0) return;
+    // Set initial camera position looking at The Colonel from a good angle
+    fgRef.current.cameraPosition(
+      { x: 600, y: 300, z: 600 }, // Initial position
+      { x: 0, y: 0, z: 0 }, // Look at The Colonel (center)
+      2000 // Smooth 2-second transition on load
+    );
+  }, []);
 
-      const centerX = domainAgents.reduce((sum, a) => sum + a.x, 0) / domainAgents.length;
-      const centerY = domainAgents.reduce((sum, a) => sum + a.y, 0) / domainAgents.length;
-      const centerZ = domainAgents.reduce((sum, a) => sum + a.z, 0) / domainAgents.length;
-
-      // Zoom camera to cluster
-      fgRef.current.cameraPosition(
-        { x: centerX + 250, y: centerY + 150, z: centerZ + 200 },
-        { x: centerX, y: centerY, z: centerZ },
-        2000
-      );
-    }
-  }, [agents]);
-
-  // Auto-play scenarios
+  // Run multiple simultaneous workflows with staggered starts
   useEffect(() => {
     if (!isPlaying || agents.length === 0) return;
 
-    const playScene = () => {
-      const scenario = SCENARIOS[currentScene];
-      executeWorkflow(scenario);
-      zoomToCluster(scenario.domain);
-    };
+    const intervals = [];
 
-    // Play current scene immediately
-    playScene();
+    WORKFLOWS.forEach(wf => {
+      // Initial delay for staggered start
+      const initialTimeout = setTimeout(() => {
+        executeWorkflow(wf.domain);
 
-    // Schedule next scene
-    scenarioTimeoutRef.current = setTimeout(() => {
-      setCurrentScene((prev) => (prev + 1) % SCENARIOS.length);
-    }, SCENARIOS[currentScene].duration);
+        // Repeat workflow
+        const interval = setInterval(() => {
+          executeWorkflow(wf.domain);
+        }, wf.interval);
+
+        intervals.push(interval);
+      }, wf.offset);
+
+      intervals.push(initialTimeout);
+    });
+
+    workflowIntervalsRef.current = intervals;
 
     return () => {
-      if (scenarioTimeoutRef.current) {
-        clearTimeout(scenarioTimeoutRef.current);
-      }
+      intervals.forEach(interval => clearInterval(interval));
+      intervals.forEach(timeout => clearTimeout(timeout));
     };
-  }, [currentScene, isPlaying, agents, executeWorkflow, zoomToCluster]);
+  }, [isPlaying, agents, executeWorkflow]);
 
   // Reset demo
   const handleReset = () => {
-    setCurrentScene(0);
-    setActiveAgents([]);
+    setActiveAgents(['the-colonel']);
     setConnections([]);
     setIsPlaying(false);
-    if (fgRef.current) {
-      fgRef.current.cameraPosition({ x: 0, y: 0, z: 500 }, { x: 0, y: 0, z: 0 }, 1000);
-    }
+    workflowIntervalsRef.current.forEach(interval => clearInterval(interval));
+    workflowIntervalsRef.current.forEach(timeout => clearTimeout(timeout));
+    workflowIntervalsRef.current = [];
   };
 
   // Stats
@@ -378,8 +342,8 @@ const OrchestrationDemo = () => {
     totalAgents: agents.length,
     activeAgents: activeAgents.length,
     connections: connections.length,
-    currentWorkflow: SCENARIOS[currentScene]?.name || 'Initializing...',
-  }), [agents, activeAgents, connections, currentScene]);
+    activeWorkflows: WORKFLOWS.length,
+  }), [agents, activeAgents, connections]);
 
   return (
     <div className="min-h-screen bg-slate-900 p-6">
@@ -392,11 +356,11 @@ const OrchestrationDemo = () => {
                 <Sparkles className="w-8 h-8 text-purple-400" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
-                  Unicorn Brigade - Live Orchestration Demo
+                <h1 className="text-4xl font-bold text-white mb-2">
+                  The Colonel's Command Center
                 </h1>
                 <p className="text-slate-400">
-                  Showcasing {agents.length.toLocaleString()} agents executing workflows in real-time
+                  Orchestrating {agents.length} agents across {WORKFLOWS.length} concurrent workflows
                 </p>
               </div>
             </div>
@@ -443,27 +407,26 @@ const OrchestrationDemo = () => {
           </div>
         </div>
 
-        {/* Scene indicator */}
+        {/* Workflow status */}
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <span className="text-sm text-slate-400">
-              Scene {currentScene + 1} of {SCENARIOS.length}: {SCENARIOS[currentScene]?.name}
+              Mission Control: {WORKFLOWS.length} Concurrent Operations
             </span>
             <div className="flex space-x-2">
-              {SCENARIOS.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrentScene(i)}
-                  className={`h-1.5 w-12 rounded-full transition-all ${
-                    i === currentScene ? 'bg-purple-500' : 'bg-slate-700 hover:bg-slate-600'
-                  }`}
-                />
+              {WORKFLOWS.map((wf, i) => (
+                <div
+                  key={wf.id}
+                  className="px-3 py-1 rounded-full bg-purple-500/20 text-purple-400 text-xs border border-purple-500/30"
+                >
+                  {wf.domain}
+                </div>
               ))}
             </div>
           </div>
 
           <div className="text-xs text-slate-500">
-            Auto-playing • {SCENARIOS[currentScene]?.duration / 1000}s per scene
+            Continuous Operation • All workflows running simultaneously
           </div>
         </div>
 
@@ -477,7 +440,7 @@ const OrchestrationDemo = () => {
           />
           <StatCard
             label="Active Workflows"
-            value={isPlaying ? 1 : 0}
+            value={isPlaying ? stats.activeWorkflows : 0}
             icon={Zap}
             color="green"
           />
@@ -514,47 +477,55 @@ const OrchestrationDemo = () => {
           />
         </motion.div>
 
-        {/* Scenario descriptions */}
+        {/* Workflow legend */}
         {!isFullscreen && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="mt-6 grid grid-cols-3 gap-4"
+            className="mt-6"
           >
-            {SCENARIOS.map((scenario, idx) => (
-              <div
-                key={scenario.id}
-                className={`card glass transition-all cursor-pointer ${
-                  idx === currentScene
-                    ? 'border-purple-500/50 bg-purple-500/5'
-                    : 'hover:border-slate-600'
-                }`}
-                onClick={() => setCurrentScene(idx)}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-sm font-semibold text-white">{scenario.name}</h3>
-                  {idx === currentScene && (
-                    <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                  )}
+            <div className="card glass">
+              <h3 className="text-lg font-semibold text-white mb-4">Mission Control Legend</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                    <span className="text-sm text-slate-300">Delegation (Outward)</span>
+                  </div>
+                  <p className="text-xs text-slate-500 ml-5">
+                    Colonel → Team Lead → Workers
+                  </p>
                 </div>
-                <p className="text-xs text-slate-500 mb-3">
-                  {scenario.teamLeadCount} team leads → {scenario.workerCount} workers
-                </p>
-                <div className="flex items-center space-x-2">
-                  <span className={`px-2 py-0.5 text-[10px] rounded-full ${
-                    scenario.protocol === 'peer'
-                      ? 'bg-yellow-500/20 text-yellow-400'
-                      : 'bg-purple-500/20 text-purple-400'
-                  }`}>
-                    {scenario.protocol === 'peer' ? 'Peer-to-Peer' : 'Hierarchical'}
-                  </span>
-                  <span className="px-2 py-0.5 text-[10px] rounded-full bg-slate-700 text-slate-400">
-                    {scenario.domain === 'all' ? 'Multi-Domain' : scenario.domain}
-                  </span>
+                <div>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <span className="text-sm text-slate-300">Peer Communication</span>
+                  </div>
+                  <p className="text-xs text-slate-500 ml-5">
+                    Workers ↔ Data Sources
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                    <span className="text-sm text-slate-300">Results (Return)</span>
+                  </div>
+                  <p className="text-xs text-slate-500 ml-5">
+                    Workers → Team Lead → Colonel
+                  </p>
                 </div>
               </div>
-            ))}
+              <div className="mt-4 pt-4 border-t border-slate-700">
+                <p className="text-xs text-slate-400">
+                  <strong className="text-slate-300">Camera:</strong> Drag to rotate • Scroll to zoom • Right-click to pan
+                  <span className="mx-2">•</span>
+                  <strong className="text-slate-300">View:</strong> {WORKFLOWS.length} workflows executing simultaneously with staggered timing
+                  <span className="mx-2">•</span>
+                  <strong className="text-slate-300">Pattern:</strong> Continuous delegation, execution, and result collection
+                </p>
+              </div>
+            </div>
           </motion.div>
         )}
       </div>
