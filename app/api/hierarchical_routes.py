@@ -57,7 +57,7 @@ def init_hierarchical_routes(llm_client: OpsCenterLLMClient, enable_local_models
     global hierarchical_engine
     hierarchical_engine = init_workflow_engine(
         llm_client=llm_client,
-        orchestrator_model="openai/gpt-4o-mini",
+        orchestrator_model="anthropic/claude-opus-4-5-20251101",
         enable_local_models=enable_local_models,
     )
     logger.info("Hierarchical workflow routes initialized")

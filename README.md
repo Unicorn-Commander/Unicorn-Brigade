@@ -43,7 +43,7 @@ Think of it as **Mission Control for AI Agents**:
 
 - **The General** 🎖️ - Your AI orchestrator that commands agent operations in real-time
 - **Domain Experts** - 17 specialized agents organized into military-style teams
-- **3-Tier Hierarchy** - Orchestrator → Team Leads (7B-14B) → Workers (1B-3B) for 70-90% cost reduction
+- **3-Tier Hierarchy** - Orchestrator (Opus 4.5) → Team Leads (gpt-oss-120b) → Workers (Granite 3.3 2B) for 70-90% cost reduction
 - **Ralph Loops** - Self-correcting workflows that retry on failure with mid-execution guidance
 - **Protocol-First** - Native A2A, MCP, UCP, and Agent Trace support
 - **Real-Time Coordination** - SSE streaming shows you exactly what every agent is doing, live
@@ -101,25 +101,25 @@ Think of it as **Mission Control for AI Agents**:
     ┌────────────┴────────────┬────────────────────┐
     │                         │                    │
     ▼                         ▼                    ▼
-┌─────────────┐        ┌─────────────┐     ┌─────────────┐
-│ TEAM LEAD   │        │ TEAM LEAD   │     │ TEAM LEAD   │
-│ Research    │        │ Content     │     │ Operations  │
-│ (Llama 7B)  │        │ (Qwen 7B)   │     │ (Llama 7B)  │
-└──────┬──────┘        └──────┬──────┘     └──────┬──────┘
+┌───────────────┐      ┌───────────────┐   ┌───────────────┐
+│ TEAM LEAD     │      │ TEAM LEAD     │   │ TEAM LEAD     │
+│ Research      │      │ Content       │   │ Operations    │
+│ (gpt-oss-120b)│      │ (gpt-oss-120b)│   │ (gpt-oss-120b)│
+└──────┬────────┘      └──────┬────────┘   └──────┬────────┘
        │                      │                    │
        │ Delegates tactical   │                    │
        │ work to workers      │                    │
        ▼                      ▼                    ▼
- ┌──────────┐          ┌──────────┐         ┌──────────┐
- │ Worker   │          │ Worker   │         │ Worker   │
- │ Web      │          │ Doc Gen  │         │ Email    │
- │ Search   │          │ (1B)     │         │ Send     │
- │ (1B)     │          └──────────┘         │ (1B)     │
- └──────────┘                                └──────────┘
+ ┌───────────┐         ┌───────────┐        ┌───────────┐
+ │ Worker    │         │ Worker    │        │ Worker    │
+ │ Web       │         │ Doc Gen   │        │ Email     │
+ │ Search    │         │ (Granite  │        │ Send      │
+ │ (Granite) │         │  3.3 2B)  │        │ (Granite) │
+ └───────────┘         └───────────┘        └───────────┘
 
- **Cost Optimization**: 90% of work done by 1B-3B local models
+ **Cost Optimization**: 90% of work done by ultra-low cost API models
  **Speed**: Parallel execution across worker pool
- **Intelligence**: Strategic decisions stay with GPT-4o/Opus
+ **Intelligence**: Strategic decisions handled by Claude Opus 4.5
 ```
 
 ### Example: Market Research & Email Workflow
@@ -437,23 +437,23 @@ Agents are organized by **domain expertise** for efficient coordination:
 **3-Tier Cost-Optimized Architecture**:
 
 ```
-Tier 1: Orchestrator (GPT-4o/Claude Opus) - $15/1M tokens
+Tier 1: Orchestrator (Claude Opus 4.5) - $15/1M tokens
 ├─ Plans workflow strategy
 ├─ Handles complex reasoning
 └─ Final quality control
 
-Tier 2: Team Leads (Llama 7B-14B local) - FREE
+Tier 2: Team Leads (gpt-oss-120b) - $0.039-0.19/1M tokens
 ├─ Domain expertise (Finance, Research, etc.)
 ├─ Tactical decisions
 └─ Worker coordination
 
-Tier 3: Workers (Llama 1B-3B local) - FREE
+Tier 3: Workers (Granite 3.3 2B / Qwen3 VL 30B) - $0.02-0.6/1M tokens
 ├─ Single-purpose tasks
 ├─ Tool execution
 └─ Data processing
 ```
 
-**Result**: **70-90% cost reduction** by using local models for 80% of work
+**Result**: **98-99% cost reduction** by using ultra-low cost API models for 80% of work
 
 **Core Workflows (6)**:
 1. Investment Due Diligence - Market analysis, financial modeling, risk assessment
@@ -685,10 +685,10 @@ Assistant: "I see you've changed from PostgreSQL to MongoDB."
     │                                                      │
     │   ┌──────────────────────────────────────────────┐  │
     │   │              LLM Layer                        │  │
-    │   │  ┌────────┐ ┌────────┐ ┌────────┐           │  │
-    │   │  │GPT-4o  │ │ Claude │ │ Local  │           │  │
-    │   │  │Opus    │ │ Opus   │ │7B-14B  │           │  │
-    │   │  └────────┘ └────────┘ └────────┘           │  │
+    │   │  ┌────────┐ ┌─────────┐ ┌─────────┐          │  │
+    │   │  │ Claude │ │gpt-oss  │ │ Granite │          │  │
+    │   │  │Opus 4.5│ │  120b   │ │ 3.3 2B  │          │  │
+    │   │  └────────┘ └─────────┘ └─────────┘          │  │
     │   └──────────────────────────────────────────────┘  │
     │                                                      │
     │   ┌───────┐  ┌───────┐  ┌────────┐  ┌────────┐    │

@@ -232,6 +232,17 @@ MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
         "recommended_for": ["worker"],
     },
 
+    # IBM Granite Models (OpenRouter)
+    "ibm/granite-3.3-2b-instruct": {
+        "tier": "api",
+        "provider": "openrouter",
+        "context": 131072,
+        "cost_input": 0.00002,
+        "cost_output": 0.0001,
+        "description": "IBM Granite 3.3 2B - Efficient instruction-following",
+        "recommended_for": ["worker"],
+    },
+
     # Qwen Coder Models (OpenRouter)
     "qwen/qwen3-coder-plus": {
         "tier": "api",
@@ -258,7 +269,7 @@ MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
         "cost_input": 0.00015,
         "cost_output": 0.0006,
         "description": "Qwen3 VL 30B A3B - Multimodal with 262K context",
-        "recommended_for": ["team_lead"],
+        "recommended_for": ["worker"],
     },
 
     # Local Models via Ollama (1B-3B - Worker tier)
@@ -390,21 +401,21 @@ class ModelConfig(BaseModel):
 
     # Orchestrator (The General) - API model for strategic reasoning
     orchestrator_model: str = Field(
-        default="openai/gpt-4o-mini",
+        default="anthropic/claude-opus-4-5-20251101",
         description="Model for the orchestrator (The General). Should be a capable API model."
     )
 
     # Team Lead models by domain
     team_lead_models: Dict[str, str] = Field(
         default_factory=lambda: {
-            "research": "ollama/llama3.1:8b",
-            "finance": "ollama/llama3.1:8b",
-            "content": "ollama/llama3.1:8b",
-            "sales": "ollama/llama3.1:8b",
-            "devops": "ollama/llama3.1:8b",
-            "legal": "ollama/llama3.1:8b",
-            "medical": "ollama/llama3.1:8b",
-            "investigation": "ollama/llama3.1:8b",
+            "research": "openai/gpt-oss-120b",
+            "finance": "openai/gpt-oss-120b",
+            "content": "openai/gpt-oss-120b",
+            "sales": "openai/gpt-oss-120b",
+            "devops": "openai/gpt-oss-120b",
+            "legal": "openai/gpt-oss-120b",
+            "medical": "openai/gpt-oss-120b",
+            "investigation": "openai/gpt-oss-120b",
         },
         description="Model assignments for each domain's team lead"
     )
@@ -417,12 +428,12 @@ class ModelConfig(BaseModel):
 
     # Fallback models
     default_team_lead_model: str = Field(
-        default="ollama/llama3.1:8b",
+        default="openai/gpt-oss-120b",
         description="Default model for team leads when domain not specified"
     )
 
     default_worker_model: str = Field(
-        default="ollama/llama3.2:3b",
+        default="ibm/granite-3.3-2b-instruct",
         description="Default model for workers when not specifically assigned"
     )
 
