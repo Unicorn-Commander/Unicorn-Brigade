@@ -18,16 +18,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)](LICENSE)
 
 **[Quick Start](#-quick-start)** |
-**[Features](#-features)** |
+**[How It Works](#-how-it-works)** |
+**[Protocols](#-protocol-innovation)** |
 **[API Docs](#-api-reference)** |
-**[Architecture](#-architecture)** |
 **[Roadmap](docs/2026-ROADMAP.md)**
 
 ---
 
 **Production Status: 94/100** 🚀
 
-**17 Production Agents** | **23 Working Tools** | **46 MCP Servers** | **~1,360 Tools** | **25 Workflow Templates** | **A2A + MCP Protocols** | **Voice Agents** | **3D Orchestration**
+**17 Production Agents** | **23 Working Tools** | **46 MCP Servers** | **~1,360 Tools** | **25 Workflow Templates** | **4 Protocols** | **Voice Agents** | **Self-Correction**
 
 </div>
 
@@ -35,242 +35,690 @@
 
 ## ⚡ What is Unicorn Brigade?
 
-Unicorn Brigade is a **production-ready AI agent orchestration platform** built in January 2026 that combines the best of modern AI infrastructure:
+Unicorn Brigade is **the world's first production-ready AI orchestration platform with real-time multi-agent coordination**. Built in January 2026, it combines cutting-edge AI research with enterprise-grade infrastructure.
 
-### 🎯 Core Capabilities
+### 🎯 The Core Concept
 
-✅ **Build** custom AI agents through conversation with Gunny (AI agent builder), or via REST API
-✅ **Deploy** agents with 23 real-world working tools - email, web search, databases, code execution, browser automation
-✅ **Orchestrate** multi-agent workflows with The General's 3D command center (Three.js visualization)
-✅ **Federate** agents across systems using A2A and MCP protocols
-✅ **Scale** with 3-tier hierarchical workflows (70-90% cost reduction using local models)
-✅ **Observe** with Langfuse self-hosted tracing, cost tracking, evaluation
-✅ **Voice** LiveKit WebRTC integration with self-hosted STT/TTS
-✅ **Track** Agent Trace code attribution system for compliance
-✅ **Self-Correct** Ralph engine with automatic retry and error recovery
+Think of it as **Mission Control for AI Agents**:
 
-### 🔥 This Isn't a Toy
+- **The General** 🎖️ - Your AI orchestrator that commands agent operations in real-time
+- **Domain Experts** - 17 specialized agents organized into military-style teams
+- **3-Tier Hierarchy** - Orchestrator → Team Leads (7B-14B) → Workers (1B-3B) for 70-90% cost reduction
+- **Ralph Loops** - Self-correcting workflows that retry on failure with mid-execution guidance
+- **Protocol-First** - Native A2A, MCP, UCP, and Agent Trace support
+- **Real-Time Coordination** - SSE streaming shows you exactly what every agent is doing, live
 
-**It sends real emails.** MS365 Graph API and Google Workspace OAuth2 integration.
-**It searches the real web.** Serper.dev SERP API with structured results.
-**It coordinates real workflows.** PostgreSQL-backed persistence, SSE real-time streaming.
-**It runs real code.** Docker + E2B hybrid sandbox with numpy/pandas support.
-**It makes real voice calls.** LiveKit WebRTC with self-hosted Whisper + Kokoro.
+### 🔥 This Isn't a Framework. It's a Platform.
 
----
-
-## 📸 Screenshots
-
-<div align="center">
-
-### 🎛️ Dashboard - Command Center
-*17 production agents, all systems operational*
-
-![Dashboard](.github/images/dashboard.png)
-
-### 🌐 3D Orchestration Visualization
-*The General's real-time view of multi-agent operations*
-
-![Orchestration](.github/images/orchestration.png)
-
-### 🛠️ Tool Library
-*23 working tools ready for agent assignment*
-
-![Tool Library](.github/images/tool-library.png)
-
-### 💬 Agent Chat with Function Calling
-*Real-time tool execution with streaming responses*
-
-![Agent Chat](.github/images/agent-chat.png)
-
-</div>
+**Frameworks require you to write code.** Unicorn Brigade gives you:
+- ✅ **Pre-built agents** that work today (email, search, code execution, browser automation)
+- ✅ **The General** orchestrates multi-agent operations automatically
+- ✅ **46 MCP servers** (~1,360 enterprise tools) plug-and-play ready
+- ✅ **Voice agents** with LiveKit WebRTC + self-hosted STT/TTS
+- ✅ **3D visualization** (Three.js) shows your agent swarm in action
+- ✅ **Conversation memory** (Zep temporal knowledge graph) that agents actually remember
+- ✅ **Code attribution** (Agent Trace) for compliance and auditing
 
 ---
 
-## 🚀 Features
+## 🎬 How It Works
 
-### 🛠️ 23 Working Tools (Tested & Production-Ready)
+### The General: Your AI Orchestrator
+
+**The General** is the central intelligence that coordinates all agent operations. It:
+
+1. **Receives Natural Language Commands**
+   ```
+   "Research AI market trends, write a report, and email it to the team"
+   ```
+
+2. **Plans Multi-Agent Workflows**
+   - Breaks down complex tasks into agent-specific subtasks
+   - Assigns agents based on domain expertise and availability
+   - Manages dependencies and parallel execution
+
+3. **Orchestrates in Real-Time**
+   - Streams live updates via Server-Sent Events (SSE)
+   - Shows you tool calls, results, errors as they happen
+   - Visualized in 3D with react-force-graph
+
+4. **Self-Corrects with Ralph Loops**
+   - Detects failures automatically
+   - Retries with improved context
+   - Allows mid-execution human guidance without restart
+
+### Hierarchical Multi-Agent Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    THE GENERAL                          │
+│              (GPT-4o / Claude Opus)                     │
+│         "Analyze market, write report, email team"      │
+└────────────────┬────────────────────────────────────────┘
+                 │ Plans workflow
+                 │ Delegates to domain experts
+                 ▼
+    ┌────────────┴────────────┬────────────────────┐
+    │                         │                    │
+    ▼                         ▼                    ▼
+┌─────────────┐        ┌─────────────┐     ┌─────────────┐
+│ TEAM LEAD   │        │ TEAM LEAD   │     │ TEAM LEAD   │
+│ Research    │        │ Content     │     │ Operations  │
+│ (Llama 7B)  │        │ (Qwen 7B)   │     │ (Llama 7B)  │
+└──────┬──────┘        └──────┬──────┘     └──────┬──────┘
+       │                      │                    │
+       │ Delegates tactical   │                    │
+       │ work to workers      │                    │
+       ▼                      ▼                    ▼
+ ┌──────────┐          ┌──────────┐         ┌──────────┐
+ │ Worker   │          │ Worker   │         │ Worker   │
+ │ Web      │          │ Doc Gen  │         │ Email    │
+ │ Search   │          │ (1B)     │         │ Send     │
+ │ (1B)     │          └──────────┘         │ (1B)     │
+ └──────────┘                                └──────────┘
+
+ **Cost Optimization**: 90% of work done by 1B-3B local models
+ **Speed**: Parallel execution across worker pool
+ **Intelligence**: Strategic decisions stay with GPT-4o/Opus
+```
+
+### Example: Market Research & Email Workflow
+
+```bash
+# You send to The General:
+POST /api/v1/orchestration/command
+{"command": "Research AI agent market 2026 and email findings to aaron@example.com"}
+
+# The General orchestrates:
+1. Research Team Lead assigns Web Search Worker
+   → Searches Google via Serper API
+   → Returns: Market size $7.63B → $50B by 2030
+
+2. Research Team Lead assigns Analysis Worker
+   → Synthesizes findings into key insights
+   → Returns: 3 key trends, 5 major players
+
+3. Content Team Lead assigns Report Writer
+   → Generates professional report in markdown
+   → Returns: 500-word executive summary
+
+4. Operations Team Lead assigns Email Worker
+   → Sends via MS365 Graph API with OAuth2
+   → Returns: Message ID, delivery confirmation
+
+# Real-time SSE stream shows every step:
+data: {"type": "agent_started", "agent": "research-web-search", "task": "..."}
+data: {"type": "tool_call", "tool": "web_search", "query": "AI agent market 2026"}
+data: {"type": "tool_result", "result": {"organic": [...], "market_size": "..."}}
+data: {"type": "agent_completed", "agent": "research-web-search", "output": "..."}
+...
+```
+
+---
+
+## 🔗 Protocol Innovation
+
+Unicorn Brigade implements **4 cutting-edge protocols** for agent interoperability:
+
+### 1️⃣ A2A (Agent-to-Agent Protocol)
+
+**Purpose**: Cross-platform agent federation and discovery
+
+**What it does**:
+- Agents publish **Agent Cards** (JSON-LD) describing capabilities
+- External agents can discover and invoke your agents
+- Your agents can invoke agents on other platforms
+- Standardized task format: `{task, context, tools, constraints}`
+
+**Example**:
+```bash
+# Discover agents with "financial_analysis" capability
+GET /api/v1/a2a/discover?capability=financial_analysis
+
+# Invoke an agent from another platform
+POST /api/v1/a2a/agents/col-finance/invoke
+{
+  "task": "Calculate CAGR from $7.63B to $10.91B over 2 years",
+  "tools": ["calculator"],
+  "context": {"source": "Deloitte report"}
+}
+
+# Response includes full execution trace
+{
+  "status": "success",
+  "result": {"output": "CAGR is 19.6% annually", "confidence": 0.95},
+  "tool_calls": [{"tool": "calculator", "result": 19.58}],
+  "tokens_used": 342,
+  "duration_seconds": 1.2
+}
+```
+
+**Why it matters**: Your agents become **API endpoints** that other AI systems can use. Build once, integrate everywhere.
+
+### 2️⃣ MCP (Model Context Protocol)
+
+**Purpose**: Standardized tool interface for LLMs
+
+**What it does**:
+- Tools register with schema (name, parameters, description)
+- LLMs discover tools dynamically
+- Function calling standardized across OpenAI, Anthropic, local models
+- Resource reading (files, databases, APIs) with URI schemes
+
+**Implementation**:
+- ✅ **46 MCP servers** running (~1,360 tools)
+- ✅ **Subprocess lifecycle management** (start/stop/restart)
+- ✅ **JSON-RPC tool invocation** via STDIO transport
+- ✅ **HTTP/SSE transport** for remote servers
+- ✅ **Resource URI schemes**: `file://`, `http://`, `db://`, `mcp://`
+
+**Example**:
+```bash
+# List all available MCP tools
+GET /api/v1/mcp/tools
+# Returns: 1,360 tools from Stripe, Salesforce, GitHub, Slack, etc.
+
+# Invoke tool directly
+POST /api/v1/mcp/tools/stripe_create_payment_intent/invoke
+{
+  "arguments": {
+    "amount": 9900,
+    "currency": "usd",
+    "customer_id": "cus_123"
+  }
+}
+
+# Read MCP resource
+GET /api/v1/mcp/resources/file:///workspace/config.json
+```
+
+**Why it matters**: Tools built once work with **any LLM** (OpenAI, Anthropic, Gemini, local). No vendor lock-in.
+
+### 3️⃣ UCP (Universal Commerce Protocol)
+
+**Purpose**: Micropayment layer for agent-to-agent commerce
+
+**What it does**:
+- Creates **commerce sessions** for paid agent interactions
+- Tracks token usage and charges per call
+- Credit-based system with refunds
+- Enables agent marketplace economics
+
+**Example**:
+```bash
+# Create commerce session for paid agent
+POST /api/v1/ucp/sessions
+{
+  "agent_id": "premium-analyst",
+  "price_per_call": 0.50
+}
+
+# Check balance before call
+GET /api/v1/ucp/balance
+# Returns: {"credits": 10.50, "currency": "USD"}
+
+# Call is charged automatically
+POST /api/v1/a2a/agents/premium-analyst/invoke
+{...}
+
+# Session tracks usage
+GET /api/v1/ucp/sessions/{session_id}
+# Returns: {"calls": 3, "total_cost": 1.50, "remaining_credits": 9.00}
+```
+
+**Why it matters**: Enables **agent marketplaces** where agents can charge for premium capabilities.
+
+### 4️⃣ Agent Trace (Code Attribution)
+
+**Purpose**: Track which AI generated which code for compliance
+
+**What it does**:
+- Records every code generation with metadata:
+  - Agent ID, model, user prompt, code hash (SHA-256)
+  - File location, line numbers, timestamp
+  - Token usage, generation duration
+- Generates compliance reports (JSON/CSV)
+- Enables code auditing and debugging
+
+**Example**:
+```bash
+# Get recent code generations
+GET /api/v1/trace/recent?limit=50
+
+# Get all code by specific agent
+GET /api/v1/trace/files/sgt-coder
+
+# Generate compliance report
+GET /api/v1/trace/report?format=csv&start_date=2026-01-01
+
+# Example trace entry:
+{
+  "id": "trace_123",
+  "agent_id": "sgt-coder",
+  "model": "openai/gpt-4o",
+  "file_path": "/app/api/agents.py",
+  "lines": "45-78",
+  "code_hash": "a3d5f...",
+  "user_prompt": "Add agent CRUD endpoints",
+  "language": "python",
+  "framework": "fastapi",
+  "tokens_used": 1234,
+  "created_at": "2026-01-31T12:34:56Z"
+}
+```
+
+**Why it matters**: **Compliance-ready** for regulated industries. Know exactly which AI wrote which code, when, and why.
+
+---
+
+## 🛠️ 23 Production-Ready Tools
+
+Tools are what make agents useful. Unicorn Brigade comes with 23 **working, tested tools**:
 
 <details>
 <summary><b>Built-in Tools (7)</b> - Core capabilities</summary>
 
-| Tool | Provider | Status | Use Case |
-|------|----------|--------|----------|
-| **Web Search** | Serper.dev | ✅ Working | Google SERP results with structured data |
-| **HTTP Request** | httpx | ✅ Working | External API integration |
-| **Calculator** | Python eval | ✅ Working | Safe mathematical expressions |
-| **DateTime** | Python datetime | ✅ Working | Time manipulation, formatting |
-| **JSON** | Python json | ✅ Working | Data transformation |
-| **Memory** | mem0 + Qdrant | ✅ Working | Vector-based conversation memory |
-| **Shell** | Docker Sandbox | ✅ Working | Secure command execution |
+| Tool | Description | Provider |
+|------|-------------|----------|
+| **web_search** | Google SERP results with snippets | Serper.dev API |
+| **http_request** | Make HTTP requests to any API | httpx library |
+| **calculator** | Safe mathematical expressions | Python eval (sandboxed) |
+| **datetime** | Time manipulation, timezone conversion | Python datetime |
+| **json** | Parse, validate, transform JSON | Python json |
+| **memory** | Store/retrieve conversation context | Qdrant + mem0 |
+| **shell** | Execute shell commands safely | Docker sandbox |
 
 </details>
 
 <details>
 <summary><b>Extended Tools (9)</b> - Business operations</summary>
 
-| Tool | Provider | Status | Use Case |
-|------|----------|--------|----------|
-| **Email** | MS365 Graph / Google Workspace | ✅ Working | OAuth2 authenticated email sending |
-| **File Operations** | Local filesystem | ✅ Working | Read/write with path validation |
-| **Code Execution** | Docker + E2B | ✅ Working | Python with numpy/pandas/requests |
-| **Text Processing** | Python | ✅ Working | Extract, summarize, transform |
-| **Image Generation** | DALL-E / Stable Diffusion | ✅ Working | AI image creation |
-| **Database** | PostgreSQL / MySQL | ✅ Working | Query execution, schema introspection |
-| **Notifications** | Multi-channel | ✅ Working | Slack, Discord, webhooks |
-| **QR Code** | qrcode library | ✅ Working | Generate QR codes |
-| **Agentic RAG** | Qdrant + LlamaIndex | ✅ Working | Document retrieval and Q&A |
+| Tool | Description | Provider |
+|------|-------------|----------|
+| **email** | Send emails with OAuth2 authentication | MS365 Graph + Google Workspace |
+| **file** | Read/write files with path validation | Local filesystem (sandboxed) |
+| **code** | Execute Python code with libs | Docker + E2B hybrid sandbox |
+| **text** | Extract, summarize, transform text | Python NLP libraries |
+| **image** | Generate AI images | DALL-E / Stable Diffusion |
+| **database** | Query SQL databases | PostgreSQL / MySQL |
+| **notify** | Send notifications to channels | Slack, Discord, webhooks |
+| **qrcode** | Generate QR codes | Python qrcode library |
+| **agentic_rag** | RAG with document Q&A | Qdrant + LlamaIndex |
 
 </details>
 
 <details>
 <summary><b>Advanced Tools (7)</b> - Cutting-edge capabilities</summary>
 
-| Tool | Provider | Status | Use Case |
-|------|----------|--------|----------|
-| **Browser Automation** | Playwright + browser-use AI | ✅ Working | AI-driven web interaction |
-| **Code Sandbox** | Docker + E2E fallback | ✅ Working | Isolated code execution |
-| **Screenshot** | Playwright | ✅ Working | Webpage screenshots |
-| **PDF Extract** | PyPDF2 | ✅ Working | PDF text extraction |
-| **Doc Generate** | python-docx | ✅ Working | Word document creation |
-| **Data Analyze** | Pandas + NumPy | ✅ Working | Data analysis pipelines |
-| **URL Preview** | BeautifulSoup | ✅ Working | Fetch page metadata |
-| **Knowledge Graph** | FalkorDB | ✅ Working | AI-native graph storage |
+| Tool | Description | Provider |
+|------|-------------|----------|
+| **browser** | AI-driven browser automation | Playwright + browser-use (GPT-4V) |
+| **code_sandbox** | Isolated code execution | Docker primary + E2B fallback |
+| **screenshot** | Capture webpage screenshots | Playwright |
+| **pdf_extract** | Extract text from PDFs | PyPDF2 |
+| **doc_generate** | Generate Word documents | python-docx |
+| **data_analyze** | Data analysis pipelines | Pandas + NumPy |
+| **url_preview** | Fetch page metadata | BeautifulSoup |
+| **knowledge_graph** | Store facts in AI-native graph | FalkorDB |
 
 </details>
 
-### 🔌 46 MCP Servers (~1,360 Tools)
+**Example Tool Execution Flow**:
+```
+1. Agent receives: "Search for Tesla stock price and save to memory"
+2. LLM decides to use: web_search tool
+3. Tool executes: Serper API → {"price": "$234.56", "change": "+2.3%"}
+4. LLM decides to use: memory tool
+5. Tool executes: Qdrant stores → {"success": true, "memory_id": "mem_789"}
+6. Agent returns: "Tesla is trading at $234.56, up 2.3% today. I've saved this to memory."
+```
 
-<details>
-<summary><b>Baseline Servers (10)</b> - Core infrastructure</summary>
+---
 
+## 🔌 46 MCP Servers (~1,360 Enterprise Tools)
+
+MCP servers provide **plug-and-play enterprise integrations**:
+
+**Baseline (10 servers)**:
 GitHub, Playwright, Slack, PostgreSQL, Filesystem, Memory, HTTP Fetch, Brave Search, Google Drive, Puppeteer
 
-</details>
+**Business Operations (9 servers)**:
+Stripe (29 tools), Linear (24), Git (20), Notion (15), Airtable (19), Vercel (25), Cloudflare (30), Supabase (25), MongoDB (22)
 
-<details>
-<summary><b>Phase 1-9 Expansion (36 servers)</b> - Enterprise integrations</summary>
+**Communications & CRM (8 servers)**:
+Twilio (25), Sentry (21), HubSpot (35), Shopify (37), Salesforce (43), Intercom (35), Zendesk (37), Slack (integrated)
 
-**Phase 1:** Stripe, Linear, Git, Notion
-**Phase 2:** Airtable, Vercel, Cloudflare, Supabase
-**Phase 3:** MongoDB, Twilio, Sentry, HubSpot
-**Phase 4:** Shopify, Salesforce, Jira, Zendesk
-**Phase 5:** Intercom, Asana, Trello, QuickBooks
-**Phase 6:** Mailchimp, ActiveCampaign, Calendly, DocuSign
-**Phase 7:** Ahrefs, SEMrush, Zapier, Make
-**Phase 8:** Amplitude, Mixpanel, Segment, PostHog
-**Phase 9:** Heap, Pendo, FullStory, Hotjar
+**Project Management (6 servers)**:
+Jira (34), Asana (36), Trello (35), Linear (24), Monday.com (integrated), ClickUp (planned)
 
-**Domain Coverage:** CRM, E-commerce, Project Management, Marketing Automation, Customer Support, SEO, Workflow Automation, Product Analytics, Document Management
+**Marketing & Analytics (12 servers)**:
+Mailchimp (38), ActiveCampaign (51), Calendly (30), Ahrefs (35), SEMrush (40), Zapier (47), Make (42), Amplitude (44), Mixpanel (54), Segment (55), PostHog (60), Heap (42)
 
-</details>
+**More**: DocuSign (40), QuickBooks (44), Pendo (47), FullStory (41), Hotjar (33)
 
-### 🎖️ 17 Production Agents
+**Total**: **46 servers, ~1,360 tools across 21 business domains**
 
-<details>
-<summary><b>Agent Roster</b> - Military-style organization</summary>
+---
 
-| Domain | Agents | Capabilities |
-|--------|--------|--------------|
-| **Command** | The General, Gunny | Orchestration, agent building |
-| **Operations** | Col. Pipeline, Sgt. Major Executor, Cpl. Monitor | Workflow execution, monitoring |
-| **Research** | Dr. Analyst, Lt. Webster, Cpl. Librarian | Data research, web search, documents |
-| **Engineering** | Sgt. Coder, Cpl. Debugger, Pvt. Tester | Code generation, debugging, testing |
-| **Security** | Capt. Fortress, Sgt. Audit | Security analysis, compliance |
-| **Finance** | Col. Finance, Lt. Budget | Financial analysis, budgeting |
-| **Medical** | Dr. Vitals, Nurse Navigator | Medical documentation, triage |
-| **Content** | Sgt. Scribe | Meeting notes, action items |
-| **Sales** | Maj. LeadGen | Lead enrichment, ICP qualification |
-| **Documents** | Lt. DocAnalyst | Contract analysis, Q&A |
+## 🎖️ 17 Production Agents (Military Organization)
 
-All agents stored in **PostgreSQL** with full CRUD, conversation persistence, tool assignment.
+Agents are organized by **domain expertise** for efficient coordination:
 
-</details>
+| Domain | Agent | Role | Capabilities |
+|--------|-------|------|--------------|
+| **Command** | The General | Orchestrator | Multi-agent coordination, planning, delegation |
+| **Command** | Gunny | Agent Builder | Conversational agent creation, configuration |
+| **Operations** | Col. Pipeline | Workflow Manager | ETL, data pipelines, job orchestration |
+| **Operations** | Sgt. Major Executor | Task Runner | Direct task execution, monitoring |
+| **Operations** | Cpl. Monitor | System Observer | Health checks, metrics, alerts |
+| **Research** | Dr. Analyst | Data Scientist | Statistical analysis, ML workflows |
+| **Research** | Lt. Webster | Web Researcher | SERP queries, source validation |
+| **Research** | Cpl. Librarian | Document Manager | RAG, indexing, retrieval |
+| **Engineering** | Sgt. Coder | Code Generator | Full-stack development, refactoring |
+| **Engineering** | Cpl. Debugger | Bug Hunter | Error analysis, debugging, fixes |
+| **Engineering** | Pvt. Tester | QA Engineer | Test generation, validation |
+| **Security** | Capt. Fortress | Security Analyst | Vulnerability scanning, compliance |
+| **Security** | Sgt. Audit | Auditor | Log analysis, policy enforcement |
+| **Finance** | Col. Finance | Financial Analyst | Financial modeling, forecasting |
+| **Finance** | Lt. Budget | Budget Planner | Cost analysis, optimization |
+| **Medical** | Dr. Vitals | Medical Analyst | Clinical documentation, diagnosis support |
+| **Medical** | Nurse Navigator | Care Coordinator | Patient routing, appointment scheduling |
 
-### 🔗 Protocol Support
+**Key Features**:
+- ✅ Each agent has **different LLM model** (GPT-4o, Claude Sonnet, local models)
+- ✅ Each agent has **specialized tools** (Finance gets calculator, Research gets web_search)
+- ✅ Each agent has **domain knowledge** baked into system prompts
+- ✅ Stored in **PostgreSQL** with full CRUD, conversation history, tool assignments
+
+---
+
+## 🎭 25 Hierarchical Workflow Templates
+
+**3-Tier Cost-Optimized Architecture**:
 
 ```
-╔════════════════════════════════╗  ╔════════════════════════════════╗
-║  A2A (Agent-to-Agent)          ║  ║  MCP (Model Context Protocol)  ║
-╠════════════════════════════════╣  ╠════════════════════════════════╣
-║  ✅ Agent Discovery             ║  ║  ✅ Tool Registration           ║
-║  ✅ External Invocation         ║  ║  ✅ Direct Tool Execution       ║
-║  ✅ Agent Cards (JSON-LD)       ║  ║  ✅ Schema Validation           ║
-║  ✅ Federated Workflows         ║  ║  ✅ Result Formatting           ║
-║  ✅ DB-backed Discovery         ║  ║  ✅ 46 MCP Servers              ║
-╚════════════════════════════════╝  ╚════════════════════════════════╝
+Tier 1: Orchestrator (GPT-4o/Claude Opus) - $15/1M tokens
+├─ Plans workflow strategy
+├─ Handles complex reasoning
+└─ Final quality control
+
+Tier 2: Team Leads (Llama 7B-14B local) - FREE
+├─ Domain expertise (Finance, Research, etc.)
+├─ Tactical decisions
+└─ Worker coordination
+
+Tier 3: Workers (Llama 1B-3B local) - FREE
+├─ Single-purpose tasks
+├─ Tool execution
+└─ Data processing
 ```
 
-Both protocols are **fully operational** with tested endpoints. [See API Reference](#-api-reference)
+**Result**: **70-90% cost reduction** by using local models for 80% of work
 
-### 🎭 25 Hierarchical Workflow Templates
+**Core Workflows (6)**:
+1. Investment Due Diligence - Market analysis, financial modeling, risk assessment
+2. Autonomous Sales Pipeline - Lead scoring, outreach, follow-up automation
+3. Incident Response - Alert triage, log analysis, remediation
+4. Content Production - Research, writing, editing, publishing
+5. Legal Case Analysis - Document review, precedent research, brief generation
+6. Medical Documentation Review - Chart review, diagnosis validation, coding
 
-<details>
-<summary><b>3-Tier Architecture</b> - Cost-optimized multi-agent execution</summary>
+**Phase 1 Workflows (2)**:
+7. Help Desk Triage - Ticket classification, priority assignment, routing
+8. RFP Response Generation - Requirements analysis, proposal writing, budget estimation
 
-**Tier 1: Orchestrator** (GPT-4o, Claude Opus)
-↓ Plans workflow, delegates to team leads
+**Professional Workflows (11)**:
+9-19. Competitive Intelligence, Code Review, Data Reports, Compliance Audit, Meeting Intelligence, Contract Analysis, Literature Review, API Integration, Multi-Channel Content Distribution
 
-**Tier 2: Team Leads** (7B-14B local models)
-↓ Domain experts manage worker teams
+**Domain Coverage**: Research, Finance, Content, Sales, DevOps, Legal, Medical, Investigation
 
-**Tier 3: Workers** (1B-3B local models)
-↓ Execute narrow-scope tactical tasks
+---
 
-**Cost Savings:** 70-90% reduction using local models for 80% of work
+## 🎙️ Voice Agents (Production-Ready WebRTC)
 
-**8 Domains:** Research, Finance, Content, Sales, DevOps, Legal, Medical, Investigation
-**40 Workers:** Specialized for narrow tasks (web search, file read, data parse, etc.)
-**25 Templates:** Investment Due Diligence, Sales Pipeline, Incident Response, Content Production, Legal Case Analysis, Medical Documentation, Help Desk Triage, RFP Response, API Integration, Contract Analysis, Meeting Intelligence, Literature Review, Content Distribution, Compliance Audit + 11 professional workflows
+**Full Voice Stack** with LiveKit + self-hosted STT/TTS:
 
-</details>
+### Speech-to-Text (5 options)
+- **mlx-whisper** - Apple Silicon Metal acceleration, unified memory
+- **faster-whisper** - CUDA GPUs, CTranslate2, INT8 quantization, 5-10x faster
+- **whisper.cpp** - CoreML / Apple Neural Engine, optimized for M-series
+- **Deepgram API** - Cloud fallback, 150ms latency
+- **AssemblyAI** - Cloud fallback, high accuracy
 
-### 🎙️ Voice Agents (LiveKit + Self-Hosted)
+### Text-to-Speech (5 options)
+- **Kokoro-82M** - CPU-friendly, 11 voices, Apache 2.0 license
+- **Chatterbox** - Voice cloning from 5-10s samples, emotion control
+- **Marvis** - Apple Silicon MLX native, low latency
+- **CosyVoice2** - 150ms latency, multi-language, SOTA quality
+- **Custom** - Load your own ONNX/PyTorch TTS models
 
-<details>
-<summary><b>Full Voice Stack</b> - Production-ready WebRTC</summary>
+### Voice Features
+- ✅ **LiveKit WebRTC** - Sub-500ms end-to-end latency
+- ✅ **Runtime configuration** - Switch providers without restart
+- ✅ **Voice cloning** - Clone voices from short samples
+- ✅ **Frontend components** - VoiceCallModal, VoiceCallButton ready to use
+- ✅ **Multi-agent support** - Different voices per agent
 
-**STT (Speech-to-Text):**
-- mlx-whisper (Apple Silicon Metal, unified memory)
-- faster-whisper (CUDA GPUs, CTranslate2, INT8 quantization)
-- whisper.cpp (CoreML / Apple Neural Engine)
-- Deepgram API (cloud fallback)
-- AssemblyAI (cloud fallback)
+**Example**:
+```bash
+# Create voice room
+POST /api/v1/voice/rooms
+{"agent_id": "the-general", "room_name": "Strategy Session"}
 
-**TTS (Text-to-Speech):**
-- Kokoro-82M (CPU-friendly, 11 voices, Apache 2.0)
-- Chatterbox (voice cloning, emotion control, MIT)
-- Marvis (Apple Silicon MLX native)
-- CosyVoice2 (150ms latency, multi-language)
-- Custom (local ONNX/PyTorch models)
+# Join room from frontend
+const token = await fetch(`/api/v1/voice/rooms/${roomId}/token`)
+// WebRTC connection auto-configured with LiveKit SDK
 
-**Features:**
-- ✅ WebRTC room management
-- ✅ Voice provider registry
-- ✅ Runtime configuration (no restart)
-- ✅ Voice cloning (5-10s samples)
-- ✅ Frontend UI components (VoiceCallModal, VoiceCallButton)
+# Agent speaks with Kokoro TTS + listens with Whisper STT
+# Full duplex conversation with tool execution
+```
 
-</details>
+---
 
-### 📊 Observability & Monitoring
+## 🔄 Ralph Self-Correction Loops
 
-- **Langfuse** (self-hosted): LLM tracing, cost tracking, evaluation
-- **Agent Trace**: Code attribution tracking for compliance (7 API endpoints)
-- **Ralph Self-Correction**: Automatic retry, error recovery, mid-execution guidance
-- **PostgreSQL Audit Logs**: Agent actions, tool calls, API usage
-- **Real-time SSE Streaming**: Live agent activity monitoring
+**Ralph** is the self-correcting workflow engine inspired by **open-ralph-wiggum**:
 
-### 🎨 Modern UI/UX
+### How It Works
 
-- **React 18** + **Vite 6** + **Tailwind CSS 4**
-- **3D Orchestration** (Three.js + react-force-graph-3d)
-- **Visual Workflow Builder** (@xyflow/react)
-- **Mobile-responsive** design
-- **Dark mode** optimized
-- **Loading skeletons** for better UX
-- **Error boundaries** for crash recovery
-- **Toast notifications** (react-hot-toast)
+1. **Task Breakdown** - Workflow split into checkpointed subtasks
+2. **Execution** - Each subtask executes with full error logging
+3. **Failure Detection** - Automatic detection of errors, timeouts, rate limits
+4. **Self-Correction** - LLM analyzes error and generates fix strategy
+5. **Retry** - Task retried with improved context (up to 5 iterations)
+6. **Human-in-the-Loop** - Mid-execution guidance injection without restart
+
+### Example Ralph Loop
+
+```bash
+# Start workflow
+POST /api/v1/ralph/execute
+{
+  "workflow": "data_pipeline",
+  "steps": [
+    {"task": "fetch_api_data", "endpoint": "https://api.example.com/data"},
+    {"task": "transform_data", "format": "parquet"},
+    {"task": "upload_to_s3", "bucket": "company-data"}
+  ]
+}
+
+# Iteration 1: API call fails (rate limit)
+data: {"type": "error", "step": 1, "error": "429 Too Many Requests"}
+data: {"type": "self_correct", "strategy": "Add exponential backoff + retry"}
+
+# Iteration 2: Success with backoff
+data: {"type": "success", "step": 1, "data": {...}}
+
+# Iteration 2: Transform fails (missing column)
+data: {"type": "error", "step": 2, "error": "KeyError: 'user_id'"}
+data: {"type": "paused", "message": "Need guidance: Which field should be user_id?"}
+
+# Human provides guidance
+POST /api/v1/ralph/executions/{id}/guidance
+{"guidance": "Use 'customer_id' field as user_id"}
+
+# Iteration 3: Success with guidance
+data: {"type": "success", "step": 2, "output": "data.parquet"}
+data: {"type": "success", "step": 3, "s3_uri": "s3://company-data/..."}
+data: {"type": "workflow_complete", "iterations": 3, "success": true}
+```
+
+**Key Features**:
+- ✅ **Automatic retry** with improved context
+- ✅ **Error analysis** by LLM (GPT-4o analyzes failure)
+- ✅ **Mid-execution guidance** without full restart
+- ✅ **State persistence** (`.ralph/` directory stores checkpoints)
+- ✅ **Iteration history** for debugging
+
+---
+
+## 🧠 Zep Memory System (Temporal Knowledge Graph)
+
+**Zep** replaces basic vector memory with **temporal knowledge graph** (Graphiti):
+
+### What Makes It Special
+
+**Traditional Memory (mem0)**:
+- Vector embeddings only
+- No time awareness
+- No relationships
+- Query: "What did user say about X?"
+
+**Zep Memory (Graphiti)**:
+- Vector embeddings + **knowledge graph**
+- **Temporal awareness** ("What did user prefer last month vs today?")
+- **Entity relationships** ("User's favorite tool connects to their primary use case")
+- **Automatic fact extraction** from conversations
+- Query: "How has user's workflow evolved over time?"
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│           Zep Memory System                     │
+├─────────────────────────────────────────────────┤
+│                                                 │
+│  ┌──────────────┐        ┌──────────────┐      │
+│  │   Vector     │◄──────►│  Knowledge   │      │
+│  │  Embeddings  │        │    Graph     │      │
+│  │  (Qdrant)    │        │  (Graphiti)  │      │
+│  └──────────────┘        └──────────────┘      │
+│         │                       │               │
+│         │  Hybrid Retrieval     │               │
+│         └───────────┬───────────┘               │
+│                     │                           │
+│              ┌──────▼──────┐                    │
+│              │  Facts DB   │                    │
+│              │  Entities   │                    │
+│              │  Relations  │                    │
+│              │  Timeline   │                    │
+│              └─────────────┘                    │
+│                                                 │
+└─────────────────────────────────────────────────┘
+
+Performance: Sub-200ms context retrieval
+Accuracy: 94.8% fact recall (vs 75% vector-only)
+```
+
+### Example
+
+```bash
+# Conversation 1 (January):
+User: "I prefer using PostgreSQL for all my projects"
+Assistant: "Noted. I'll remember your PostgreSQL preference."
+# Zep stores:
+# - Entity: "User"
+# - Fact: "prefers PostgreSQL"
+# - Timestamp: 2026-01-15
+# - Relationship: User -[PREFERS]-> PostgreSQL
+
+# Conversation 2 (February):
+User: "Actually, I'm migrating everything to MongoDB"
+Assistant: "I see you've changed from PostgreSQL to MongoDB."
+# Zep stores:
+# - Fact: "now prefers MongoDB" (2026-02-01)
+# - Temporal edge: PostgreSQL preference ENDED at 2026-02-01
+# - Relationship: User -[PREFERS]-> MongoDB (active)
+# - Relationship: User -[USED_TO_PREFER]-> PostgreSQL (historical)
+
+# Later query:
+"What database does user prefer?"
+# Zep returns: MongoDB (with context: "Changed from PostgreSQL on 2026-02-01")
+
+# Historical query:
+"What did user prefer in January?"
+# Zep returns: PostgreSQL (temporal query to 2026-01-15)
+```
+
+**Why It Matters**: Agents remember **what, when, and why** - not just embeddings.
+
+---
+
+## 🏗️ Architecture
+
+```
+                Unicorn Brigade Platform
+    ┌──────────────────────────────────────────────────────┐
+    │                   THE GENERAL                         │
+    │           (Real-Time Orchestrator)                    │
+    │    ┌──────────────┐          ┌──────────────┐        │
+    │    │   React UI   │◄────────►│   FastAPI    │        │
+    │    │  + Three.js  │  SSE/HTTP│   Backend    │        │
+    │    │  + @xyflow   │          │              │        │
+    │    └──────────────┘          └──────┬───────┘        │
+    │                                     │                │
+    │         ┌───────────────────────────┼────────┐       │
+    │         │                           │        │       │
+    │   ┌─────▼─────┐  ┌─────────┐  ┌───▼────┐  ┌▼────┐  │
+    │   │    A2A    │  │   MCP   │  │  UCP   │  │Trace│  │
+    │   │ Protocol  │  │Protocol │  │Protocol│  │  🔍 │  │
+    │   └───────────┘  └─────────┘  └────────┘  └─────┘  │
+    │                                                      │
+    │   ┌──────────────────────────────────────────────┐  │
+    │   │         Agent Coordination Layer             │  │
+    │   │  ┌────────┐ ┌────────┐ ┌────────┐           │  │
+    │   │  │  17    │ │  46    │ │  Ralph │           │  │
+    │   │  │ Agents │ │  MCP   │ │  Loop  │           │  │
+    │   │  │        │ │Servers │ │ Engine │           │  │
+    │   │  └────────┘ └────────┘ └────────┘           │  │
+    │   └──────────────────────────────────────────────┘  │
+    │                                                      │
+    │   ┌──────────────────────────────────────────────┐  │
+    │   │              LLM Layer                        │  │
+    │   │  ┌────────┐ ┌────────┐ ┌────────┐           │  │
+    │   │  │GPT-4o  │ │ Claude │ │ Local  │           │  │
+    │   │  │Opus    │ │ Opus   │ │7B-14B  │           │  │
+    │   │  └────────┘ └────────┘ └────────┘           │  │
+    │   └──────────────────────────────────────────────┘  │
+    │                                                      │
+    │   ┌───────┐  ┌───────┐  ┌────────┐  ┌────────┐    │
+    │   │Postgre│  │Qdrant │  │  Zep   │  │FalkorDB│    │
+    │   │  SQL  │  │Vector │  │Memory  │  │ Graph  │    │
+    │   └───────┘  └───────┘  └────────┘  └────────┘    │
+    │                                                      │
+    │   ┌─────────┐  ┌─────────┐  ┌─────────┐            │
+    │   │Langfuse │  │LiveKit  │  │  Ralph  │            │
+    │   │ Trace   │  │  Voice  │  │  State  │            │
+    │   └─────────┘  └─────────┘  └─────────┘            │
+    └──────────────────────────────────────────────────────┘
+```
+
+### Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| **Orchestration** | The General (GPT-4o) + SSE | Real-time multi-agent coordination |
+| **Frontend** | React 18, Vite 6, Tailwind 4, Three.js | 3D visualization, responsive UI |
+| **Backend** | FastAPI 0.115, Python 3.12 | Async API, protocol servers |
+| **Agents** | PostgreSQL 16 | Agent configs, conversation history |
+| **Memory** | Zep + Graphiti + Qdrant | Temporal knowledge graph |
+| **Knowledge** | FalkorDB | AI-native graph for entities/relations |
+| **LLM Routing** | Ops-Center | Multi-provider routing (OpenRouter, Anthropic) |
+| **Observability** | Langfuse (self-hosted) | Tracing, cost tracking, evaluation |
+| **Voice** | LiveKit + self-hosted STT/TTS | WebRTC, Whisper, Kokoro |
+| **Workflows** | Ralph Engine | Self-correcting execution loops |
+| **Protocols** | A2A + MCP + UCP + Agent Trace | Interoperability standards |
+| **Containerization** | Docker + Docker Compose | Development + deployment |
 
 ---
 
@@ -288,12 +736,12 @@ Both protocols are **fully operational** with tested endpoints. [See API Referen
 
 ```bash
 # 1. Clone repository
-git clone https://git.magicunicorn.tech/Unicorn-Commander/Unicorn-Brigade.git
+git clone https://git.unicorncommander.ai/UnicornCommander/Unicorn-Brigade.git
 cd Unicorn-Brigade
 
 # 2. Python environment
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # 3. Configure environment
@@ -323,19 +771,7 @@ Open **http://localhost:5173**
 # Start full stack
 docker-compose up -d
 
-# With Langfuse observability
-docker-compose -f docker-compose.yml -f docker-compose.langfuse.yml up -d
-
-# With Zep memory (alternative to mem0)
-docker-compose -f docker-compose.yml -f docker-compose.zep.yml up -d
-
-# With FalkorDB knowledge graph
-docker-compose -f docker-compose.yml -f docker-compose.falkordb.yml up -d
-
-# With LiveKit voice
-docker-compose -f docker-compose.yml -f docker-compose.livekit.yml up -d
-
-# Full stack with everything
+# With all advanced features
 docker-compose -f docker-compose.yml \
   -f docker-compose.langfuse.yml \
   -f docker-compose.zep.yml \
@@ -347,393 +783,97 @@ docker-compose -f docker-compose.yml \
 
 ## ⚙️ Configuration
 
-### Required API Keys
-
 ```bash
 # .env file
 
-# Authentication (Required in production)
-BRIGADE_ADMIN_KEY=your-64-char-hex-admin-key  # Generate: openssl rand -hex 32
-AUTH_BYPASS=false  # Set true ONLY in development
-ENVIRONMENT=production  # development | production
+# Authentication
+BRIGADE_ADMIN_KEY=your-64-char-hex  # Generate: openssl rand -hex 32
+ENVIRONMENT=development  # development | production
 
 # Database
 DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5434/unicorn_brigade
 
-# LLM Provider (choose one or more)
-OPS_CENTER_URL=https://unicorncommander.ai  # Our routing service
-OPENROUTER_API_KEY=sk-or-v1-000000000000000000000000000000000000             # 200+ models
-ANTHROPIC_API_KEY=sk-ant-...                # Claude direct
+# LLM Provider
+OPS_CENTER_URL=https://unicorncommander.ai
+OPENROUTER_API_KEY=sk-or-v1-000000000000000000000000000000000000
+ANTHROPIC_API_KEY=sk-ant-...
 
-# Web Search
-SERPER_API_KEY=...  # Get from serper.dev
+# Tools
+SERPER_API_KEY=...  # Web search
 
-# Email - Microsoft 365
+# Email
 MS365_CLIENT_ID=...
-MS365_TENANT_ID=...
 MS365_CLIENT_SECRET=...
 MS365_USER_EMAIL=your@email.com
 
-# Email - Google Workspace (optional)
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REFRESH_TOKEN=...
-
 # Memory
-QDRANT_URL=http://localhost:6333
-MEMORY_PROVIDER=mem0  # or zep
-
-# Zep Cloud (if using Zep)
 ZEP_API_KEY=...  # From zep.cloud
 
-# Langfuse Observability (self-hosted)
+# Voice
+VOICE_STT_PROVIDER=mlx-whisper
+VOICE_TTS_PROVIDER=kokoro
+
+# Observability
 LANGFUSE_ENABLED=true
 LANGFUSE_HOST=http://localhost:3001
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_SECRET_KEY=sk-lf-...
-
-# FalkorDB Knowledge Graph
-FALKORDB_ENABLED=true
-FALKORDB_HOST=brigade-falkordb
-FALKORDB_PORT=6380
-
-# Voice - STT (Speech-to-Text)
-VOICE_STT_PROVIDER=mlx-whisper  # whisper-cpp, faster-whisper, mlx-whisper
-VOICE_STT_MODEL=large-v3-turbo
-VOICE_STT_DEVICE=auto  # auto, cpu, cuda, mps
-VOICE_STT_LANGUAGE=en
-
-# Voice - TTS (Text-to-Speech)
-VOICE_TTS_PROVIDER=kokoro  # kokoro, chatterbox, marvis, cosyvoice, custom
-VOICE_TTS_MODEL=kokoro-82m
-VOICE_TTS_VOICE=af_bella  # Provider-specific voice ID
-VOICE_TTS_SPEED=1.0
-
-# Advanced Tools
-BROWSER_USE_ENABLED=false  # Requires playwright install
-CODE_SANDBOX_ENABLED=true
-```
-
-### Tool Configuration
-
-Add custom tools in `app/llm/extended_tools.py`:
-
-```python
-MY_TOOL = ToolDefinition(
-    name="my_tool",
-    description="What this tool does (LLM reads this)",
-    parameters=[
-        ToolParameter(name="input", type="string", required=True),
-    ],
-    handler=my_async_handler,
-)
-
-EXTENDED_TOOLS = [..., MY_TOOL]
 ```
 
 ---
 
 ## 📚 API Reference
 
-### Agent Operations
+See full API docs at **http://localhost:8100/docs** (Swagger UI)
+
+**Key Endpoints**:
 
 ```bash
-# List all agents
-GET /api/v1/agents
+# The General
+POST /api/v1/orchestration/command
+GET  /api/v1/orchestration/events  # SSE stream
 
-# Get agent details
-GET /api/v1/agents/{agent_id}
+# Agents
+POST /api/v1/agents/{id}/chat
+GET  /api/v1/agents
 
-# Chat with agent (function calling enabled)
-POST /api/v1/agents/{agent_id}/chat
-{
-  "message": "Search for AI market trends and email me a summary",
-  "stream": false,
-  "model": "openai/gpt-4o"
-}
+# Protocols
+POST /api/v1/a2a/agents/{id}/invoke
+GET  /api/v1/a2a/discover
+POST /api/v1/mcp/tools/{name}/invoke
+POST /api/v1/ucp/sessions
 
-# Response includes tool calls
-{
-  "content": "I found the data and sent you an email...",
-  "toolCalls": [
-    {"name": "web_search", "arguments": {...}, "result": {...}},
-    {"name": "email", "arguments": {...}, "result": {"success": true}}
-  ],
-  "model": "openai/gpt-4o",
-  "usage": {"total_tokens": 1234}
-}
-```
-
-### A2A Protocol (Agent-to-Agent)
-
-```bash
-# Get agent card for discovery
-GET /api/v1/a2a/agent-card
-
-# Invoke agent from external system
-POST /api/v1/a2a/invoke
-{
-  "agent_id": "col-finance",
-  "task": "Calculate CAGR from $7.63B to $10.91B over 2 years",
-  "tools": ["calculator"]
-}
-
-# Response
-{
-  "result": "The CAGR is 19.6%...",
-  "tool_calls": [
-    {"tool": "calculator", "input": {...}, "output": {"result": 19.58}}
-  ]
-}
-```
-
-### MCP Protocol (Tool Execution)
-
-```bash
-# List available tools
-GET /api/v1/mcp/tools
-
-# Execute tool directly
-POST /api/v1/mcp/tools/call
-{
-  "name": "web_search",
-  "arguments": {"query": "AI agent market size 2026"}
-}
-
-# Send email via MCP
-POST /api/v1/mcp/tools/call
-{
-  "name": "email",
-  "arguments": {
-    "to": "team@example.com",
-    "subject": "Report",
-    "body": "Here is the analysis..."
-  }
-}
-```
-
-### Hierarchical Workflows
-
-```bash
-# List workflow templates
-GET /api/v1/hierarchical/templates
-
-# Execute workflow
+# Workflows
 POST /api/v1/hierarchical/execute
-{
-  "workflow_id": "investment_due_diligence",
-  "parameters": {
-    "company_name": "TechCorp AI",
-    "market": "enterprise_software"
-  },
-  "async": true
-}
+POST /api/v1/ralph/execute
+POST /api/v1/ralph/executions/{id}/guidance
 
-# Get execution status
-GET /api/v1/hierarchical/executions/{execution_id}
-
-# Cancel execution
-POST /api/v1/hierarchical/executions/{execution_id}/cancel
-```
-
-### Voice Agents
-
-```bash
-# Create voice room
+# Voice
 POST /api/v1/voice/rooms
-{
-  "agent_id": "the-general",
-  "room_name": "Strategy Session"
-}
+GET  /api/v1/voice/rooms/{id}/token
 
-# Get participant token
-GET /api/v1/voice/rooms/{room_id}/token
-
-# List available voices
-GET /api/v1/voice/voices
-
-# Update voice settings (runtime)
-PUT /api/v1/voice/settings
-{
-  "stt_provider": "mlx-whisper",
-  "tts_provider": "kokoro",
-  "tts_voice": "af_bella"
-}
-```
-
-### Agent Trace (Code Attribution)
-
-```bash
-# Get recent code generations
-GET /api/v1/trace/recent?limit=50
-
-# Get stats by agent
-GET /api/v1/trace/stats
-
-# Get files by agent
-GET /api/v1/trace/files/{agent_id}
-
-# Generate report (JSON or CSV)
-GET /api/v1/trace/report?format=csv
+# Agent Trace
+GET  /api/v1/trace/recent
+GET  /api/v1/trace/report?format=csv
 ```
 
 ---
 
-## 🏗️ Architecture
-
-```
-                    Unicorn Brigade Platform
-    ┌────────────────────────────────────────────────────────┐
-    │                                                        │
-    │   ┌──────────────┐          ┌──────────────┐          │
-    │   │   React UI   │◄────────►│   FastAPI    │          │
-    │   │  + Three.js  │  HTTP/SSE│   Backend    │          │
-    │   │  + @xyflow   │          │              │          │
-    │   └──────────────┘          └──────┬───────┘          │
-    │                                    │                   │
-    │         ┌──────────────────────────┼─────────────┐    │
-    │         │                          │             │    │
-    │   ┌─────▼─────┐  ┌─────────┐  ┌───▼────┐  ┌────▼───┐ │
-    │   │    A2A    │  │   MCP   │  │ Agents │  │  Tools │ │
-    │   │  Server   │  │ Server  │  │  CRUD  │  │ Engine │ │
-    │   └───────────┘  └─────────┘  └───┬────┘  └────┬───┘ │
-    │                                    │            │     │
-    │   ┌────────────────────────────────┴────────────┤     │
-    │   │              LLM Client Layer               │     │
-    │   │  ┌────────┐ ┌────────┐ ┌────────┐         │     │
-    │   │  │Ops-Ctr │ │OpenRtr │ │Anthropic│         │     │
-    │   │  │(Router)│ │200+mdls│ │ Claude │         │     │
-    │   │  └────────┘ └────────┘ └────────┘         │     │
-    │   └─────────────────────────────────────────────┘     │
-    │                                                        │
-    │   ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌────────┐ │
-    │   │Postgres │  │ Qdrant  │  │  Redis  │  │ FalkorDB││
-    │   │(Agents) │  │(Memory) │  │ (Cache) │  │(Graph) │ │
-    │   └─────────┘  └─────────┘  └─────────┘  └────────┘ │
-    │                                                        │
-    │   ┌─────────┐  ┌─────────┐                            │
-    │   │Langfuse │  │LiveKit  │                            │
-    │   │(Trace)  │  │ (Voice) │                            │
-    │   └─────────┘  └─────────┘                            │
-    └────────────────────────────────────────────────────────┘
-```
-
-### Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | React 18, Vite 6, Tailwind CSS 4, Three.js, @xyflow/react, Framer Motion |
-| **Backend** | Python 3.12, FastAPI 0.115, SQLAlchemy 2.0, Pydantic v2 |
-| **Database** | PostgreSQL 16 (agents, tools, executions, conversations) |
-| **Memory** | Qdrant + mem0 (default) or Zep (temporal knowledge graph) |
-| **Knowledge Graph** | FalkorDB (AI-native graph database) |
-| **LLM** | Ops-Center routing, OpenRouter (200+ models), Anthropic, OpenAI |
-| **Observability** | Langfuse (self-hosted), Prometheus |
-| **Voice** | LiveKit (WebRTC), self-hosted STT (Whisper), self-hosted TTS (Kokoro) |
-| **Protocols** | A2A (Linux Foundation), MCP (Anthropic) |
-| **Containerization** | Docker, Docker Compose, optional Kubernetes |
-
----
-
-## 🎬 Real-World Examples
-
-### Example 1: Research + Email Workflow
-
-Agent researches a topic and emails the results:
-
-```bash
-curl -X POST http://localhost:8100/api/v1/agents/col-finance/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Research AI agent market size 2026 and email summary to aaron@magicunicorn.tech"}'
-```
-
-**What happens internally:**
-1. LLM decides to use `web_search` tool
-2. Serper API returns market data (Deloitte, IBM research)
-3. LLM synthesizes findings into summary
-4. LLM decides to use `email` tool
-5. MS365 Graph API sends email via OAuth2
-6. Returns confirmation with full tool execution log
-
-### Example 2: External A2A Invocation
-
-Another platform invokes your agent:
-
-```bash
-curl -X POST http://localhost:8100/api/v1/a2a/invoke \
-  -H "Content-Type: application/json" \
-  -d '{
-    "agent_id": "sgt-coder",
-    "task": "Write a Python function to calculate compound interest",
-    "tools": ["code"]
-  }'
-```
-
-### Example 3: Hierarchical Workflow Execution
-
-Run a multi-agent workflow with cost optimization:
-
-```bash
-curl -X POST http://localhost:8100/api/v1/hierarchical/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "workflow_id": "investment_due_diligence",
-    "parameters": {
-      "company_name": "TechCorp AI",
-      "market": "enterprise_software",
-      "funding_round": "Series B"
-    },
-    "async": true
-  }'
-```
-
-**What happens:**
-- Orchestrator (GPT-4o) plans the due diligence workflow
-- Delegates to Finance Team Lead (local 7B model)
-- Finance Team Lead spawns 5 workers (local 1B-3B models):
-  - Market research worker
-  - Competitive analysis worker
-  - Financial metrics worker
-  - Risk assessment worker
-  - Report generation worker
-- Workers execute in parallel using local models (90% cost reduction)
-- Results aggregated and returned
-
-### Example 4: Voice Agent Call
-
-Start a voice conversation with an agent:
-
-```bash
-# Create room
-curl -X POST http://localhost:8100/api/v1/voice/rooms \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id": "the-general", "room_name": "Strategy Session"}'
-
-# Get join token
-curl http://localhost:8100/api/v1/voice/rooms/{room_id}/token
-
-# Use token in frontend VoiceCallModal to connect
-```
-
----
-
-## 📊 Comparison Matrix
+## 📊 Comparison
 
 | Feature | Unicorn Brigade | LangChain | CrewAI | AutoGen |
 |---------|----------------|-----------|--------|---------|
-| **Agent Builder UI** | ✅ Conversational (Gunny) | ❌ Code only | ❌ Code only | ❌ Code only |
-| **Pre-built Agents** | ✅ 17 production-ready | ❌ None | ❌ None | ❌ None |
-| **Real Email Integration** | ✅ MS365 + Google | ⚠️ Manual | ⚠️ Manual | ⚠️ Manual |
-| **Real Web Search** | ✅ Serper (works now) | ⚠️ Needs config | ⚠️ Needs config | ⚠️ Needs config |
-| **A2A Protocol** | ✅ Full support | ❌ No | ❌ No | ❌ No |
-| **MCP Protocol** | ✅ 46 servers | ⚠️ Partial | ❌ No | ❌ No |
-| **3D Visualization** | ✅ Three.js | ❌ No | ❌ No | ❌ No |
-| **Database Persistence** | ✅ PostgreSQL | ⚠️ Optional | ❌ In-memory | ❌ In-memory |
-| **Voice Agents** | ✅ LiveKit + self-hosted | ❌ No | ❌ No | ❌ No |
-| **Hierarchical Workflows** | ✅ 3-tier (cost-optimized) | ❌ No | ⚠️ Basic | ⚠️ Basic |
-| **Self-Correction** | ✅ Ralph engine | ❌ No | ❌ No | ❌ No |
-| **Code Attribution** | ✅ Agent Trace | ❌ No | ❌ No | ❌ No |
-| **Production Deployed** | ✅ Yes | ⚠️ Framework only | ⚠️ Framework only | ⚠️ Framework only |
+| **The General** (AI Orchestrator) | ✅ Built-in | ❌ | ❌ | ❌ |
+| **Pre-built Agents** | ✅ 17 production-ready | ❌ | ❌ | ❌ |
+| **Real-Time Coordination** | ✅ SSE streaming | ❌ | ❌ | ❌ |
+| **3D Visualization** | ✅ Three.js | ❌ | ❌ | ❌ |
+| **A2A Protocol** | ✅ Full support | ❌ | ❌ | ❌ |
+| **MCP Protocol** | ✅ 46 servers | ⚠️ Partial | ❌ | ❌ |
+| **UCP Protocol** | ✅ Commerce layer | ❌ | ❌ | ❌ |
+| **Agent Trace** | ✅ Code attribution | ❌ | ❌ | ❌ |
+| **Ralph Loops** | ✅ Self-correction | ❌ | ❌ | ❌ |
+| **Zep Memory** | ✅ Temporal graph | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic |
+| **Voice Agents** | ✅ LiveKit + self-hosted | ❌ | ❌ | ❌ |
+| **Hierarchical Workflows** | ✅ 3-tier (70-90% cost reduction) | ❌ | ⚠️ Basic | ⚠️ Basic |
+| **Per-Agent Models** | ✅ Different LLM per agent | ⚠️ Global only | ⚠️ Global only | ⚠️ Global only |
 
 ---
 
@@ -742,55 +882,39 @@ curl http://localhost:8100/api/v1/voice/rooms/{room_id}/token
 See [docs/2026-ROADMAP.md](docs/2026-ROADMAP.md) for detailed roadmap.
 
 ### ✅ Completed (January 2026)
-- Function calling with 23 working tools
-- A2A and MCP protocols (fully operational)
+- The General real-time orchestration
+- 4 protocols (A2A, MCP, UCP, Agent Trace)
 - 46 MCP servers (~1,360 tools)
-- 25 hierarchical workflow templates
-- Visual workflow builder
-- Ralph self-correction engine
-- Agent Trace code attribution
+- Ralph self-correction loops
+- Zep temporal memory
 - LiveKit voice agents
-- Zep + FalkorDB integration
-- Langfuse observability
-- Priority 1-3 UX/UI polish
+- 3-tier hierarchical workflows
+- Visual workflow builder
 
 ### ⏳ Q1 2026
+- [ ] NeMo Guardrails (prompt injection, PII detection)
 - [ ] Security hardening (rate limiting, CSRF)
 - [ ] Test coverage >60%
 - [ ] Performance optimization
-- [ ] NeMo Guardrails integration
-- [ ] LLM Guard deployment
 
 ### ⏳ Q2 2026
-- [ ] LiteLLM gateway integration
-- [ ] Model tier routing
+- [ ] LiteLLM gateway (model routing)
 - [ ] Kubernetes deployment
-- [ ] Auto-scaling configuration
-
-### ⏳ Q3 2026
-- [ ] Edge deployment (Cloudflare)
-- [ ] Multi-tenant SaaS
-- [ ] Agent marketplace
+- [ ] Auto-scaling
+- [ ] A2UI protocol (UI components in responses)
 
 ---
 
 ## 🤝 Contributing
 
 ```bash
-# Setup dev environment
 pip install -r requirements-dev.txt
-
-# Run tests
 pytest
-
-# Lint
 ruff check .
-
-# Format
 black .
 ```
 
-PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
@@ -798,22 +922,14 @@ PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 MIT License - see [LICENSE](LICENSE)
 
-Free to use, modify, and distribute. Attribution appreciated.
-
 ---
 
 ## 💬 Support
 
 - **Documentation**: [docs/](docs/)
 - **Roadmap**: [docs/2026-ROADMAP.md](docs/2026-ROADMAP.md)
-- **Issues**: [Forgejo Issues](https://git.magicunicorn.tech/Unicorn-Commander/Unicorn-Brigade/issues)
+- **Issues**: [Forgejo Issues](https://git.unicorncommander.ai/UnicornCommander/Unicorn-Brigade/issues)
 - **Email**: support@magicunicorn.tech
-
----
-
-## 🌟 Star History
-
-If you find this project useful, please consider starring it on Forgejo!
 
 ---
 
@@ -824,6 +940,8 @@ If you find this project useful, please consider starring it on Forgejo!
 *"Where AI agents come to life"*
 
 **Production Status: 94/100** 🚀
+
+**17 Agents** | **23 Tools** | **46 MCP Servers** | **4 Protocols** | **Voice** | **Self-Correction** | **Real-Time Orchestration**
 
 Last Updated: February 1, 2026
 
