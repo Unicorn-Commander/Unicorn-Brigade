@@ -474,6 +474,7 @@ const OrchestrationDemo = () => {
             onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
             showLabels={true}
             animate={isPlaying}
+            onAgentClick={null}
           />
         </motion.div>
 
