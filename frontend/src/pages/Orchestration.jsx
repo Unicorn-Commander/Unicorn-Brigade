@@ -451,6 +451,7 @@ const Orchestration = () => {
             onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
             showLabels={true}
             animate={isLive}
+            realtimeEvents={events}
           />
         </motion.div>
 

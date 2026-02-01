@@ -305,6 +305,15 @@ class WorkflowEngine:
                 if not team_lead:
                     raise ValueError(f"Unknown executor: {step.executor}")
 
+                # Emit delegation event: Orchestrator → Team Lead
+                await emit_agent_message(
+                    agent_id="the-general",
+                    agent_name="The General",
+                    message=f"Delegating to {team_lead.name}: {step.description}",
+                    to_agent=team_lead.id,
+                    mission_id=mission_id,
+                )
+
                 result = await self._team_lead_execute(
                     team_lead=team_lead,
                     task=step.description,
@@ -458,6 +467,15 @@ Respond with a JSON object containing the outputs."""
             # Get dependency outputs for this worker
             dep_inputs = {dep: worker_results[dep] for dep in depends_on if dep in worker_results}
             worker_inputs = {**inputs, **dep_inputs}
+
+            # Emit delegation event: Team Lead → Worker
+            await emit_agent_message(
+                agent_id=team_lead.id,
+                agent_name=team_lead.name,
+                message=f"Delegating to worker: {worker_task}",
+                to_agent=worker_id,
+                mission_id=mission_id,
+            )
 
             # Execute worker
             worker_result = await self._worker_execute(
