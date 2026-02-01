@@ -285,17 +285,7 @@ const OrchestrationDemo = () => {
     }, 7000);
   }, [agents]);
 
-  // Set initial camera position (manual control enabled)
-  useEffect(() => {
-    if (!fgRef.current) return;
-
-    // Set initial camera position looking at The Colonel from a good angle
-    fgRef.current.cameraPosition(
-      { x: 600, y: 300, z: 600 }, // Initial position
-      { x: 0, y: 0, z: 0 }, // Look at The Colonel (center)
-      2000 // Smooth 2-second transition on load
-    );
-  }, []);
+  // Camera position is fully manual - no automatic positioning
 
   // Run multiple simultaneous workflows with staggered starts
   useEffect(() => {
