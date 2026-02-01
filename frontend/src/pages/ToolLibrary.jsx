@@ -15,6 +15,8 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import Breadcrumbs from '../components/Breadcrumbs';
+import CardSkeleton from '../components/skeletons/CardSkeleton';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
@@ -169,6 +171,7 @@ const mockTools = [
 const ToolLibrary = () => {
   const [tools, setTools] = useState(mockTools);
   const [filteredTools, setFilteredTools] = useState(mockTools);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('');
   const [selectedDomain, setSelectedDomain] = useState('');
@@ -185,7 +188,10 @@ const ToolLibrary = () => {
 
   const loadTools = async () => {
     try {
-      const response = await fetch(`${API_BASE}/tools`);
+      const [response] = await Promise.all([
+        fetch(`${API_BASE}/tools`),
+        new Promise(resolve => setTimeout(resolve, 300)),
+      ]);
       if (response.ok) {
         const data = await response.json();
         setTools(data.tools || mockTools);
@@ -197,6 +203,8 @@ const ToolLibrary = () => {
       // Use mock data on error
       console.log('Using mock tool data (API endpoint not available)');
       setTools(mockTools);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -232,8 +240,9 @@ const ToolLibrary = () => {
   const domains = ['general', 'technology', 'financial', 'legal', 'medical'];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        <Breadcrumbs />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -293,61 +302,65 @@ const ToolLibrary = () => {
 
         {/* Tools Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTools.map(tool => (
-            <div
-              key={tool.id}
-              className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 hover:border-purple-500/50 transition-all cursor-pointer group"
-              onClick={() => setSelectedTool(tool)}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  <div className="text-3xl">{tool.icon}</div>
-                  <div>
-                    <h3 className="font-semibold text-white group-hover:text-purple-400 transition-colors">
-                      {tool.name}
-                    </h3>
-                    <p className="text-xs text-slate-400">{tool.provider}</p>
+          {loading ? (
+            <CardSkeleton count={6} />
+          ) : (
+            filteredTools.map(tool => (
+              <div
+                key={tool.id}
+                className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 hover:border-purple-500/50 transition-all cursor-pointer group"
+                onClick={() => setSelectedTool(tool)}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="text-3xl">{tool.icon}</div>
+                    <div>
+                      <h3 className="font-semibold text-white group-hover:text-purple-400 transition-colors">
+                        {tool.name}
+                      </h3>
+                      <p className="text-xs text-slate-400">{tool.provider}</p>
+                    </div>
                   </div>
+                  <span className={`px-2 py-1 rounded text-xs ${
+                    tool.type === 'MCP' ? 'bg-purple-500/20 text-purple-400' :
+                    tool.type === 'Python' ? 'bg-blue-500/20 text-blue-400' :
+                    'bg-emerald-500/20 text-emerald-400'
+                  }`}>
+                    {tool.type}
+                  </span>
                 </div>
-                <span className={`px-2 py-1 rounded text-xs ${
-                  tool.type === 'MCP' ? 'bg-purple-500/20 text-purple-400' :
-                  tool.type === 'Python' ? 'bg-blue-500/20 text-blue-400' :
-                  'bg-emerald-500/20 text-emerald-400'
-                }`}>
-                  {tool.type}
-                </span>
-              </div>
 
-              <p className="text-sm text-slate-400 mb-4 line-clamp-2">{tool.description}</p>
+                <p className="text-sm text-slate-400 mb-4 line-clamp-2">{tool.description}</p>
 
-              <div className="flex flex-wrap gap-2 mb-4">
-                {tool.capabilities.slice(0, 2).map((cap, idx) => (
-                  <span key={idx} className="px-2 py-1 rounded bg-slate-800 text-xs text-slate-300">
-                    {cap}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {tool.capabilities.slice(0, 2).map((cap, idx) => (
+                    <span key={idx} className="px-2 py-1 rounded bg-slate-800 text-xs text-slate-300">
+                      {cap}
+                    </span>
+                  ))}
+                  {tool.capabilities.length > 2 && (
+                    <span className="px-2 py-1 rounded bg-slate-800 text-xs text-slate-400">
+                      +{tool.capabilities.length - 2} more
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs flex items-center space-x-1 ${
+                    tool.status === 'active' ? 'text-emerald-400' : 'text-orange-400'
+                  }`}>
+                    <CheckCircle className="w-3 h-3" />
+                    <span>{tool.status === 'active' ? 'Ready' : 'Beta'}</span>
                   </span>
-                ))}
-                {tool.capabilities.length > 2 && (
-                  <span className="px-2 py-1 rounded bg-slate-800 text-xs text-slate-400">
-                    +{tool.capabilities.length - 2} more
-                  </span>
-                )}
+                  <ArrowRight className="w-4 h-4 text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
               </div>
-
-              <div className="flex items-center justify-between">
-                <span className={`text-xs flex items-center space-x-1 ${
-                  tool.status === 'active' ? 'text-emerald-400' : 'text-orange-400'
-                }`}>
-                  <CheckCircle className="w-3 h-3" />
-                  <span>{tool.status === 'active' ? 'Ready' : 'Beta'}</span>
-                </span>
-                <ArrowRight className="w-4 h-4 text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
 
         {/* Empty State */}
-        {filteredTools.length === 0 && (
+        {!loading && filteredTools.length === 0 && (
           <div className="text-center py-12">
             <Wrench className="w-16 h-16 text-slate-600 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-slate-300 mb-2">No tools found</h3>

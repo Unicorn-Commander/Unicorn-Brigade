@@ -29,6 +29,7 @@ import { toast } from 'react-hot-toast';
 import ToolCallCard, { getToolIcon } from '../components/ToolCallCard';
 import VoiceCallButton from '../components/VoiceCallButton';
 import VoiceCallModal from '../components/VoiceCallModal';
+import ListSkeleton from '../components/skeletons/ListSkeleton';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
@@ -38,6 +39,7 @@ const AgentChat = () => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [agents, setAgents] = useState([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
@@ -91,6 +93,7 @@ const AgentChat = () => {
 
   const loadAgents = async () => {
     try {
+      setAgentsLoading(true);
       const res = await fetch(`${API_BASE}/agents`);
       const data = await res.json();
       setAgents(data.agents || []);
@@ -104,6 +107,8 @@ const AgentChat = () => {
       }
     } catch (err) {
       console.error('Failed to load agents:', err);
+    } finally {
+      setAgentsLoading(false);
     }
   };
 
@@ -706,7 +711,7 @@ const AgentChat = () => {
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-slate-700/50 backdrop-blur-xl bg-slate-900/80">
+      <div className="flex-shrink-0 border-b border-slate-700/50 backdrop-blur-xl bg-slate-900/80 relative z-50">
         <div className="flex items-center justify-between px-6 py-3">
           {/* Left: Agent Selector + Conversation Title */}
           <div className="flex items-center space-x-4">
@@ -715,8 +720,14 @@ const AgentChat = () => {
               <button
                 onClick={() => setShowAgentPicker(!showAgentPicker)}
                 className="flex items-center space-x-3 px-4 py-2 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-purple-500/40 transition-all"
+                disabled={agentsLoading}
               >
-                {selectedAgent ? (
+                {agentsLoading ? (
+                  <div className="flex items-center space-x-2 text-sm text-slate-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Loading agents...</span>
+                  </div>
+                ) : selectedAgent ? (
                   <>
                     <span className="text-2xl">{selectedAgent.avatar || '🦄'}</span>
                     <div className="text-left">
@@ -742,36 +753,42 @@ const AgentChat = () => {
                     transition={{ duration: 0.15 }}
                     className="absolute top-full left-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl bg-slate-800 border border-slate-700/50 shadow-2xl shadow-black/50 z-50"
                   >
-                    {Object.entries(agentsByDomain).map(([domain, domainAgents]) => (
-                      <div key={domain}>
-                        <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-slate-500 uppercase">
-                          {domain}
-                        </p>
-                        {domainAgents.map((agent) => (
-                          <button
-                            key={agent.id}
-                            onClick={() => {
-                              setSelectedAgent(agent);
-                              setShowAgentPicker(false);
-                            }}
-                            className={`w-full flex items-center space-x-3 px-4 py-2.5 hover:bg-slate-700/50 transition-colors ${
-                              selectedAgent?.id === agent.id ? 'bg-purple-500/10' : ''
-                            }`}
-                          >
-                            <span className="text-xl">{agent.avatar || '🦄'}</span>
-                            <div className="text-left flex-1 min-w-0">
-                              <p className="text-sm font-medium text-white truncate">
-                                {agent.displayName || agent.name}
-                              </p>
-                              <p className="text-xs text-slate-400 truncate">{agent.title || agent.agentType}</p>
-                            </div>
-                            {selectedAgent?.id === agent.id && (
-                              <div className="w-2 h-2 rounded-full bg-purple-500"></div>
-                            )}
-                          </button>
-                        ))}
+                    {agentsLoading ? (
+                      <div className="p-4">
+                        <ListSkeleton rows={4} />
                       </div>
-                    ))}
+                    ) : (
+                      Object.entries(agentsByDomain).map(([domain, domainAgents]) => (
+                        <div key={domain}>
+                          <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-slate-500 uppercase">
+                            {domain}
+                          </p>
+                          {domainAgents.map((agent) => (
+                            <button
+                              key={agent.id}
+                              onClick={() => {
+                                setSelectedAgent(agent);
+                                setShowAgentPicker(false);
+                              }}
+                              className={`w-full flex items-center space-x-3 px-4 py-2.5 hover:bg-slate-700/50 transition-colors ${
+                                selectedAgent?.id === agent.id ? 'bg-purple-500/10' : ''
+                              }`}
+                            >
+                              <span className="text-xl">{agent.avatar || '🦄'}</span>
+                              <div className="text-left flex-1 min-w-0">
+                                <p className="text-sm font-medium text-white truncate">
+                                  {agent.displayName || agent.name}
+                                </p>
+                                <p className="text-xs text-slate-400 truncate">{agent.title || agent.agentType}</p>
+                              </div>
+                              {selectedAgent?.id === agent.id && (
+                                <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      ))
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>

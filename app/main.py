@@ -1,7 +1,8 @@
 """Main FastAPI application"""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
 import os
@@ -165,6 +166,20 @@ app = FastAPI(
     description="Multi-Agent Orchestration System with LangGraph and mem0",
     lifespan=lifespan
 )
+
+# Standardize HTTPException responses to a consistent detail format
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    detail = exc.detail
+    if isinstance(detail, dict):
+        payload = detail
+    else:
+        payload = {"message": str(detail) if detail is not None else "An error occurred"}
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": payload},
+    )
 
 # Configure CORS
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:8000").split(",")

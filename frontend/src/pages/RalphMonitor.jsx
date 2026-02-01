@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
+import Breadcrumbs from '../components/Breadcrumbs';
+import ListSkeleton from '../components/skeletons/ListSkeleton';
 
 const RalphMonitor = () => {
   const [executions, setExecutions] = useState([]);
@@ -41,8 +43,8 @@ const RalphMonitor = () => {
 
   const loadExecutions = async () => {
     try {
-      const response = await api.get('/ralph/executions');
-      setExecutions(response.data);
+      const data = await api.get('/ralph/executions');
+      setExecutions(data || []);
       setLoading(false);
 
       // Auto-refresh selected execution if still running
@@ -52,14 +54,15 @@ const RalphMonitor = () => {
     } catch (error) {
       console.error('Error loading executions:', error);
       toast.error('Failed to load executions');
+      setExecutions([]);
       setLoading(false);
     }
   };
 
   const loadExecutionDetails = async (executionId) => {
     try {
-      const response = await api.get(`/ralph/executions/${executionId}`);
-      setSelectedExecution(response.data);
+      const data = await api.get(`/ralph/executions/${executionId}`);
+      setSelectedExecution(data);
     } catch (error) {
       console.error('Error loading execution details:', error);
     }
@@ -126,18 +129,11 @@ const RalphMonitor = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <RefreshCw className="w-8 h-8 text-purple-500 animate-spin" />
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 md:p-6 lg:p-8">
       {/* Header */}
       <div className="max-w-7xl mx-auto mb-8">
+        <Breadcrumbs />
         <div className="flex items-center gap-3 mb-2">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
             <Zap className="w-6 h-6 text-white" />
@@ -165,7 +161,9 @@ const RalphMonitor = () => {
         <div className="lg:col-span-1 space-y-4">
           <h2 className="text-xl font-semibold text-white mb-4">Executions</h2>
 
-          {executions.length === 0 ? (
+          {loading ? (
+            <ListSkeleton rows={6} />
+          ) : executions.length === 0 ? (
             <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-8 text-center">
               <AlertCircle className="w-12 h-12 text-slate-500 mx-auto mb-3" />
               <p className="text-slate-400">No executions running</p>

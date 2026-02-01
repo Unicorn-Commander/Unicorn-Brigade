@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from 'react-hot-toast';
-import { useEffect } from 'react';
+import { Toaster, toast } from 'react-hot-toast';
+import { useEffect, useState } from 'react';
 import Dashboard from './pages/Dashboard';
 import AgentChat from './pages/AgentChat';
 import AgentBuilderChat from './pages/AgentBuilderChat';
@@ -23,10 +23,14 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AuthCallback from './pages/AuthCallback';
+import NotFound from './pages/NotFound';
+import ServerError from './pages/ServerError';
 import Navigation from './components/Navigation';
 import CommandPalette from './components/CommandPalette';
 import useAuth from './hooks/useAuth';
 import { Loader2 } from 'lucide-react';
+import GettingStartedWizard from './components/GettingStartedWizard';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const queryClient = new QueryClient();
 
@@ -63,7 +67,7 @@ function AppLayout({ children }) {
   return (
     <div className="min-h-screen flex">
       <Navigation />
-      <main className="flex-1 ml-64">
+      <main className="flex-1 pt-16 lg:pt-0 lg:ml-64">
         {children}
       </main>
     </div>
@@ -72,172 +76,211 @@ function AppLayout({ children }) {
 
 function App() {
   const { loadUser } = useAuth();
+  const [showWizard, setShowWizard] = useState(false);
 
   // Load user authentication state on app start
   useEffect(() => {
     loadUser();
   }, [loadUser]);
 
+  useEffect(() => {
+    const hasCompletedWizard = localStorage.getItem('wizard-completed');
+    if (!hasCompletedWizard) {
+      const timer = setTimeout(() => setShowWizard(true), 500);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, []);
+
+  useEffect(() => {
+    const handleOffline = () => {
+      toast.error('You are offline. Please check your internet connection.', {
+        id: 'offline',
+        duration: Infinity,
+      });
+    };
+
+    const handleOnline = () => {
+      toast.dismiss('offline');
+      toast.success('You are back online!', { id: 'online' });
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
+        <ErrorBoundary>
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
 
-          {/* Protected Routes */}
-          <Route path="/dashboard" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <Dashboard />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            {/* Protected Routes */}
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Dashboard />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/chat" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <AgentChat />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/chat" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <AgentChat />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/conversations" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <Conversations />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/conversations" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Conversations />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/orchestration" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <Orchestration />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/orchestration" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Orchestration />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/knowledge" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <KnowledgeGraph />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/knowledge" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <KnowledgeGraph />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/library" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <AgentLibrary />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/library" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <AgentLibrary />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/builder-chat" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <AgentBuilderChat />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/builder-chat" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <AgentBuilderChat />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/agent/:id" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <AgentDetail />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/agent/:id" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <AgentDetail />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/tools" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ToolLibrary />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/tools" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <ToolLibrary />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/mcp-servers" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <MCPServers />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/mcp-servers" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <MCPServers />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/langflow" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <LangflowFlows />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/langflow" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <LangflowFlows />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/workflows" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <Workflows />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/workflows" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Workflows />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/ralph-monitor" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <RalphMonitor />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/ralph-monitor" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <RalphMonitor />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/docs" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <ApiDocs />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/docs" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <ApiDocs />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/mcp-docs" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <MCPDocs />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/mcp-docs" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <MCPDocs />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/code-attribution" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <CodeAttribution />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/code-attribution" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <CodeAttribution />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/monitoring" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <Monitoring />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/monitoring" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Monitoring />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          <Route path="/settings" element={
-            <ProtectedRoute>
-              <AppLayout>
-                <Settings />
-              </AppLayout>
-            </ProtectedRoute>
-          } />
+            <Route path="/settings" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Settings />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
 
-          {/* Root redirect */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            {/* Root redirect */}
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-          {/* Catch all - redirect to dashboard */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+            {/* Error routes */}
+            <Route path="/500" element={<ServerError />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </ErrorBoundary>
+
+        {showWizard && (
+          <GettingStartedWizard onClose={() => setShowWizard(false)} />
+        )}
 
         <CommandPalette />
 

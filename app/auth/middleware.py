@@ -35,7 +35,8 @@ api_key_header = APIKeyHeader(name=AUTH_HEADER, auto_error=False)
 MASTER_ADMIN_KEY = os.getenv("BRIGADE_ADMIN_KEY", "")
 
 # Allow auth bypass in development mode (DANGEROUS - never in production)
-AUTH_BYPASS_ENABLED = os.getenv("AUTH_BYPASS", "false").lower() == "true"
+AUTH_BYPASS_FLAG = os.getenv("AUTH_BYPASS", "false").lower() == "true"
+AUTH_BYPASS_ENABLED = AUTH_BYPASS_FLAG and os.getenv("ENVIRONMENT", "production").lower() == "development"
 
 
 @dataclass
@@ -207,8 +208,10 @@ async def get_current_user(
 
     # Development bypass (DANGEROUS)
     if AUTH_BYPASS_ENABLED:
-        logger.warning("AUTH BYPASS ENABLED - NOT FOR PRODUCTION")
+        logger.warning("⚠️ AUTH BYPASS ENABLED - DEVELOPMENT MODE ONLY")
         return AuthUser(id="dev-bypass", role=UserRole.ADMIN)
+    if AUTH_BYPASS_FLAG:
+        logger.error("❌ AUTH_BYPASS=true but ENVIRONMENT!=development - IGNORING")
 
     # Validate the API key
     user = await validate_api_key(api_key, session)
@@ -251,7 +254,10 @@ async def get_current_user_optional(
     Use this for endpoints that behave differently based on auth status.
     """
     if AUTH_BYPASS_ENABLED:
+        logger.warning("⚠️ AUTH BYPASS ENABLED - DEVELOPMENT MODE ONLY")
         return AuthUser(id="dev-bypass", role=UserRole.ADMIN)
+    if AUTH_BYPASS_FLAG:
+        logger.error("❌ AUTH_BYPASS=true but ENVIRONMENT!=development - IGNORING")
 
     if not api_key:
         return None

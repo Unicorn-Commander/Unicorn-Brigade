@@ -492,7 +492,10 @@ async def benchmark_health():
             "available_configs": list(MODEL_CONFIGS.keys()),
         }
     except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-        }
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "message": "Benchmark subsystem unhealthy",
+                "error": str(e),
+            },
+        )

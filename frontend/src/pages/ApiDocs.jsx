@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Code, Copy, CheckCircle, Book, Key, Server, Zap, Shield, MessageSquare } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1').replace(/\/api\/v1$/, '').replace(/\/api$/, '');
 
@@ -335,8 +336,9 @@ print(domains)`
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        <Breadcrumbs />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>

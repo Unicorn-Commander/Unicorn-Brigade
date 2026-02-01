@@ -4,7 +4,12 @@ import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import AgentCard from '../components/AgentCard';
+import AgentEditModal from '../components/AgentEditModal';
+import AgentDeleteConfirmModal from '../components/AgentDeleteConfirmModal';
 import { getToolIcon } from '../components/ToolCallCard';
+import Breadcrumbs from '../components/Breadcrumbs';
+import CardSkeleton from '../components/skeletons/CardSkeleton';
+import ListSkeleton from '../components/skeletons/ListSkeleton';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
@@ -35,6 +40,9 @@ const AgentLibrary = () => {
   const [filteredAgents, setFilteredAgents] = useState([]);
   const [domains, setDomains] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterLoading, setFilterLoading] = useState(false);
+  const [editingAgent, setEditingAgent] = useState(null);
+  const [deletingAgent, setDeletingAgent] = useState(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,13 +81,21 @@ const AgentLibrary = () => {
   }, []);
 
   useEffect(() => {
-    applyFilters();
+    setFilterLoading(true);
+    const timer = setTimeout(() => {
+      applyFilters();
+      setFilterLoading(false);
+    }, 150);
+    return () => clearTimeout(timer);
   }, [agents, searchQuery, selectedDomain, selectedStatus, selectedType, selectedTool, sortBy]);
 
   const loadAgents = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE}/agents`);
+      const [response] = await Promise.all([
+        axios.get(`${API_BASE}/agents`),
+        new Promise(resolve => setTimeout(resolve, 300)),
+      ]);
       setAgents(response.data.agents || []);
     } catch (error) {
       console.error('Failed to load agents:', error);
@@ -196,9 +212,33 @@ const AgentLibrary = () => {
 
   const groupedAgents = groupByDomain();
 
+  const handleAgentUpdated = (updatedAgent, meta = {}) => {
+    const snapshot = agents;
+    setAgents((prev) => prev.map((agent) => (agent.id === updatedAgent.id ? updatedAgent : agent)));
+    if (!meta.optimistic) {
+      setEditingAgent(null);
+    }
+    return () => {
+      setAgents(snapshot);
+    };
+  };
+
+  const handleAgentDeleted = (agentToDelete, meta = {}) => {
+    const snapshot = agents;
+    const deletedId = typeof agentToDelete === 'string' ? agentToDelete : agentToDelete?.id;
+    setAgents((prev) => prev.filter((agent) => agent.id !== deletedId));
+    if (!meta.optimistic) {
+      setDeletingAgent(null);
+    }
+    return () => {
+      setAgents(snapshot);
+    };
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        <Breadcrumbs />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -408,15 +448,18 @@ const AgentLibrary = () => {
         </div>
 
         {/* Loading State */}
-        {loading && (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-unicorn-500"></div>
-            <p className="text-slate-400 mt-4">Loading agents...</p>
-          </div>
+        {(loading || filterLoading) && (
+          viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <CardSkeleton count={6} />
+            </div>
+          ) : (
+            <ListSkeleton rows={6} />
+          )
         )}
 
         {/* Agents Grouped by Domain */}
-        {!loading && Object.keys(groupedAgents).length === 0 && (
+        {!loading && !filterLoading && Object.keys(groupedAgents).length === 0 && (
           <div className="text-center py-12">
             <Bot className="w-16 h-16 text-slate-600 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-slate-300 mb-2">No agents found</h3>
@@ -431,7 +474,7 @@ const AgentLibrary = () => {
           </div>
         )}
 
-        {!loading && Object.keys(groupedAgents).map(domain => {
+        {!loading && !filterLoading && Object.keys(groupedAgents).map(domain => {
           const config = getDomainConfig(domain);
           const domainAgents = groupedAgents[domain];
 
@@ -455,6 +498,28 @@ const AgentLibrary = () => {
                         agent={agent}
                         onClick={() => navigate(`/agent/${agent.id}`)}
                       />
+                      <div className="mt-4 flex gap-2 pt-4 border-t border-slate-700/50">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingAgent(agent);
+                          }}
+                          className="flex-1 px-4 py-2 bg-purple-600/20 text-purple-400 rounded-lg hover:bg-purple-600/30 transition-colors flex items-center justify-center space-x-2"
+                        >
+                          <Edit className="w-4 h-4" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeletingAgent(agent);
+                          }}
+                          className="flex-1 px-4 py-2 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/30 transition-colors flex items-center justify-center space-x-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
                       {/* Quick Chat overlay button */}
                       <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                         <button
@@ -474,7 +539,13 @@ const AgentLibrary = () => {
               ) : (
                 <div className="space-y-2">
                   {domainAgents.map(agent => (
-                    <AgentListItem key={agent.id} agent={agent} navigate={navigate} />
+                    <AgentListItem
+                      key={agent.id}
+                      agent={agent}
+                      navigate={navigate}
+                      onEdit={() => setEditingAgent(agent)}
+                      onDelete={() => setDeletingAgent(agent)}
+                    />
                   ))}
                 </div>
               )}
@@ -482,12 +553,28 @@ const AgentLibrary = () => {
           );
         })}
       </div>
+
+      {editingAgent && (
+        <AgentEditModal
+          agent={editingAgent}
+          onClose={() => setEditingAgent(null)}
+          onSave={handleAgentUpdated}
+        />
+      )}
+
+      {deletingAgent && (
+        <AgentDeleteConfirmModal
+          agent={deletingAgent}
+          onClose={() => setDeletingAgent(null)}
+          onDelete={handleAgentDeleted}
+        />
+      )}
     </div>
   );
 };
 
 // Agent List Item Component
-const AgentListItem = ({ agent, navigate }) => {
+const AgentListItem = ({ agent, navigate, onEdit, onDelete }) => {
   const statusConfig = getStatusConfig(agent.status);
   const tools = agent.tools || agent.agentTools || [];
   const toolCount = tools.length;
@@ -573,6 +660,30 @@ const AgentListItem = ({ agent, navigate }) => {
         >
           <MessageSquare className="w-4 h-4" />
           <span className="hidden sm:inline">Chat</span>
+        </button>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 transition-colors text-sm flex-shrink-0"
+          title="Edit agent"
+        >
+          <Edit className="w-4 h-4" />
+          <span className="hidden sm:inline">Edit</span>
+        </button>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors text-sm flex-shrink-0"
+          title="Delete agent"
+        >
+          <Trash2 className="w-4 h-4" />
+          <span className="hidden sm:inline">Delete</span>
         </button>
       </div>
     </div>

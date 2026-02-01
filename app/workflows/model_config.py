@@ -65,6 +65,24 @@ MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 
     # Anthropic Models
+    "anthropic/claude-opus-4.5": {
+        "tier": "api",
+        "provider": "anthropic",
+        "context": 200000,
+        "cost_input": 0.015,
+        "cost_output": 0.075,
+        "description": "Most capable Claude model (Jan 2025) - best for orchestration",
+        "recommended_for": ["orchestrator"],
+    },
+    "anthropic/claude-sonnet-4.5": {
+        "tier": "api",
+        "provider": "anthropic",
+        "context": 200000,
+        "cost_input": 0.003,
+        "cost_output": 0.015,
+        "description": "Claude Sonnet 4.5 - excellent balance of speed and capability",
+        "recommended_for": ["orchestrator", "team_lead"],
+    },
     "anthropic/claude-3.5-sonnet": {
         "tier": "api",
         "provider": "anthropic",
@@ -183,6 +201,64 @@ MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
         "description": "DeepSeek Coder 6.7B - code generation specialist",
         "recommended_for": ["team_lead", "worker"],
         "vram_required": 5,
+    },
+
+    # OpenRouter Budget Models (Ultra-low cost API models)
+    "openai/gpt-oss-120b": {
+        "tier": "api",
+        "provider": "openrouter",
+        "context": 131072,
+        "cost_input": 0.000039,  # per 1K tokens
+        "cost_output": 0.00019,
+        "description": "OpenRouter 120B - Excellent for team leads, ultra-low cost",
+        "recommended_for": ["team_lead"],
+    },
+    "openai/gpt-oss-20b": {
+        "tier": "api",
+        "provider": "openrouter",
+        "context": 131072,
+        "cost_input": 0.00002,
+        "cost_output": 0.0001,
+        "description": "OpenRouter 20B - Great for workers, minimal cost",
+        "recommended_for": ["worker"],
+    },
+    "openai/gpt-oss-safeguard-20b": {
+        "tier": "api",
+        "provider": "openrouter",
+        "context": 131072,
+        "cost_input": 0.000075,
+        "cost_output": 0.0003,
+        "description": "OpenRouter 20B with safety filtering",
+        "recommended_for": ["worker"],
+    },
+
+    # Qwen Coder Models (OpenRouter)
+    "qwen/qwen3-coder-plus": {
+        "tier": "api",
+        "provider": "openrouter",
+        "context": 128000,
+        "cost_input": 0.001,
+        "cost_output": 0.005,
+        "description": "Qwen3 Coder Plus - Premium code generation",
+        "recommended_for": ["team_lead"],
+    },
+    "qwen/qwen3-coder-flash": {
+        "tier": "api",
+        "provider": "openrouter",
+        "context": 128000,
+        "cost_input": 0.0003,
+        "cost_output": 0.0015,
+        "description": "Qwen3 Coder Flash - Fast code generation",
+        "recommended_for": ["worker"],
+    },
+    "qwen/qwen3-vl-30b-a3b": {
+        "tier": "api",
+        "provider": "openrouter",
+        "context": 262144,
+        "cost_input": 0.00015,
+        "cost_output": 0.0006,
+        "description": "Qwen3 VL 30B A3B - Multimodal with 262K context",
+        "recommended_for": ["team_lead"],
     },
 
     # Local Models via Ollama (1B-3B - Worker tier)
@@ -725,6 +801,100 @@ LEGAL_SPECIALIZED_CONFIG = ModelConfig(
     enable_local_models=True,
 )
 
+# OpenRouter Budget Configuration (Test before local deployment)
+OPENROUTER_BUDGET_CONFIG = ModelConfig(
+    orchestrator_model="openai/gpt-4o-mini",  # Keep smart orchestrator
+    team_lead_models={
+        "research": "openai/gpt-oss-120b",
+        "finance": "openai/gpt-oss-120b",
+        "content": "openai/gpt-oss-120b",
+        "sales": "openai/gpt-oss-120b",
+        "devops": "qwen/qwen3-coder-flash",  # Specialized for code
+        "legal": "openai/gpt-oss-120b",
+        "medical": "openai/gpt-oss-120b",
+        "investigation": "openai/gpt-oss-120b",
+    },
+    default_team_lead_model="openai/gpt-oss-120b",
+    default_worker_model="openai/gpt-oss-20b",
+    enable_local_models=False,  # Using API models
+    api_fallback_team_lead="openai/gpt-oss-120b",
+    api_fallback_worker="openai/gpt-oss-20b",
+)
+
+# Tesla P40 Local Configuration (For dual Tesla P40 48GB VRAM)
+TESLA_P40_LOCAL_CONFIG = ModelConfig(
+    orchestrator_model="openai/gpt-4o-mini",  # Keep API for complex reasoning
+    team_lead_models={
+        "research": "ollama/llama3.1:70b",  # 70B fits in 48GB with quantization
+        "finance": "ollama/mistral:7b",
+        "content": "ollama/llama3.1:8b",
+        "sales": "ollama/gemma2:9b",
+        "devops": "ollama/deepseek-coder:6.7b",
+        "legal": "ollama/llama3.1:70b",  # Premium local model
+        "medical": "ollama/llama3.1:8b",
+        "investigation": "ollama/mixtral:8x7b",  # MoE for complex reasoning
+    },
+    default_team_lead_model="ollama/llama3.1:8b",
+    default_worker_model="ollama/llama3.2:3b",
+    enable_local_models=True,
+)
+
+# Ryzen AI 395+ Configuration (128GB RAM + XDNA2 NPU)
+RYZEN_AI_CONFIG = ModelConfig(
+    orchestrator_model="ollama/llama3.1:70b",  # 128GB RAM can handle 70B
+    team_lead_models={
+        "research": "ollama/llama3.1:70b",
+        "finance": "ollama/mixtral:8x7b",
+        "content": "ollama/llama3.1:8b",
+        "sales": "ollama/gemma2:9b",
+        "devops": "ollama/deepseek-coder:6.7b",
+        "legal": "ollama/llama3.1:70b",
+        "medical": "ollama/llama3.1:8b",
+        "investigation": "ollama/mixtral:8x7b",
+    },
+    default_team_lead_model="ollama/llama3.1:8b",
+    default_worker_model="ollama/llama3.2:3b",
+    enable_local_models=True,
+)
+
+# Opus Test Configuration - Premium orchestrator with budget execution
+OPUS_TEST_CONFIG = ModelConfig(
+    orchestrator_model="anthropic/claude-opus-4.5",  # Best orchestrator
+    team_lead_models={
+        "research": "openai/gpt-oss-120b",
+        "finance": "openai/gpt-oss-120b",
+        "content": "openai/gpt-oss-120b",
+        "sales": "openai/gpt-oss-120b",
+        "devops": "openai/gpt-oss-120b",
+        "legal": "anthropic/claude-sonnet-4.5",  # Fallback to Claude for legal
+        "medical": "anthropic/claude-sonnet-4.5",  # Fallback to Claude for medical
+        "investigation": "openai/gpt-oss-120b",
+    },
+    default_team_lead_model="openai/gpt-oss-120b",
+    default_worker_model="openai/gpt-oss-20b",
+    enable_local_models=False,
+    api_fallback_team_lead="anthropic/claude-sonnet-4.5",
+    api_fallback_worker="openai/gpt-oss-20b",
+)
+
+# Sonnet Test Configuration - All Claude Sonnet (for comparison)
+SONNET_TEST_CONFIG = ModelConfig(
+    orchestrator_model="anthropic/claude-opus-4.5",
+    team_lead_models={
+        "research": "anthropic/claude-sonnet-4.5",
+        "finance": "anthropic/claude-sonnet-4.5",
+        "content": "anthropic/claude-sonnet-4.5",
+        "sales": "anthropic/claude-sonnet-4.5",
+        "devops": "anthropic/claude-sonnet-4.5",
+        "legal": "anthropic/claude-sonnet-4.5",
+        "medical": "anthropic/claude-sonnet-4.5",
+        "investigation": "anthropic/claude-sonnet-4.5",
+    },
+    default_team_lead_model="anthropic/claude-sonnet-4.5",
+    default_worker_model="anthropic/claude-sonnet-4.5",
+    enable_local_models=False,
+)
+
 # Preset lookup
 CONFIG_PRESETS: Dict[str, ModelConfig] = {
     "cost_optimized": COST_OPTIMIZED_CONFIG,
@@ -733,6 +903,11 @@ CONFIG_PRESETS: Dict[str, ModelConfig] = {
     "full_local": FULL_LOCAL_CONFIG,
     "finance_specialized": FINANCE_SPECIALIZED_CONFIG,
     "legal_specialized": LEGAL_SPECIALIZED_CONFIG,
+    "openrouter_budget": OPENROUTER_BUDGET_CONFIG,
+    "tesla_p40": TESLA_P40_LOCAL_CONFIG,
+    "ryzen_ai": RYZEN_AI_CONFIG,
+    "opus_test": OPUS_TEST_CONFIG,
+    "sonnet_test": SONNET_TEST_CONFIG,
 }
 
 
@@ -951,5 +1126,10 @@ def _get_preset_description(preset_name: str) -> str:
         "full_local": "Zero API cost with local models everywhere (requires GPU)",
         "finance_specialized": "Optimized for financial analysis workflows",
         "legal_specialized": "Optimized for legal analysis and investigation workflows",
+        "openrouter_budget": "Ultra-low cost testing with OpenRouter gpt-oss models ($0.02-0.19/1M tokens)",
+        "tesla_p40": "Optimized for dual Tesla P40 GPUs (48GB VRAM) with 70B models",
+        "ryzen_ai": "Optimized for Ryzen AI 395+ (128GB RAM + XDNA2 NPU)",
+        "opus_test": "Test configuration: Claude Opus 4.5 orchestrator + gpt-oss-120b team leads/workers",
+        "sonnet_test": "Comparison configuration: Claude Opus 4.5 orchestrator + Sonnet 4.5 everywhere",
     }
     return descriptions.get(preset_name, "Custom configuration")

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   Filter,
@@ -34,6 +34,10 @@ import { toast } from 'react-hot-toast';
 import WorkflowDiagram from '../components/WorkflowDiagram';
 import WorkflowGallery from '../components/WorkflowGallery';
 import WorkflowFilters from '../components/WorkflowFilters';
+import WorkflowExecutionPanel from '../components/WorkflowExecutionPanel';
+import Breadcrumbs from '../components/Breadcrumbs';
+import CardSkeleton from '../components/skeletons/CardSkeleton';
+import TableSkeleton from '../components/skeletons/TableSkeleton';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
@@ -70,15 +74,6 @@ const domainIcons = {
   investigation: '🕵️',
 };
 
-// Estimated cost per preset (based on model_config)
-const presetCostEstimates = {
-  cost_optimized: { estimate: '$0.02-0.05', description: 'Uses local models for team leads/workers' },
-  balanced: { estimate: '$0.10-0.20', description: 'Mix of API and local models' },
-  quality_focused: { estimate: '$0.30-0.50', description: 'Uses premium API models' },
-  speed_focused: { estimate: '$0.15-0.25', description: 'Fast API models' },
-  local_only: { estimate: 'Free', description: 'All local models (slower)' },
-};
-
 // Status colors and icons
 const statusConfig = {
   pending: { color: 'text-slate-400', bg: 'bg-slate-500/20', icon: Clock },
@@ -95,26 +90,23 @@ const Workflows = () => {
   const [filteredTemplates, setFilteredTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [templateDetail, setTemplateDetail] = useState(null);
+  const [selectedWorkflow, setSelectedWorkflow] = useState(null);
+  const [recentExecutions, setRecentExecutions] = useState([]);
 
   // State for executions
   const [executions, setExecutions] = useState([]);
   const [selectedExecution, setSelectedExecution] = useState(null);
 
   // State for model config
-  const [presets, setPresets] = useState([]);
-  const [selectedPreset, setSelectedPreset] = useState('cost_optimized');
-
   // UI State
   const [loading, setLoading] = useState(true);
+  const [executionsLoading, setExecutionsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [selectedComplexity, setSelectedComplexity] = useState('');
   const [activeTab, setActiveTab] = useState('templates'); // templates, executions
-  const [showExecuteModal, setShowExecuteModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showExecutionModal, setShowExecutionModal] = useState(false);
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [formInputs, setFormInputs] = useState({});
   const [healthStatus, setHealthStatus] = useState(null);
   const [pollingExecution, setPollingExecution] = useState(null);
   const [allTags, setAllTags] = useState([]);
@@ -126,7 +118,6 @@ const Workflows = () => {
   useEffect(() => {
     loadTemplates();
     loadExecutions();
-    loadPresets();
     checkHealth();
   }, []);
 
@@ -197,7 +188,10 @@ const Workflows = () => {
   const loadTemplates = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/hierarchical/templates`);
+      const [response] = await Promise.all([
+        fetch(`${API_BASE}/hierarchical/templates`),
+        new Promise(resolve => setTimeout(resolve, 300)),
+      ]);
       if (response.ok) {
         const data = await response.json();
         setTemplates(data.workflows || []);
@@ -230,6 +224,7 @@ const Workflows = () => {
   };
 
   const loadExecutions = async () => {
+    setExecutionsLoading(true);
     try {
       const response = await fetch(`${API_BASE}/hierarchical/executions`);
       if (response.ok) {
@@ -238,18 +233,8 @@ const Workflows = () => {
       }
     } catch (error) {
       console.error('Failed to load executions:', error);
-    }
-  };
-
-  const loadPresets = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/hierarchical/config/presets`);
-      if (response.ok) {
-        const data = await response.json();
-        setPresets(data.presets || []);
-      }
-    } catch (error) {
-      console.error('Failed to load presets:', error);
+    } finally {
+      setExecutionsLoading(false);
     }
   };
 
@@ -337,63 +322,7 @@ const Workflows = () => {
     setSelectedTemplate(template);
     const detail = await loadTemplateDetail(template.id);
     if (detail) {
-      // Initialize form inputs
-      const inputs = {};
-      (detail.required_inputs || []).forEach(input => {
-        inputs[input] = '';
-      });
-      setFormInputs(inputs);
-      setShowExecuteModal(true);
-    }
-  };
-
-  const handleExecuteWorkflow = async () => {
-    if (!templateDetail) return;
-
-    // Validate required inputs
-    const missingInputs = (templateDetail.required_inputs || []).filter(
-      inp => !formInputs[inp]?.trim()
-    );
-    if (missingInputs.length > 0) {
-      toast.error(`Missing required inputs: ${missingInputs.join(', ')}`);
-      return;
-    }
-
-    setIsExecuting(true);
-    try {
-      const response = await fetch(`${API_BASE}/hierarchical/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workflow_id: templateDetail.id,
-          inputs: formInputs,
-          async_execution: true,
-          model_config: selectedPreset ? { preset: selectedPreset } : null,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        toast.success('Workflow started successfully');
-        setShowExecuteModal(false);
-
-        // Reload executions and start polling if we got an execution ID
-        await loadExecutions();
-        if (data.execution_id && data.execution_id !== 'pending') {
-          setPollingExecution(data.execution_id);
-        }
-
-        // Switch to executions tab
-        setActiveTab('executions');
-      } else {
-        const error = await response.json();
-        toast.error(error.detail || 'Failed to execute workflow');
-      }
-    } catch (error) {
-      console.error('Failed to execute workflow:', error);
-      toast.error('Failed to execute workflow');
-    } finally {
-      setIsExecuting(false);
+      setSelectedWorkflow(detail);
     }
   };
 
@@ -460,8 +389,9 @@ const Workflows = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        <Breadcrumbs />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -569,6 +499,49 @@ const Workflows = () => {
               onViewDetails={handleViewTemplate}
               onExecute={handleExecuteClick}
             />
+
+            {recentExecutions.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-xl font-bold text-white mb-4">Recent Executions</h3>
+                {executionsLoading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <CardSkeleton count={3} />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {recentExecutions.map(execution => (
+                      <div
+                        key={execution.id}
+                        className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-4"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="font-medium text-white">
+                            {execution.workflowName || execution.workflow_name || execution.workflowId || execution.workflow_id}
+                          </span>
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            execution.state === 'completed' ? 'bg-green-500/20 text-green-400' :
+                            execution.state === 'failed' ? 'bg-red-500/20 text-red-400' :
+                            'bg-blue-500/20 text-blue-400'
+                          }`}>
+                            {execution.state}
+                          </span>
+                        </div>
+                        <div className="text-sm text-slate-400">
+                          {execution.startedAt || execution.started_at
+                            ? new Date(execution.startedAt || execution.started_at).toLocaleString()
+                            : 'Just now'}
+                        </div>
+                        {((execution.totalCost ?? execution.total_cost) !== undefined) && (
+                          <div className="text-xs text-green-400 mt-2">
+                            Cost: ${((execution.totalCost ?? execution.total_cost) || 0).toFixed(4)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -576,7 +549,16 @@ const Workflows = () => {
         {activeTab === 'executions' && (
           <>
             {/* Execution Stats Summary */}
-            {executions.length > 0 && (
+            {executionsLoading && (
+              <div className="space-y-4">
+                <TableSkeleton rows={6} columns={6} />
+                <div className="lg:hidden">
+                  <CardSkeleton count={4} />
+                </div>
+              </div>
+            )}
+
+            {!executionsLoading && executions.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
                   <div className="flex items-center justify-between">
@@ -616,9 +598,9 @@ const Workflows = () => {
             )}
 
             {/* Executions List */}
-            {executions.length > 0 ? (
+            {!executionsLoading && executions.length > 0 ? (
               <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="hidden lg:block overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-slate-700">
@@ -728,8 +710,83 @@ const Workflows = () => {
                     </tbody>
                   </table>
                 </div>
+
+                <div className="lg:hidden space-y-4 p-4">
+                  {executions.map((execution) => {
+                    const status = statusConfig[execution.state] || statusConfig.pending;
+                    const StatusIcon = status.icon;
+                    const isActive = ['running', 'waiting'].includes(execution.state);
+
+                    return (
+                      <div
+                        key={execution.id}
+                        className="bg-slate-800/60 border border-slate-700/50 rounded-lg p-4 space-y-3"
+                        onClick={() => handleViewExecution(execution)}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="font-medium text-white">
+                              {execution.workflow_name || execution.workflow_id}
+                            </p>
+                            <p className="text-xs text-slate-500 font-mono">{execution.id.slice(0, 8)}...</p>
+                          </div>
+                          <span className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg ${status.bg}`}>
+                            {isActive ? (
+                              <Loader2 className={`w-4 h-4 ${status.color} animate-spin`} />
+                            ) : (
+                              <StatusIcon className={`w-4 h-4 ${status.color}`} />
+                            )}
+                            <span className={`text-xs capitalize ${status.color}`}>{execution.state}</span>
+                          </span>
+                        </div>
+
+                        <div className="text-sm text-slate-400">
+                          <span className="font-medium text-slate-300">Started:</span> {formatDate(execution.started_at)}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
+                          <span>
+                            Duration: {formatDuration(execution.duration_seconds)}
+                          </span>
+                          <span>
+                            Cost: {formatCost(execution.total_cost)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-2 border-t border-slate-700/50">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleViewExecution(execution); }}
+                            className="px-3 py-2 min-h-[44px] bg-slate-700/60 text-slate-200 rounded-lg hover:bg-slate-600 transition-colors"
+                          >
+                            View
+                          </button>
+                          {isActive && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleCancelExecution(execution.id); }}
+                              className="px-3 py-2 min-h-[44px] bg-red-500/20 text-red-300 rounded-lg hover:bg-red-500/30 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                          {execution.state === 'completed' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const template = templates.find(t => t.id === execution.workflow_id);
+                                if (template) handleExecuteClick(template);
+                              }}
+                              className="px-3 py-2 min-h-[44px] bg-purple-500/20 text-purple-300 rounded-lg hover:bg-purple-500/30 transition-colors"
+                            >
+                              Run Again
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            ) : (
+            ) : !executionsLoading ? (
               <div className="text-center py-12">
                 <Activity className="w-16 h-16 text-slate-600 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-slate-300 mb-2">No executions yet</h3>
@@ -741,6 +798,8 @@ const Workflows = () => {
                   Browse Workflows
                 </button>
               </div>
+            ) : (
+              <TableSkeleton rows={5} columns={6} />
             )}
           </>
         )}
@@ -768,7 +827,7 @@ const Workflows = () => {
               </div>
               <button
                 onClick={() => setShowDetailModal(false)}
-                className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-lg transition-colors"
+                className="text-slate-400 hover:text-white p-3 min-h-[44px] min-w-[44px] hover:bg-slate-800 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -790,7 +849,7 @@ const Workflows = () => {
             <div className="mb-6">
               <h3 className="text-lg font-semibold text-white mb-3">Required Inputs</h3>
               <div className="flex flex-wrap gap-2">
-                {(templateDetail.required_inputs || []).map(input => (
+              {(templateDetail.required_inputs || templateDetail.requiredInputs || []).map(input => (
                   <span
                     key={input}
                     className="px-3 py-1 bg-slate-800 rounded text-sm text-slate-300 font-mono"
@@ -949,133 +1008,6 @@ const Workflows = () => {
         </div>
       )}
 
-      {/* Execute Workflow Modal */}
-      {showExecuteModal && templateDetail && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
-          onClick={() => setShowExecuteModal(false)}
-        >
-          <div
-            className="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-2xl w-full max-h-[85vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                  <Play className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white">Execute Workflow</h2>
-                  <p className="text-slate-400">{templateDetail.name}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowExecuteModal(false)}
-                className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Model Configuration */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Model Configuration Preset
-              </label>
-              <select
-                value={selectedPreset}
-                onChange={(e) => setSelectedPreset(e.target.value)}
-                className="w-full px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-200"
-              >
-                {presets.map(preset => (
-                  <option key={preset.name} value={preset.name}>
-                    {preset.name.replace(/_/g, ' ')} - {preset.description}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-500 mt-1">
-                Controls which models are used for orchestrator, team leads, and workers
-              </p>
-            </div>
-
-            {/* Input Fields */}
-            <div className="space-y-4 mb-6">
-              <h3 className="text-lg font-semibold text-white">Required Inputs</h3>
-              {(templateDetail.required_inputs || []).map(input => (
-                <div key={input}>
-                  <label className="block text-sm font-medium text-slate-300 mb-2 capitalize">
-                    {input.replace(/_/g, ' ')} *
-                  </label>
-                  <textarea
-                    value={formInputs[input] || ''}
-                    onChange={(e) => setFormInputs({ ...formInputs, [input]: e.target.value })}
-                    placeholder={`Enter ${input.replace(/_/g, ' ')}...`}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none h-24 text-slate-200"
-                  />
-                </div>
-              ))}
-            </div>
-
-            {/* Cost Estimate Info */}
-            <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700 mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-2">
-                  <DollarSign className="w-5 h-5 text-emerald-400" />
-                  <span className="font-medium text-white">Estimated Cost</span>
-                </div>
-                <span className="text-lg font-bold text-emerald-400">
-                  {presetCostEstimates[selectedPreset]?.estimate || '$0.02-0.05'}
-                </span>
-              </div>
-              <p className="text-sm text-slate-400 mb-3">
-                {presetCostEstimates[selectedPreset]?.description || 'Uses local models for team leads/workers'}
-              </p>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="p-2 rounded bg-purple-500/10 border border-purple-500/20 text-center">
-                  <div className="text-purple-400 font-medium">Orchestrator</div>
-                  <div className="text-slate-500">API Model</div>
-                </div>
-                <div className="p-2 rounded bg-blue-500/10 border border-blue-500/20 text-center">
-                  <div className="text-blue-400 font-medium">Team Leads</div>
-                  <div className="text-slate-500">{selectedPreset === 'local_only' ? 'Local' : 'Local/API'}</div>
-                </div>
-                <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-center">
-                  <div className="text-emerald-400 font-medium">Workers</div>
-                  <div className="text-slate-500">Local (Free)</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setShowExecuteModal(false)}
-                className="flex-1 px-4 py-3 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleExecuteWorkflow}
-                disabled={isExecuting}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isExecuting ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Starting...</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-5 h-5" />
-                    <span>Execute</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Execution Detail Modal */}
       {showExecutionModal && selectedExecution && (
         <div
@@ -1103,7 +1035,7 @@ const Workflows = () => {
               </div>
               <button
                 onClick={() => { setShowExecutionModal(false); setPollingExecution(null); }}
-                className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-lg transition-colors"
+                className="text-slate-400 hover:text-white p-3 min-h-[44px] min-w-[44px] hover:bg-slate-800 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1232,6 +1164,18 @@ const Workflows = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {selectedWorkflow && (
+        <WorkflowExecutionPanel
+          workflow={selectedWorkflow}
+          onClose={() => setSelectedWorkflow(null)}
+          onExecutionComplete={(execution) => {
+            setRecentExecutions(prev => [execution, ...prev].slice(0, 10));
+            setSelectedWorkflow(null);
+            loadExecutions();
+          }}
+        />
       )}
     </div>
   );

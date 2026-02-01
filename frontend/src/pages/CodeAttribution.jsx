@@ -20,11 +20,14 @@ import CodeAttributionCard from '../components/CodeAttributionCard';
 import AttributionTimeline from '../components/AttributionTimeline';
 import FileAttributionViewer from '../components/FileAttributionViewer';
 import AttributionStats from '../components/AttributionStats';
+import Breadcrumbs from '../components/Breadcrumbs';
+import TableSkeleton from '../components/skeletons/TableSkeleton';
+import ListSkeleton from '../components/skeletons/ListSkeleton';
 
 const CodeAttribution = () => {
   const [activeTab, setActiveTab] = useState('by-file');
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // Data
@@ -94,7 +97,8 @@ const CodeAttribution = () => {
       const [attributionsData, fileTreeData, statsData] = await Promise.all([
         traceService.getAttributions(filters),
         traceService.getFileTree(),
-        traceService.getStatistics(filters)
+        traceService.getStatistics(filters),
+        new Promise(resolve => setTimeout(resolve, 300)),
       ]);
 
       setAttributions(attributionsData || []);
@@ -254,8 +258,9 @@ const CodeAttribution = () => {
   }, {});
 
   return (
-    <div className="min-h-screen bg-slate-900 p-6">
+    <div className="min-h-screen bg-slate-900 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        <Breadcrumbs />
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
@@ -387,12 +392,9 @@ const CodeAttribution = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex items-center justify-center py-20"
+              className="space-y-6"
             >
-              <div className="text-center">
-                <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
-                <p className="text-slate-500">Loading attribution data...</p>
-              </div>
+              {activeTab === 'recent' ? <ListSkeleton rows={6} /> : <TableSkeleton rows={6} columns={4} />}
             </motion.div>
           ) : (
             <motion.div

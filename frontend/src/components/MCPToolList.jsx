@@ -55,7 +55,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors"
+            className="p-3 min-h-[44px] min-w-[44px] text-slate-400 hover:text-white transition-colors"
           >
             <X className="w-6 h-6" />
           </button>

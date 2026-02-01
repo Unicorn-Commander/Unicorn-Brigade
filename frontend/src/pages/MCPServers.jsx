@@ -1,15 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Server, RefreshCw, AlertCircle, CheckCircle, X, Package } from 'lucide-react';
+import { Search, Server, RefreshCw, CheckCircle, X, Package } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import mcpService from '../services/mcpService';
+import api from '../services/api';
 import MCPServerCard from '../components/MCPServerCard';
 import MCPToolList from '../components/MCPToolList';
+import MCPServerControlPanel from '../components/MCPServerControlPanel';
+import Breadcrumbs from '../components/Breadcrumbs';
+import CardSkeleton from '../components/skeletons/CardSkeleton';
 
 const MCPServers = () => {
   const [servers, setServers] = useState([]);
   const [filteredServers, setFilteredServers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [serverStates, setServerStates] = useState({});
+  const [controlServer, setControlServer] = useState(null);
+  const [healthPolling, setHealthPolling] = useState(true);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -27,13 +33,40 @@ const MCPServers = () => {
   }, []);
 
   useEffect(() => {
+    if (!healthPolling) return;
+
+    const pollHealth = async () => {
+      try {
+        const running = await api.getRunningMCPServers();
+        const runningServers = running.servers || running.running_servers || [];
+        const states = {};
+        runningServers.forEach((server) => {
+          if (server.name) {
+            states[server.name] = 'running';
+          }
+        });
+        setServerStates(states);
+      } catch (error) {
+        console.error('Failed to fetch MCP health:', error);
+      }
+    };
+
+    pollHealth();
+    const interval = setInterval(pollHealth, 10000);
+    return () => clearInterval(interval);
+  }, [healthPolling]);
+
+  useEffect(() => {
     applyFilters();
-  }, [servers, searchQuery, selectedCategory, selectedPhase, selectedStatus]);
+  }, [servers, searchQuery, selectedCategory, selectedPhase, selectedStatus, serverStates]);
 
   const loadServers = async () => {
     setLoading(true);
     try {
-      const response = await mcpService.listServers();
+      const [response] = await Promise.all([
+        api.getMCPServers(),
+        new Promise(resolve => setTimeout(resolve, 300)),
+      ]);
       setServers(response.servers || []);
     } catch (error) {
       console.error('Failed to load MCP servers:', error);
@@ -81,7 +114,10 @@ const MCPServers = () => {
 
     // Status filter
     if (selectedStatus) {
-      filtered = filtered.filter(server => server.status === selectedStatus);
+      filtered = filtered.filter(server => {
+        const status = serverStates[server.name] || (server.running ? 'running' : 'stopped');
+        return status === selectedStatus;
+      });
     }
 
     setFilteredServers(filtered);
@@ -89,7 +125,7 @@ const MCPServers = () => {
 
   const handleStartServer = async (serverName) => {
     try {
-      await mcpService.startServer(serverName);
+      await api.startMCPServer(serverName);
       await loadServers(); // Reload to get updated status
     } catch (error) {
       throw error;
@@ -98,7 +134,7 @@ const MCPServers = () => {
 
   const handleStopServer = async (serverName) => {
     try {
-      await mcpService.stopServer(serverName);
+      await api.stopMCPServer(serverName);
       await loadServers(); // Reload to get updated status
     } catch (error) {
       throw error;
@@ -109,8 +145,9 @@ const MCPServers = () => {
     setSelectedServer(server);
     // Load tools for this server
     try {
-      const response = await mcpService.getServer(server.name);
-      setServerTools(response.tools || []);
+      const response = await api.getMCPServerDetails(server.name);
+      const capabilities = response.capabilities || [];
+      setServerTools(capabilities.map((name) => ({ name })));
     } catch (error) {
       console.error('Failed to load server tools:', error);
       toast.error('Failed to load server tools');
@@ -146,15 +183,18 @@ const MCPServers = () => {
 
   // Stats
   const stats = useMemo(() => {
-    const running = servers.filter(s => s.status === 'running').length;
+    const running = servers.filter(
+      s => (serverStates[s.name] || (s.running ? 'running' : 'stopped')) === 'running'
+    ).length;
     const total = servers.length;
-    const totalTools = servers.reduce((sum, s) => sum + (s.tool_count || 0), 0);
+    const totalTools = servers.reduce((sum, s) => sum + (s.tool_count || s.capabilities?.length || 0), 0);
     return { running, total, totalTools };
-  }, [servers]);
+  }, [servers, serverStates]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        <Breadcrumbs />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -311,9 +351,8 @@ const MCPServers = () => {
 
         {/* Loading State */}
         {loading && (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
-            <p className="text-slate-400 mt-4">Loading MCP servers...</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <CardSkeleton count={6} />
           </div>
         )}
 
@@ -349,7 +388,9 @@ const MCPServers = () => {
                     onStart={handleStartServer}
                     onStop={handleStopServer}
                     onViewTools={handleViewTools}
+                    onManage={() => setControlServer(server)}
                     isLoading={loading}
+                    statusOverride={serverStates[server.name]}
                   />
                 ))}
               </div>
@@ -365,6 +406,18 @@ const MCPServers = () => {
             onClose={() => {
               setSelectedServer(null);
               setServerTools([]);
+            }}
+          />
+        )}
+
+        {controlServer && (
+          <MCPServerControlPanel
+            server={controlServer}
+            onClose={() => setControlServer(null)}
+            onServerUpdated={(updated) => {
+              setServers(prev =>
+                prev.map(s => (s.name === updated.name ? { ...s, ...updated } : s))
+              );
             }}
           />
         )}

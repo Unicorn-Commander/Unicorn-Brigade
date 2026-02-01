@@ -91,12 +91,13 @@ async def list_entities(
     )
 
     if not result.get("success"):
-        return {
-            "success": False,
-            "error": result.get("error", "Failed to query entities"),
-            "entities": [],
-            "total": 0
-        }
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Failed to query entities",
+                "error": result.get("error"),
+            },
+        )
 
     entities = result.get("entities", [])
 
@@ -136,12 +137,13 @@ async def list_relationships(
     )
 
     if not result.get("success"):
-        return {
-            "success": False,
-            "error": result.get("error", "Failed to query relationships"),
-            "relationships": [],
-            "total": 0
-        }
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Failed to query relationships",
+                "error": result.get("error"),
+            },
+        )
 
     relationships = result.get("relationships", [])
 
@@ -188,12 +190,13 @@ async def get_graph_data(
     )
 
     if not entity_result.get("success"):
-        return {
-            "success": False,
-            "error": entity_result.get("error", "Failed to query entities"),
-            "nodes": [],
-            "links": []
-        }
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Failed to query entities",
+                "error": entity_result.get("error"),
+            },
+        )
 
     entities = entity_result.get("entities", [])
 
@@ -344,7 +347,13 @@ async def get_entity_details(
     )
 
     if not entity_result.get("success") or not entity_result.get("entities"):
-        raise HTTPException(status_code=404, detail=f"Entity '{entity_name}' not found")
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": f"Entity '{entity_name}' not found",
+                "entity_name": entity_name,
+            },
+        )
 
     entity = entity_result["entities"][0]
 
@@ -392,12 +401,13 @@ async def search_graph(
     )
 
     if not result.get("success"):
-        return {
-            "success": False,
-            "error": result.get("error", "Search failed"),
-            "entities": [],
-            "total": 0
-        }
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Search failed",
+                "error": result.get("error"),
+            },
+        )
 
     return {
         "success": True,
@@ -556,17 +566,23 @@ async def rag_query(
             }
 
         else:
-            return {
-                "success": False,
-                "error": f"Unknown mode: {request.mode}. Use 'agentic', 'simple', or 'retrieve'"
-            }
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": f"Unknown mode: {request.mode}. Use 'agentic', 'simple', or 'retrieve'",
+                    "mode": request.mode,
+                },
+            )
 
     except Exception as e:
         logger.error(f"RAG query error: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "RAG query failed",
+                "error": str(e),
+            },
+        )
 
 
 @router.post("/store/entity", response_model=Dict[str, Any])

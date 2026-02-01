@@ -9,8 +9,10 @@
  * - Smooth transitions
  */
 
-import { GitBranch, Loader2 } from 'lucide-react';
+import { GitBranch } from 'lucide-react';
 import WorkflowCard from './WorkflowCard';
+import CardSkeleton from './skeletons/CardSkeleton';
+import ListSkeleton from './skeletons/ListSkeleton';
 
 const WorkflowGallery = ({
   workflows,
@@ -22,9 +24,8 @@ const WorkflowGallery = ({
   // Loading State
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-16">
-        <Loader2 className="w-12 h-12 text-purple-500 animate-spin mb-4" />
-        <p className="text-slate-400">Loading workflows...</p>
+      <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : ''}>
+        {viewMode === 'grid' ? <CardSkeleton count={6} /> : <ListSkeleton rows={6} />}
       </div>
     );
   }

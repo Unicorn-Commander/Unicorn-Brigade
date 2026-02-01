@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import WorkflowVisualization3D from '../components/WorkflowVisualization3D';
 import api from '../services/api';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 // Generate mock connections between agents based on domain relationships
 const generateConnections = (agents) => {
@@ -127,8 +128,8 @@ const Orchestration = () => {
     const fetchAgents = async () => {
       try {
         setIsLoading(true);
-        const response = await api.get('/agents');
-        const agentList = response.data.agents || response.data || [];
+        const response = await api.getAgents();
+        const agentList = response.agents || response || [];
         setAgents(agentList);
 
         // Generate connections based on agent relationships
@@ -230,13 +231,12 @@ const Orchestration = () => {
   useEffect(() => {
     const fetchOrchestrationState = async () => {
       try {
-        const response = await api.get('/orchestration/state');
-        const state = response.data;
+        const state = await api.get('/orchestration/state');
 
-        if (state.missions?.length > 0) {
+        if (state?.missions?.length > 0) {
           setMissions(state.missions);
         }
-        if (state.agentStates?.length > 0) {
+        if (state?.agentStates?.length > 0) {
           const stateMap = {};
           state.agentStates.forEach(s => {
             stateMap[s.agentId] = s;
@@ -244,7 +244,7 @@ const Orchestration = () => {
           setAgentStates(stateMap);
           setActiveAgents(state.agentStates.filter(s => s.status !== 'idle').map(s => s.agentId));
         }
-        if (state.recentEvents?.length > 0) {
+        if (state?.recentEvents?.length > 0) {
           setEvents(state.recentEvents);
         }
       } catch (err) {
@@ -309,7 +309,7 @@ const Orchestration = () => {
   }
 
   return (
-    <div className={`min-h-screen ${isFullscreen ? 'p-0' : 'p-8'}`}>
+    <div className={`min-h-screen ${isFullscreen ? 'p-0' : 'p-4 md:p-6 lg:p-8'}`}>
       {!isFullscreen && (
         <>
           {/* Header */}
@@ -318,6 +318,7 @@ const Orchestration = () => {
             animate={{ opacity: 1, y: 0 }}
             className="mb-8"
           >
+            <Breadcrumbs />
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30">

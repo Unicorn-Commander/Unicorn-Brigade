@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Server, Play, Square, Eye, Package, CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Play, Square, Eye, Package, CheckCircle, XCircle, Loader2, AlertCircle, Settings } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 // Server Icons (matching category)
@@ -49,9 +49,9 @@ const serverIcons = {
   fullstory: '🎬',
 };
 
-const MCPServerCard = ({ server, onStart, onStop, onViewTools, isLoading }) => {
+const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoading, statusOverride }) => {
   const [actionLoading, setActionLoading] = useState(false);
-  const isRunning = server.status === 'running';
+  const isRunning = statusOverride ? statusOverride === 'running' : (server.status === 'running' || server.running);
   const icon = serverIcons[server.name] || '🔧';
 
   const handleStart = async () => {
@@ -130,7 +130,7 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, isLoading }) => {
       {/* Tool Count */}
       <div className="flex items-center space-x-2 mb-4 text-slate-500 text-sm">
         <Package className="w-4 h-4" />
-        <span>{server.tool_count || 0} tools available</span>
+        <span>{server.tool_count || server.capabilities?.length || 0} tools available</span>
       </div>
 
       {/* Config Requirements */}
@@ -192,6 +192,16 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, isLoading }) => {
           <Eye className="w-4 h-4" />
           <span>Tools</span>
         </button>
+
+        {onManage && (
+          <button
+            onClick={() => onManage(server)}
+            className="px-3 py-2 bg-slate-700/60 text-slate-200 hover:bg-slate-600 rounded-lg transition-colors flex items-center justify-center space-x-2"
+          >
+            <Settings className="w-4 h-4" />
+            <span>Manage</span>
+          </button>
+        )}
       </div>
     </div>
   );

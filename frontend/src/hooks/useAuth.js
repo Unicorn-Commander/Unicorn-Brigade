@@ -21,6 +21,8 @@ const DEV_USER = {
   avatar: null,
 };
 
+let refreshIntervalId = null;
+
 const useAuth = create((set, get) => ({
   // State
   user: null,
@@ -44,6 +46,7 @@ const useAuth = create((set, get) => ({
         isLoading: false,
         error: null
       });
+      get().startSessionRefresh();
       return;
     }
 
@@ -58,6 +61,7 @@ const useAuth = create((set, get) => ({
             isLoading: false,
             error: null
           });
+          get().startSessionRefresh();
           return;
         }
       } catch (error) {
@@ -76,6 +80,7 @@ const useAuth = create((set, get) => ({
         isLoading: false,
         error: null
       });
+      get().startSessionRefresh();
     } catch (error) {
       // Not authenticated - this is normal for logged out users
       set({
@@ -84,6 +89,61 @@ const useAuth = create((set, get) => ({
         isLoading: false,
         error: null
       });
+      get().stopSessionRefresh();
+    }
+  },
+
+  /**
+   * Refresh active session to prevent expiry.
+   * For API key auth, re-fetch the user profile.
+   * For SSO, re-validate the OIDC session.
+   */
+  refreshSession: async () => {
+    if (DEV_MODE) {
+      return;
+    }
+
+    try {
+      if (authService.hasApiKey()) {
+        const user = await authService.getCurrentUserByApiKey();
+        if (user) {
+          set({ user, isAuthenticated: true });
+          return;
+        }
+      } else {
+        const user = await authService.getCurrentUser();
+        if (user) {
+          set({ user, isAuthenticated: true });
+          return;
+        }
+      }
+
+      throw new Error('Session expired');
+    } catch (error) {
+      await get().logout();
+    }
+  },
+
+  /**
+   * Start periodic session refresh (every 15 minutes).
+   */
+  startSessionRefresh: () => {
+    if (refreshIntervalId) {
+      return;
+    }
+
+    refreshIntervalId = setInterval(() => {
+      get().refreshSession();
+    }, 15 * 60 * 1000);
+  },
+
+  /**
+   * Stop periodic session refresh.
+   */
+  stopSessionRefresh: () => {
+    if (refreshIntervalId) {
+      clearInterval(refreshIntervalId);
+      refreshIntervalId = null;
     }
   },
 
@@ -238,6 +298,7 @@ const useAuth = create((set, get) => ({
         isLoading: false,
         error: null
       });
+      get().startSessionRefresh();
       return data;
     } catch (error) {
       set({
@@ -264,6 +325,7 @@ const useAuth = create((set, get) => ({
         isLoading: false,
         error: null
       });
+      get().startSessionRefresh();
       return data;
     } catch (error) {
       set({
@@ -287,6 +349,7 @@ const useAuth = create((set, get) => ({
         isAuthenticated: false,
         error: null
       });
+      get().stopSessionRefresh();
     } catch (error) {
       console.error('Logout failed:', error);
       // Clear state anyway
@@ -296,6 +359,7 @@ const useAuth = create((set, get) => ({
         isAuthenticated: false,
         error: null
       });
+      get().stopSessionRefresh();
     }
   },
 

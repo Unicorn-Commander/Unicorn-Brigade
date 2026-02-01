@@ -18,7 +18,6 @@ import {
   Clock,
   Play,
   RefreshCw,
-  Loader2,
   GitBranch,
   Users,
   Cpu,
@@ -32,6 +31,8 @@ import {
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { GeneralAvatar, GunnyAvatar } from '../components/UnicornBrigadeLogo';
+import CardSkeleton from '../components/skeletons/CardSkeleton';
+import StatsSkeleton from '../components/skeletons/StatsSkeleton';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
@@ -67,15 +68,16 @@ const Dashboard = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Load agents
-      const agentsResponse = await axios.get(`${API_BASE}/agents`);
-      const agents = agentsResponse.data.agents || [];
+      const minDelay = new Promise(resolve => setTimeout(resolve, 300));
+      const [agentsResponse, domainsResponse] = await Promise.all([
+        axios.get(`${API_BASE}/agents`),
+        axios.get(`${API_BASE}/agents/domains`),
+        minDelay,
+      ]);
 
-      // Load domains
-      const domainsResponse = await axios.get(`${API_BASE}/agents/domains`);
+      const agents = agentsResponse.data.agents || [];
       const domains = domainsResponse.data.domains || [];
 
-      // Load recent conversations
       try {
         const conversationsResponse = await axios.get(`${API_BASE}/conversations?limit=5`);
         setRecentConversations(conversationsResponse.data.conversations || []);
@@ -221,7 +223,7 @@ const Dashboard = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -258,26 +260,30 @@ const Dashboard = () => {
         </div>
 
         {/* System Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {systemMetrics.map((metric, idx) => (
-            <div key={idx} className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <metric.icon className="w-8 h-8 text-purple-400" />
-                {metric.trend === 'up' && <TrendingUp className="w-5 h-5 text-emerald-400" />}
-                {metric.trend === 'down' && <TrendingUp className="w-5 h-5 text-red-400 rotate-180" />}
+        {loading ? (
+          <StatsSkeleton count={4} />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {systemMetrics.map((metric, idx) => (
+              <div key={idx} className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <metric.icon className="w-8 h-8 text-purple-400" />
+                  {metric.trend === 'up' && <TrendingUp className="w-5 h-5 text-emerald-400" />}
+                  {metric.trend === 'down' && <TrendingUp className="w-5 h-5 text-red-400 rotate-180" />}
+                </div>
+                <p className="text-3xl font-bold text-white mb-1">{metric.value}</p>
+                <p className="text-sm text-slate-400">{metric.label}</p>
+                <p className={`text-xs mt-2 ${
+                  metric.trend === 'up' ? 'text-emerald-400' :
+                  metric.trend === 'down' ? 'text-red-400' :
+                  'text-slate-400'
+                }`}>
+                  {metric.change}
+                </p>
               </div>
-              <p className="text-3xl font-bold text-white mb-1">{metric.value}</p>
-              <p className="text-sm text-slate-400">{metric.label}</p>
-              <p className={`text-xs mt-2 ${
-                metric.trend === 'up' ? 'text-emerald-400' :
-                metric.trend === 'down' ? 'text-red-400' :
-                'text-slate-400'
-              }`}>
-                {metric.change}
-              </p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* Quick Actions */}
         <div>
@@ -309,8 +315,8 @@ const Dashboard = () => {
             <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
               <h2 className="text-xl font-bold text-white mb-4">Agent Domains</h2>
               {loading ? (
-                <div className="text-center py-8">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+                <div className="space-y-4">
+                  <CardSkeleton count={3} />
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -369,7 +375,7 @@ const Dashboard = () => {
                 Orchestrator of orchestrators. Managing agent workflows and coordinating the entire Unicorn Brigade.
               </p>
               <button
-                onClick={() => toast.info('Orchestration features coming soon!')}
+                onClick={() => navigate('/orchestration')}
                 className="w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center justify-center space-x-2"
               >
                 <Shield className="w-4 h-4" />
@@ -513,8 +519,8 @@ const Dashboard = () => {
               </button>
             </div>
             {loading ? (
-              <div className="text-center py-8">
-                <Loader2 className="w-6 h-6 text-purple-400 animate-spin mx-auto" />
+              <div className="space-y-4">
+                <CardSkeleton count={2} />
               </div>
             ) : recentConversations.length > 0 ? (
               <div className="space-y-3">
@@ -573,8 +579,8 @@ const Dashboard = () => {
               </button>
             </div>
             {loading ? (
-              <div className="text-center py-8">
-                <Loader2 className="w-6 h-6 text-purple-400 animate-spin mx-auto" />
+              <div className="space-y-4">
+                <CardSkeleton count={2} />
               </div>
             ) : stats.recentActivity.length > 0 ? (
               <div className="space-y-3">

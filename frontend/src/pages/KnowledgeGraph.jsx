@@ -30,6 +30,7 @@ import {
   CheckCircle2,
   Info
 } from 'lucide-react';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 // Entity type colors
 const entityTypeColors = {
@@ -241,7 +242,7 @@ const KnowledgeGraph = () => {
   }
 
   return (
-    <div className={`min-h-screen ${isFullscreen ? 'p-0' : 'p-8'}`}>
+    <div className={`min-h-screen ${isFullscreen ? 'p-0' : 'p-4 md:p-6 lg:p-8'}`}>
       {!isFullscreen && (
         <>
           {/* Header */}
@@ -250,6 +251,7 @@ const KnowledgeGraph = () => {
             animate={{ opacity: 1, y: 0 }}
             className="mb-8"
           >
+            <Breadcrumbs />
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div className="p-3 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-500/30">

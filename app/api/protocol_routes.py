@@ -359,7 +359,14 @@ async def invoke_mcp_tool(
 
     except Exception as e:
         logger.error(f"MCP tool invocation failed: {e}")
-        return {"error": str(e)}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "message": "MCP tool invocation failed",
+                "error": str(e),
+                "tool_name": tool_name,
+            },
+        )
 
 
 @mcp_router.get("/resources")

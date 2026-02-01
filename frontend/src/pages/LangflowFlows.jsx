@@ -19,6 +19,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
@@ -52,6 +53,7 @@ const LangflowFlows = () => {
       const response = await fetch(`${API_BASE}/langflow/health`);
       if (response.ok) {
         const data = await response.json();
+        // Check for 'healthy' status, anything else is an error (unreachable, disabled, etc.)
         setHealthStatus(data.status === 'healthy' ? 'connected' : 'error');
       } else {
         setHealthStatus('error');
@@ -70,12 +72,19 @@ const LangflowFlows = () => {
         const data = await response.json();
         setFlows(data.flows || []);
       } else {
-        toast.error('Failed to load flows');
+        // Try to parse error message
+        try {
+          const errorData = await response.json();
+          const errorMsg = errorData?.detail?.message || errorData?.message || 'Failed to load flows';
+          toast.error(errorMsg);
+        } catch {
+          toast.error('Failed to load flows');
+        }
         setFlows([]);
       }
     } catch (error) {
       console.error('Failed to load flows:', error);
-      toast.error('Failed to connect to Langflow');
+      toast.error('Failed to connect to Langflow service');
       setFlows([]);
     } finally {
       setLoading(false);
@@ -83,13 +92,15 @@ const LangflowFlows = () => {
   };
 
   const applyFilters = () => {
-    let filtered = [...flows];
+    // Ensure flows is always an array
+    const flowsArray = Array.isArray(flows) ? flows : [];
+    let filtered = [...flowsArray];
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(flow =>
-        flow.name?.toLowerCase().includes(query) ||
-        flow.description?.toLowerCase().includes(query)
+        flow?.name?.toLowerCase().includes(query) ||
+        flow?.description?.toLowerCase().includes(query)
       );
     }
 
@@ -255,8 +266,9 @@ const LangflowFlows = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        <Breadcrumbs />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>

@@ -18,6 +18,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1').replace(/\/api\/v1$/, '').replace(/\/api$/, '');
 
@@ -168,8 +169,9 @@ const MCPDocs = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
+        <Breadcrumbs />
         {/* Hero Section */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-8">
           <div className="text-center mb-8">
