@@ -27,6 +27,7 @@ from app.db.database import get_session
 from app.db.repositories import AgentRepository
 from app.llm.ops_center_client import OpsCenterLLMClient
 from app.llm.tool_resolver import get_tools_for_agent
+from app.orchestration import emit_agent_invocation
 from app.protocols.a2a import (
     AgentCard,
     AgentEndpoint,
@@ -230,6 +231,25 @@ async def invoke_agent(
     start_time = time.time()
 
     logger.info(f"A2A invoke: agent={agent_id}, task_id={task_id}, task={request.task[:50]}...")
+
+    # Emit agent invocation event for peer-to-peer communication tracking
+    # Extract requesting agent info from context if available
+    requesting_agent_id = request.context.get("requesting_agent_id", "external")
+    requesting_agent_name = request.context.get("requesting_agent_name", "External System")
+
+    await emit_agent_invocation(
+        agent_id=requesting_agent_id,
+        agent_name=requesting_agent_name,
+        target_agent_id=agent_id,
+        target_agent_name=agent.get("displayName") or agent.get("name"),
+        purpose=f"A2A invocation: {request.task[:50]}...",
+        protocol="a2a",  # This will make connection blue
+        metadata={
+            "task_id": task_id,
+            "task_description": request.task[:100],
+            "capability": request.capability,
+        },
+    )
 
     # Build system message from agent config
     system_parts = []

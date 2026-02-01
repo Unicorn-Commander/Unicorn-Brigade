@@ -21,6 +21,7 @@ from app.orchestration.event_bus import (
     emit_agent_completed,
     emit_agent_message,
     emit_agent_created,
+    emit_agent_invocation,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "emit_agent_completed",
     "emit_agent_message",
     "emit_agent_created",
+    "emit_agent_invocation",
 ]

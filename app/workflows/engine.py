@@ -55,6 +55,7 @@ from app.orchestration import (
     emit_tool_call,
     emit_tool_result,
     emit_agent_message,
+    emit_agent_invocation,
     EventType,
     OrchestrationEvent,
 )
@@ -313,6 +314,17 @@ class WorkflowEngine:
                     to_agent=team_lead.id,
                     mission_id=mission_id,
                 )
+                # Emit invocation event for 3D visualization
+                await emit_agent_invocation(
+                    agent_id="the-general",
+                    agent_name="The General",
+                    target_agent_id=team_lead.id,
+                    target_agent_name=team_lead.name,
+                    purpose=f"Hierarchical delegation: {step.description[:50]}",
+                    protocol="internal",  # Purple connection for hierarchical
+                    metadata={"step_id": step.id, "workflow_type": "hierarchical"},
+                    mission_id=mission_id,
+                )
 
                 result = await self._team_lead_execute(
                     team_lead=team_lead,
@@ -474,6 +486,17 @@ Respond with a JSON object containing the outputs."""
                 agent_name=team_lead.name,
                 message=f"Delegating to worker: {worker_task}",
                 to_agent=worker_id,
+                mission_id=mission_id,
+            )
+            # Emit invocation event for 3D visualization
+            await emit_agent_invocation(
+                agent_id=team_lead.id,
+                agent_name=team_lead.name,
+                target_agent_id=worker_id,
+                target_agent_name=worker_id,  # Worker ID is also the name
+                purpose=f"Worker delegation: {worker_task[:50]}",
+                protocol="internal",  # Purple connection for hierarchical
+                metadata={"worker_task": worker_task, "workflow_type": "hierarchical"},
                 mission_id=mission_id,
             )
 

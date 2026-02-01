@@ -46,6 +46,7 @@ class EventType(str, Enum):
     # Communication
     AGENT_MESSAGE = "agent_message"
     AGENT_DELEGATION = "agent_delegation"
+    AGENT_INVOCATION = "agent_invocation"  # Peer-to-peer agent communication
 
 
 @dataclass
@@ -420,4 +421,43 @@ async def emit_agent_created(creator_id: str, creator_name: str, new_agent: Dict
         mission_id=mission_id,
         message=f"Created new agent: {new_agent.get('name', 'Unknown')}",
         data={"newAgent": new_agent},
+    ))
+
+
+async def emit_agent_invocation(
+    agent_id: str,
+    agent_name: str,
+    target_agent_id: str,
+    target_agent_name: str,
+    purpose: str,
+    protocol: str = "internal",
+    metadata: Optional[Dict[str, Any]] = None,
+    mission_id: str = None,
+):
+    """
+    Emit agent invocation event (peer-to-peer communication).
+
+    Args:
+        agent_id: ID of the invoking agent
+        agent_name: Name of the invoking agent
+        target_agent_id: ID of the agent being invoked
+        target_agent_name: Name of the agent being invoked
+        purpose: Why the agent is being invoked (e.g., "request data", "query knowledge")
+        protocol: Communication protocol ('internal', 'a2a', 'ap2')
+        metadata: Additional context
+        mission_id: Optional mission ID
+    """
+    await event_bus.publish(OrchestrationEvent(
+        type=EventType.AGENT_INVOCATION,
+        agent_id=agent_id,
+        agent_name=agent_name,
+        mission_id=mission_id,
+        message=f"{agent_name} invoking {target_agent_name}: {purpose}",
+        data={
+            "toAgent": target_agent_id,  # For frontend connection rendering
+            "toAgentName": target_agent_name,
+            "protocol": protocol,  # For connection color (internal, a2a, ap2, peer)
+            "purpose": purpose,
+            **(metadata or {}),
+        },
     ))

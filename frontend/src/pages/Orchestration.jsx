@@ -171,6 +171,38 @@ const Orchestration = () => {
         // Skip connection confirmation
         if (event.type === 'connected') return;
 
+        // Handle agent_invocation events (peer-to-peer communication)
+        if (event.type === 'agent_invocation') {
+          // Extract target agent info from data object
+          const targetAgentId = event.data?.toAgent || event.targetAgentId;
+          const targetAgentName = event.data?.toAgentName || event.targetAgentName;
+          const purpose = event.data?.purpose || event.purpose || 'Peer request';
+
+          // Add to events list with peer protocol
+          setEvents(prev => [{
+            id: Date.now(),
+            type: 'agent_invocation',
+            agentId: event.agentId,
+            agentName: event.agentName,
+            targetAgentId: targetAgentId,
+            targetAgentName: targetAgentName,
+            purpose: purpose,
+            protocol: event.data?.protocol || event.protocol || 'peer',
+            timestamp: event.timestamp,
+            data: event.data
+          }, ...prev].slice(0, 100));
+
+          // Mark both agents as active during peer interaction
+          if (event.agentId) {
+            setActiveAgents(prev => [...new Set([...prev, event.agentId])]);
+          }
+          if (targetAgentId) {
+            setActiveAgents(prev => [...new Set([...prev, targetAgentId])]);
+          }
+
+          return; // Skip further processing for peer invocations
+        }
+
         // Add to events list (keep last 50)
         setEvents(prev => [event, ...prev].slice(0, 50));
 
@@ -572,29 +604,54 @@ const Orchestration = () => {
                     No activity yet. Start chatting with an agent to see real-time events.
                   </p>
                 ) : (
-                  events.slice(0, 10).map((event, idx) => (
-                    <div
-                      key={event.id || idx}
-                      className="flex items-start space-x-2 p-2 rounded-lg bg-slate-800/30 border border-slate-700/30"
-                    >
-                      <div className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
-                        event.type === 'agent_started' ? 'bg-green-400' :
-                        event.type === 'tool_call' ? 'bg-yellow-400' :
-                        event.type === 'tool_result' ? 'bg-blue-400' :
-                        event.type === 'agent_completed' ? 'bg-purple-400' :
-                        'bg-slate-400'
-                      }`} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-slate-300 truncate">
-                          <span className="text-slate-500">{event.agentName || event.agentId}:</span>{' '}
-                          {event.message || event.type.replace(/_/g, ' ')}
-                        </p>
-                        <p className="text-[10px] text-slate-600">
-                          {event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : 'now'}
-                        </p>
+                  events.slice(0, 10).map((event, idx) => {
+                    // Special rendering for agent_invocation (peer-to-peer)
+                    if (event.type === 'agent_invocation') {
+                      return (
+                        <div
+                          key={event.id || idx}
+                          className="flex items-start space-x-2 p-2 rounded-lg bg-yellow-400/10 border border-yellow-400/30"
+                        >
+                          <div className="w-2 h-2 mt-1.5 rounded-full bg-yellow-400 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-slate-300 truncate">
+                              <span className="text-yellow-400">{event.agentName}</span> →{' '}
+                              <span className="text-yellow-400">{event.targetAgentName}</span>:{' '}
+                              {event.purpose}
+                            </p>
+                            <p className="text-[10px] text-slate-600">
+                              {new Date(event.timestamp).toLocaleTimeString()}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Default rendering for other events
+                    return (
+                      <div
+                        key={event.id || idx}
+                        className="flex items-start space-x-2 p-2 rounded-lg bg-slate-800/30 border border-slate-700/30"
+                      >
+                        <div className={`w-2 h-2 mt-1.5 rounded-full flex-shrink-0 ${
+                          event.type === 'agent_started' ? 'bg-green-400' :
+                          event.type === 'tool_call' ? 'bg-yellow-400' :
+                          event.type === 'tool_result' ? 'bg-blue-400' :
+                          event.type === 'agent_completed' ? 'bg-purple-400' :
+                          'bg-slate-400'
+                        }`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-slate-300 truncate">
+                            <span className="text-slate-500">{event.agentName || event.agentId}:</span>{' '}
+                            {event.message || event.type.replace(/_/g, ' ')}
+                          </p>
+                          <p className="text-[10px] text-slate-600">
+                            {event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : 'now'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

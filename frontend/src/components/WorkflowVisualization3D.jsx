@@ -88,6 +88,45 @@ const WorkflowVisualization3D = ({
 
     const latestEvent = realtimeEvents[0]; // Most recent event
 
+    // Check for peer-to-peer agent_invocation events
+    if (latestEvent.type === 'agent_invocation') {
+      // Extract target agent info from data object (backend structure)
+      const targetAgentId = latestEvent.data?.toAgent || latestEvent.targetAgentId;
+      const purpose = latestEvent.data?.purpose || latestEvent.purpose || 'Peer request';
+      const protocol = latestEvent.data?.protocol || latestEvent.protocol || 'peer';
+
+      if (!targetAgentId) return; // Skip if no target
+
+      const newConnection = {
+        id: `peer-${latestEvent.agentId}-${targetAgentId}-${Date.now()}`,
+        source: latestEvent.agentId,
+        target: targetAgentId,
+        label: purpose,
+        protocol: protocol,
+        isPeer: true,
+        temporary: true,
+        timestamp: Date.now(),
+      };
+
+      // Add connection
+      setActiveConnections(prev => {
+        // Avoid duplicates
+        const exists = prev.some(c =>
+          c.source === newConnection.source &&
+          c.target === newConnection.target &&
+          Date.now() - c.timestamp < 4000 // Within last 4 seconds
+        );
+
+        if (exists) return prev;
+        return [...prev, newConnection];
+      });
+
+      // Auto-fade after 5 seconds
+      setTimeout(() => {
+        setActiveConnections(prev => prev.filter(c => c.id !== newConnection.id));
+      }, 5000);
+    }
+
     // Check for delegation or message events with a target agent
     if (
       ['agent_delegation', 'agent_message'].includes(latestEvent.type) &&
@@ -145,19 +184,22 @@ const WorkflowVisualization3D = ({
     const allConnections = [...connections, ...activeConnections];
 
     const links = allConnections.map((conn, index) => {
-      // Protocol-based coloring
-      let linkColor = 'rgba(139, 92, 246, 0.4)'; // Default purple for internal
+      // Protocol-based coloring with peer-to-peer support
+      let linkColor = 'rgba(139, 92, 246, 0.4)'; // Default purple for internal/hierarchical
       let particleColor = '#c084fc';
 
-      if (conn.protocol === 'a2a') {
+      if (conn.protocol === 'peer') {
+        linkColor = 'rgba(251, 191, 36, 0.8)'; // Yellow/amber for peer-to-peer
+        particleColor = '#fbbf24';
+      } else if (conn.protocol === 'a2a') {
         linkColor = 'rgba(59, 130, 246, 0.8)'; // Blue for A2A
         particleColor = '#60a5fa';
       } else if (conn.protocol === 'ap2') {
         linkColor = 'rgba(6, 182, 212, 0.8)'; // Cyan for AP2
         particleColor = '#22d3ee';
       } else if (conn.temporary) {
-        // Temporary connections are more vibrant
-        linkColor = conn.protocol === 'internal' ? 'rgba(139, 92, 246, 0.8)' : linkColor;
+        // Temporary hierarchical connections are more vibrant
+        linkColor = 'rgba(139, 92, 246, 0.8)';
       }
 
       return {
@@ -169,6 +211,7 @@ const WorkflowVisualization3D = ({
         particleColor: particleColor,
         protocol: conn.protocol || 'internal',
         temporary: conn.temporary || false,
+        isPeer: conn.isPeer || false,
         ...conn,
       };
     });
@@ -485,21 +528,25 @@ const WorkflowVisualization3D = ({
           </div>
         </div>
 
-        {/* Protocols */}
+        {/* Connection Types */}
         <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Protocols</p>
+          <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Connection Types</p>
           <div className="space-y-1">
             <div className="flex items-center space-x-1.5">
-              <div className="w-8 h-0.5 bg-purple-500/60" />
-              <span className="text-[10px] text-slate-400">Internal</span>
+              <div className="w-2 h-2 rounded-full bg-purple-500" />
+              <span className="text-[10px] text-slate-400">Hierarchical</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <div className="w-8 h-0.5 bg-blue-500/80" />
-              <span className="text-[10px] text-slate-400">A2A</span>
+              <div className="w-2 h-2 rounded-full bg-yellow-400" />
+              <span className="text-[10px] text-slate-400">Peer-to-Peer</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <div className="w-8 h-0.5 bg-cyan-500/80" />
-              <span className="text-[10px] text-slate-400">AP2</span>
+              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="text-[10px] text-slate-400">A2A Protocol</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <div className="w-2 h-2 rounded-full bg-cyan-400" />
+              <span className="text-[10px] text-slate-400">AP2 Protocol</span>
             </div>
           </div>
         </div>
