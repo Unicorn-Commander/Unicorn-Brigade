@@ -81,6 +81,29 @@ Think of it as **Mission Control for AI Agents**:
 
 ---
 
+## 📸 Screenshots
+
+<div align="center">
+
+### Dashboard - Command Center
+<img src=".github/images/dashboard.png" width="800" alt="Unicorn Brigade Dashboard"/>
+
+*Real-time agent status, active missions, and system metrics*
+
+### Orchestration - The General in Action
+<img src=".github/images/orchestration.png" width="800" alt="Real-time Orchestration"/>
+
+*3D visualization of multi-agent coordination with SSE streaming*
+
+### Tool Library - 23 Working Tools
+<img src=".github/images/tool-library.png" width="800" alt="Tool Library"/>
+
+*Production-ready tools with enterprise integrations*
+
+</div>
+
+---
+
 ## 🎬 How It Works
 
 ### The General: Your AI Orchestrator
@@ -112,7 +135,7 @@ Think of it as **Mission Control for AI Agents**:
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    THE GENERAL                          │
-│              (GPT-4o / Claude Opus)                     │
+│              (GPT-5.2 / Claude Opus)                    │
 │         "Analyze market, write report, email team"      │
 └────────────────┬────────────────────────────────────────┘
                  │ Plans workflow
@@ -315,7 +338,7 @@ GET /api/v1/trace/report?format=csv&start_date=2026-01-01
 {
   "id": "trace_123",
   "agent_id": "sgt-coder",
-  "model": "openai/gpt-4o",
+  "model": "openai/gpt-5.2",
   "file_path": "/app/api/agents.py",
   "lines": "45-78",
   "code_hash": "a3d5f...",
@@ -372,7 +395,7 @@ Tools are what make agents useful. Unicorn Brigade comes with 23 **working, test
 
 | Tool | Description | Provider |
 |------|-------------|----------|
-| **browser** | AI-driven browser automation | Playwright + browser-use (GPT-4V) |
+| **browser** | AI-driven browser automation | Playwright + browser-use (GPT-5.2) |
 | **code_sandbox** | Isolated code execution | Docker primary + E2B fallback |
 | **screenshot** | Capture webpage screenshots | Playwright |
 | **pdf_extract** | Extract text from PDFs | PyPDF2 |
@@ -491,7 +514,7 @@ Agents are organized by **domain expertise** for efficient coordination:
 | **Medical** | Nurse Navigator | Care Coordinator | Patient routing, appointment scheduling |
 
 **Key Features**:
-- ✅ Each agent has **different LLM model** (GPT-4o, Claude Sonnet, local models)
+- ✅ Each agent has **different LLM model** (GPT-5.2, Claude Sonnet, local models)
 - ✅ Each agent has **specialized tools** (Finance gets calculator, Research gets web_search)
 - ✅ Each agent has **domain knowledge** baked into system prompts
 - ✅ Stored in **PostgreSQL** with full CRUD, conversation history, tool assignments
@@ -631,7 +654,7 @@ data: {"type": "workflow_complete", "iterations": 3, "success": true}
 
 **Key Features**:
 - ✅ **Automatic retry** with improved context
-- ✅ **Error analysis** by LLM (GPT-4o analyzes failure)
+- ✅ **Error analysis** by LLM (GPT-5.2 analyzes failure)
 - ✅ **Mid-execution guidance** without full restart
 - ✅ **State persistence** (`.ralph/` directory stores checkpoints)
 - ✅ **Iteration history** for debugging
@@ -777,7 +800,7 @@ Assistant: "I see you've changed from PostgreSQL to MongoDB."
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| **Orchestration** | The General (GPT-4o) + SSE | Real-time multi-agent coordination |
+| **Orchestration** | The General (GPT-5.2) + SSE | Real-time multi-agent coordination |
 | **Frontend** | React 18, Vite 6, Tailwind 4, Three.js | 3D visualization, responsive UI |
 | **Backend** | FastAPI 0.115, Python 3.12 | Async API, protocol servers |
 | **Agents** | PostgreSQL 16 | Agent configs, conversation history |
