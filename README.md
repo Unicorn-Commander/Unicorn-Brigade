@@ -13,7 +13,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)](https://react.dev)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql)](https://postgresql.org)
 
-[![A2A Protocol](https://img.shields.io/badge/A2A-Protocol-green?style=for-the-badge)](https://github.com/google/a2a-spec)
+[![A2A Protocol](https://img.shields.io/badge/A2A-Protocol-green?style=for-the-badge)](https://github.com/a2aproject/A2A)
 [![MCP](https://img.shields.io/badge/MCP-Anthropic-orange?style=for-the-badge)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)](LICENSE)
 
@@ -35,7 +35,7 @@
 
 ## ⚡ What is Unicorn Brigade?
 
-Unicorn Brigade is **the world's first production-ready AI orchestration platform with real-time multi-agent coordination**. Built in January 2026, it combines cutting-edge AI research with enterprise-grade infrastructure.
+Unicorn Brigade is a production-ready orchestration platform for real-time, protocol-first multi-agent coordination. It solves three critical problems in AI agent systems: **observability** (see what agents are doing), **interoperability** (agents talk across platforms), and **cost** (route work to efficient models).
 
 ### 🎯 The Core Concept
 
@@ -43,7 +43,7 @@ Think of it as **Mission Control for AI Agents**:
 
 - **The General** 🎖️ - Your AI orchestrator that commands agent operations in real-time
 - **Domain Experts** - 17 specialized agents organized into military-style teams
-- **3-Tier Hierarchy** - Orchestrator (Opus 4.5) → Team Leads (gpt-oss-120b) → Workers (Granite 3.3 2B) for 70-90% cost reduction
+- **3-Tier Hierarchy** - Orchestrator (Opus 4.5) → Team Leads (gpt-oss-120b) → Workers (Granite 3.3 2B) for massive cost reduction
 - **Ralph Loops** - Self-correcting workflows that retry on failure with mid-execution guidance
 - **Protocol-First** - Native A2A, MCP, UCP, and Agent Trace support
 - **Real-Time Coordination** - SSE streaming shows you exactly what every agent is doing, live
@@ -58,6 +58,26 @@ Think of it as **Mission Control for AI Agents**:
 - ✅ **3D visualization** (Three.js) shows your agent swarm in action
 - ✅ **Conversation memory** (Zep temporal knowledge graph) that agents actually remember
 - ✅ **Code attribution** (Agent Trace) for compliance and auditing
+
+### 🦄 Unicorn Commander: The Complete Platform
+
+**Unicorn Brigade** (this repo) + **Ops-Center** (companion system) = **Unicorn Commander**
+
+| Component | Responsibility |
+|-----------|----------------|
+| **Unicorn Brigade** | Agent orchestration, protocols, workflow execution, real-time coordination |
+| **Ops-Center** | LLM routing, model selection, guardrails, cost optimization, usage analytics |
+
+**How They Work Together**:
+
+1. **Unicorn Brigade** receives commands ("Research AI market, write report, email team")
+2. **The General** plans the workflow and assigns agents
+3. **Ops-Center** routes LLM calls to optimal models (Claude Opus for strategy, gpt-oss-120b for workers)
+4. **Guardrails** (on Ops-Center) scan inputs/outputs for safety, PII, prompt injection
+5. **Agents** execute with tools, stream results via SSE
+6. **Ops-Center** tracks costs, latency, and model performance
+
+**Result**: Production-grade AI infrastructure with built-in safety, observability, and cost control.
 
 ---
 
@@ -325,7 +345,7 @@ Tools are what make agents useful. Unicorn Brigade comes with 23 **working, test
 | **calculator** | Safe mathematical expressions | Python eval (sandboxed) |
 | **datetime** | Time manipulation, timezone conversion | Python datetime |
 | **json** | Parse, validate, transform JSON | Python json |
-| **memory** | Store/retrieve conversation context | Qdrant + mem0 |
+| **memory** | Store/retrieve conversation context | Qdrant + mem0 (default) or Zep (temporal graph) |
 | **shell** | Execute shell commands safely | Docker sandbox |
 
 </details>
@@ -400,6 +420,52 @@ Mailchimp (38), ActiveCampaign (51), Calendly (30), Ahrefs (35), SEMrush (40), Z
 
 ---
 
+## 🔒 Security Model
+
+**Defense-in-Depth Approach**: Multiple layers protect against tool misuse, prompt injection, and data exposure.
+
+### Tool Isolation
+
+- **Per-Agent Allowlists** - Agents only access explicitly assigned tools (Finance agent can't access filesystem)
+- **Role-Based Access Control (RBAC)** - Admin, Operator, and Viewer roles with different permissions
+- **API Key Authentication** - All API requests require valid authentication tokens
+
+### Sandbox Boundaries
+
+- **Code Execution** - Docker containers + E2B cloud sandbox for Python/JavaScript/TypeScript
+  - Network isolation (no outbound internet unless explicitly allowed)
+  - Resource limits (CPU, memory, disk)
+  - Timeout enforcement
+- **Shell Commands** - Execute in isolated Docker containers, not on host system
+- **File Operations** - Path traversal validation on all file reads/writes
+
+### MCP Server Security
+
+MCP servers present unique attack surfaces (chaining risks, privilege escalation):
+
+- **Server-Specific Authentication** - Each MCP server requires separate tokens
+- **Network Isolation** - MCP servers run in separate containers
+- **Tool Chaining Restrictions** - No automatic elevation (e.g., Git MCP can't invoke Filesystem MCP)
+- **Audit Logging** - All MCP tool calls logged with agent ID, timestamp, arguments
+
+### Input Validation & Guardrails
+
+- **Prompt Injection Defense** - Input sanitization on user prompts
+- **PII Detection** - Presidio scans for personally identifiable information
+- **Content Safety** - Llama Guard 3 checks for harmful outputs
+- **Agent Trace Auditing** - All AI-generated code tracked with SHA-256 hashes for compliance
+
+### Roadmap (Q1 2026)
+
+- [ ] NeMo Guardrails integration (policy-driven safety)
+- [ ] LLM Guard deployment (comprehensive input/output scanning)
+- [ ] Rate limiting per agent/user
+- [ ] CSRF protection for web endpoints
+
+**Note**: Security is an ongoing priority. Report vulnerabilities to security@unicorncommander.ai
+
+---
+
 ## 🎖️ 17 Production Agents (Military Organization)
 
 Agents are organized by **domain expertise** for efficient coordination:
@@ -453,7 +519,7 @@ Tier 3: Workers (Granite 3.3 2B / Qwen3 VL 30B) - $0.02-0.6/1M tokens
 └─ Data processing
 ```
 
-**Result**: **98-99% cost reduction** by using ultra-low cost API models for 80% of work
+**Result**: Designed to route 80% of tasks to ultra-low cost models (10-100× cheaper depending on provider). Model costs vary by provider and date. See [OpenRouter pricing](https://openrouter.ai/models) for current rates.
 
 **Core Workflows (6)**:
 1. Investment Due Diligence - Market analysis, financial modeling, risk assessment
@@ -574,7 +640,11 @@ data: {"type": "workflow_complete", "iterations": 3, "success": true}
 
 ## 🧠 Zep Memory System (Temporal Knowledge Graph)
 
-**Zep** replaces basic vector memory with **temporal knowledge graph** (Graphiti):
+**Memory Architecture Options**:
+- **mem0** (default) - Lightweight vector memory with Qdrant backend
+- **Zep + Graphiti** (advanced) - Temporal knowledge graph with entity relationships
+
+**Zep** is an optional upgrade that replaces basic vector memory with **temporal knowledge graph** (Graphiti):
 
 ### What Makes It Special
 
@@ -872,7 +942,7 @@ GET  /api/v1/trace/report?format=csv
 | **Ralph Loops** | ✅ Self-correction | ❌ | ❌ | ❌ |
 | **Zep Memory** | ✅ Temporal graph | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic |
 | **Voice Agents** | ✅ LiveKit + self-hosted | ❌ | ❌ | ❌ |
-| **Hierarchical Workflows** | ✅ 3-tier (70-90% cost reduction) | ❌ | ⚠️ Basic | ⚠️ Basic |
+| **Hierarchical Workflows** | ✅ 3-tier cost-optimized | ❌ | ⚠️ Basic | ⚠️ Basic |
 | **Per-Agent Models** | ✅ Different LLM per agent | ⚠️ Global only | ⚠️ Global only | ⚠️ Global only |
 
 ---
@@ -880,6 +950,25 @@ GET  /api/v1/trace/report?format=csv
 ## 🗺️ Roadmap
 
 See [docs/2026-ROADMAP.md](docs/2026-ROADMAP.md) for detailed roadmap.
+
+### ✅ What's Operational Today (February 2026)
+
+Test these features right now:
+
+| Feature | Status | Try It |
+|---------|--------|--------|
+| **A2A Agent Discovery** | ✅ Live | `GET /api/v1/a2a/discover` |
+| **A2A Agent Invocation** | ✅ Live | `POST /api/v1/a2a/agents/{id}/invoke` |
+| **MCP Tool Registry** | ✅ Live | `GET /api/v1/mcp/tools` |
+| **MCP Tool Execution** | ✅ Live | `POST /api/v1/mcp/tools/call` |
+| **Ralph Self-Correction** | ✅ Live | `POST /api/v1/ralph/execute` |
+| **Voice Calls (STT→LLM→TTS)** | ✅ Live | `POST /api/v1/voice/rooms` |
+| **Agent Trace Export** | ✅ Live | `GET /api/v1/trace/report?format=csv` |
+| **SSE Event Streaming** | ✅ Live | `GET /api/v1/orchestration/events` |
+| **Hierarchical Workflows** | ✅ Live | `POST /api/v1/hierarchical/execute` |
+| **The General Commands** | ✅ Live | `POST /api/v1/orchestration/command` |
+| **46 MCP Servers** | ✅ Live | 12 running, 34 ready to deploy |
+| **Guardrails** | 🚧 Q1 2026 | On Ops-Center (NeMo + LLM Guard) |
 
 ### ✅ Completed (January 2026)
 - The General real-time orchestration
