@@ -26,14 +26,14 @@ sqlalchemy==2.0.35
 alembic==1.13.3
 psycopg2-binary==2.9.9
 
-# Redis
-redis==5.1.1
+# Redis (>=7.1 required by falkordb)
+redis>=7.1.0,<8.0.0
 hiredis==3.0.0
 
 # OpenAI & LLM
-openai==1.51.2
-anthropic==0.39.0
-tiktoken==0.8.0
+openai>=1.51.2
+anthropic>=0.72.1
+tiktoken>=0.8.0
 
 # Monitoring & Observability
 prometheus-client==0.21.0
@@ -82,8 +82,8 @@ mypy==1.13.0
 stripe==11.1.0
 
 # CLI
-click==8.1.7
-rich==13.9.2
+click>=8.1.8
+rich>=13.9.2
 
 # LiveKit Voice Agent
 # Core LiveKit SDK for real-time communication

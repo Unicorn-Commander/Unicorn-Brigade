@@ -16,6 +16,14 @@ RUN npm ci
 # Copy the rest of the frontend source
 COPY . .
 
+# Accept Vite env vars as build args (baked at build time)
+ARG VITE_API_URL=http://localhost:8100
+ARG VITE_WS_URL=ws://localhost:8100
+ARG VITE_OPS_CENTER_URL=http://localhost:8084
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_WS_URL=$VITE_WS_URL
+ENV VITE_OPS_CENTER_URL=$VITE_OPS_CENTER_URL
+
 # Build the production bundle
 RUN npm run build
 

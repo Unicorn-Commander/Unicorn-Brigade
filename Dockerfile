@@ -13,11 +13,14 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Upgrade pip for faster resolver
+RUN pip install --no-cache-dir --upgrade pip
+
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY requirements-prod.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements-prod.txt
 
 # Copy application code
 COPY app/ app/

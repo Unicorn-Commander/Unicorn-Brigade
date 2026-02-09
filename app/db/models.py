@@ -360,13 +360,7 @@ class CodeAttribution(Base):
     metadata_ = Column("metadata", JSON, default=dict)  # Tool calls, tokens, language, etc.
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
-    __table_args__ = (
-        Index("ix_code_attributions_session_id", "session_id"),
-        Index("ix_code_attributions_agent_id", "agent_id"),
-        Index("ix_code_attributions_file_path", "file_path"),
-        Index("ix_code_attributions_code_hash", "code_hash"),
-        Index("ix_code_attributions_created_at", "created_at"),
-    )
+    # Indexes already created via index=True on each Column above
 
     def to_dict(self):
         return {
