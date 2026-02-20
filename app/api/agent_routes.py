@@ -302,7 +302,7 @@ async def chat_with_agent(
     messages.append({"role": "user", "content": request.message})
 
     # Resolve model and params
-    model = request.model or agent.get("model", "openai/gpt-4o-mini")
+    model = request.model or agent.get("model", "claude-3.5-haiku")
     temperature = request.temperature if request.temperature is not None else agent.get("temperature", 0.7)
     max_tokens = request.maxTokens or agent.get("maxTokens", 2000)
 

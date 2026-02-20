@@ -71,7 +71,7 @@ async def seed_agents():
                 type=data.get("type", "individual"),
                 agent_type=data.get("agentType", "analysis"),
                 capabilities=data.get("capabilities", []),
-                model=data.get("model", "openai/gpt-4o-mini"),
+                model=data.get("model", "claude-3.5-haiku"),
                 temperature=data.get("temperature", 0.7),
                 max_tokens=data.get("maxTokens", 2000),
                 tools=data.get("tools", []),

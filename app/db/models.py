@@ -35,7 +35,7 @@ class Agent(Base):
     type = Column(String(50), default="individual")
     agent_type = Column(String(50), default="analysis")
     capabilities = Column(JSON, default=list)
-    model = Column(String(255), default="openai/gpt-4o-mini")
+    model = Column(String(255), default="claude-3.5-haiku")
     temperature = Column(Float, default=0.7)
     max_tokens = Column(Integer, default=2000)
     tools = Column(JSON, default=list)

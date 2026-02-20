@@ -28,40 +28,21 @@ from app.auth.roles import UserRole
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# ---- Password Hashing with passlib ----
-try:
-    from passlib.context import CryptContext
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# ---- Password Hashing with bcrypt directly ----
+# NOTE: Using bcrypt directly instead of passlib due to passlib+bcrypt>=4.1 incompatibility
+import bcrypt as _bcrypt
 
-    def hash_password(password: str) -> str:
-        """Hash a password using bcrypt"""
-        return pwd_context.hash(password)
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt"""
+    salt = _bcrypt.gensalt(rounds=12)
+    return _bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Verify a password against a hash"""
-        return pwd_context.verify(plain_password, hashed_password)
-
-except ImportError:
-    # Fallback to hashlib if passlib not installed (not recommended for production)
-    import hashlib
-    import secrets
-
-    logger.warning("passlib not installed - using hashlib fallback (NOT recommended for production)")
-
-    def hash_password(password: str) -> str:
-        """Hash a password using hashlib (fallback)"""
-        salt = secrets.token_hex(16)
-        hashed = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-        return f"{salt}${hashed.hex()}"
-
-    def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Verify a password against a hash (fallback)"""
-        try:
-            salt, stored_hash = hashed_password.split('$')
-            computed_hash = hashlib.pbkdf2_hmac('sha256', plain_password.encode(), salt.encode(), 100000)
-            return computed_hash.hex() == stored_hash
-        except (ValueError, AttributeError):
-            return False
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against a bcrypt hash"""
+    try:
+        return _bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception:
+        return False
 
 
 # ---- Rate Limiting ----
