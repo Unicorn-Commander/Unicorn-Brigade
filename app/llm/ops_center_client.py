@@ -142,7 +142,7 @@ DEFAULT_EXTERNAL_URL = "https://unicorncommander.ai"
 BRIGADE_SERVICE_KEY = os.getenv("BRIGADE_SERVICE_KEY", "sk-brigade-service-key-2025")
 
 # Default model to use when "default" is specified
-DEFAULT_MODEL = os.getenv("DEFAULT_LLM_MODEL", "meta-llama/llama-3.1-8b-instruct")
+DEFAULT_MODEL = os.getenv("DEFAULT_LLM_MODEL", "claude-3.5-haiku")
 
 
 class OpsCenterLLMClient:
@@ -163,7 +163,12 @@ class OpsCenterLLMClient:
             self.ops_center_url = self._detect_url()
 
         self.service_key = service_key or BRIGADE_SERVICE_KEY
-        self.client = httpx.AsyncClient(timeout=120.0)
+        # Disable gzip/deflate: httpx 0.27.x has a bug where gzip-compressed
+        # chunked responses from uvicorn return empty bodies
+        self.client = httpx.AsyncClient(
+            timeout=120.0,
+            headers={"Accept-Encoding": "identity"},
+        )
         logger.info(f"OpsCenterLLMClient initialized: {self.ops_center_url}")
 
     def _detect_url(self) -> str:
@@ -226,8 +231,10 @@ class OpsCenterLLMClient:
                 "Authorization": f"Bearer {self.service_key}",
                 "Content-Type": "application/json",
             }
-            if user_id:
-                headers["X-User-ID"] = user_id  # Bills to user instead of service org
+            # Only send X-User-ID for real user IDs (not anonymous/dev-bypass)
+            # When omitted, Ops-Center bills to the service org instead
+            if user_id and user_id not in ("anonymous", "dev-bypass", ""):
+                headers["X-User-ID"] = user_id
 
             logger.info(f"Sending chat completion request to Ops-Center: {model}")
 
@@ -347,8 +354,10 @@ class OpsCenterLLMClient:
                 "Authorization": f"Bearer {self.service_key}",
                 "Content-Type": "application/json",
             }
-            if user_id:
-                headers["X-User-ID"] = user_id  # Bills to user instead of service org
+            # Only send X-User-ID for real user IDs (not anonymous/dev-bypass)
+            # When omitted, Ops-Center bills to the service org instead
+            if user_id and user_id not in ("anonymous", "dev-bypass", ""):
+                headers["X-User-ID"] = user_id
 
             logger.info(f"Starting streaming request to Ops-Center: {model}")
 
@@ -447,7 +456,8 @@ class OpsCenterLLMClient:
                 "Authorization": f"Bearer {self.service_key}",
                 "Content-Type": "application/json",
             }
-            if user_id:
+            # Only send X-User-ID for real user IDs (not anonymous/dev-bypass)
+            if user_id and user_id not in ("anonymous", "dev-bypass", ""):
                 headers["X-User-ID"] = user_id
 
             # Debug: log message roles being sent
