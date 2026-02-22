@@ -45,6 +45,7 @@ from app.api.medical_routes import router as medical_router, init_medical_routes
 from app.api.benchmark_routes import router as benchmark_router
 from app.api.ralph_routes import router as ralph_router
 from app.api.trace_routes import router as trace_router
+from app.api.speaker_routes import router as speaker_router
 from app.workflows.benchmark import init_benchmark_engine
 from app.db.database import init_db, close_db
 from app.db.init_db import seed_agents
@@ -221,6 +222,7 @@ app.include_router(hierarchical_router, prefix="/api/v1", tags=["hierarchical"])
 app.include_router(medical_router, prefix="/api/v1", tags=["medical"])
 app.include_router(benchmark_router, prefix="/api/v1", tags=["benchmarks"])
 app.include_router(trace_router, prefix="/api/v1", tags=["trace"])
+app.include_router(speaker_router, prefix="/api/v1", tags=["speakers"])
 app.include_router(ralph_router, tags=["ralph"])
 
 @app.get("/")

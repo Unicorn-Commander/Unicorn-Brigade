@@ -100,6 +100,7 @@ class ChatRequest(BaseModel):
     maxTokens: Optional[int] = None
     user_id: Optional[str] = "anonymous"
     history: Optional[List[Dict[str, str]]] = []
+    speaker_name: Optional[str] = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -294,6 +295,10 @@ async def chat_with_agent(
     system_content = "\n\n".join(system_parts) if system_parts else (
         f"You are {agent.get('displayName', agent['name'])}, a specialized AI agent."
     )
+
+    # Inject speaker context when available (voice pipeline provides this)
+    if request.speaker_name:
+        system_content += f"\n\n[Speaker Context: You are currently speaking with {request.speaker_name}. Address them by name naturally.]"
 
     # Build messages
     messages = [{"role": "system", "content": system_content}]

@@ -53,6 +53,18 @@ from app.llm.business_tools import (
     SCHEDULE_TOOL,
     COMPANY_TOOL,
 )
+from app.llm.ha_tools import (
+    HA_LIST_ENTITIES_TOOL,
+    HA_GET_ENTITY_STATE_TOOL,
+    HA_CALL_SERVICE_TOOL,
+    HA_SEARCH_ENTITIES_TOOL,
+    HA_GET_HISTORY_TOOL,
+    HA_LIST_AREAS_TOOL,
+    HA_GET_SERVICES_TOOL,
+)
+from app.llm.delegation_tools import (
+    DELEGATE_TO_AGENT_TOOL,
+)
 
 # Registry mapping tool names to their definitions
 TOOL_REGISTRY: Dict[str, ToolDefinition] = {
@@ -95,6 +107,16 @@ TOOL_REGISTRY: Dict[str, ToolDefinition] = {
     "weather": WEATHER_TOOL,
     "schedule": SCHEDULE_TOOL,
     "company": COMPANY_TOOL,
+    # Home Assistant tools
+    "ha_list_entities": HA_LIST_ENTITIES_TOOL,
+    "ha_get_entity_state": HA_GET_ENTITY_STATE_TOOL,
+    "ha_call_service": HA_CALL_SERVICE_TOOL,
+    "ha_search_entities": HA_SEARCH_ENTITIES_TOOL,
+    "ha_get_history": HA_GET_HISTORY_TOOL,
+    "ha_list_areas": HA_LIST_AREAS_TOOL,
+    "ha_get_services": HA_GET_SERVICES_TOOL,
+    # Inter-agent delegation
+    "delegate_to_agent": DELEGATE_TO_AGENT_TOOL,
 }
 
 

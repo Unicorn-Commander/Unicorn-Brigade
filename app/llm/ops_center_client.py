@@ -138,6 +138,14 @@ class ToolRegistry:
 DEFAULT_INTERNAL_URL = "http://ops-center-direct:8084"
 DEFAULT_EXTERNAL_URL = "https://unicorncommander.ai"
 
+# OpenRouter direct — BYOK mode.  When set, non-local models route
+# directly to OpenRouter instead of going through Ops-Center.
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_URL = "https://openrouter.ai/api/v1"
+
+# Local LLM URL (llama.cpp / Ollama on the Docker network)
+LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://unicorn-llama-cpp:8080")
+
 # Brigade service key for authentication
 BRIGADE_SERVICE_KEY = os.getenv("BRIGADE_SERVICE_KEY", "sk-brigade-service-key-2025")
 
@@ -163,6 +171,7 @@ class OpsCenterLLMClient:
             self.ops_center_url = self._detect_url()
 
         self.service_key = service_key or BRIGADE_SERVICE_KEY
+        self.local_llm_url = LOCAL_LLM_URL
         # Disable gzip/deflate: httpx 0.27.x has a bug where gzip-compressed
         # chunked responses from uvicorn return empty bodies
         self.client = httpx.AsyncClient(
@@ -170,6 +179,23 @@ class OpsCenterLLMClient:
             headers={"Accept-Encoding": "identity"},
         )
         logger.info(f"OpsCenterLLMClient initialized: {self.ops_center_url}")
+        logger.info(f"Local LLM URL: {self.local_llm_url}")
+
+    def _resolve_local_model(self, model: str) -> tuple:
+        """
+        Determine where to route a model request.
+
+        Returns (url, model_name, route_type) tuple where route_type is one of:
+          "local"       — local llama.cpp / Ollama (models prefixed 'local/')
+          "openrouter"  — direct OpenRouter BYOK (when OPENROUTER_API_KEY is set)
+          "ops-center"  — Ops-Center cloud proxy (default)
+        """
+        if model.startswith("local/"):
+            local_model = model[6:]  # Remove 'local/' prefix
+            return self.local_llm_url, local_model, "local"
+        if OPENROUTER_API_KEY:
+            return OPENROUTER_URL, model, "openrouter"
+        return self.ops_center_url, model, "ops-center"
 
     def _detect_url(self) -> str:
         """Detect whether to use internal or external URL"""
@@ -215,34 +241,51 @@ class OpsCenterLLMClient:
         """
         try:
             # Resolve model aliases
-            if model in ("default", "local", "auto"):
+            if model in ("default", "auto"):
                 model = DEFAULT_MODEL
 
-            # Build request to Ops-Center's LLM endpoint
+            # Check for local model routing (local/ prefix) or OpenRouter BYOK
+            target_url, resolved_model, route_type = self._resolve_local_model(model)
+
+            # Build request payload
             payload = {
                 "messages": messages,
-                "model": model,
+                "model": resolved_model,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 "stream": stream
             }
 
-            headers = {
-                "Authorization": f"Bearer {self.service_key}",
-                "Content-Type": "application/json",
-            }
-            # Only send X-User-ID for real user IDs (not anonymous/dev-bypass)
-            # When omitted, Ops-Center bills to the service org instead
-            if user_id and user_id not in ("anonymous", "dev-bypass", ""):
-                headers["X-User-ID"] = user_id
-
-            logger.info(f"Sending chat completion request to Ops-Center: {model}")
+            if route_type == "local":
+                # Local LLM: no auth needed, direct OpenAI-compatible endpoint
+                headers = {"Content-Type": "application/json"}
+                endpoint = f"{target_url}/v1/chat/completions"
+                logger.info(f"Sending chat completion to LOCAL LLM: {resolved_model}")
+            elif route_type == "openrouter":
+                # OpenRouter BYOK: standard OpenAI-compatible API
+                headers = {
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                }
+                endpoint = f"{target_url}/chat/completions"
+                logger.info(f"Sending chat completion to OpenRouter: {resolved_model}")
+            else:
+                headers = {
+                    "Authorization": f"Bearer {self.service_key}",
+                    "Content-Type": "application/json",
+                }
+                # Only send X-User-ID for real user IDs (not anonymous/dev-bypass)
+                # When omitted, Ops-Center bills to the service org instead
+                if user_id and user_id not in ("anonymous", "dev-bypass", ""):
+                    headers["X-User-ID"] = user_id
+                endpoint = f"{target_url}/api/v1/llm/chat/completions"
+                logger.info(f"Sending chat completion request to Ops-Center: {resolved_model}")
 
             # Use streaming client to handle SSE-wrapped responses
             # (Ops-Center returns SSE format due to Traefik chunked encoding bug)
             async with self.client.stream(
                 "POST",
-                f"{self.ops_center_url}/api/v1/llm/chat/completions",
+                endpoint,
                 json=payload,
                 headers=headers
             ) as response:
@@ -342,28 +385,39 @@ class OpsCenterLLMClient:
             if model in ("default", "local", "auto"):
                 model = DEFAULT_MODEL
 
+            target_url, resolved_model, route_type = self._resolve_local_model(model)
+
             payload = {
                 "messages": messages,
-                "model": model,
+                "model": resolved_model,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 "stream": True
             }
 
-            headers = {
-                "Authorization": f"Bearer {self.service_key}",
-                "Content-Type": "application/json",
-            }
-            # Only send X-User-ID for real user IDs (not anonymous/dev-bypass)
-            # When omitted, Ops-Center bills to the service org instead
-            if user_id and user_id not in ("anonymous", "dev-bypass", ""):
-                headers["X-User-ID"] = user_id
+            if route_type == "local":
+                headers = {"Content-Type": "application/json"}
+                endpoint = f"{target_url}/v1/chat/completions"
+            elif route_type == "openrouter":
+                headers = {
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                }
+                endpoint = f"{target_url}/chat/completions"
+            else:
+                headers = {
+                    "Authorization": f"Bearer {self.service_key}",
+                    "Content-Type": "application/json",
+                }
+                if user_id and user_id not in ("anonymous", "dev-bypass", ""):
+                    headers["X-User-ID"] = user_id
+                endpoint = f"{target_url}/api/v1/llm/chat/completions"
 
-            logger.info(f"Starting streaming request to Ops-Center: {model}")
+            logger.info(f"Starting streaming request ({route_type}): {resolved_model}")
 
             async with self.client.stream(
                 "POST",
-                f"{self.ops_center_url}/api/v1/llm/chat/completions",
+                endpoint,
                 json=payload,
                 headers=headers
             ) as response:
@@ -437,32 +491,48 @@ class OpsCenterLLMClient:
         """
         try:
             # Resolve model aliases
-            if model in ("default", "local", "auto"):
+            if model in ("default", "auto"):
                 model = DEFAULT_MODEL
+
+            # Check for local model routing (local/ prefix) or OpenRouter BYOK
+            target_url, resolved_model, route_type = self._resolve_local_model(model)
 
             # Convert tools to OpenAI format
             tools_payload = [tool.to_openai_format() for tool in tools]
 
             payload = {
                 "messages": messages,
-                "model": model,
+                "model": resolved_model,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 "tools": tools_payload,
                 "tool_choice": tool_choice,
             }
 
-            headers = {
-                "Authorization": f"Bearer {self.service_key}",
-                "Content-Type": "application/json",
-            }
-            # Only send X-User-ID for real user IDs (not anonymous/dev-bypass)
-            if user_id and user_id not in ("anonymous", "dev-bypass", ""):
-                headers["X-User-ID"] = user_id
+            if route_type == "local":
+                headers = {"Content-Type": "application/json"}
+                endpoint = f"{target_url}/v1/chat/completions"
+                logger.info(f"Sending tool-enabled request to LOCAL LLM: {resolved_model} with {len(tools)} tools")
+            elif route_type == "openrouter":
+                headers = {
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                }
+                endpoint = f"{target_url}/chat/completions"
+                logger.info(f"Sending tool-enabled request to OpenRouter: {resolved_model} with {len(tools)} tools")
+            else:
+                headers = {
+                    "Authorization": f"Bearer {self.service_key}",
+                    "Content-Type": "application/json",
+                }
+                # Only send X-User-ID for real user IDs (not anonymous/dev-bypass)
+                if user_id and user_id not in ("anonymous", "dev-bypass", ""):
+                    headers["X-User-ID"] = user_id
+                endpoint = f"{target_url}/api/v1/llm/chat/completions"
+                logger.info(f"Sending tool-enabled request to Ops-Center: {resolved_model} with {len(tools)} tools")
 
             # Debug: log message roles being sent
             msg_roles = [f"{m.get('role', '?')}" for m in messages]
-            logger.info(f"Sending tool-enabled request to Ops-Center: {model} with {len(tools)} tools")
             logger.debug(f"Message roles: {msg_roles}")
 
             # Extra debug for tool messages
@@ -472,7 +542,7 @@ class OpsCenterLLMClient:
 
             async with self.client.stream(
                 "POST",
-                f"{self.ops_center_url}/api/v1/llm/chat/completions",
+                endpoint,
                 json=payload,
                 headers=headers
             ) as response:

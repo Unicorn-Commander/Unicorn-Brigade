@@ -12,7 +12,7 @@ from sqlalchemy import select, func, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import Agent, Conversation, Message, ApiKey, BuilderSession, ToolExecution, User, UserApiKey, CodeAttribution
+from app.db.models import Agent, Conversation, Message, ApiKey, BuilderSession, ToolExecution, User, UserApiKey, CodeAttribution, SpeakerProfile
 
 logger = logging.getLogger(__name__)
 
@@ -760,3 +760,73 @@ class CodeAttributionRepository:
         query = query.order_by(CodeAttribution.created_at.desc()).limit(limit).offset(offset)
         result = await self.session.execute(query)
         return [a.to_dict() for a in result.scalars().all()]
+
+
+# ── Speaker Profile Repository ────────────────────────────────────
+
+class SpeakerProfileRepository:
+    """Repository for speaker voice profiles (speaker identification)."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def list_all(self) -> List[Dict]:
+        result = await self.session.execute(
+            select(SpeakerProfile).order_by(SpeakerProfile.name)
+        )
+        return [p.to_dict() for p in result.scalars().all()]
+
+    async def get(self, profile_id: str) -> Optional[Dict]:
+        result = await self.session.execute(
+            select(SpeakerProfile).where(SpeakerProfile.id == profile_id)
+        )
+        profile = result.scalar_one_or_none()
+        return profile.to_dict() if profile else None
+
+    async def get_by_name(self, name: str) -> Optional[Dict]:
+        result = await self.session.execute(
+            select(SpeakerProfile).where(SpeakerProfile.name == name)
+        )
+        profile = result.scalar_one_or_none()
+        return profile.to_dict() if profile else None
+
+    async def create(self, data: Dict[str, Any]) -> Dict:
+        profile = SpeakerProfile(
+            name=data["name"],
+            user_id=data.get("user_id"),
+            embedding=data["embedding"],
+            enrollment_count=data.get("enrollment_count", 1),
+            preferences=data.get("preferences", {}),
+        )
+        self.session.add(profile)
+        await self.session.commit()
+        await self.session.refresh(profile)
+        return profile.to_dict()
+
+    async def update(self, profile_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
+        result = await self.session.execute(
+            select(SpeakerProfile).where(SpeakerProfile.id == profile_id)
+        )
+        profile = result.scalar_one_or_none()
+        if not profile:
+            return None
+
+        for key, value in updates.items():
+            if hasattr(profile, key):
+                setattr(profile, key, value)
+
+        profile.updated_at = datetime.utcnow()
+        await self.session.commit()
+        await self.session.refresh(profile)
+        return profile.to_dict()
+
+    async def delete(self, profile_id: str) -> bool:
+        result = await self.session.execute(
+            select(SpeakerProfile).where(SpeakerProfile.id == profile_id)
+        )
+        profile = result.scalar_one_or_none()
+        if not profile:
+            return False
+        await self.session.delete(profile)
+        await self.session.commit()
+        return True

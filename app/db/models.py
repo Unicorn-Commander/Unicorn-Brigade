@@ -336,6 +336,36 @@ class ToolExecution(Base):
         }
 
 
+class SpeakerProfile(Base):
+    """Voice speaker profile for speaker identification."""
+    __tablename__ = "speaker_profiles"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    name = Column(String(255), nullable=False)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
+    embedding = Column(JSON, nullable=False)        # 256-dim float list
+    enrollment_count = Column(Integer, default=1)
+    preferences = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_speaker_profiles_name", "name"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "userId": str(self.user_id) if self.user_id else None,
+            "embedding": self.embedding,
+            "enrollmentCount": self.enrollment_count,
+            "preferences": self.preferences or {},
+            "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() + "Z" if self.updated_at else None,
+        }
+
+
 class CodeAttribution(Base):
     """
     Code attribution tracking for agent-generated code.
