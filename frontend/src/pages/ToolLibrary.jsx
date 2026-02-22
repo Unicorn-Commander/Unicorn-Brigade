@@ -17,160 +17,11 @@ import {
 import { toast } from 'react-hot-toast';
 import Breadcrumbs from '../components/Breadcrumbs';
 import CardSkeleton from '../components/skeletons/CardSkeleton';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-
-// Mock tools data (will be replaced with API call when endpoint is ready)
-const mockTools = [
-  {
-    id: 'web-search',
-    name: 'Web Search',
-    type: 'MCP',
-    domain: 'general',
-    description: 'Search the web using multiple search providers (Google, Bing, DuckDuckGo)',
-    icon: '🔍',
-    provider: 'MCP Server',
-    parameters: ['query', 'max_results', 'search_engine'],
-    capabilities: ['Real-time web search', 'Multiple providers', 'Result filtering'],
-    status: 'active'
-  },
-  {
-    id: 'file-system',
-    name: 'File System',
-    type: 'MCP',
-    domain: 'general',
-    description: 'Read, write, and manage files on the local file system',
-    icon: '📁',
-    provider: 'MCP Server',
-    parameters: ['path', 'operation', 'content'],
-    capabilities: ['Read files', 'Write files', 'Directory operations'],
-    status: 'active'
-  },
-  {
-    id: 'database-query',
-    name: 'Database Query',
-    type: 'Python',
-    domain: 'technology',
-    description: 'Execute SQL queries on PostgreSQL, MySQL, and SQLite databases',
-    icon: '🗄️',
-    provider: 'Python SDK',
-    parameters: ['connection_string', 'query', 'params'],
-    capabilities: ['Multi-database support', 'Query parameterization', 'Transaction support'],
-    status: 'active'
-  },
-  {
-    id: 'email-sender',
-    name: 'Email Sender',
-    type: 'API',
-    domain: 'general',
-    description: 'Send emails via SMTP or email service providers',
-    icon: '📧',
-    provider: 'REST API',
-    parameters: ['to', 'subject', 'body', 'attachments'],
-    capabilities: ['HTML emails', 'Attachments', 'Multiple providers'],
-    status: 'active'
-  },
-  {
-    id: 'pdf-generator',
-    name: 'PDF Generator',
-    type: 'Python',
-    domain: 'general',
-    description: 'Generate PDF documents from templates and data',
-    icon: '📄',
-    provider: 'Python SDK',
-    parameters: ['template', 'data', 'options'],
-    capabilities: ['Template-based', 'Custom styling', 'Charts & images'],
-    status: 'active'
-  },
-  {
-    id: 'slack-integration',
-    name: 'Slack Integration',
-    type: 'API',
-    domain: 'general',
-    description: 'Send messages, create channels, and manage Slack workspaces',
-    icon: '💬',
-    provider: 'REST API',
-    parameters: ['channel', 'message', 'webhook_url'],
-    capabilities: ['Post messages', 'File uploads', 'Interactive messages'],
-    status: 'active'
-  },
-  {
-    id: 'image-generation',
-    name: 'Image Generation',
-    type: 'API',
-    domain: 'technology',
-    description: 'Generate images using DALL-E, Stable Diffusion, or Midjourney',
-    icon: '🎨',
-    provider: 'AI Service',
-    parameters: ['prompt', 'size', 'model'],
-    capabilities: ['Multiple models', 'Style control', 'Batch generation'],
-    status: 'active'
-  },
-  {
-    id: 'code-interpreter',
-    name: 'Code Interpreter',
-    type: 'Python',
-    domain: 'technology',
-    description: 'Execute Python code in a sandboxed environment',
-    icon: '🐍',
-    provider: 'Python SDK',
-    parameters: ['code', 'timeout', 'packages'],
-    capabilities: ['Sandboxed execution', 'Package installation', 'Result capture'],
-    status: 'active'
-  },
-  {
-    id: 'calendar-sync',
-    name: 'Calendar Sync',
-    type: 'API',
-    domain: 'general',
-    description: 'Sync and manage calendar events across Google Calendar, Outlook',
-    icon: '📅',
-    provider: 'REST API',
-    parameters: ['calendar_id', 'event', 'action'],
-    capabilities: ['Multi-calendar support', 'Event CRUD', 'Recurring events'],
-    status: 'active'
-  },
-  {
-    id: 'data-analysis',
-    name: 'Data Analysis',
-    type: 'Python',
-    domain: 'financial',
-    description: 'Analyze datasets using pandas, numpy, and statistical libraries',
-    icon: '📊',
-    provider: 'Python SDK',
-    parameters: ['dataset', 'analysis_type', 'options'],
-    capabilities: ['Statistical analysis', 'Data visualization', 'Machine learning'],
-    status: 'active'
-  },
-  {
-    id: 'github-integration',
-    name: 'GitHub Integration',
-    type: 'API',
-    domain: 'technology',
-    description: 'Interact with GitHub repositories, issues, and pull requests',
-    icon: '🐙',
-    provider: 'REST API',
-    parameters: ['repo', 'action', 'params'],
-    capabilities: ['Repo management', 'Issue tracking', 'PR automation'],
-    status: 'active'
-  },
-  {
-    id: 'browser-automation',
-    name: 'Browser Automation',
-    type: 'MCP',
-    domain: 'general',
-    description: 'Automate web browsers using Playwright or Selenium',
-    icon: '🌐',
-    provider: 'MCP Server',
-    parameters: ['url', 'actions', 'headless'],
-    capabilities: ['Multi-browser', 'Screenshot capture', 'Form automation'],
-    status: 'beta'
-  }
-];
+import api from '../services/api';
 
 const ToolLibrary = () => {
-  const [tools, setTools] = useState(mockTools);
-  const [filteredTools, setFilteredTools] = useState(mockTools);
+  const [tools, setTools] = useState([]);
+  const [filteredTools, setFilteredTools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('');
@@ -178,7 +29,6 @@ const ToolLibrary = () => {
   const [selectedTool, setSelectedTool] = useState(null);
 
   useEffect(() => {
-    // Try to load tools from API (will use mock data if endpoint doesn't exist)
     loadTools();
   }, []);
 
@@ -188,21 +38,11 @@ const ToolLibrary = () => {
 
   const loadTools = async () => {
     try {
-      const [response] = await Promise.all([
-        fetch(`${API_BASE}/tools`),
-        new Promise(resolve => setTimeout(resolve, 300)),
-      ]);
-      if (response.ok) {
-        const data = await response.json();
-        setTools(data.tools || mockTools);
-      } else {
-        // Use mock data if endpoint doesn't exist
-        setTools(mockTools);
-      }
+      const data = await api.getTools();
+      setTools(data.tools || data || []);
     } catch (error) {
-      // Use mock data on error
-      console.log('Using mock tool data (API endpoint not available)');
-      setTools(mockTools);
+      console.error('Failed to load tools:', error);
+      toast.error('Failed to load tools');
     } finally {
       setLoading(false);
     }
@@ -236,8 +76,8 @@ const ToolLibrary = () => {
     toast.success('Copied to clipboard');
   };
 
-  const toolTypes = ['MCP', 'Python', 'API'];
-  const domains = ['general', 'technology', 'financial', 'legal', 'medical'];
+  const toolTypes = [...new Set(tools.map(t => t.type).filter(Boolean))].sort();
+  const domains = [...new Set(tools.map(t => t.domain).filter(Boolean))].sort();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">

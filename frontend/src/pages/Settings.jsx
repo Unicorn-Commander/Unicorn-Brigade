@@ -16,18 +16,18 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Breadcrumbs from '../components/Breadcrumbs';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import api from '../services/api';
 
 const Settings = () => {
   const [providers, setProviders] = useState([]);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [health, setHealth] = useState(null);
   const [preferences, setPreferences] = useState(() => {
     const saved = localStorage.getItem('brigade-preferences');
     return saved ? JSON.parse(saved) : {
       theme: 'dark',
-      defaultModel: 'openai/gpt-4o-mini',
+      defaultModel: '',
       notifications: true,
       compactMode: false,
       streamResponses: true,
@@ -45,14 +45,17 @@ const Settings = () => {
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const [providersRes, modelsRes] = await Promise.all([
-        fetch(`${API_BASE}/providers`),
-        fetch(`${API_BASE}/chat/models`),
+      const results = await Promise.allSettled([
+        api.get('/providers'),
+        api.get('/chat/models'),
+        api.get('/health'),
       ]);
-      const providersData = await providersRes.json();
-      const modelsData = await modelsRes.json();
+      const providersData = results[0].status === 'fulfilled' ? results[0].value : {};
+      const modelsData = results[1].status === 'fulfilled' ? results[1].value : {};
+      const healthData = results[2].status === 'fulfilled' ? results[2].value : null;
       setProviders(providersData.providers || []);
       setModels(modelsData.models || []);
+      setHealth(healthData);
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -196,12 +199,18 @@ const Settings = () => {
                   setPreferences({ ...preferences, defaultModel: e.target.value });
                   toast.success('Default model updated');
                 }}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white max-w-xs"
               >
-                <option value="openai/gpt-4o-mini">GPT-4o Mini (Fast)</option>
-                <option value="openai/gpt-4o">GPT-4o (Quality)</option>
-                <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-                <option value="google/gemini-pro">Gemini Pro</option>
+                <option value="">Auto (server default)</option>
+                {models.map((model, idx) => (
+                  <option key={idx} value={model.id || model.name}>
+                    {model.name || model.id}
+                    {model.provider ? ` (${model.provider})` : ''}
+                  </option>
+                ))}
+                {models.length === 0 && (
+                  <option disabled>Loading models...</option>
+                )}
               </select>
             </div>
 
@@ -274,15 +283,15 @@ const Settings = () => {
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
               <p className="text-xs text-slate-400">Version</p>
-              <p className="text-white font-semibold">v1.0.0</p>
+              <p className="text-white font-semibold">{health?.version || 'v1.0.0'}</p>
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
               <p className="text-xs text-slate-400">Backend</p>
-              <p className="text-white font-semibold">FastAPI + LangGraph</p>
+              <p className="text-white font-semibold">FastAPI + SQLAlchemy</p>
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-xs text-slate-400">LLM Gateway</p>
-              <p className="text-white font-semibold">Ops-Center</p>
+              <p className="text-xs text-slate-400">Agents</p>
+              <p className="text-white font-semibold">{health?.agents_count || providers.length || '—'}</p>
             </div>
           </div>
         </div>

@@ -5,9 +5,13 @@ Agents store tool references as string names (e.g., ["web_search", "calculator"]
 This module resolves those names to executable ToolDefinition instances from builtin_tools.
 """
 
+import os
+import logging
 from typing import Dict, List, Any
 
 from app.llm.ops_center_client import ToolDefinition
+
+logger = logging.getLogger(__name__)
 from app.llm.builtin_tools import (
     WEB_SEARCH_TOOL,
     HTTP_REQUEST_TOOL,
@@ -52,15 +56,6 @@ from app.llm.business_tools import (
     WEATHER_TOOL,
     SCHEDULE_TOOL,
     COMPANY_TOOL,
-)
-from app.llm.ha_tools import (
-    HA_LIST_ENTITIES_TOOL,
-    HA_GET_ENTITY_STATE_TOOL,
-    HA_CALL_SERVICE_TOOL,
-    HA_SEARCH_ENTITIES_TOOL,
-    HA_GET_HISTORY_TOOL,
-    HA_LIST_AREAS_TOOL,
-    HA_GET_SERVICES_TOOL,
 )
 from app.llm.delegation_tools import (
     DELEGATE_TO_AGENT_TOOL,
@@ -107,17 +102,37 @@ TOOL_REGISTRY: Dict[str, ToolDefinition] = {
     "weather": WEATHER_TOOL,
     "schedule": SCHEDULE_TOOL,
     "company": COMPANY_TOOL,
-    # Home Assistant tools
-    "ha_list_entities": HA_LIST_ENTITIES_TOOL,
-    "ha_get_entity_state": HA_GET_ENTITY_STATE_TOOL,
-    "ha_call_service": HA_CALL_SERVICE_TOOL,
-    "ha_search_entities": HA_SEARCH_ENTITIES_TOOL,
-    "ha_get_history": HA_GET_HISTORY_TOOL,
-    "ha_list_areas": HA_LIST_AREAS_TOOL,
-    "ha_get_services": HA_GET_SERVICES_TOOL,
     # Inter-agent delegation
     "delegate_to_agent": DELEGATE_TO_AGENT_TOOL,
 }
+
+# ── Optional integrations (loaded when configured) ─────────────────
+# Home Assistant tools — only available when HA is configured
+if os.getenv("HOMEASSISTANT_TOKEN") or os.getenv("HOMEASSISTANT_URL"):
+    try:
+        from app.llm.ha_tools import (
+            HA_LIST_ENTITIES_TOOL,
+            HA_GET_ENTITY_STATE_TOOL,
+            HA_CALL_SERVICE_TOOL,
+            HA_SEARCH_ENTITIES_TOOL,
+            HA_GET_HISTORY_TOOL,
+            HA_LIST_AREAS_TOOL,
+            HA_GET_SERVICES_TOOL,
+        )
+        TOOL_REGISTRY.update({
+            "ha_list_entities": HA_LIST_ENTITIES_TOOL,
+            "ha_get_entity_state": HA_GET_ENTITY_STATE_TOOL,
+            "ha_call_service": HA_CALL_SERVICE_TOOL,
+            "ha_search_entities": HA_SEARCH_ENTITIES_TOOL,
+            "ha_get_history": HA_GET_HISTORY_TOOL,
+            "ha_list_areas": HA_LIST_AREAS_TOOL,
+            "ha_get_services": HA_GET_SERVICES_TOOL,
+        })
+        logger.info("Home Assistant tools registered (HOMEASSISTANT_TOKEN/URL configured)")
+    except ImportError:
+        logger.warning("Home Assistant tools not available (ha_tools.py not found)")
+else:
+    logger.info("Home Assistant tools skipped (HOMEASSISTANT_TOKEN/URL not set)")
 
 
 def get_tools_for_agent(agent: Dict[str, Any]) -> List[ToolDefinition]:

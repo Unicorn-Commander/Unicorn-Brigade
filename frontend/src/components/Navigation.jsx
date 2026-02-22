@@ -265,6 +265,16 @@ const Navigation = () => {
               <BookOpen className="w-4 h-4" />
               <span className="text-sm font-medium">Agent Library</span>
             </NavLink>
+            <NavLink
+              to="/builder-chat"
+              className={navLinkClass}
+              data-tooltip-id="nav-tooltip"
+              data-tooltip-content="Build new agents through conversation with Gunny"
+              data-tooltip-place="right"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span className="text-sm font-medium">Agent Builder</span>
+            </NavLink>
           </NavSection>
 
           <NavSection
