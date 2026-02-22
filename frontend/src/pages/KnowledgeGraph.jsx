@@ -5,9 +5,8 @@
  * Shows entities as nodes, relationships as edges, with filtering and search.
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import ForceGraph3D from 'react-force-graph-3d';
 import {
   Network,
   Search,
@@ -31,6 +30,21 @@ import {
   Info
 } from 'lucide-react';
 import Breadcrumbs from '../components/Breadcrumbs';
+
+// Lazy load ForceGraph3D to gracefully handle WebGL failures
+const ForceGraph3D = lazy(() =>
+  import('react-force-graph-3d').then(mod => ({ default: mod.default })).catch(() => ({
+    default: () => (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center p-8">
+          <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+          <p className="text-slate-300 font-medium">3D graph unavailable</p>
+          <p className="text-sm text-slate-500 mt-1">WebGL required for knowledge graph visualization</p>
+        </div>
+      </div>
+    ),
+  }))
+);
 
 // Entity type colors
 const entityTypeColors = {
@@ -465,35 +479,37 @@ const KnowledgeGraph = () => {
             {/* Graph Canvas */}
             <div className="absolute inset-0">
               {graphData.nodes.length > 0 ? (
-                <ForceGraph3D
-                  ref={fgRef}
-                  graphData={graphData}
-                  width={dimensions.width}
-                  height={dimensions.height}
-                  backgroundColor="rgba(0,0,0,0)"
-                  nodeLabel={nodeLabel}
-                  nodeColor={node => node.color}
-                  nodeVal={node => node.val}
-                  nodeOpacity={0.9}
-                  linkColor={link => link.color || 'rgba(139, 92, 246, 0.4)'}
-                  linkWidth={1.5}
-                  linkOpacity={0.6}
-                  linkLabel={link => link.label}
-                  linkDirectionalParticles={2}
-                  linkDirectionalParticleSpeed={0.005}
-                  linkDirectionalParticleWidth={2}
-                  linkDirectionalParticleColor={() => '#06b6d4'}
-                  onNodeClick={handleNodeClick}
-                  onLinkClick={handleLinkClick}
-                  enableNodeDrag={true}
-                  enableNavigationControls={true}
-                  showNavInfo={false}
-                  warmupTicks={100}
-                  cooldownTicks={50}
-                  d3AlphaDecay={0.02}
-                  d3VelocityDecay={0.3}
-                  numDimensions={viewMode === '3d' ? 3 : 2}
-                />
+                <Suspense fallback={<div className="h-full flex items-center justify-center"><Network className="w-8 h-8 text-purple-400 animate-pulse" /></div>}>
+                  <ForceGraph3D
+                    ref={fgRef}
+                    graphData={graphData}
+                    width={dimensions.width}
+                    height={dimensions.height}
+                    backgroundColor="rgba(0,0,0,0)"
+                    nodeLabel={nodeLabel}
+                    nodeColor={node => node.color}
+                    nodeVal={node => node.val}
+                    nodeOpacity={0.9}
+                    linkColor={link => link.color || 'rgba(139, 92, 246, 0.4)'}
+                    linkWidth={1.5}
+                    linkOpacity={0.6}
+                    linkLabel={link => link.label}
+                    linkDirectionalParticles={2}
+                    linkDirectionalParticleSpeed={0.005}
+                    linkDirectionalParticleWidth={2}
+                    linkDirectionalParticleColor={() => '#06b6d4'}
+                    onNodeClick={handleNodeClick}
+                    onLinkClick={handleLinkClick}
+                    enableNodeDrag={true}
+                    enableNavigationControls={true}
+                    showNavInfo={false}
+                    warmupTicks={100}
+                    cooldownTicks={50}
+                    d3AlphaDecay={0.02}
+                    d3VelocityDecay={0.3}
+                    numDimensions={viewMode === '3d' ? 3 : 2}
+                  />
+                </Suspense>
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">

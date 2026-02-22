@@ -5,7 +5,7 @@
  * Shows real-time agent activity, connections, and mission status.
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe,
@@ -26,11 +26,26 @@ import {
   Sparkles,
   Network,
   Target,
-  Shield
+  Shield,
+  AlertCircle
 } from 'lucide-react';
-import WorkflowVisualization3D from '../components/WorkflowVisualization3D';
 import api from '../services/api';
 import Breadcrumbs from '../components/Breadcrumbs';
+
+// Lazy load 3D visualization — catches WebGL failures at chunk level
+const WorkflowVisualization3D = lazy(() =>
+  import('../components/WorkflowVisualization3D').catch(() => ({
+    default: () => (
+      <div className="h-full flex items-center justify-center bg-slate-900/50 rounded-xl border border-slate-700/50">
+        <div className="text-center p-8">
+          <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+          <p className="text-slate-300 font-medium">3D visualization unavailable</p>
+          <p className="text-sm text-slate-500 mt-1">WebGL is required for the 3D command view</p>
+        </div>
+      </div>
+    ),
+  }))
+);
 
 // Generate mock connections between agents based on domain relationships
 const generateConnections = (agents) => {
@@ -473,18 +488,20 @@ const Orchestration = () => {
           transition={{ delay: 0.3 }}
           className={isFullscreen ? 'fixed inset-0 z-50' : 'col-span-3'}
         >
-          <WorkflowVisualization3D
-            agents={filteredAgents}
-            connections={filteredConnections}
-            activeAgents={activeAgents}
-            onAgentClick={handleAgentClick}
-            onConnectionClick={handleConnectionClick}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
-            showLabels={true}
-            animate={isLive}
-            realtimeEvents={events}
-          />
+          <Suspense fallback={<div className="h-[600px] flex items-center justify-center"><Network className="w-8 h-8 text-purple-400 animate-pulse" /></div>}>
+            <WorkflowVisualization3D
+              agents={filteredAgents}
+              connections={filteredConnections}
+              activeAgents={activeAgents}
+              onAgentClick={handleAgentClick}
+              onConnectionClick={handleConnectionClick}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+              showLabels={true}
+              animate={isLive}
+              realtimeEvents={events}
+            />
+          </Suspense>
         </motion.div>
 
         {/* Sidebar - Active Missions */}

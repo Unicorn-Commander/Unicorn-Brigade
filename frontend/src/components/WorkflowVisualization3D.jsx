@@ -3,12 +3,11 @@
  *
  * Uses react-force-graph-3d for immersive 3D visualization of agent orchestration.
  * Shows agents as nodes, connections as edges, with depth representing complexity.
+ * Falls back to a 2D agent grid when WebGL is not available.
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import ForceGraph3D from 'react-force-graph-3d';
 import { motion, AnimatePresence } from 'framer-motion';
-import * as THREE from 'three';
 import {
   Maximize2,
   Minimize2,
@@ -20,8 +19,12 @@ import {
   Grid3X3,
   Play,
   Pause,
-  RefreshCw
+  RefreshCw,
+  Network
 } from 'lucide-react';
+
+import ForceGraph3D from 'react-force-graph-3d';
+import * as THREE from 'three';
 
 // Domain colors for agents
 const domainColors = {

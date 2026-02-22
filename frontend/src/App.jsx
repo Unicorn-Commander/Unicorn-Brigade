@@ -1,16 +1,13 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster, toast } from 'react-hot-toast';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import Dashboard from './pages/Dashboard';
 import AgentChat from './pages/AgentChat';
 import AgentBuilderChat from './pages/AgentBuilderChat';
 import AgentLibrary from './pages/AgentLibrary';
 import AgentDetail from './pages/AgentDetail';
 import Conversations from './pages/Conversations';
-import Orchestration from './pages/Orchestration';
-import OrchestrationDemo from './pages/OrchestrationDemo';
-import KnowledgeGraph from './pages/KnowledgeGraph';
 import ToolLibrary from './pages/ToolLibrary';
 import MCPServers from './pages/MCPServers';
 import LangflowFlows from './pages/LangflowFlows';
@@ -33,7 +30,30 @@ import { Loader2 } from 'lucide-react';
 import GettingStartedWizard from './components/GettingStartedWizard';
 import ErrorBoundary from './components/ErrorBoundary';
 
+// Lazy-load pages that use Three.js/WebGL (react-force-graph-3d)
+// .catch() provides fallback if WebGL module evaluation crashes
+const WebGLFallbackPage = () => (
+  <div className="min-h-screen flex items-center justify-center bg-slate-900">
+    <div className="text-center p-8">
+      <p className="text-xl text-slate-300 font-medium mb-2">3D Visualization Unavailable</p>
+      <p className="text-slate-500">This page requires WebGL support in your browser.</p>
+    </div>
+  </div>
+);
+const Orchestration = lazy(() => import('./pages/Orchestration').catch(() => ({ default: WebGLFallbackPage })));
+const OrchestrationDemo = lazy(() => import('./pages/OrchestrationDemo').catch(() => ({ default: WebGLFallbackPage })));
+const KnowledgeGraph = lazy(() => import('./pages/KnowledgeGraph').catch(() => ({ default: WebGLFallbackPage })));
+
 const queryClient = new QueryClient();
+
+const LazyFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-slate-900">
+    <div className="text-center">
+      <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
+      <p className="text-slate-400">Loading...</p>
+    </div>
+  </div>
+);
 
 /**
  * Protected Route Component
@@ -153,7 +173,9 @@ function App() {
             <Route path="/orchestration" element={
               <ProtectedRoute>
                 <AppLayout>
-                  <Orchestration />
+                  <Suspense fallback={<LazyFallback />}>
+                    <Orchestration />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />
@@ -161,7 +183,9 @@ function App() {
             <Route path="/orchestration/demo" element={
               <ProtectedRoute>
                 <AppLayout>
-                  <OrchestrationDemo />
+                  <Suspense fallback={<LazyFallback />}>
+                    <OrchestrationDemo />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />
@@ -169,7 +193,9 @@ function App() {
             <Route path="/knowledge" element={
               <ProtectedRoute>
                 <AppLayout>
-                  <KnowledgeGraph />
+                  <Suspense fallback={<LazyFallback />}>
+                    <KnowledgeGraph />
+                  </Suspense>
                 </AppLayout>
               </ProtectedRoute>
             } />
