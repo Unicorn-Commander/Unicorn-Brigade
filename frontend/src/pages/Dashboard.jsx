@@ -137,7 +137,7 @@ const Dashboard = () => {
 
     // Check LLM providers via models endpoint
     try {
-      const res = await axios.get(`${API_BASE}/models`);
+      const res = await axios.get(`${API_BASE}/chat/models`);
       if (res.data.models?.length > 0) {
         setSystemHealth(prev => ({ ...prev, llm: 'healthy' }));
       } else {

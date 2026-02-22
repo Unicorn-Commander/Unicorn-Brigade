@@ -49,6 +49,11 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-API-Key "${BRIGADE_API_KEY}";
 
+        # SSE streaming support (critical for chat endpoints)
+        proxy_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding on;
+
         # WebSocket support (for streaming/chat endpoints)
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
