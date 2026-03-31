@@ -46,6 +46,7 @@ from app.api.benchmark_routes import router as benchmark_router
 from app.api.ralph_routes import router as ralph_router
 from app.api.trace_routes import router as trace_router
 from app.api.speaker_routes import router as speaker_router
+from app.api.federation_routes import router as federation_router
 from app.workflows.benchmark import init_benchmark_engine
 from app.db.database import init_db, close_db
 from app.db.init_db import seed_agents
@@ -223,6 +224,7 @@ app.include_router(medical_router, prefix="/api/v1", tags=["medical"])
 app.include_router(benchmark_router, prefix="/api/v1", tags=["benchmarks"])
 app.include_router(trace_router, prefix="/api/v1", tags=["trace"])
 app.include_router(speaker_router, prefix="/api/v1", tags=["speakers"])
+app.include_router(federation_router, prefix="/api/v1", tags=["federation"])
 app.include_router(ralph_router, tags=["ralph"])
 
 @app.get("/")
@@ -483,6 +485,14 @@ async def root():
             "generate": "POST /api/v1/medical/generate",
             "embeddings": "POST /api/v1/medical/embeddings",
             "classify": "POST /api/v1/medical/classify"
+        },
+        "federation": {
+            "description": "Edge node federation registry - register remote agents",
+            "register": "POST /api/v1/federation/register",
+            "agents": "/api/v1/federation/agents",
+            "unregister": "DELETE /api/v1/federation/agents/{agent_id}",
+            "health": "/api/v1/federation/health",
+            "heartbeat": "POST /api/v1/federation/heartbeat"
         },
         "trace": {
             "description": "Agent Trace - Code attribution tracking for AI-generated code",

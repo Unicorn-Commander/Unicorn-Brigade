@@ -17,7 +17,7 @@ from app.llm.ops_center_client import ToolDefinition, ToolParameter
 logger = logging.getLogger(__name__)
 
 # Home Assistant configuration from environment
-HA_URL = os.getenv("HOMEASSISTANT_URL", "http://192.168.10.20:8123")
+HA_URL = os.getenv("HOMEASSISTANT_URL", "http://192.168.10.138:8123")
 HA_TOKEN = os.getenv("HOMEASSISTANT_TOKEN", "")
 
 
