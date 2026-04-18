@@ -44,6 +44,8 @@ from app.api.hierarchical_routes import router as hierarchical_router, init_hier
 from app.api.medical_routes import router as medical_router, init_medical_routes, shutdown_medical_routes
 from app.api.benchmark_routes import router as benchmark_router
 from app.api.ralph_routes import router as ralph_router
+from app.api.crisis_routes import router as crisis_router, init_crisis_routes
+from app.agents.crisis_registration import register_crisis_agents
 from app.api.trace_routes import router as trace_router
 from app.api.speaker_routes import router as speaker_router
 from app.workflows.benchmark import init_benchmark_engine
@@ -136,6 +138,11 @@ async def lifespan(app: FastAPI):
     init_benchmark_engine(llm_client, judge_model="openai/gpt-4o-mini")
     logger.info("Benchmark engine initialized for A/B testing")
 
+    # Initialize Crisis Investigation agents and routes
+    register_crisis_agents(workflow_manager, memory_manager=memory_manager, llm_client=llm_client)
+    init_crisis_routes(llm_client=llm_client, memory_manager=memory_manager)
+    logger.info("Crisis investigation agents initialized (evidence_correlator, gap_analyzer, timeline_builder)")
+
     # apikey_routes and conversation_routes use Depends(get_session) directly
     logger.info("All route modules initialized")
 
@@ -224,6 +231,7 @@ app.include_router(benchmark_router, prefix="/api/v1", tags=["benchmarks"])
 app.include_router(trace_router, prefix="/api/v1", tags=["trace"])
 app.include_router(speaker_router, prefix="/api/v1", tags=["speakers"])
 app.include_router(ralph_router, tags=["ralph"])
+app.include_router(crisis_router, prefix="/api/v1", tags=["crisis"])
 
 @app.get("/")
 async def root():

@@ -171,3 +171,16 @@ __all__ = [
     "AnomalyDetector",
     "LogAnalyzer",
 ]
+
+# Crisis Investigation Agents
+from app.agents.evidence_correlator import EvidenceCorrelatorAgent
+from app.agents.gap_analyzer import GapAnalyzerAgent
+from app.agents.timeline_builder import TimelineBuilderAgent
+from app.agents.crisis_registration import register_crisis_agents
+
+__all__ += [
+    "EvidenceCorrelatorAgent",
+    "GapAnalyzerAgent",
+    "TimelineBuilderAgent",
+    "register_crisis_agents",
+]
