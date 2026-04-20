@@ -1,20 +1,20 @@
 // MCP Registry API Service
+import { buildAuthHeaders, handleUnauthorized } from './authHeaders';
 
 class MCPService {
   constructor() {
     this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-    this.apiKey = localStorage.getItem('apiKey');
   }
 
   async request(endpoint, options = {}) {
     try {
       const response = await fetch(`${this.baseURL}${endpoint}`, {
         ...options,
-        headers: {
+        credentials: 'include',
+        headers: buildAuthHeaders({
           'Content-Type': 'application/json',
-          ...(this.apiKey && { 'X-API-Key': this.apiKey }),
           ...options.headers,
-        },
+        }),
       });
 
       const contentType = response.headers.get('content-type');
@@ -27,6 +27,9 @@ class MCPService {
       }
 
       if (!response.ok) {
+        if (response.status === 401 && !endpoint.includes('/auth/')) {
+          handleUnauthorized();
+        }
         throw new Error(data.error || data.message || `API Error: ${response.statusText}`);
       }
 

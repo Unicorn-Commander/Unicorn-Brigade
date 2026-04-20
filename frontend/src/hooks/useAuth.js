@@ -28,6 +28,8 @@ const useAuth = create((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
+
+
   error: null,
 
   /**
@@ -50,7 +52,24 @@ const useAuth = create((set, get) => ({
       return;
     }
 
-    // First, try API key authentication (native auth)
+    // Prefer OIDC session (cookie or JWT) — this is the primary auth path.
+    try {
+      const user = await authService.getCurrentUser();
+      if (user) {
+        set({
+          user,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null
+        });
+        get().startSessionRefresh();
+        return;
+      }
+    } catch (error) {
+      console.log('[useAuth] OIDC session check failed, trying API key:', error?.message);
+    }
+
+    // Fallback: legacy native-auth API key
     if (authService.hasApiKey()) {
       try {
         const user = await authService.getCurrentUserByApiKey();
@@ -65,32 +84,19 @@ const useAuth = create((set, get) => ({
           return;
         }
       } catch (error) {
-        console.log('[useAuth] API key auth failed, trying OIDC:', error);
-        // API key invalid, clear it and try OIDC
+        console.log('[useAuth] API key auth failed:', error?.message);
         authService.clearApiKey();
       }
     }
 
-    // Fall back to OIDC authentication
-    try {
-      const user = await authService.getCurrentUser();
-      set({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null
-      });
-      get().startSessionRefresh();
-    } catch (error) {
-      // Not authenticated - this is normal for logged out users
-      set({
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-        error: null
-      });
-      get().stopSessionRefresh();
-    }
+    // Not authenticated — render login UI, do not redirect.
+    set({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      error: null
+    });
+    get().stopSessionRefresh();
   },
 
   /**
@@ -104,16 +110,18 @@ const useAuth = create((set, get) => ({
     }
 
     try {
+      // Try OIDC session first
+      const oidcUser = await authService.getCurrentUser();
+      if (oidcUser) {
+        set({ user: oidcUser, isAuthenticated: true });
+        return;
+      }
+
+      // Fall back to API key
       if (authService.hasApiKey()) {
-        const user = await authService.getCurrentUserByApiKey();
-        if (user) {
-          set({ user, isAuthenticated: true });
-          return;
-        }
-      } else {
-        const user = await authService.getCurrentUser();
-        if (user) {
-          set({ user, isAuthenticated: true });
+        const apiKeyUser = await authService.getCurrentUserByApiKey();
+        if (apiKeyUser) {
+          set({ user: apiKeyUser, isAuthenticated: true });
           return;
         }
       }

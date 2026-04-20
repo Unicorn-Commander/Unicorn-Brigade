@@ -1,89 +1,227 @@
 /**
  * Brigade OIDC Authentication Service
- * Handles Keycloak authentication flow and user session management
- * Also supports API key authentication via X-API-Key header
+ * Handles Keycloak authentication flow and user session management.
+ *
+ * Auth precedence (highest to lowest):
+ *   1) JWT Bearer token (localStorage: brigade_jwt) — issued by /auth/oidc/callback
+ *   2) Session cookie (sent automatically with credentials: include)
+ *   3) API key (localStorage: apiKey) — legacy/native flow
+ *
+ * Team Lead A backend endpoints:
+ *   GET /api/v1/auth/oidc/login     — initiates SSO flow (returns authUrl)
+ *   GET /api/v1/auth/oidc/callback  — handles return from Keycloak
+ *   GET /api/v1/auth/oidc/logout    — logs out
+ *   GET /api/v1/auth/me             — returns current user
  */
 
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
+// localStorage keys
+const JWT_KEY = 'brigade_jwt';
+const JWT_EXPIRES_AT_KEY = 'brigade_jwt_expires_at';
+const REFRESH_TOKEN_KEY = 'brigade_refresh_token';
+const LEGACY_API_KEY = 'apiKey';
+
 class AuthService {
   constructor() {
-    // Configure axios to send cookies with every request
+    // Send cookies with every axios request (session cookie from backend)
     axios.defaults.withCredentials = true;
 
-    // Set up axios interceptor to add X-API-Key header when available
     this.setupAxiosInterceptor();
   }
 
   /**
-   * Set up axios interceptor to automatically add X-API-Key header
+   * Axios request interceptor:
+   *   - Attach Authorization: Bearer <jwt> if we have one
+   *   - Fall back to X-API-Key for legacy native-auth routes
+   *
+   * Axios response interceptor:
+   *   - On 401 to a Brigade API URL, clear tokens and redirect to SSO login
    */
   setupAxiosInterceptor() {
     axios.interceptors.request.use(
       (config) => {
-        const apiKey = localStorage.getItem('apiKey');
-        if (apiKey) {
+        const jwt = this.getJwt();
+        if (jwt) {
+          config.headers.Authorization = `Bearer ${jwt}`;
+        }
+        const apiKey = localStorage.getItem(LEGACY_API_KEY);
+        if (apiKey && !config.headers['X-API-Key']) {
           config.headers['X-API-Key'] = apiKey;
         }
         return config;
       },
+      (error) => Promise.reject(error)
+    );
+
+    axios.interceptors.response.use(
+      (response) => response,
       (error) => {
+        const status = error?.response?.status;
+        const url = error?.config?.url || '';
+        const isAuthEndpoint = url.includes('/auth/');
+        const isBrigadeApi = url.startsWith(API_URL) || url.startsWith('/api/');
+
+        if (status === 401 && isBrigadeApi && !isAuthEndpoint) {
+          // Clear local auth material; backend session cookie is already invalid.
+          this.clearJwt();
+          // Allow current app-level handlers (useAuth.loadUser) to decide what to
+          // render (login button vs redirect). Only force redirect if we're
+          // already past a protected page — skip redirect on landing / login pages.
+          const path = window.location.pathname;
+          const publicPaths = ['/', '/login', '/register', '/auth/callback'];
+          if (!publicPaths.includes(path)) {
+            window.location.href = `${API_URL}/auth/oidc/login`;
+          }
+        }
         return Promise.reject(error);
       }
     );
   }
 
+  // ==========================================
+  // JWT management
+  // ==========================================
+
+  getJwt() {
+    const token = localStorage.getItem(JWT_KEY);
+    if (!token) return null;
+
+    const expiresAt = Number(localStorage.getItem(JWT_EXPIRES_AT_KEY) || 0);
+    if (expiresAt && Date.now() >= expiresAt) {
+      // Proactively clear expired JWTs so we fall back to cookie/API key.
+      this.clearJwt();
+      return null;
+    }
+    return token;
+  }
+
+  setJwt(token, expiresIn) {
+    if (!token) return;
+    localStorage.setItem(JWT_KEY, token);
+    if (expiresIn) {
+      const expiresAt = Date.now() + Number(expiresIn) * 1000;
+      localStorage.setItem(JWT_EXPIRES_AT_KEY, String(expiresAt));
+    }
+  }
+
+  setRefreshToken(token) {
+    if (token) localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  }
+
+  clearJwt() {
+    localStorage.removeItem(JWT_KEY);
+    localStorage.removeItem(JWT_EXPIRES_AT_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+  }
+
+  isJwtNearExpiry(marginSeconds = 60) {
+    const expiresAt = Number(localStorage.getItem(JWT_EXPIRES_AT_KEY) || 0);
+    if (!expiresAt) return false;
+    return Date.now() + marginSeconds * 1000 >= expiresAt;
+  }
+
   /**
-   * Initiate OIDC login flow
-   * Redirects user to Keycloak login page
+   * Initiate OIDC login flow.
+   * Backend endpoint returns { authUrl } — or, if the client prefers, it can
+   * just navigate directly to the login endpoint (backend will 302 to Keycloak).
+   * We try the JSON path first, then fall back to a direct navigation.
    */
   async login() {
     try {
-      console.log('[AuthService] Initiating login, API_URL:', API_URL);
       const { data } = await axios.get(`${API_URL}/auth/oidc/login`, {
-        withCredentials: true
+        withCredentials: true,
+        // Accept a redirect response as well — if backend returns 302, axios will
+        // follow; if it returns JSON, we use authUrl below.
+        headers: { Accept: 'application/json' }
       });
 
-      console.log('[AuthService] Login response:', data);
-
-      if (data.authUrl) {
-        console.log('[AuthService] Redirecting to:', data.authUrl);
-        // Redirect to Keycloak login page
+      if (data && data.authUrl) {
         window.location.href = data.authUrl;
-      } else {
-        throw new Error('No authorization URL received');
+        return;
       }
+      // Fallback: just navigate to the endpoint and let the browser follow
+      // the backend's 302 redirect to Keycloak.
+      window.location.href = `${API_URL}/auth/oidc/login`;
     } catch (error) {
-      console.error('[AuthService] Login initiation failed:', error);
-      console.error('[AuthService] Error details:', error.response?.data, error.message);
-      throw new Error(error.response?.data?.error || 'Failed to initiate login');
+      // If axios fails (CORS, 302 not followed, etc.), do a plain navigation
+      // so the browser handles the redirect chain.
+      console.warn('[AuthService] login JSON fetch failed, using direct navigation', error?.message);
+      window.location.href = `${API_URL}/auth/oidc/login`;
     }
   }
 
   /**
-   * Get current user information with permissions
-   * @returns {Promise<Object>} User object with tier, roles, and permissions
+   * Fetch the currently-authenticated user.
+   * Returns null when the user is not authenticated (401) rather than throwing —
+   * callers like AuthContext/useAuth treat null as "logged out".
    */
   async getCurrentUser() {
     try {
-      const { data } = await axios.get(`${API_URL}/auth/oidc/user`, {
+      const { data } = await axios.get(`${API_URL}/auth/me`, {
         withCredentials: true
       });
-
       return data;
     } catch (error) {
-      console.error('Failed to get current user:', error);
-      throw new Error(error.response?.data?.error || 'Not authenticated');
+      if (error?.response?.status === 401) {
+        return null;
+      }
+      throw error;
     }
   }
 
   /**
-   * Check if user has a specific permission
-   * @param {string} permission - Permission to check
-   * @returns {Promise<boolean>} True if user has permission
+   * Back-compat alias for the old endpoint name used by useAuth.loadUser().
    */
+  async getCurrentUserOIDC() {
+    return this.getCurrentUser();
+  }
+
+  /**
+   * Refresh access token. Uses the refresh token we saved at callback time
+   * if available; the backend may also support cookie-based refresh.
+   */
+  async refreshToken() {
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/auth/oidc/refresh`,
+        refreshToken ? { refresh_token: refreshToken } : {},
+        { withCredentials: true }
+      );
+      if (data?.access_token) {
+        this.setJwt(data.access_token, data.expires_in);
+      }
+      if (data?.refresh_token) {
+        this.setRefreshToken(data.refresh_token);
+      }
+      return data;
+    } catch (error) {
+      console.error('[AuthService] Token refresh failed:', error);
+      this.clearJwt();
+      throw error;
+    }
+  }
+
+  /**
+   * Logout — clear local tokens and hit the backend logout endpoint which
+   * will clear the session cookie and redirect through Keycloak RP-initiated
+   * logout. We use a hard navigation because the backend returns a 302.
+   */
+  logout() {
+    this.clearJwt();
+    localStorage.removeItem(LEGACY_API_KEY);
+    localStorage.removeItem('user');
+    window.location.href = `${API_URL}/auth/oidc/logout`;
+  }
+
+  // ==========================================
+  // Permission helpers (unchanged endpoints, if backend still supports them)
+  // These are best-effort — callers already handle failures.
+  // ==========================================
+
   async checkPermission(permission) {
     try {
       const { data } = await axios.post(
@@ -91,207 +229,99 @@ class AuthService {
         { permission },
         { withCredentials: true }
       );
-
       return data.allowed || false;
-    } catch (error) {
-      console.error('Permission check failed:', error);
+    } catch {
       return false;
     }
   }
 
-  /**
-   * Get all user permissions
-   * @returns {Promise<Array>} Array of permission strings
-   */
   async getPermissions() {
     try {
       const { data } = await axios.get(`${API_URL}/auth/oidc/permissions`, {
         withCredentials: true
       });
-
       return data;
-    } catch (error) {
-      console.error('Failed to get permissions:', error);
+    } catch {
       return [];
     }
   }
 
-  /**
-   * Check if user has access to a specific MCP tool
-   * @param {string} tool - Tool identifier
-   * @returns {Promise<Object>} Access result with allowed flag
-   */
   async checkToolAccess(tool) {
     try {
       const { data } = await axios.get(`${API_URL}/auth/oidc/tool-access`, {
         params: { tool },
         withCredentials: true
       });
-
       return data;
-    } catch (error) {
-      console.error('Tool access check failed:', error);
+    } catch {
       return { allowed: false };
     }
   }
 
-  /**
-   * Get upgrade information for a locked feature
-   * @param {string} feature - Feature identifier
-   * @returns {Promise<Object>} Upgrade requirements and pricing
-   */
   async getUpgradeInfo(feature) {
     try {
       const { data } = await axios.get(`${API_URL}/auth/oidc/upgrade-info`, {
         params: { feature },
         withCredentials: true
       });
-
       return data;
-    } catch (error) {
-      console.error('Failed to get upgrade info:', error);
+    } catch {
       return null;
     }
   }
 
-  /**
-   * Refresh access token using refresh token
-   * @param {string} refreshToken - Refresh token
-   * @returns {Promise<Object>} New tokens
-   */
-  async refreshToken(refreshToken) {
-    try {
-      const { data } = await axios.post(
-        `${API_URL}/auth/oidc/refresh`,
-        { refresh_token: refreshToken },
-        { withCredentials: true }
-      );
-
-      return data;
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-      throw new Error(error.response?.data?.error || 'Failed to refresh token');
-    }
-  }
-
-  /**
-   * Logout from Keycloak and clear session
-   */
-  async logout() {
-    try {
-      // Clear API key from localStorage
-      localStorage.removeItem('apiKey');
-
-      await axios.post(`${API_URL}/auth/oidc/logout`, {}, {
-        withCredentials: true
-      });
-
-      // Redirect to login page
-      window.location.href = '/login';
-    } catch (error) {
-      console.error('Logout failed:', error);
-      // Clear API key even on error
-      localStorage.removeItem('apiKey');
-      // Force redirect even on error
-      window.location.href = '/login';
-    }
-  }
-
   // ==========================================
-  // Native Email/Password Authentication
+  // Native email/password auth (legacy API-key flow — kept for back-compat)
   // ==========================================
 
-  /**
-   * Register a new user with email and password
-   * @param {string} email - User email
-   * @param {string} password - User password (min 8 chars, must have letters and numbers)
-   * @param {string} name - User display name
-   * @returns {Promise<Object>} User object with apiKey
-   */
   async registerUser(email, password, name) {
     try {
       const { data } = await axios.post(`${API_URL}/users/register`, {
-        email,
-        password,
-        name
+        email, password, name
       });
-
-      // Store the API key for subsequent requests
-      if (data.apiKey) {
-        localStorage.setItem('apiKey', data.apiKey);
-      }
-
+      if (data.apiKey) localStorage.setItem(LEGACY_API_KEY, data.apiKey);
       return data;
     } catch (error) {
-      console.error('[AuthService] Registration failed:', error);
-      throw new Error(error.response?.data?.detail || error.response?.data?.error || 'Registration failed');
+      throw new Error(
+        error.response?.data?.detail || error.response?.data?.error || 'Registration failed'
+      );
     }
   }
 
-  /**
-   * Login with email and password
-   * @param {string} email - User email
-   * @param {string} password - User password
-   * @returns {Promise<Object>} User object with apiKey
-   */
   async loginWithPassword(email, password) {
     try {
-      const { data } = await axios.post(`${API_URL}/users/login`, {
-        email,
-        password
-      });
-
-      // Store the API key for subsequent requests
-      if (data.apiKey) {
-        localStorage.setItem('apiKey', data.apiKey);
-      }
-
+      const { data } = await axios.post(`${API_URL}/users/login`, { email, password });
+      if (data.apiKey) localStorage.setItem(LEGACY_API_KEY, data.apiKey);
       return data;
     } catch (error) {
-      console.error('[AuthService] Login failed:', error);
-      throw new Error(error.response?.data?.detail || error.response?.data?.error || 'Login failed');
+      throw new Error(
+        error.response?.data?.detail || error.response?.data?.error || 'Login failed'
+      );
     }
   }
 
-  /**
-   * Get current user via API key (for native auth)
-   * @returns {Promise<Object|null>} User object or null if not authenticated
-   */
   async getCurrentUserByApiKey() {
-    const apiKey = localStorage.getItem('apiKey');
-    if (!apiKey) {
-      return null;
-    }
-
+    const apiKey = localStorage.getItem(LEGACY_API_KEY);
+    if (!apiKey) return null;
     try {
       const { data } = await axios.get(`${API_URL}/users/me`);
       return data;
     } catch (error) {
-      console.error('[AuthService] Failed to get user by API key:', error);
-      // Clear invalid API key
       if (error.response?.status === 401) {
-        localStorage.removeItem('apiKey');
+        localStorage.removeItem(LEGACY_API_KEY);
       }
       return null;
     }
   }
 
-  /**
-   * Check if user has an API key stored
-   * @returns {boolean} True if API key exists
-   */
   hasApiKey() {
-    return !!localStorage.getItem('apiKey');
+    return !!localStorage.getItem(LEGACY_API_KEY);
   }
 
-  /**
-   * Clear stored API key (logout for native auth)
-   */
   clearApiKey() {
-    localStorage.removeItem('apiKey');
+    localStorage.removeItem(LEGACY_API_KEY);
   }
 }
 
-// Export singleton instance
 const authService = new AuthService();
 export default authService;

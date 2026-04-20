@@ -31,7 +31,7 @@ const UserProfile = ({
   showBilling = true,
   className = ''
 }) => {
-  const { user, logout, loading } = useAuth();
+  const { user, logout, isLoading: loading } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 

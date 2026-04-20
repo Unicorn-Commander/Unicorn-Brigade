@@ -1,10 +1,15 @@
 // API Service for Unicorn Command & Control
 import { toast } from 'react-hot-toast';
+import { buildAuthHeaders, handleUnauthorized } from './authHeaders';
 
 class APIService {
   constructor() {
     this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-    this.apiKey = localStorage.getItem('apiKey');
+  }
+
+  // Live accessor so callers that call getApiKey() still work if anything depends on it.
+  get apiKey() {
+    return localStorage.getItem('apiKey');
   }
 
   async request(endpoint, options = {}) {
@@ -21,11 +26,11 @@ class APIService {
 
       const response = await fetch(url.toString(), {
         ...fetchOptions,
-        headers: {
+        credentials: 'include',
+        headers: buildAuthHeaders({
           'Content-Type': 'application/json',
-          ...(this.apiKey && { 'X-API-Key': this.apiKey }),
           ...fetchOptions.headers,
-        },
+        }),
       });
 
       // Handle non-JSON responses
@@ -44,6 +49,10 @@ class APIService {
         const apiError = new Error(errorMessage);
         apiError.status = response.status;
         apiError.data = data;
+
+        if (response.status === 401 && !endpoint.includes('/auth/')) {
+          handleUnauthorized();
+        }
 
         if (!suppressToast && response.status !== 401) {
           toast.error(friendlyMessage, {
@@ -273,7 +282,6 @@ class APIService {
     });
 
     if (response.apiKey) {
-      this.apiKey = response.apiKey;
       localStorage.setItem('apiKey', response.apiKey);
       localStorage.setItem('user', JSON.stringify(response.user));
     }
@@ -282,14 +290,12 @@ class APIService {
   }
 
   async logout() {
-    this.apiKey = null;
     localStorage.removeItem('apiKey');
     localStorage.removeItem('user');
   }
 
   // Set API key manually (for direct API key entry)
   setApiKey(apiKey) {
-    this.apiKey = apiKey;
     localStorage.setItem('apiKey', apiKey);
   }
 
@@ -300,7 +306,6 @@ class APIService {
 
   // Clear API key
   clearApiKey() {
-    this.apiKey = null;
     localStorage.removeItem('apiKey');
   }
 

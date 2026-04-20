@@ -96,13 +96,9 @@ function AppLayout({ children }) {
 }
 
 function App() {
-  const { loadUser } = useAuth();
   const [showWizard, setShowWizard] = useState(false);
 
-  // Load user authentication state on app start
-  useEffect(() => {
-    loadUser();
-  }, [loadUser]);
+  // AuthProvider (in main.jsx) handles the initial session check via loadUser().
 
   useEffect(() => {
     const hasCompletedWizard = localStorage.getItem('wizard-completed');

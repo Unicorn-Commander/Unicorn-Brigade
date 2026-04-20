@@ -6,6 +6,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import authService from '../services/authService';
+import useAuth from '../hooks/useAuth';
 
 export default function AuthCallback() {
   const navigate = useNavigate();
@@ -14,19 +16,47 @@ export default function AuthCallback() {
   const [message, setMessage] = useState('Completing authentication...');
 
   useEffect(() => {
-    // Check for success or error in query params
+    // Backend may deliver auth info in a few ways:
+    //   1) ?login=success  — cookie already set, just redirect
+    //   2) ?access_token=...&expires_in=... — JWT in query, persist & redirect
+    //   3) #access_token=...&expires_in=... — JWT in URL fragment (OIDC implicit)
+    //   4) ?error=... — auth failed
     const loginStatus = searchParams.get('login');
     const error = searchParams.get('error');
+    const queryToken = searchParams.get('access_token');
+    const queryExpires = searchParams.get('expires_in');
+    const queryRefresh = searchParams.get('refresh_token');
 
-    if (loginStatus === 'success') {
-      // Login successful
+    // Parse URL fragment (#access_token=... etc)
+    const hashParams = new URLSearchParams(
+      (window.location.hash || '').replace(/^#/, '')
+    );
+    const hashToken = hashParams.get('access_token');
+    const hashExpires = hashParams.get('expires_in');
+    const hashRefresh = hashParams.get('refresh_token');
+
+    const token = queryToken || hashToken;
+    const expiresIn = queryExpires || hashExpires;
+    const refreshToken = queryRefresh || hashRefresh;
+
+    if (token) {
+      authService.setJwt(token, expiresIn);
+      if (refreshToken) authService.setRefreshToken(refreshToken);
+      // Clear token from the URL so it does not leak into history / referrers.
+      window.history.replaceState({}, document.title, '/auth/callback?login=success');
+      useAuth.getState().loadUser();
       setStatus('success');
       setMessage('Login successful! Redirecting to dashboard...');
+      setTimeout(() => navigate('/dashboard', { replace: true }), 1000);
+      return;
+    }
 
-      // Redirect to dashboard after brief delay
-      setTimeout(() => {
-        navigate('/dashboard', { replace: true });
-      }, 1500);
+    if (loginStatus === 'success') {
+      // Cookie-based session already set by backend.
+      useAuth.getState().loadUser();
+      setStatus('success');
+      setMessage('Login successful! Redirecting to dashboard...');
+      setTimeout(() => navigate('/dashboard', { replace: true }), 1000);
     } else if (error) {
       // Login failed
       setStatus('error');

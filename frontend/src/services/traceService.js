@@ -1,21 +1,21 @@
 // Agent Trace API Service
 // Handles all API calls for code attribution tracking
+import { buildAuthHeaders, handleUnauthorized } from './authHeaders';
 
 class TraceService {
   constructor() {
     this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-    this.apiKey = localStorage.getItem('apiKey');
   }
 
   async request(endpoint, options = {}) {
     try {
       const response = await fetch(`${this.baseURL}${endpoint}`, {
         ...options,
-        headers: {
+        credentials: 'include',
+        headers: buildAuthHeaders({
           'Content-Type': 'application/json',
-          ...(this.apiKey && { 'X-API-Key': this.apiKey }),
           ...options.headers,
-        },
+        }),
       });
 
       const contentType = response.headers.get('content-type');
@@ -28,6 +28,9 @@ class TraceService {
       }
 
       if (!response.ok) {
+        if (response.status === 401 && !endpoint.includes('/auth/')) {
+          handleUnauthorized();
+        }
         throw new Error(data.error || data.message || `API Error: ${response.statusText}`);
       }
 
@@ -151,12 +154,16 @@ class TraceService {
 
     const response = await fetch(`${this.baseURL}/trace/report`, {
       method: 'POST',
-      headers: {
+      credentials: 'include',
+      headers: buildAuthHeaders({
         'Content-Type': 'application/json',
-        ...(this.apiKey && { 'X-API-Key': this.apiKey }),
-      },
+      }),
       body: JSON.stringify(body)
     });
+
+    if (response.status === 401) {
+      handleUnauthorized();
+    }
 
     if (!response.ok) {
       throw new Error(`Export failed: ${response.statusText}`);
