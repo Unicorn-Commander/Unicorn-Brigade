@@ -32,16 +32,27 @@ from app.observability import get_tracer
 from app.agents.deep_research import DeepResearchAgent, ResearchDepth
 import asyncio
 
+import re as _re
+
+def _strip_thinking(text: str) -> str:
+    """Strip <think>...</think> blocks from model output."""
+    if not text:
+        return text
+    return _re.sub(r'<think>.*?</think>\s*', '', text, flags=_re.DOTALL).strip()
+
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Injected during startup via init_agent_routes()
 llm_client: OpsCenterLLMClient = None
+memory_manager = None
 
 
-def init_agent_routes(client: OpsCenterLLMClient):
-    global llm_client
+def init_agent_routes(client: OpsCenterLLMClient, memory=None):
+    global llm_client, memory_manager
     llm_client = client
+    memory_manager = memory
 
 
 def _ensure_agent_access(user: AuthUser, agent_id: str) -> None:
@@ -176,6 +187,16 @@ async def get_agent(
 ):
     """Get agent detail by ID."""
     _ensure_agent_access(user, agent_id)
+
+    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
+    # authenticated identity. Admins may pass user_id explicitly (for delegation,
+    # batch ops, admin tooling, etc.).
+    from app.auth.roles import UserRole as _UserRole
+    if user and user.role != _UserRole.ADMIN:
+        authenticated_id = user.user_id or user.id
+        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
+            request.user_id = authenticated_id
+
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -281,6 +302,16 @@ async def chat_with_agent(
 ):
     """Chat with a specific agent. Supports function calling when agent has tools."""
     _ensure_agent_access(user, agent_id)
+
+    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
+    # authenticated identity. Admins may pass user_id explicitly (for delegation,
+    # batch ops, admin tooling, etc.).
+    from app.auth.roles import UserRole as _UserRole
+    if user and user.role != _UserRole.ADMIN:
+        authenticated_id = user.user_id or user.id
+        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
+            request.user_id = authenticated_id
+
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -292,6 +323,28 @@ async def chat_with_agent(
         system_parts.append(agent["persona"])
     if agent.get("systemPrompt"):
         system_parts.append(agent["systemPrompt"])
+    # Inject relevant memories for this user+agent pair (Phase 2)
+    if memory_manager and request.user_id and request.user_id != "anonymous":
+        try:
+            recalled = await memory_manager.retrieve(
+                user_id=request.user_id,
+                query=request.message,
+                agent_id=agent["id"],
+                limit=5,
+            )
+            if recalled:
+                mem_lines = []
+                for m in recalled:
+                    text = m.get("memory") or m.get("text") or m.get("content") or ""
+                    if text:
+                        mem_lines.append(f"- {text}")
+                if mem_lines:
+                    system_parts.append(
+                        "## Relevant context from prior conversations with this user:\n" + "\n".join(mem_lines)
+                    )
+        except Exception as mem_err:
+            logger.warning(f"Memory retrieval failed: {mem_err}")
+
     system_content = "\n\n".join(system_parts) if system_parts else (
         f"You are {agent.get('displayName', agent['name'])}, a specialized AI agent."
     )
@@ -407,7 +460,7 @@ async def chat_with_agent(
                 user_id=request.user_id,
             )
 
-        content = llm_client.get_response_content(response)
+        content = _strip_thinking(llm_client.get_response_content(response))
         usage = response.get("usage", {})
 
         result = {
@@ -473,6 +526,67 @@ async def chat_with_agent(
             output={"content": content[:500] if content else "", "tools_used": len(tool_calls_log)},
             status="success",
         )
+
+        # Auto-persist conversation (Phase 2: agents remember)
+        try:
+            from sqlalchemy import text as _sa_text
+            from app.db.repositories import ConversationRepository
+            conv_repo = ConversationRepository(session)
+            user_id = request.user_id or "anonymous"
+
+            # Find or create conversation for this user+agent pair
+            existing = await session.execute(
+                _sa_text(
+                    "SELECT id FROM conversations WHERE agent_id = :aid AND user_id = :uid ORDER BY updated_at DESC LIMIT 1"
+                ),
+                {"aid": agent["id"], "uid": user_id}
+            )
+            row = existing.first()
+
+            if row:
+                conv_id = str(row[0])
+            else:
+                conv = await conv_repo.create({
+                    "agent_id": agent["id"],
+                    "user_id": user_id,
+                    "title": request.message[:100],
+                    "model": model,
+                })
+                conv_id = str(conv["id"])
+
+            total_tokens = (usage.get("prompt_tokens", 0) or 0) + (usage.get("completion_tokens", 0) or 0)
+
+            # Save user message
+            await conv_repo.add_message(conv_id, {
+                "role": "user",
+                "content": request.message,
+            })
+            # Save assistant response
+            await conv_repo.add_message(conv_id, {
+                "role": "assistant",
+                "content": content or "",
+                "model": model,
+                "tokens_used": total_tokens,
+                "tool_calls": tool_calls_log if tool_calls_log else None,
+            })
+            await session.commit()
+        except Exception as persist_err:
+            logger.warning(f"Failed to persist conversation: {persist_err}")
+
+        # Store exchange in long-term memory (Phase 2)
+        if memory_manager and request.user_id and request.user_id != "anonymous" and content:
+            try:
+                await memory_manager.store(
+                    user_id=request.user_id,
+                    agent_id=agent["id"],
+                    messages=[
+                        {"role": "user", "content": request.message},
+                        {"role": "assistant", "content": content},
+                    ],
+                    metadata={"model": model, "agent_name": agent_name},
+                )
+            except Exception as mem_err:
+                logger.warning(f"Memory store failed: {mem_err}")
 
         return result
 
@@ -561,7 +675,7 @@ async def _stream_chat(messages, model, temperature, max_tokens, agent, user_id,
                 logger.warning(f"Failed to log tool executions: {log_err}")
 
             # Emit final content as tokens (simulate streaming from the already-complete response)
-            content = llm_client.get_response_content(response)
+            content = _strip_thinking(llm_client.get_response_content(response))
             # Send in chunks to keep SSE behavior consistent
             chunk_size = 20
             for i in range(0, len(content), chunk_size):
@@ -618,6 +732,16 @@ async def get_agent_tools(
 ):
     """Get tools attached to an agent."""
     _ensure_agent_access(user, agent_id)
+
+    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
+    # authenticated identity. Admins may pass user_id explicitly (for delegation,
+    # batch ops, admin tooling, etc.).
+    from app.auth.roles import UserRole as _UserRole
+    if user and user.role != _UserRole.ADMIN:
+        authenticated_id = user.user_id or user.id
+        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
+            request.user_id = authenticated_id
+
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -634,6 +758,16 @@ async def attach_tool(
 ):
     """Attach a tool to an agent."""
     _ensure_agent_access(user, agent_id)
+
+    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
+    # authenticated identity. Admins may pass user_id explicitly (for delegation,
+    # batch ops, admin tooling, etc.).
+    from app.auth.roles import UserRole as _UserRole
+    if user and user.role != _UserRole.ADMIN:
+        authenticated_id = user.user_id or user.id
+        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
+            request.user_id = authenticated_id
+
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -663,6 +797,16 @@ async def detach_tool(
 ):
     """Detach a tool from an agent."""
     _ensure_agent_access(user, agent_id)
+
+    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
+    # authenticated identity. Admins may pass user_id explicitly (for delegation,
+    # batch ops, admin tooling, etc.).
+    from app.auth.roles import UserRole as _UserRole
+    if user and user.role != _UserRole.ADMIN:
+        authenticated_id = user.user_id or user.id
+        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
+            request.user_id = authenticated_id
+
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -684,6 +828,16 @@ async def update_tool_config(
 ):
     """Update tool configuration for an agent."""
     _ensure_agent_access(user, agent_id)
+
+    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
+    # authenticated identity. Admins may pass user_id explicitly (for delegation,
+    # batch ops, admin tooling, etc.).
+    from app.auth.roles import UserRole as _UserRole
+    if user and user.role != _UserRole.ADMIN:
+        authenticated_id = user.user_id or user.id
+        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
+            request.user_id = authenticated_id
+
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -730,7 +884,7 @@ async def direct_chat_completion(
             max_tokens=request.maxTokens,
         )
 
-        content = llm_client.get_response_content(response)
+        content = _strip_thinking(llm_client.get_response_content(response))
         usage = response.get("usage", {})
 
         return {
@@ -772,6 +926,16 @@ async def chat_with_agent_local(
     Supports function calling with local models.
     """
     _ensure_agent_access(user, agent_id)
+
+    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
+    # authenticated identity. Admins may pass user_id explicitly (for delegation,
+    # batch ops, admin tooling, etc.).
+    from app.auth.roles import UserRole as _UserRole
+    if user and user.role != _UserRole.ADMIN:
+        authenticated_id = user.user_id or user.id
+        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
+            request.user_id = authenticated_id
+
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:

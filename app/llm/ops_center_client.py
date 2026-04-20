@@ -146,6 +146,13 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1"
 # Local LLM URL (llama.cpp / Ollama on the Docker network)
 LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://unicorn-llama-cpp:8080")
 
+# Direct LLM endpoint override: when set, bypass Ops-Center and hit this
+# OpenAI-compatible endpoint directly (e.g. llama.cpp router on host).
+OPS_CENTER_LLM_ENDPOINT = os.getenv("OPS_CENTER_LLM_ENDPOINT", "")
+
+# Per-node OpenAI-compatible endpoints for explicit model routing by prefix.
+MIDBOY1_LLM_URL = os.getenv("MIDBOY1_LLM_URL", "http://192.168.10.68:8087")
+
 # Brigade service key for authentication
 BRIGADE_SERVICE_KEY = os.getenv("BRIGADE_SERVICE_KEY", "sk-brigade-service-key-2025")
 
@@ -175,7 +182,7 @@ class OpsCenterLLMClient:
         # Disable gzip/deflate: httpx 0.27.x has a bug where gzip-compressed
         # chunked responses from uvicorn return empty bodies
         self.client = httpx.AsyncClient(
-            timeout=120.0,
+            timeout=180.0,
             headers={"Accept-Encoding": "identity"},
         )
         logger.info(f"OpsCenterLLMClient initialized: {self.ops_center_url}")
@@ -193,8 +200,14 @@ class OpsCenterLLMClient:
         if model.startswith("local/"):
             local_model = model[6:]  # Remove 'local/' prefix
             return self.local_llm_url, local_model, "local"
+        if model.startswith("midboy1/"):
+            midboy1_model = model[len("midboy1/"):]
+            return MIDBOY1_LLM_URL, midboy1_model, "local"
         if OPENROUTER_API_KEY:
             return OPENROUTER_URL, model, "openrouter"
+        if OPS_CENTER_LLM_ENDPOINT:
+            # Direct hit on an OpenAI-compatible endpoint (e.g. llama.cpp router)
+            return OPS_CENTER_LLM_ENDPOINT, model, "direct"
         return self.ops_center_url, model, "ops-center"
 
     def _detect_url(self) -> str:
@@ -261,6 +274,11 @@ class OpsCenterLLMClient:
                 headers = {"Content-Type": "application/json"}
                 endpoint = f"{target_url}/v1/chat/completions"
                 logger.info(f"Sending chat completion to LOCAL LLM: {resolved_model}")
+            elif route_type == "direct":
+                # Direct endpoint override (OPS_CENTER_LLM_ENDPOINT)
+                headers = {"Content-Type": "application/json"}
+                endpoint = target_url
+                logger.info(f"Sending chat completion DIRECT to {endpoint}: {resolved_model}")
             elif route_type == "openrouter":
                 # OpenRouter BYOK: standard OpenAI-compatible API
                 headers = {
@@ -398,6 +416,9 @@ class OpsCenterLLMClient:
             if route_type == "local":
                 headers = {"Content-Type": "application/json"}
                 endpoint = f"{target_url}/v1/chat/completions"
+            elif route_type == "direct":
+                headers = {"Content-Type": "application/json"}
+                endpoint = target_url
             elif route_type == "openrouter":
                 headers = {
                     "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -513,6 +534,10 @@ class OpsCenterLLMClient:
                 headers = {"Content-Type": "application/json"}
                 endpoint = f"{target_url}/v1/chat/completions"
                 logger.info(f"Sending tool-enabled request to LOCAL LLM: {resolved_model} with {len(tools)} tools")
+            elif route_type == "direct":
+                headers = {"Content-Type": "application/json"}
+                endpoint = target_url
+                logger.info(f"Sending tool-enabled request DIRECT to {endpoint}: {resolved_model} with {len(tools)} tools")
             elif route_type == "openrouter":
                 headers = {
                     "Authorization": f"Bearer {OPENROUTER_API_KEY}",

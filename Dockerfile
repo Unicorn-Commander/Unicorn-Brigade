@@ -19,8 +19,12 @@ RUN pip install --no-cache-dir --upgrade pip
 # Copy requirements first for better caching
 COPY requirements-prod.txt .
 
-# Install Python dependencies
+# Install Python dependencies (base)
 RUN pip install --no-cache-dir -r requirements-prod.txt
+
+# Install Graphiti in a second step so pip does not have to solve the full
+# cross-package dependency graph at once (the resolver deadlocks otherwise).
+RUN pip install --no-cache-dir 'graphiti-core[falkordb]>=0.28.0' ||     pip install --no-cache-dir --no-deps 'graphiti-core[falkordb]>=0.28.0' &&     pip install --no-cache-dir falkordb neo4j posthog diskcache 'openai>=1.91.0' 
 
 # Patch falkordb/redis incompatibility (falkordb 1.6.0 imports redis.driver_info
 # which was removed in redis-py 7.1.x). Makes the import optional via sed.

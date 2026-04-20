@@ -10,13 +10,15 @@ from dotenv import load_dotenv
 
 from app.api import router
 from app.api.routes import init_managers
-from app.memory.manager import MemoryManager
+from app.memory.graphiti_manager import GraphitiMemoryManager
 from app.graph.workflow import WorkflowManager
 
 # Stores and route modules
 from app.stores.model_catalog import ModelCatalog
 from app.llm.ops_center_client import OpsCenterLLMClient
 from app.api.agent_routes import router as agent_router, init_agent_routes
+from app.api.openai_compat_routes import router as openai_compat_router
+from app.api.memory_inspector_routes import router as memory_inspector_router, init_memory_routes as init_memory_inspector
 from app.api.tool_routes import router as tool_router
 from app.api.system_routes import router as system_router, init_system_routes
 from app.api.builder_routes import router as builder_router, init_builder_routes
@@ -76,9 +78,9 @@ async def lifespan(app: FastAPI):
 
     logger.info("Starting Unicorn Brigade...")
 
-    # Initialize memory manager
-    memory_manager = MemoryManager()
-    logger.info("Memory manager initialized")
+    # Initialize memory manager (Graphiti + FalkorDB)
+    memory_manager = GraphitiMemoryManager()
+    logger.info("Memory manager initialized (graphiti)")
 
     # Initialize workflow manager
     workflow_manager = WorkflowManager(memory_manager)
@@ -102,7 +104,8 @@ async def lifespan(app: FastAPI):
     logger.info("Database initialized and seeded")
 
     # Inject dependencies into route modules (no more AgentStore)
-    init_agent_routes(llm_client)
+    init_agent_routes(llm_client, memory=memory_manager)
+    init_memory_inspector(memory_manager)
     init_system_routes(model_catalog, llm_client)
     init_builder_routes(llm_client)
     init_a2a_routes(llm_client)
@@ -172,7 +175,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=os.getenv("API_TITLE", "Unicorn Brigade API"),
     version=os.getenv("API_VERSION", "1.0.0"),
-    description="Multi-Agent Orchestration System with LangGraph and mem0",
+    description="Multi-Agent Orchestration System with LangGraph + Graphiti/FalkorDB",
     lifespan=lifespan
 )
 
@@ -203,6 +206,8 @@ app.add_middleware(
 # Include routers — existing router FIRST (has /agents/execute which must match before /agents/{id})
 app.include_router(router, prefix="/api/v1", tags=["core"])
 app.include_router(agent_router, prefix="/api/v1", tags=["agents"])
+app.include_router(openai_compat_router, prefix="/api/v1/openai/v1", tags=["openai-compat"])
+app.include_router(memory_inspector_router, tags=["memory-inspector"])
 app.include_router(tool_router, prefix="/api/v1", tags=["tools"])
 app.include_router(system_router, prefix="/api/v1", tags=["system"])
 app.include_router(builder_router, prefix="/api/v1", tags=["builder"])

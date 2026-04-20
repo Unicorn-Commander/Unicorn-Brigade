@@ -1,17 +1,17 @@
 # Core Framework
 fastapi==0.115.0
 uvicorn[standard]==0.31.0
-pydantic==2.9.2
-pydantic-settings==2.5.2
+pydantic==2.10.6
+pydantic-settings==2.7.1
 
 # LangGraph & LangChain
-langgraph==0.2.34
-langchain==0.3.3
-langchain-openai==0.2.2
-langchain-community==0.3.2
+langgraph==0.3.5
+langchain==0.3.25
+langsmith==0.3.45
+langchain-openai==0.3.3
+langchain-community==0.3.25
 
 # Memory
-mem0ai==0.1.28
 qdrant-client==1.12.0
 # Zep - temporal knowledge graph memory (alternative to mem0)
 # Set MEMORY_PROVIDER=zep in .env to use
@@ -19,6 +19,7 @@ zep-python>=2.0.0
 
 # Knowledge Graph (FalkorDB)
 falkordb>=1.4.0
+graphiti-core[falkordb]>=0.28.0
 
 # Database
 asyncpg==0.29.0
