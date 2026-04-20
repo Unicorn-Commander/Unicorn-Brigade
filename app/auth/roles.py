@@ -167,3 +167,34 @@ def get_minimum_role_for_method(path: str, method: str) -> UserRole:
         return UserRole.VIEWER
 
     return UserRole.OPERATOR
+
+
+# ---------------------------------------------------------------------------
+# Keycloak realm role mapping
+# ---------------------------------------------------------------------------
+
+# Mapping from Keycloak realm/client role name -> Brigade UserRole.
+# Defined in priority order — the first match in this order wins.
+KEYCLOAK_ROLE_MAP = [
+    ("admin", UserRole.ADMIN),
+    ("investigator", UserRole.OPERATOR),
+    ("operator", UserRole.OPERATOR),
+    ("client", UserRole.VIEWER),
+    ("viewer", UserRole.VIEWER),
+]
+
+
+def map_keycloak_roles(roles: list) -> UserRole:
+    """
+    Map a list of Keycloak role names to a Brigade UserRole.
+
+    Picks the highest-privilege matching role from ``KEYCLOAK_ROLE_MAP``.
+    Defaults to ``UserRole.VIEWER`` when no role matches.
+    """
+    if not roles:
+        return UserRole.VIEWER
+    role_set = {r.lower() for r in roles if isinstance(r, str)}
+    for kc_role, brigade_role in KEYCLOAK_ROLE_MAP:
+        if kc_role in role_set:
+            return brigade_role
+    return UserRole.VIEWER

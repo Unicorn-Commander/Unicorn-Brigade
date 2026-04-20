@@ -64,6 +64,9 @@ python-multipart==0.0.12
 
 # Password Hashing
 passlib[bcrypt]==1.7.4
+
+# JWT validation (Keycloak OIDC SSO)
+python-jose[cryptography]>=3.3.0
 bcrypt>=4.0.0
 
 # Remote Execution

@@ -48,6 +48,7 @@ from app.api.crisis_routes import router as crisis_router, init_crisis_routes
 from app.agents.crisis_registration import register_crisis_agents
 from app.api.trace_routes import router as trace_router
 from app.api.speaker_routes import router as speaker_router
+from app.api.oidc_routes import router as oidc_router
 from app.workflows.benchmark import init_benchmark_engine
 from app.db.database import init_db, close_db
 from app.db.init_db import seed_agents
@@ -232,6 +233,10 @@ app.include_router(trace_router, prefix="/api/v1", tags=["trace"])
 app.include_router(speaker_router, prefix="/api/v1", tags=["speakers"])
 app.include_router(ralph_router, tags=["ralph"])
 app.include_router(crisis_router, prefix="/api/v1", tags=["crisis"])
+# OIDC / Keycloak auth routes - mounted at /api/v1 (primary) AND /api (matches
+# the Keycloak-registered callback URL https://brigade.magicunicorn.dev/api/auth/oidc/callback)
+app.include_router(oidc_router, prefix="/api/v1", tags=["auth"])
+app.include_router(oidc_router, prefix="/api", tags=["auth"], include_in_schema=False)
 
 @app.get("/")
 async def root():

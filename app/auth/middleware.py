@@ -2,9 +2,12 @@
 Authentication Middleware
 
 Provides FastAPI dependencies for route protection:
-- API key authentication
+- API key authentication (X-API-Key header)
+- Keycloak OIDC bearer JWT authentication (Authorization: Bearer ...)
 - Role-based authorization
 - Optional auth for mixed endpoints
+
+Both auth sources return a unified ``AuthUser`` object.
 """
 
 import os
@@ -15,13 +18,24 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import APIKeyHeader
+from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.database import get_session
 from app.db.models import ApiKey, UserApiKey, User
-from app.auth.roles import UserRole, is_admin_path, is_public_path, get_minimum_role_for_method
+from app.auth.roles import (
+    UserRole,
+    is_admin_path,
+    is_public_path,
+    get_minimum_role_for_method,
+    map_keycloak_roles,
+)
+from app.auth.keycloak import (
+    KeycloakValidationError,
+    keycloak_enabled,
+    validate_token as kc_validate_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +45,18 @@ AUTH_HEADER = "X-API-Key"
 # API key header security scheme
 api_key_header = APIKeyHeader(name=AUTH_HEADER, auto_error=False)
 
+# Bearer token security scheme for Keycloak JWTs
+bearer_scheme = HTTPBearer(auto_error=False, bearerFormat="JWT")
+
 # Environment variable for master admin key (for development/bootstrap)
 MASTER_ADMIN_KEY = os.getenv("BRIGADE_ADMIN_KEY", "")
 
 # Allow auth bypass in development mode (DANGEROUS - never in production)
 AUTH_BYPASS_FLAG = os.getenv("AUTH_BYPASS", "false").lower() == "true"
 AUTH_BYPASS_ENABLED = AUTH_BYPASS_FLAG and os.getenv("ENVIRONMENT", "production").lower() == "development"
+
+# Session cookie name set by the OIDC callback route.
+OIDC_SESSION_COOKIE = "brigade_session"
 
 
 @dataclass
@@ -50,6 +70,7 @@ class AuthUser:
     permissions: list = None
     user_id: Optional[str] = None  # User ID if authenticated via user API key
     email: Optional[str] = None  # User email if authenticated via user API key
+    auth_source: str = "api_key"  # api_key | keycloak | session | bypass | public
 
     def __post_init__(self):
         if self.permissions is None:
@@ -87,6 +108,7 @@ async def validate_api_key(
             id="admin",
             role=UserRole.ADMIN,
             key_name="Master Admin Key",
+            auth_source="api_key",
         )
 
     # Hash the key for database lookup
@@ -141,6 +163,7 @@ async def validate_api_key(
                 permissions=permissions,
                 user_id=str(user.id),
                 email=user.email,
+                auth_source="api_key",
             )
 
         # Fall back to agent API keys
@@ -182,6 +205,7 @@ async def validate_api_key(
             key_id=str(db_key.id),
             key_name=db_key.name,
             permissions=permissions,
+            auth_source="api_key",
         )
 
     except Exception as e:
@@ -189,14 +213,98 @@ async def validate_api_key(
         return None
 
 
+async def validate_bearer_token(token: str) -> Optional[AuthUser]:
+    """
+    Validate a Keycloak-issued JWT Bearer token.
+
+    Returns a unified ``AuthUser`` on success, or ``None`` when the token is
+    invalid. Does not raise - callers decide whether to 401.
+    """
+    if not token:
+        return None
+    if not keycloak_enabled():
+        logger.debug("Bearer token presented but BRIGADE_USE_KEYCLOAK is disabled")
+        return None
+    try:
+        kc_user = await kc_validate_token(token)
+    except KeycloakValidationError as exc:
+        logger.warning(f"Keycloak token rejected: {exc}")
+        return None
+    except Exception as exc:  # noqa: BLE001 - defensive
+        logger.error(f"Unexpected error validating Keycloak token: {exc}")
+        return None
+
+    # Combine realm + client roles, realm takes priority in mapping order.
+    role = map_keycloak_roles(kc_user.realm_roles + kc_user.client_roles)
+
+    return AuthUser(
+        id=kc_user.sub,
+        role=role,
+        user_id=kc_user.sub,
+        email=kc_user.email,
+        key_name=kc_user.preferred_username or kc_user.email,
+        permissions=kc_user.realm_roles + kc_user.client_roles,
+        auth_source="keycloak",
+    )
+
+
+def _extract_bearer_token(request: Request, creds: Optional[HTTPAuthorizationCredentials]) -> Optional[str]:
+    """Extract a Bearer token from either the security scheme or a raw header.
+
+    FastAPI's HTTPBearer only parses standard "Bearer" prefix, which is what
+    Keycloak issues. We also fall back to the raw header for robustness.
+    """
+    if creds and creds.scheme and creds.scheme.lower() == "bearer" and creds.credentials:
+        return creds.credentials
+    auth = request.headers.get("Authorization") or request.headers.get("authorization")
+    if auth and auth.lower().startswith("bearer "):
+        return auth.split(" ", 1)[1].strip()
+    return None
+
+
+async def _resolve_user(
+    request: Request,
+    api_key: Optional[str],
+    creds: Optional[HTTPAuthorizationCredentials],
+    session: AsyncSession,
+) -> Optional[AuthUser]:
+    """Try Bearer JWT first, then X-API-Key, then session cookie."""
+    token = _extract_bearer_token(request, creds)
+    if token:
+        user = await validate_bearer_token(token)
+        if user is not None:
+            return user
+        # Bearer present but invalid — do NOT silently fall through to API key
+        # if that would let an attacker probe. But if a client sends BOTH an
+        # invalid bearer and a valid API key, prefer API key (defensive).
+
+    if api_key:
+        user = await validate_api_key(api_key, session)
+        if user is not None:
+            return user
+
+    # Session cookie fallback (set by OIDC callback). The cookie stores the
+    # Keycloak access token directly.
+    cookie_token = request.cookies.get(OIDC_SESSION_COOKIE)
+    if cookie_token:
+        user = await validate_bearer_token(cookie_token)
+        if user is not None:
+            user.auth_source = "session"
+            return user
+
+    return None
+
+
 async def get_current_user(
     request: Request,
     api_key: Annotated[Optional[str], Depends(api_key_header)],
+    creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer_scheme)],
     session: AsyncSession = Depends(get_session),
 ) -> AuthUser:
     """
     Get the current authenticated user. Raises 401 if not authenticated.
 
+    Accepts either ``X-API-Key`` or ``Authorization: Bearer <jwt>`` (Keycloak).
     Use this dependency for protected routes.
     """
     path = request.url.path
@@ -204,23 +312,22 @@ async def get_current_user(
 
     # Allow public paths without auth
     if is_public_path(path):
-        return AuthUser(id="anonymous", role=UserRole.VIEWER)
+        return AuthUser(id="anonymous", role=UserRole.VIEWER, auth_source="public")
 
     # Development bypass (DANGEROUS)
     if AUTH_BYPASS_ENABLED:
         logger.warning("⚠️ AUTH BYPASS ENABLED - DEVELOPMENT MODE ONLY")
-        return AuthUser(id="dev-bypass", role=UserRole.ADMIN)
+        return AuthUser(id="dev-bypass", role=UserRole.ADMIN, auth_source="bypass")
     if AUTH_BYPASS_FLAG:
         logger.error("❌ AUTH_BYPASS=true but ENVIRONMENT!=development - IGNORING")
 
-    # Validate the API key
-    user = await validate_api_key(api_key, session)
+    user = await _resolve_user(request, api_key, creds, session)
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API key",
-            headers={"WWW-Authenticate": f"ApiKey realm=\"{AUTH_HEADER}\""},
+            detail="Invalid or missing credentials (X-API-Key or Bearer token)",
+            headers={"WWW-Authenticate": f"Bearer, ApiKey realm=\"{AUTH_HEADER}\""},
         )
 
     # Check role authorization
@@ -246,6 +353,7 @@ async def get_current_user(
 async def get_current_user_optional(
     request: Request,
     api_key: Annotated[Optional[str], Depends(api_key_header)],
+    creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer_scheme)],
     session: AsyncSession = Depends(get_session),
 ) -> Optional[AuthUser]:
     """
@@ -255,20 +363,17 @@ async def get_current_user_optional(
     """
     if AUTH_BYPASS_ENABLED:
         logger.warning("⚠️ AUTH BYPASS ENABLED - DEVELOPMENT MODE ONLY")
-        return AuthUser(id="dev-bypass", role=UserRole.ADMIN)
+        return AuthUser(id="dev-bypass", role=UserRole.ADMIN, auth_source="bypass")
     if AUTH_BYPASS_FLAG:
         logger.error("❌ AUTH_BYPASS=true but ENVIRONMENT!=development - IGNORING")
 
-    if not api_key:
-        return None
-
-    return await validate_api_key(api_key, session)
+    return await _resolve_user(request, api_key, creds, session)
 
 
 def require_api_key(
     user: Annotated[AuthUser, Depends(get_current_user)]
 ) -> AuthUser:
-    """Dependency that requires a valid API key"""
+    """Dependency that requires a valid API key or Bearer token."""
     return user
 
 
