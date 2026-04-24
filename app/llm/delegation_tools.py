@@ -26,23 +26,46 @@ async def delegate_to_agent_handler(
     agent_id: str,
     task: str,
     context: Optional[str] = None,
+    caller_user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Delegate a task to another Brigade agent and return their response."""
-    logger.info("Delegating to agent '%s': %s", agent_id, task[:100])
+    """Delegate a task to another Brigade agent and return their response.
+
+    ``caller_user_id`` is injected by the tool invocation layer (not by the
+    LLM) when the ``DELEGATE_TO_AGENT_TOOL`` is registered with
+    ``needs_caller_context=True``. Forwarding it in the downstream request
+    body preserves memory isolation and RBAC through delegation chains: the
+    delegated agent sees the real caller, not the service key identity.
+    """
+    logger.info(
+        "Delegating to agent '%s' (caller=%s): %s",
+        agent_id,
+        caller_user_id or "(none)",
+        task[:100],
+    )
 
     message = task
     if context:
         message = f"Context: {context}\n\nTask: {task}"
 
+    body: Dict[str, Any] = {"message": message}
+    if caller_user_id:
+        body["user_id"] = caller_user_id
+
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
+            headers = {
+                "Content-Type": "application/json",
+                "X-API-Key": BRIGADE_API_KEY,
+            }
+            if caller_user_id:
+                # Explicit header in addition to body user_id so the chat
+                # endpoint has an unambiguous "this call was delegated on
+                # behalf of user X" signal for logging / auditing.
+                headers["X-Delegate-User"] = caller_user_id
             resp = await client.post(
                 f"{BRIGADE_API_URL}/api/v1/agents/{agent_id}/chat",
-                headers={
-                    "Content-Type": "application/json",
-                    "X-API-Key": BRIGADE_API_KEY,
-                },
-                json={"message": message},
+                headers=headers,
+                json=body,
             )
 
             if resp.status_code == 200:
@@ -105,4 +128,8 @@ DELEGATE_TO_AGENT_TOOL = ToolDefinition(
         ),
     ],
     handler=delegate_to_agent_handler,
+    # The tool invocation layer injects the authenticated caller's user_id as
+    # ``caller_user_id`` — NOT an LLM-visible parameter. The LLM only sees
+    # agent_id, task, context in its function schema.
+    needs_caller_context=True,
 )

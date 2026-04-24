@@ -30,6 +30,12 @@ from app.orchestration import (
 )
 from app.observability import get_tracer
 from app.agents.deep_research import DeepResearchAgent, ResearchDepth
+from app.integrations.lago import (
+    emit_ai_api_call,
+    estimate_local_cost,
+    is_local_route,
+)
+from app.integrations.ops_center_billing import get_billing_state
 import asyncio
 
 import re as _re
@@ -55,9 +61,207 @@ def init_agent_routes(client: OpsCenterLLMClient, memory=None):
     memory_manager = memory
 
 
-def _ensure_agent_access(user: AuthUser, agent_id: str) -> None:
+async def _log_rbac_denial(
+    session: AsyncSession,
+    user: AuthUser,
+    agent_id: str,
+    reason: str,
+    policy_snapshot,
+    request_path: str = "",
+) -> None:
+    """Record a denial to the rbac_denials audit table. Non-fatal — never raises."""
+    try:
+        from sqlalchemy import text
+        from app.auth.roles import derive_user_tier
+        email = (getattr(user, "email", "") or "") or ""
+        tier = derive_user_tier(email, user.role)
+        role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
+        await session.execute(
+            text("""
+                INSERT INTO rbac_denials
+                (user_id, user_email, user_role, user_tier, agent_id, reason,
+                 policy_snapshot, auth_source, request_path)
+                VALUES (:uid, :email, :role, :tier, :aid, :reason, :policy, :src, :path)
+            """),
+            {
+                "uid": str(getattr(user, "user_id", "") or user.id),
+                "email": email,
+                "role": role_val,
+                "tier": tier,
+                "aid": agent_id,
+                "reason": reason,
+                "policy": json.dumps(policy_snapshot) if policy_snapshot is not None else None,
+                "src": getattr(user, "auth_source", None),
+                "path": request_path[:500],
+            },
+        )
+        await session.commit()
+    except Exception as _e:
+        logger.debug(f"rbac_denials insert failed: {_e}")
+
+
+async def _ensure_agent_access_audited(
+    session: AsyncSession,
+    user: AuthUser,
+    agent_id: str,
+    agent: Optional[dict],
+    request_path: str = "",
+    user_attrs: Optional[dict] = None,
+) -> None:
+    """Call _ensure_agent_access; on a 403 denial, record to rbac_denials and re-raise.
+
+    Use this in user-facing chat/action endpoints. The raw sync helper is
+    kept for lightweight pre-checks and for paths where the audit table
+    isn't warranted (e.g. internal listings).
+    """
+    try:
+        _ensure_agent_access(user, agent_id, agent, user_attrs=user_attrs)
+    except HTTPException as e:
+        if e.status_code == 403:
+            detail = e.detail if isinstance(e.detail, dict) else {}
+            reason = detail.get("reason") if isinstance(detail, dict) else None
+            if not reason:
+                reason = "service-key-binding" if agent is None else "policy-denied"
+            policy = detail.get("policy") if isinstance(detail, dict) else None
+            if policy is None and agent is not None:
+                policy = agent.get("accessPolicy")
+            await _log_rbac_denial(session, user, agent_id, reason, policy, request_path)
+        raise
+
+
+def _ensure_agent_access(
+    user: AuthUser,
+    agent_id: str,
+    agent: Optional[dict] = None,
+    user_attrs: Optional[dict] = None,
+) -> None:
+    """Two-layer access check:
+      1) Service-key binding (existing): service keys bound to a specific
+         agent only talk to that agent.
+      2) Per-agent RBAC policy: ``agents.access_policy`` gates access by
+         user email / tier / org / payment status. Admins bypass.
+
+    ``user_attrs`` is passed through to ``evaluate_agent_access`` so policies
+    like ``{"paid_only": true}`` can be resolved. See ``_fetch_user_attrs``.
+
+    On denial, raises HTTPException 403. Caller is responsible for audit
+    logging (see ``_log_rbac_denial``) since this helper is sync.
+    """
     if not user.can_access_agent(agent_id):
         raise HTTPException(status_code=403, detail="Access to agent denied")
+    if agent is not None:
+        from app.auth.roles import evaluate_agent_access, derive_user_tier
+        email = (getattr(user, "email", "") or "") or ""
+        tier = derive_user_tier(email, user.role)
+        allowed, reason = evaluate_agent_access(
+            user_email=email,
+            user_role=user.role,
+            user_tier=tier,
+            access_policy=agent.get("accessPolicy"),
+            user_attrs=user_attrs,
+        )
+        if not allowed:
+            # Attach reason + policy for the caller to audit-log after the raise
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "message": f"Agent '{agent_id}' is restricted",
+                    "reason": reason,
+                    "policy": agent.get("accessPolicy"),
+                },
+            )
+
+
+# ---------------------------------------------------------------------------
+# Phase 7: billing preflight + metering
+# ---------------------------------------------------------------------------
+
+async def _fetch_user_attrs(user: AuthUser) -> tuple:
+    """Return ``(user_attrs, billing_state)`` for a Brigade chat caller.
+
+    Admins short-circuit to a ``paid=True`` stub so they never 402 or get
+    filtered by ``{"paid_only": true}`` policies. For everyone else we hit
+    Ops-Center's ``/api/v1/billing/state`` (cached 30s) and project the
+    result into the attrs dict consumed by ``evaluate_agent_access``.
+    """
+    if not user or user.role == UserRole.ADMIN:
+        return {"paid": True}, {
+            "paid": True,
+            "credits_remaining": float("inf"),
+            "subscription_tier": "admin",
+        }
+    email = (getattr(user, "email", "") or "").lower()
+    if not email:
+        return {"paid": False}, {
+            "paid": False,
+            "credits_remaining": 0.0,
+            "subscription_tier": None,
+        }
+    state = await get_billing_state(email)
+    return {"paid": bool(state.get("paid"))}, state
+
+
+def _enforce_billing_or_402(user: AuthUser, billing_state: dict) -> None:
+    """Raise 402 if a non-admin user has no credits and no paid subscription.
+
+    This is the ONLY place Brigade enforces billing. If Ops-Center returned
+    an "unknown" state (lookup failed), ``credits_remaining`` will be 0 and
+    ``paid`` will be False — which fail-safes to "block" for non-admins.
+    """
+    if not user or user.role == UserRole.ADMIN:
+        return
+    credits = float(billing_state.get("credits_remaining") or 0)
+    paid = bool(billing_state.get("paid"))
+    if credits <= 0 and not paid:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "payment_required",
+                "message": (
+                    "You are out of credits. Add credits or upgrade to a paid "
+                    "plan to continue chatting."
+                ),
+                "credits_remaining": credits,
+                "subscription_tier": billing_state.get("subscription_tier"),
+                "paid": paid,
+            },
+        )
+
+
+async def _meter_chat_to_lago(
+    user_email: Optional[str],
+    model: Optional[str],
+    response_dict: Optional[dict],
+) -> None:
+    """Best-effort: emit a single ``ai_api_call`` event for a completed chat.
+
+    Skips cloud-routed calls (LiteLLM / OpenRouter emit their own events)
+    and no-ops when usage is missing. Never raises.
+    """
+    if not user_email or not response_dict:
+        return
+    provider = response_dict.get("provider")
+    usage = response_dict.get("usage") or {}
+    total_tokens = int(
+        usage.get("total_tokens")
+        or (usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0)
+        or 0
+    )
+    if total_tokens <= 0:
+        return
+    model_used = response_dict.get("model") or model
+    if not is_local_route(provider, model_used):
+        return
+    cost = estimate_local_cost(total_tokens)
+    try:
+        await emit_ai_api_call(
+            user=user_email,
+            model=model_used or "unknown",
+            tokens=total_tokens,
+            cost=cost,
+        )
+    except Exception as e:
+        logger.debug(f"Lago emission failed (ignored): {e}")
 
 
 # ---- Pydantic Models ----
@@ -101,6 +305,7 @@ class AgentUpdateRequest(BaseModel):
     temperature: Optional[float] = None
     maxTokens: Optional[int] = None
     tools: Optional[List[str]] = None
+    accessPolicy: Optional[Dict[str, Any]] = None
 
 
 class ChatRequest(BaseModel):
@@ -149,13 +354,29 @@ async def list_agents(
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
-    """List all agents."""
+    """List all agents visible to the caller (per-agent access_policy enforced)."""
     repo = AgentRepository(session)
     if user and user.role != UserRole.ADMIN and user.agent_id:
         agent = await repo.get(user.agent_id)
         agents = [agent] if agent else []
     else:
         agents = await repo.list_all()
+
+    # Apply per-agent RBAC. Admins see everything; others filtered by policy.
+    if user and user.role != UserRole.ADMIN:
+        from app.auth.roles import can_user_access_agent, derive_user_tier
+        email = (getattr(user, "email", "") or "") or ""
+        tier = derive_user_tier(email, user.role)
+        agents = [
+            a for a in agents
+            if can_user_access_agent(
+                user_email=email,
+                user_role=user.role,
+                user_tier=tier,
+                access_policy=a.get("accessPolicy"),
+            )
+        ]
+
     for agent in agents:
         agent.setdefault("_count", {"messages": 0, "tasks": 0, "apiKeys": 0})
         agent.setdefault("agentTools", [])
@@ -227,9 +448,13 @@ async def update_agent(
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_admin)] = None,
 ):
-    """Update an existing agent."""
+    """Update an existing agent.
+
+    Uses ``exclude_unset`` so callers can explicitly set a nullable field
+    back to None (e.g. clearing accessPolicy). Fields not sent stay untouched.
+    """
     repo = AgentRepository(session)
-    updates = request.model_dump(exclude_none=True)
+    updates = request.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     agent = await repo.update(agent_id, updates)
@@ -303,6 +528,11 @@ async def chat_with_agent(
     """Chat with a specific agent. Supports function calling when agent has tools."""
     _ensure_agent_access(user, agent_id)
 
+    # Phase 7: fetch billing state once per request, 402 out-of-credits non-admins,
+    # and carry the paid signal into per-agent RBAC.
+    user_attrs, billing_state = await _fetch_user_attrs(user)
+    _enforce_billing_or_402(user, billing_state)
+
     # Memory isolation: non-admin users cannot spoof user_id. Force it to their
     # authenticated identity. Admins may pass user_id explicitly (for delegation,
     # batch ops, admin tooling, etc.).
@@ -316,6 +546,13 @@ async def chat_with_agent(
     agent = await repo.get(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    # Per-agent RBAC (with audit logging on denial)
+    await _ensure_agent_access_audited(
+        session, user, agent_id, agent,
+        request_path=f"POST /api/v1/agents/{agent_id}/chat",
+        user_attrs=user_attrs,
+    )
 
     # Build system message from agent config
     system_parts = []
@@ -367,9 +604,16 @@ async def chat_with_agent(
     # Resolve agent tools
     agent_tools = get_tools_for_agent(agent)
 
+    # User email for Phase 7 Lago metering; safe for admin/anonymous (empty string)
+    user_email_for_metering = (getattr(user, "email", "") or "").lower()
+
     if request.stream:
         return StreamingResponse(
-            _stream_chat(messages, model, temperature, max_tokens, agent, request.user_id, agent_tools, session),
+            _stream_chat(
+                messages, model, temperature, max_tokens, agent,
+                request.user_id, agent_tools, session,
+                user_email=user_email_for_metering,
+            ),
             media_type="text/event-stream"
         )
 
@@ -588,6 +832,10 @@ async def chat_with_agent(
             except Exception as mem_err:
                 logger.warning(f"Memory store failed: {mem_err}")
 
+        # Phase 7: meter local-GPU calls to Lago. Cloud-routed calls (ops-center
+        # → LiteLLM, or direct OpenRouter BYOK) are metered elsewhere.
+        await _meter_chat_to_lago(user_email_for_metering, model, result)
+
         return result
 
     except Exception as e:
@@ -600,7 +848,10 @@ async def chat_with_agent(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _stream_chat(messages, model, temperature, max_tokens, agent, user_id, agent_tools, session):
+async def _stream_chat(
+    messages, model, temperature, max_tokens, agent, user_id, agent_tools, session,
+    user_email: Optional[str] = None,
+):
     """SSE streaming chat generator with function calling support."""
     try:
         tool_names = [t.name for t in agent_tools] if agent_tools else []
@@ -685,6 +936,15 @@ async def _stream_chat(messages, model, temperature, max_tokens, agent, user_id,
             yield f"data: {json.dumps({'type': 'complete', 'content': content, 'model': model, 'toolCalls': tool_calls_log})}\n\n"
             yield "data: [DONE]\n\n"
 
+            # Phase 7: meter the tool-loop response (has real usage dict)
+            await _meter_chat_to_lago(
+                user_email, model, {
+                    "model": response.get("model", model),
+                    "provider": response.get("provider"),
+                    "usage": response.get("usage", {}),
+                }
+            )
+
         else:
             # No tools — stream directly from LLM
             accumulated = ""
@@ -707,6 +967,23 @@ async def _stream_chat(messages, model, temperature, max_tokens, agent, user_id,
 
             yield f"data: {json.dumps({'type': 'complete', 'content': accumulated, 'model': model})}\n\n"
             yield "data: [DONE]\n\n"
+
+            # Phase 7: meter the streamed response. chat_completion_stream doesn't
+            # surface token counts reliably, so we estimate from the prompt +
+            # accumulated reply (~4 chars/token) to keep something flowing into
+            # Lago. Cloud-routed streams are skipped by is_local_route().
+            try:
+                prompt_chars = sum(len((m or {}).get("content", "") or "") for m in (messages or []))
+                est_tokens = max(1, (prompt_chars + len(accumulated)) // 4)
+                await _meter_chat_to_lago(
+                    user_email, model, {
+                        "model": model,
+                        "provider": None,
+                        "usage": {"total_tokens": est_tokens},
+                    }
+                )
+            except Exception as _meter_err:
+                logger.debug(f"Stream meter estimate failed: {_meter_err}")
 
     except Exception as e:
         logger.error(f"Stream error: {e}")
@@ -927,6 +1204,11 @@ async def chat_with_agent_local(
     """
     _ensure_agent_access(user, agent_id)
 
+    # Phase 7: billing preflight + user_attrs for RBAC (MLX is a local path;
+    # without a billing check free users could burn GPU indefinitely).
+    user_attrs, billing_state = await _fetch_user_attrs(user)
+    _enforce_billing_or_402(user, billing_state)
+
     # Memory isolation: non-admin users cannot spoof user_id. Force it to their
     # authenticated identity. Admins may pass user_id explicitly (for delegation,
     # batch ops, admin tooling, etc.).
@@ -940,6 +1222,13 @@ async def chat_with_agent_local(
     agent = await repo.get(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    # Per-agent RBAC (with audit logging on denial)
+    await _ensure_agent_access_audited(
+        session, user, agent_id, agent,
+        request_path=f"POST /api/v1/agents/{agent_id}/chat/local",
+        user_attrs=user_attrs,
+    )
 
     # Build system message
     system_parts = []
@@ -1021,6 +1310,10 @@ async def chat_with_agent_local(
 
         if tool_calls_log:
             result["toolCalls"] = tool_calls_log
+
+        # Phase 7: MLX is always a local path — meter to Lago.
+        _mlx_user_email = (getattr(user, "email", "") or "").lower()
+        await _meter_chat_to_lago(_mlx_user_email, request.model, result)
 
         return result
 
@@ -1310,4 +1603,115 @@ async def get_research_session(
         "created_at": session.created_at.isoformat(),
         "completed_at": session.completed_at.isoformat() if session.completed_at else None,
         "error": session.error,
+    }
+
+
+# ---- Admin: RBAC audit log ----
+
+@router.get("/admin/rbac/denials")
+async def list_rbac_denials(
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+    limit: int = 100,
+    agent_id: Optional[str] = None,
+    user_email: Optional[str] = None,
+):
+    """Recent RBAC denials. Admin only.
+
+    Supports optional filtering by ``agent_id`` or ``user_email``. Newest first.
+    """
+    from sqlalchemy import text
+    clauses = []
+    params: Dict[str, Any] = {"limit": max(1, min(1000, limit))}
+    if agent_id:
+        clauses.append("agent_id = :aid")
+        params["aid"] = agent_id
+    if user_email:
+        clauses.append("LOWER(user_email) = LOWER(:em)")
+        params["em"] = user_email
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    sql = f"""
+        SELECT id, user_id, user_email, user_role, user_tier, agent_id,
+               reason, policy_snapshot, auth_source, request_path, denied_at
+        FROM rbac_denials
+        {where}
+        ORDER BY denied_at DESC
+        LIMIT :limit
+    """
+    result = await session.execute(text(sql), params)
+    rows = result.mappings().all()
+    return {
+        "denials": [
+            {
+                "id": str(r["id"]),
+                "user_id": r["user_id"],
+                "user_email": r["user_email"],
+                "user_role": r["user_role"],
+                "user_tier": r["user_tier"],
+                "agent_id": r["agent_id"],
+                "reason": r["reason"],
+                "policy_snapshot": r["policy_snapshot"],
+                "auth_source": r["auth_source"],
+                "request_path": r["request_path"],
+                "denied_at": r["denied_at"].isoformat() + "Z" if r["denied_at"] else None,
+            }
+            for r in rows
+        ],
+        "count": len(rows),
+    }
+
+
+@router.get("/admin/activity/conversations")
+async def list_conversations_for_user(
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+    user_id: Optional[str] = None,
+    since: Optional[str] = None,
+    limit: int = 100,
+):
+    """Admin: list conversations for a given user_id (email or UUID).
+
+    Used by Ops Center's activity aggregator to show per-user chat history.
+    ``since`` is an ISO timestamp; defaults to 7 days ago.
+    """
+    from sqlalchemy import text
+    from datetime import datetime, timedelta
+    if not user_id:
+        return {"conversations": [], "count": 0}
+    since_dt = None
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace("Z", ""))
+        except Exception:
+            since_dt = None
+    if since_dt is None:
+        since_dt = datetime.utcnow() - timedelta(days=7)
+
+    sql = """
+        SELECT id, agent_id, user_id, title, model, status,
+               message_count, total_tokens, created_at, updated_at
+        FROM conversations
+        WHERE user_id = :uid AND created_at >= :since
+        ORDER BY created_at DESC
+        LIMIT :lim
+    """
+    result = await session.execute(text(sql), {"uid": user_id, "since": since_dt, "lim": max(1, min(500, limit))})
+    rows = result.mappings().all()
+    return {
+        "conversations": [
+            {
+                "id": str(r["id"]),
+                "agent_id": r["agent_id"],
+                "user_id": r["user_id"],
+                "title": r["title"],
+                "model": r["model"],
+                "status": r["status"],
+                "message_count": r["message_count"] or 0,
+                "total_tokens": r["total_tokens"] or 0,
+                "created_at": r["created_at"].isoformat() + "Z" if r["created_at"] else None,
+                "updated_at": r["updated_at"].isoformat() + "Z" if r["updated_at"] else None,
+            }
+            for r in rows
+        ],
+        "count": len(rows),
     }

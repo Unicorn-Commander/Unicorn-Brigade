@@ -83,13 +83,33 @@ async def list_models(
     """OpenAI-compatible model listing. Each Brigade agent appears as a model."""
     # Accept admin key OR user API key (Bearer or X-API-Key).
     from app.auth.middleware import validate_api_key
+    from app.auth.roles import can_user_access_agent, derive_user_tier, UserRole as _UserRole
     provided = x_api_key
     if not provided and authorization and authorization.startswith("Bearer "):
         provided = authorization[len("Bearer "):]
-    if not provided or not await validate_api_key(provided, session):
+    if not provided:
         raise HTTPException(status_code=401, detail="Invalid API key")
+    auth_user = await validate_api_key(provided, session)
+    if not auth_user:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
     repo = AgentRepository(session)
     agents = await repo.list_all()
+
+    # Filter by per-agent access_policy. Admins see everything.
+    if auth_user.role != _UserRole.ADMIN:
+        _email = (getattr(auth_user, "email", "") or "") or ""
+        _tier = derive_user_tier(_email, auth_user.role)
+        agents = [
+            a for a in agents
+            if can_user_access_agent(
+                user_email=_email,
+                user_role=auth_user.role,
+                user_tier=_tier,
+                access_policy=a.get("accessPolicy"),
+            )
+        ]
+
     now = int(time.time())
     data = []
     for a in agents:
@@ -188,6 +208,15 @@ async def openai_chat_completions(
         model=None,  # let the agent's configured model win
     )
 
+    # Streaming path (enhanced mode only, no client tools)
+    if request.stream:
+        return await _enhanced_stream_chat(
+            request=request,
+            session=session,
+            auth_user=auth_user,
+            agent_id=agent_id,
+        )
+
     try:
         brigade_resp = await chat_with_agent(
             agent_id=agent_id,
@@ -266,6 +295,35 @@ async def _passthrough_chat(
     agent = await repo.get(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    # --- Phase 7: billing preflight + user_attrs (for paid_only policies) ---
+    from app.api.agent_routes import _fetch_user_attrs, _enforce_billing_or_402
+    _user_attrs, _billing_state = await _fetch_user_attrs(auth_user)
+    _enforce_billing_or_402(auth_user, _billing_state)
+
+    # --- Per-agent RBAC policy (with audit) ---
+    from app.auth.roles import evaluate_agent_access, derive_user_tier
+    _email = (getattr(auth_user, "email", "") or "") or ""
+    _tier = derive_user_tier(_email, auth_user.role)
+    _allowed, _reason = evaluate_agent_access(
+        user_email=_email,
+        user_role=auth_user.role,
+        user_tier=_tier,
+        access_policy=agent.get("accessPolicy"),
+        user_attrs=_user_attrs,
+    )
+    if not _allowed:
+        # Audit the denial
+        try:
+            from app.api.agent_routes import _log_rbac_denial as _audit_denial
+            await _audit_denial(
+                session, auth_user, agent_id, _reason,
+                agent.get("accessPolicy"),
+                request_path=f"POST /api/v1/openai/v1/chat/completions [{agent_id}]",
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=403, detail=f"Agent '{agent_id}' is restricted")
 
     # --- Enforce memory isolation ---
     effective_user_id = request.user
@@ -415,6 +473,22 @@ async def _passthrough_chat(
     # "the-general" not "gpu1-gemma-4-26B-...".
     if "model" in raw:
         raw["model"] = agent_id
+
+    # --- Phase 7: meter local-GPU passthrough chats to Lago ---
+    try:
+        from app.api.agent_routes import _meter_chat_to_lago as _meter
+        _user_email = (getattr(auth_user, "email", "") or "").lower()
+        _usage = raw.get("usage") or {}
+        _meter_payload = {
+            "model": resolved_model,
+            # route_type correlates 1:1 with is_local_route's expectations
+            "provider": route_type,
+            "usage": _usage,
+        }
+        await _meter(_user_email, resolved_model, _meter_payload)
+    except Exception as _meter_err:
+        logger.debug(f"passthrough meter skipped: {_meter_err}")
+
     return raw
 
 
@@ -445,8 +519,39 @@ async def _dual_layer_chat(
     import time as _time
     import uuid as _uuid
     import asyncio as _asyncio
-    from app.auth.roles import UserRole as _UserRole
+    from app.auth.roles import UserRole as _UserRole, evaluate_agent_access, derive_user_tier
     from app.llm.tool_resolver import get_tool_by_name
+    from app.api.agent_routes import (
+        _fetch_user_attrs,
+        _enforce_billing_or_402,
+        _log_rbac_denial as _audit_denial,
+        _meter_chat_to_lago,
+    )
+
+    # --- Phase 7: billing preflight + user_attrs ---
+    _user_attrs, _billing_state = await _fetch_user_attrs(auth_user)
+    _enforce_billing_or_402(auth_user, _billing_state)
+
+    # --- Per-agent RBAC policy (with audit) ---
+    _email = (getattr(auth_user, "email", "") or "") or ""
+    _tier = derive_user_tier(_email, auth_user.role)
+    _allowed, _reason = evaluate_agent_access(
+        user_email=_email,
+        user_role=auth_user.role,
+        user_tier=_tier,
+        access_policy=agent.get("accessPolicy"),
+        user_attrs=_user_attrs,
+    )
+    if not _allowed:
+        try:
+            await _audit_denial(
+                session, auth_user, agent["id"], _reason,
+                agent.get("accessPolicy"),
+                request_path=f"POST /api/v1/openai/v1/chat/completions [{agent['id']}] (dual-layer)",
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=403, detail=f"Agent '{agent['id']}' is restricted")
 
     # --- Identity + memory isolation ---
     effective_user_id = request.user
@@ -604,6 +709,18 @@ async def _dual_layer_chat(
                 logger.warning(f"dual-layer memory store dispatch failed: {e}")
             if "model" in raw:
                 raw["model"] = agent["id"]
+            # Phase 7: meter local-GPU calls. _meter_chat_to_lago was imported
+            # at the top of this function along with _fetch_user_attrs.
+            try:
+                _user_email = (getattr(auth_user, "email", "") or "").lower()
+                _usage = raw.get("usage") or {}
+                _route_hint = raw.get("provider") or raw.get("model")
+                await _meter_chat_to_lago(
+                    _user_email, raw.get("model"),
+                    {"model": raw.get("model"), "provider": _route_hint, "usage": _usage},
+                )
+            except Exception as _me:
+                logger.debug(f"dual-layer meter skipped: {_me}")
             return raw
 
         # Classify tool calls
@@ -623,6 +740,18 @@ async def _dual_layer_chat(
             # tool results, and the next iteration will see them.
             if "model" in raw:
                 raw["model"] = agent["id"]
+            # Phase 7: meter local-GPU calls. _meter_chat_to_lago was imported
+            # at the top of this function along with _fetch_user_attrs.
+            try:
+                _user_email = (getattr(auth_user, "email", "") or "").lower()
+                _usage = raw.get("usage") or {}
+                _route_hint = raw.get("provider") or raw.get("model")
+                await _meter_chat_to_lago(
+                    _user_email, raw.get("model"),
+                    {"model": raw.get("model"), "provider": _route_hint, "usage": _usage},
+                )
+            except Exception as _me:
+                logger.debug(f"dual-layer meter skipped: {_me}")
             return raw
 
         # Only server calls — execute locally and loop
@@ -644,7 +773,10 @@ async def _dual_layer_chat(
             tool_content = ""
             try:
                 if tool and tool.handler:
-                    result = await tool.handler(**args) if _asyncio.iscoroutinefunction(tool.handler) else tool.handler(**args)
+                    call_args = dict(args) if isinstance(args, dict) else {}
+                    if getattr(tool, "needs_caller_context", False):
+                        call_args["caller_user_id"] = effective_user_id
+                    result = await tool.handler(**call_args) if _asyncio.iscoroutinefunction(tool.handler) else tool.handler(**call_args)
                     tool_content = _json.dumps(result) if not isinstance(result, str) else result
                 else:
                     tool_content = _json.dumps({"error": f"unknown tool {name}"})
@@ -664,5 +796,240 @@ async def _dual_layer_chat(
     raise HTTPException(
         status_code=500,
         detail=f"dual-layer loop exceeded {MAX_SERVER_ITERATIONS} server iterations without terminating",
+    )
+
+
+async def _enhanced_stream_chat(
+    request: "OpenAIChatRequest",
+    session: AsyncSession,
+    auth_user: Any,
+    agent_id: str,
+):
+    """Stream a Brigade agent response as OpenAI-format SSE chunks.
+
+    Used for chat UIs (LibreChat, custom clients) that want token-by-token
+    output. Persona + memory are injected just like enhanced mode, but the
+    LLM is called with stream=True and chunks are translated to the OpenAI
+    Chat Completions streaming format:
+
+        data: {"id":"...","choices":[{"delta":{"content":"hi"},"index":0}]}\n\n
+        ...
+        data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}]}\n\n
+        data: [DONE]\n\n
+    """
+    import json as _json
+    import time as _time
+    import uuid as _uuid
+    import asyncio as _asyncio
+    from fastapi.responses import StreamingResponse
+    from app.db.repositories import AgentRepository
+    from app.auth.roles import UserRole as _UserRole
+
+    # Fetch agent
+    repo = AgentRepository(session)
+    agent = await repo.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    # Identity + memory isolation
+    effective_user_id = request.user
+    if auth_user and auth_user.role != _UserRole.ADMIN:
+        effective_user_id = auth_user.user_id or auth_user.id
+    if not effective_user_id or effective_user_id in ("admin", "dev-bypass", "anonymous"):
+        effective_user_id = auth_user.user_id or auth_user.id or "anonymous"
+
+    # Build system prompt with persona + memory
+    system_parts = []
+    if agent.get("persona"):
+        system_parts.append(agent["persona"])
+    if agent.get("systemPrompt"):
+        system_parts.append(agent["systemPrompt"])
+
+    try:
+        from app.main import memory_manager as _mm
+    except Exception:
+        _mm = None
+
+    if _mm and effective_user_id and effective_user_id != "anonymous":
+        try:
+            latest_user = next(
+                (m.content for m in reversed(request.messages) if m.role == "user"),
+                "",
+            )
+            recalled = await _mm.retrieve(
+                user_id=effective_user_id,
+                query=latest_user,
+                agent_id=agent["id"],
+                limit=5,
+            )
+            if recalled:
+                lines = []
+                for m in recalled:
+                    txt = m.get("memory") or m.get("text") or m.get("content") or ""
+                    if txt:
+                        lines.append(f"- {txt}")
+                if lines:
+                    system_parts.append(
+                        "## Relevant context from prior conversations with this user:\n"
+                        + "\n".join(lines)
+                    )
+        except Exception as e:
+            logger.warning(f"stream memory retrieve failed: {e}")
+
+    system_content = "\n\n".join(system_parts) if system_parts else (
+        f"You are {agent.get('displayName', agent['name'])}, a specialized AI agent."
+    )
+
+    llm_messages = [{"role": "system", "content": system_content}]
+    for m in request.messages:
+        if m.role == "system":
+            continue
+        llm_messages.append({"role": m.role, "content": m.content})
+
+    # Resolve LLM endpoint
+    from app.api.agent_routes import llm_client as _llm_client
+    if _llm_client is None:
+        raise HTTPException(status_code=503, detail="LLM client not initialized")
+    model = agent.get("model") or "default"
+    temperature = request.temperature if request.temperature is not None else agent.get("temperature", 0.7)
+    max_tokens = request.max_tokens or agent.get("maxTokens", 2000)
+
+    target_url, resolved_model, route_type = _llm_client._resolve_local_model(model)
+    if route_type == "local":
+        endpoint = f"{target_url}/v1/chat/completions"
+        headers = {"Content-Type": "application/json"}
+    elif route_type == "direct":
+        endpoint = target_url
+        headers = {"Content-Type": "application/json"}
+    elif route_type == "openrouter":
+        import os as _os
+        endpoint = f"{target_url}/chat/completions"
+        headers = {"Authorization": f"Bearer {_os.getenv('OPENROUTER_API_KEY','')}", "Content-Type": "application/json"}
+    else:
+        endpoint = f"{target_url}/api/v1/llm/chat/completions"
+        headers = {"Authorization": f"Bearer {_llm_client.service_key}", "Content-Type": "application/json"}
+        if effective_user_id and effective_user_id not in ("anonymous","dev-bypass",""):
+            headers["X-User-ID"] = effective_user_id
+
+    payload = {
+        "model": resolved_model,
+        "messages": llm_messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    chat_id = f"chatcmpl-brigade-{_uuid.uuid4().hex[:12]}"
+    created = int(_time.time())
+    full_text_buffer: list[str] = []  # for memory store after stream completes
+
+    async def _gen():
+        # Strip <think>...</think> tags from streamed text. We hold the buffer
+        # until we know we're not inside a thinking block.
+        in_think = False
+        carry = ""
+        try:
+            async with _llm_client.client.stream("POST", endpoint, json=payload, headers=headers) as resp:
+                if resp.status_code >= 400:
+                    error_body = await resp.aread()
+                    error_text = error_body.decode("utf-8", errors="replace")[:500]
+                    err_chunk = {
+                        "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
+                        "choices": [{"index": 0, "delta": {"content": f"[Brigade upstream error {resp.status_code}: {error_text}]"}, "finish_reason": "stop"}],
+                    }
+                    yield f"data: {_json.dumps(err_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+
+                async for line in resp.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        upstream = _json.loads(data_str)
+                    except Exception:
+                        continue
+                    choice = (upstream.get("choices") or [{}])[0]
+                    delta_content = (choice.get("delta") or {}).get("content")
+                    if delta_content is None:
+                        continue
+                    # Handle <think> tag stripping across chunk boundaries
+                    chunk = carry + delta_content
+                    carry = ""
+                    out = ""
+                    i = 0
+                    while i < len(chunk):
+                        if not in_think:
+                            tag = chunk.find("<think>", i)
+                            if tag == -1:
+                                # Could still be in middle of "<think" partial
+                                if "<th" in chunk[max(i, len(chunk)-7):]:
+                                    safe_to = max(i, len(chunk)-7)
+                                    out += chunk[i:safe_to]
+                                    carry = chunk[safe_to:]
+                                else:
+                                    out += chunk[i:]
+                                break
+                            out += chunk[i:tag]
+                            in_think = True
+                            i = tag + len("<think>")
+                        else:
+                            end = chunk.find("</think>", i)
+                            if end == -1:
+                                if "</thi" in chunk[max(i, len(chunk)-8):]:
+                                    carry = chunk[max(i, len(chunk)-8):]
+                                break
+                            in_think = False
+                            i = end + len("</think>")
+                    if not out:
+                        continue
+                    full_text_buffer.append(out)
+                    out_chunk = {
+                        "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
+                        "choices": [{"index": 0, "delta": {"content": out}, "finish_reason": None}],
+                    }
+                    yield f"data: {_json.dumps(out_chunk)}\n\n"
+
+                # Final stop chunk
+                final = {
+                    "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                }
+                yield f"data: {_json.dumps(final)}\n\n"
+                yield "data: [DONE]\n\n"
+
+                # Store memory of the exchange in the background
+                full_text = "".join(full_text_buffer).strip()
+                latest_user_msg = next(
+                    (m.content for m in reversed(request.messages) if m.role == "user"),
+                    None,
+                )
+                if _mm and effective_user_id and effective_user_id != "anonymous" and latest_user_msg and full_text:
+                    _asyncio.create_task(
+                        _mm.store(
+                            user_id=effective_user_id,
+                            agent_id=agent["id"],
+                            messages=[
+                                {"role": "user", "content": latest_user_msg},
+                                {"role": "assistant", "content": full_text},
+                            ],
+                            metadata={"model": model, "mode": "stream"},
+                        )
+                    )
+        except Exception as e:
+            logger.error(f"stream error: {e}")
+            err_chunk = {
+                "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
+                "choices": [{"index": 0, "delta": {"content": f"[stream error: {e}]"}, "finish_reason": "stop"}],
+            }
+            yield f"data: {_json.dumps(err_chunk)}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 

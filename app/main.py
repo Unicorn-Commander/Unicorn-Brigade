@@ -18,11 +18,13 @@ from app.stores.model_catalog import ModelCatalog
 from app.llm.ops_center_client import OpsCenterLLMClient
 from app.api.agent_routes import router as agent_router, init_agent_routes
 from app.api.openai_compat_routes import router as openai_compat_router
+from app.api.welcome_route import router as welcome_router
 from app.api.memory_inspector_routes import router as memory_inspector_router, init_memory_routes as init_memory_inspector
 from app.api.tool_routes import router as tool_router
 from app.api.system_routes import router as system_router, init_system_routes
 from app.api.builder_routes import router as builder_router, init_builder_routes
 from app.api.apikey_routes import router as apikey_router
+from app.api.admin_keys_routes import router as admin_keys_router
 from app.api.conversation_routes import router as conversation_router
 from app.api.mcp_routes import router as mcp_router
 from app.api.a2a_routes import router as a2a_router, init_a2a_routes
@@ -207,11 +209,13 @@ app.add_middleware(
 app.include_router(router, prefix="/api/v1", tags=["core"])
 app.include_router(agent_router, prefix="/api/v1", tags=["agents"])
 app.include_router(openai_compat_router, prefix="/api/v1/openai/v1", tags=["openai-compat"])
+app.include_router(welcome_router, tags=["welcome"])
 app.include_router(memory_inspector_router, tags=["memory-inspector"])
 app.include_router(tool_router, prefix="/api/v1", tags=["tools"])
 app.include_router(system_router, prefix="/api/v1", tags=["system"])
 app.include_router(builder_router, prefix="/api/v1", tags=["builder"])
 app.include_router(apikey_router, prefix="/api/v1", tags=["api-keys"])
+app.include_router(admin_keys_router)
 app.include_router(conversation_router, prefix="/api/v1", tags=["conversations"])
 app.include_router(mcp_router, prefix="/api/v1", tags=["mcp"])
 app.include_router(a2a_router, prefix="/api/v1", tags=["a2a"])

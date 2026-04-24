@@ -198,3 +198,105 @@ def map_keycloak_roles(roles: list) -> UserRole:
         if kc_role in role_set:
             return brigade_role
     return UserRole.VIEWER
+
+
+# ---------------------------------------------------------------------------
+# Agent-level RBAC
+# ---------------------------------------------------------------------------
+
+
+def derive_user_tier(user_email: str, user_role) -> str:
+    """Derive a coarse tier from email + role.
+
+    Returns one of: "admin", "gpu-enabled", "cloud-only".
+    ``LOCAL_GPU_ALLOWED_USERS`` env var controls the gpu-enabled allowlist.
+    """
+    import os
+    role_val = user_role.value if hasattr(user_role, "value") else str(user_role)
+    if role_val == UserRole.ADMIN.value:
+        return "admin"
+    email_lc = (user_email or "").lower()
+    allowed = set(
+        e.strip().lower() for e in os.getenv(
+            "LOCAL_GPU_ALLOWED_USERS",
+            "aaron@magicunicorn.tech,shafenkhan@users.noreply.github.com",
+        ).split(",")
+        if e.strip()
+    )
+    if email_lc and email_lc in allowed:
+        return "gpu-enabled"
+    return "cloud-only"
+
+
+def evaluate_agent_access(
+    user_email: str,
+    user_role,
+    user_tier: str,
+    access_policy,
+    user_attrs=None,
+) -> tuple:
+    """Evaluate a per-agent access_policy. Returns ``(allowed, reason)``.
+
+    Admins always pass. An absent/empty policy means public. Otherwise the
+    allowlists are additive (OR semantics): user passes if ANY rule matches.
+    ``require_mfa`` is a GATE — if set and unmet, denies even when allowlists
+    would pass.
+
+    Supported policy fields (all optional):
+      - public: bool        -> {"public": true} => anyone
+      - users: [email]      -> email allowlist
+      - tiers: [str]        -> tier allowlist ("admin","gpu-enabled","cloud-only")
+      - orgs: [org_id]      -> org membership (requires user_attrs["orgs"])
+      - paid_only: bool     -> {"paid_only": true} requires user_attrs["paid"]
+      - require_mfa: bool   -> {"require_mfa": true} requires user_attrs["mfa"]
+
+    ``user_attrs`` is an optional dict of extra signals: {"orgs": [...], "paid": bool, "mfa": bool}.
+    """
+    role_val = user_role.value if hasattr(user_role, "value") else str(user_role)
+    if role_val == UserRole.ADMIN.value:
+        return True, "admin"
+
+    if not access_policy or not isinstance(access_policy, dict):
+        return True, "no-policy"
+
+    attrs = user_attrs or {}
+
+    # MFA gate — if required but missing, deny outright
+    if access_policy.get("require_mfa") is True and not attrs.get("mfa"):
+        return False, "require-mfa"
+
+    if access_policy.get("public") is True:
+        return True, "public"
+
+    email_lc = (user_email or "").lower()
+    allowed_users = access_policy.get("users") or []
+    if email_lc and email_lc in [str(u).lower() for u in allowed_users]:
+        return True, "user-allowlist"
+
+    allowed_tiers = access_policy.get("tiers") or []
+    if user_tier and user_tier in allowed_tiers:
+        return True, "tier-allowlist"
+
+    allowed_orgs = access_policy.get("orgs") or []
+    user_orgs = set(attrs.get("orgs") or [])
+    if allowed_orgs and user_orgs.intersection(allowed_orgs):
+        return True, "org-membership"
+
+    if access_policy.get("paid_only") is True and attrs.get("paid") is True:
+        return True, "paid"
+
+    return False, "no-match"
+
+
+def can_user_access_agent(
+    user_email: str,
+    user_role,
+    user_tier: str,
+    access_policy,
+    user_attrs=None,
+) -> bool:
+    """Backwards-compatible boolean wrapper around evaluate_agent_access."""
+    allowed, _ = evaluate_agent_access(
+        user_email, user_role, user_tier, access_policy, user_attrs
+    )
+    return allowed

@@ -452,7 +452,10 @@ class MLXLLMClient:
                     )
                 else:
                     try:
-                        tool_result = await tool_def.handler(**tc.arguments)
+                        call_args = dict(tc.arguments)
+                        if getattr(tool_def, "needs_caller_context", False):
+                            call_args["caller_user_id"] = user_id
+                        tool_result = await tool_def.handler(**call_args)
                         result = ToolResult(
                             tool_call_id=tc.id,
                             name=tc.name,

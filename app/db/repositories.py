@@ -74,6 +74,7 @@ class AgentRepository:
         field_map = {
             "displayName": "display_name", "systemPrompt": "system_prompt",
             "agentType": "agent_type", "maxTokens": "max_tokens",
+            "accessPolicy": "access_policy",
         }
         for key, value in updates.items():
             attr = field_map.get(key, key)
@@ -439,6 +440,7 @@ class UserApiKeyRepository:
             permissions=data.get("permissions", ["chat", "read"]),
             rate_limit=data.get("rateLimit", 100),
             expires_at=expires_at,
+            created_via=data.get("createdVia"),
         )
         self.session.add(api_key)
         await self.session.commit()

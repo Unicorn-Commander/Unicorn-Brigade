@@ -274,9 +274,14 @@ async def _resolve_user(
         user = await validate_bearer_token(token)
         if user is not None:
             return user
-        # Bearer present but invalid — do NOT silently fall through to API key
-        # if that would let an attacker probe. But if a client sends BOTH an
-        # invalid bearer and a valid API key, prefer API key (defensive).
+        # Keycloak rejected it. If the token doesn't look like a JWT (JWTs have
+        # exactly two dots separating three base64 segments), treat it as an
+        # API key so OpenAI-compatible clients can send `Authorization: Bearer
+        # ubk-...` against Brigade's openai-compat endpoints.
+        if token.count(".") < 2:
+            user = await validate_api_key(token, session)
+            if user is not None:
+                return user
 
     if api_key:
         user = await validate_api_key(api_key, session)

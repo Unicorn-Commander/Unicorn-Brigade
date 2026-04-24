@@ -7,6 +7,13 @@ from typing import Dict, Any, List, Optional, AsyncGenerator, Callable, Union
 from dataclasses import dataclass, field
 import json
 
+# Phase 7b.2: consecutive-failure monitor for local inference endpoints.
+try:
+    from app.observability.inference_monitor import observe as _observe_backend
+except Exception:  # pragma: no cover — module may be absent in test harness
+    def _observe_backend(endpoint, success, error=None):  # type: ignore
+        return None
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,6 +41,10 @@ class ToolDefinition:
     description: str
     parameters: List[ToolParameter] = field(default_factory=list)
     handler: Optional[Callable] = None  # Async function to execute the tool
+    # If True, the tool invocation layer injects caller context (e.g.
+    # caller_user_id) into the handler kwargs. Tools that make authenticated
+    # downstream calls on behalf of the caller use this to preserve identity.
+    needs_caller_context: bool = False
 
     def to_openai_format(self) -> Dict[str, Any]:
         """Convert to OpenAI function calling format"""
@@ -301,6 +312,7 @@ class OpsCenterLLMClient:
 
             # Use streaming client to handle SSE-wrapped responses
             # (Ops-Center returns SSE format due to Traefik chunked encoding bug)
+            _monitor_endpoint = endpoint  # captured for Phase 7b.2 failure tracking
             async with self.client.stream(
                 "POST",
                 endpoint,
@@ -347,12 +359,29 @@ class OpsCenterLLMClient:
                     f"Output: {result['usage'].get('completion_tokens', 0)}"
                 )
 
+            _observe_backend(_monitor_endpoint, success=True)
             return result
 
         except httpx.HTTPStatusError as e:
+            try:
+                _observe_backend(
+                    _monitor_endpoint if '_monitor_endpoint' in locals() else endpoint,
+                    success=False,
+                    error=f"http {e.response.status_code}",
+                )
+            except Exception:
+                pass
             logger.error(f"Ops-Center API error: {e.response.status_code} - {e.response.text}")
             raise
         except Exception as e:
+            try:
+                _observe_backend(
+                    _monitor_endpoint if '_monitor_endpoint' in locals() else endpoint,
+                    success=False,
+                    error=str(e)[:200],
+                )
+            except Exception:
+                pass
             logger.error(f"Error calling Ops-Center LLM: {e}")
             raise
 
@@ -565,6 +594,7 @@ class OpsCenterLLMClient:
                 if m.get("role") == "tool":
                     logger.info(f"Tool message being sent: tool_call_id={m.get('tool_call_id')}, name={m.get('name')}")
 
+            _monitor_endpoint = endpoint  # Phase 7b.2
             async with self.client.stream(
                 "POST",
                 endpoint,
@@ -606,9 +636,18 @@ class OpsCenterLLMClient:
                         body_bytes += chunk
                     result = json.loads(body_bytes) if body_bytes else {}
 
+            _observe_backend(_monitor_endpoint, success=True)
             return result
 
         except Exception as e:
+            try:
+                _observe_backend(
+                    _monitor_endpoint if '_monitor_endpoint' in locals() else endpoint,
+                    success=False,
+                    error=str(e)[:200],
+                )
+            except Exception:
+                pass
             logger.error(f"Error in tool-enabled completion: {e}")
             raise
 
@@ -822,8 +861,13 @@ class OpsCenterLLMClient:
                     )
                 else:
                     try:
-                        # Execute tool handler
-                        tool_output = await tool_def.handler(**tc.arguments)
+                        # Execute tool handler. Inject caller_user_id when the
+                        # tool declared it needs caller context (preserves
+                        # user identity through delegation chains).
+                        call_args = dict(tc.arguments)
+                        if getattr(tool_def, "needs_caller_context", False):
+                            call_args["caller_user_id"] = user_id
+                        tool_output = await tool_def.handler(**call_args)
                         result = ToolResult(
                             tool_call_id=tc.id,
                             name=tc.name,

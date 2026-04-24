@@ -39,6 +39,12 @@ class Agent(Base):
     temperature = Column(Float, default=0.7)
     max_tokens = Column(Integer, default=2000)
     tools = Column(JSON, default=list)
+    # RBAC access policy. Shape (all fields optional; OR semantics, admins always pass):
+    #   {"public": true}                         -- anyone can access (default)
+    #   {"users": ["alice@x.com", "bob@y.com"]}  -- allowlist by email
+    #   {"tiers": ["admin", "gpu-enabled"]}      -- allowlist by user tier
+    # An absent/null policy = public. Mix fields to widen access.
+    access_policy = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -72,6 +78,7 @@ class Agent(Base):
             "temperature": self.temperature,
             "maxTokens": self.max_tokens,
             "tools": self.tools or [],
+            "accessPolicy": self.access_policy,
             "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() + "Z" if self.updated_at else None,
         }
@@ -208,6 +215,7 @@ class UserApiKey(Base):
     usage_count = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    created_via = Column(String(50), nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="api_keys")
@@ -230,6 +238,7 @@ class UserApiKey(Base):
             "usageCount": self.usage_count,
             "isActive": self.is_active,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "createdVia": self.created_via,
         }
         if include_hash:
             d["keyHash"] = self.key_hash
