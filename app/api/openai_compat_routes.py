@@ -241,6 +241,30 @@ async def openai_chat_completions(
     usage = brigade_resp.get("usage", {}) if isinstance(brigade_resp, dict) else {}
     model_used = brigade_resp.get("model", agent_id) if isinstance(brigade_resp, dict) else agent_id
 
+    # Append a compact tool-call trace footer so chat UIs show what the agent
+    # actually did (delegate_to_agent, web_search, memory ops, etc.). Rendered
+    # as a collapsed <details> block — LibreChat and most markdown-capable
+    # clients show it; plain-text clients see it as a normal section.
+    tool_calls = brigade_resp.get("toolCalls") if isinstance(brigade_resp, dict) else None
+    if tool_calls:
+        lines = ["", "<details><summary>🔧 Tools used (" + str(len(tool_calls)) + ")</summary>", ""]
+        for tc in tool_calls:
+            name = tc.get("name", "?")
+            args = tc.get("arguments") or {}
+            try:
+                import json as _json
+                args_str = _json.dumps(args, separators=(",", ":"))
+                if len(args_str) > 180:
+                    args_str = args_str[:180] + "…"
+            except Exception:
+                args_str = str(args)[:180]
+            err = tc.get("error")
+            status = "❌ " + err if err else "✓"
+            lines.append(f"- `{name}` {status} — `{args_str}`")
+        lines.append("")
+        lines.append("</details>")
+        content = (content or "") + "\n" + "\n".join(lines)
+
     return {
         "id": f"chatcmpl-brigade-{uuid.uuid4().hex[:12]}",
         "object": "chat.completion",

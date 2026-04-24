@@ -19,6 +19,7 @@ from app.llm.ops_center_client import OpsCenterLLMClient
 from app.api.agent_routes import router as agent_router, init_agent_routes
 from app.api.openai_compat_routes import router as openai_compat_router
 from app.api.welcome_route import router as welcome_router
+from app.api.landing_route import router as landing_router
 from app.api.memory_inspector_routes import router as memory_inspector_router, init_memory_routes as init_memory_inspector
 from app.api.tool_routes import router as tool_router
 from app.api.system_routes import router as system_router, init_system_routes
@@ -210,6 +211,7 @@ app.include_router(router, prefix="/api/v1", tags=["core"])
 app.include_router(agent_router, prefix="/api/v1", tags=["agents"])
 app.include_router(openai_compat_router, prefix="/api/v1/openai/v1", tags=["openai-compat"])
 app.include_router(welcome_router, tags=["welcome"])
+app.include_router(landing_router, tags=["landing"])
 app.include_router(memory_inspector_router, tags=["memory-inspector"])
 app.include_router(tool_router, prefix="/api/v1", tags=["tools"])
 app.include_router(system_router, prefix="/api/v1", tags=["system"])
