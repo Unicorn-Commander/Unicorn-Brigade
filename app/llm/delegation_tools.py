@@ -52,7 +52,7 @@ async def delegate_to_agent_handler(
         body["user_id"] = caller_user_id
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             headers = {
                 "Content-Type": "application/json",
                 "X-API-Key": BRIGADE_API_KEY,

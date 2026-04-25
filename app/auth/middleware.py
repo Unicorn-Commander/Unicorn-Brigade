@@ -213,6 +213,71 @@ async def validate_api_key(
         return None
 
 
+
+
+# ── Keycloak role -> apps derivation ───────────────────────────
+# Realm or client roles matching pattern "app:<slug>" become
+# user.apps = [<slug>, ...]. Lets a single Keycloak admin change
+# ("grant Bob access to LibreChat") propagate to Brigade automatically.
+def _derive_apps_from_roles(roles):
+    apps = set()
+    for r in roles or []:
+        s = (r or "").strip().lower()
+        if s.startswith("app:") and len(s) > 4:
+            apps.add(s[4:])
+    return sorted(apps)
+
+
+async def _sync_user_apps_from_keycloak(email, kc_sub, derived_apps, realm_role):
+    """Find-or-create the Brigade User row by email and sync apps + role.
+
+    Apps are merged additively (provisioned apps from upstream services and
+    apps from Keycloak both contribute). role is updated to match the
+    Keycloak-derived role on every login so changes propagate.
+    """
+    if not email:
+        return
+    try:
+        from app.db.database import async_session
+        from app.db.models import User as _User
+        from sqlalchemy import select as _select
+        from datetime import datetime as _dt
+        async with async_session() as s:
+            r = await s.execute(_select(_User).where(_User.email == email.lower()))
+            user = r.scalar_one_or_none()
+            if user is None:
+                # Auto-provision on first SSO login
+                user = _User(
+                    email=email.lower(),
+                    name=email.split("@")[0],
+                    password_hash="NOLOGIN-SSO-ONLY",
+                    role=realm_role.value if hasattr(realm_role, "value") else str(realm_role),
+                    apps=list(derived_apps),
+                    is_active=True,
+                )
+                s.add(user)
+                await s.commit()
+                logger.info(f"SSO auto-provisioned Brigade user {email} apps={derived_apps}")
+                return
+            # Merge apps additively + sync role
+            existing = set(user.apps or [])
+            merged = sorted(existing.union(derived_apps))
+            new_role = realm_role.value if hasattr(realm_role, "value") else str(realm_role)
+            changed = False
+            if list(merged) != list(user.apps or []):
+                user.apps = merged
+                changed = True
+            if user.role != new_role:
+                user.role = new_role
+                changed = True
+            if changed:
+                user.updated_at = _dt.utcnow()
+                await s.commit()
+                logger.info(f"SSO synced Brigade user {email} role={user.role} apps={user.apps}")
+    except Exception as exc:  # noqa: BLE001 — never break auth on a sync failure
+        logger.warning(f"Keycloak->User.apps sync failed for {email}: {exc}")
+
+
 async def validate_bearer_token(token: str) -> Optional[AuthUser]:
     """
     Validate a Keycloak-issued JWT Bearer token.
@@ -235,7 +300,14 @@ async def validate_bearer_token(token: str) -> Optional[AuthUser]:
         return None
 
     # Combine realm + client roles, realm takes priority in mapping order.
-    role = map_keycloak_roles(kc_user.realm_roles + kc_user.client_roles)
+    all_roles = kc_user.realm_roles + kc_user.client_roles
+    role = map_keycloak_roles(all_roles)
+
+    # Derive apps from app:* roles and persist to the Brigade User row so
+    # subsequent API-key calls see the same apps. Best-effort — never breaks
+    # auth on sync failure.
+    derived_apps = _derive_apps_from_roles(all_roles)
+    await _sync_user_apps_from_keycloak(kc_user.email, kc_user.sub, derived_apps, role)
 
     return AuthUser(
         id=kc_user.sub,
@@ -243,7 +315,7 @@ async def validate_bearer_token(token: str) -> Optional[AuthUser]:
         user_id=kc_user.sub,
         email=kc_user.email,
         key_name=kc_user.preferred_username or kc_user.email,
-        permissions=kc_user.realm_roles + kc_user.client_roles,
+        permissions=all_roles,
         auth_source="keycloak",
     )
 

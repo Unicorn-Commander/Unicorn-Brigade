@@ -4,6 +4,40 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] — 2026-04-25
+
+Apps follow identity (Keycloak roles → User.apps), delegation works
+through tool loops, downstream timeouts no longer mask specialist
+failures.
+
+### Added
+- **Keycloak realm/client roles → User.apps sync.** When a user
+  authenticates via Keycloak SSO, Brigade derives `user.apps` from
+  any role matching pattern `app:<slug>` (e.g., `app:crisis-ops`,
+  `app:librechat`, `app:opencode`). The User row is created on first
+  SSO login and refreshed on every login (apps merged additively;
+  role synced). Single Keycloak admin change ("grant Bob access to
+  LibreChat") propagates to Brigade automatically — no per-service
+  user-keys provision call needed for app membership.
+
+### Changed
+- **`delegate_to_agent` timeout 120s → 300s.** Cloud Claude calls with
+  full MCP tool loops can run 2–4 minutes. The previous 120s was
+  consistently failing for crisis specialists, causing The Fixer to
+  fall back to direct work. Bumped + improved error surfacing
+  (TimeoutException catches separately, returns descriptive error
+  string instead of empty string so the orchestrator sees what failed).
+
+### Migration notes (1.6.0 → 1.7.0)
+- **Keycloak setup:** define realm roles like `app:crisis-ops`,
+  `app:librechat`, `app:opencode`, `app:stable`, `app:mission-control`,
+  `app:brigade` and assign to users. They flow into Brigade automatically
+  on next SSO login. Until you do this, apps still come from upstream
+  service provisioning (the existing `apps` field on
+  `POST /api/v1/admin/user-keys`).
+- The role-pattern is `app:<slug>` (case-insensitive). Slug becomes the
+  app identifier that `accessPolicy.apps` checks against.
+
 ## [1.6.0] — 2026-04-25
 
 Apps-based access model. Replaces the `key_names` proxy with the
