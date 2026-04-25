@@ -4,6 +4,63 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-04-25
+
+Drafter family, Crisis MCP tool wiring, and the brigade-pdf microservice
+make Brigade a full court-document production stack instead of just a
+Q&A surface for the CASE-ID case.
+
+### Added
+- **Crisis MCP tools wired into TOOL_REGISTRY** (`app/llm/crisis_mcp_tools.py`).
+  Agents whose `tools` field references `search_evidence`, `get_entity`,
+  `get_timeline`, `find_connections`, `list_entities`, `search_entities`,
+  `get_relationships`, `get_strategy`, `get_evidence_folders`, `get_document`,
+  `find_evidence_gaps`, or `get_case_summary` now get them as real callable
+  LLM functions in chat_with_agent. Handlers proxy via JSON-RPC 2.0 to the
+  crisis-mcp:3011/mcp service. case_id is optional (defaults to active case).
+- **`generate_pdf` tool** — proxies to the new brigade-pdf microservice.
+  Any agent that produces a markdown draft can hand off to a court-fileable
+  PDF in one tool call. Document types: brief / motion / opposition / reply
+  (double-spaced, paginated), demand / foia / memo (single-spaced letter),
+  complaint (numbered allegations).
+- **Drafter agent family** — six new DB-registered agents:
+  - `brief-drafter` — general legal briefs
+  - `motion-drafter` — federal/state motion practice (MSJ, MTD, MIL, etc.)
+  - `complaint-drafter` — element-level pleadings that survive 12(b)(6)
+  - `demand-letter-drafter` — pre-litigation demand letters with calibrated tone
+  - `foia-drafter` — federal FOIA / state public-records requests with fee-waiver argument
+  - `discovery-drafter` — interrogatories, RFPs, RFAs, deposition outlines
+  Each has a 25-year-senior-litigator persona, integrity rules forbidding
+  invented citations or facts, and a mandatory **WEAK POINTS** closing
+  section so reviewing attorneys see risks before filing. Currently routed
+  to `midboy1/gemma-4-26B-A4B-it-UD-Q4_K_M`; configurable per-agent.
+
+### Companion service (separate repo)
+- **brigade-pdf** — FastAPI microservice rendering markdown → PDF via
+  WeasyPrint with per-document-type CSS templates. Listens on port 8090,
+  writes to a 24-hour TTL volume. See the brigade-pdf-gen repo / compose.
+
+### Changed
+- `BRIGADE_PDF_URL` env var (default `http://brigade-pdf:8090`) controls
+  where the `generate_pdf` tool dispatches. Set `BRIGADE_PDF_PUBLIC_URL`
+  if the user-facing download URL differs from the internal one
+  (e.g., behind Traefik).
+
+### Smoke verification
+- `brief-drafter` produced a Statement of Facts citing real evidence
+  filenames inline (`rocky-doe-article.md`, `chronology.md`)
+  via the `search_evidence` MCP tool.
+- `demand-letter-drafter` end-to-end through Crisis Ops: drafted, rendered
+  to a 30 KB PDF, downloaded via the proxy, opens in any PDF reader.
+
+### Migration notes (1.1.0 → 1.2.0)
+- Stand up the brigade-pdf microservice on the same docker network if you
+  want PDF generation: `cd brigade-pdf-gen && docker compose up -d`.
+- Crisis-mcp must be reachable at `crisis-mcp:3011/mcp` (set
+  `CRISIS_MCP_URL` to override).
+- The drafter agents are registered as DB rows on first run of the
+  registration script — re-run with PUT to update.
+
 ## [1.1.0] — 2026-04-25
 
 ### Added
