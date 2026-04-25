@@ -179,6 +179,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     name = Column(String(255), nullable=False)
     role = Column(String(50), default="operator", index=True)  # admin, operator, viewer
+    apps = Column(JSON, default=list)  # which Brigade-consumer apps this user is a member of
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

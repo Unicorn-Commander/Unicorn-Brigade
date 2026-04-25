@@ -187,6 +187,22 @@ def _ensure_agent_access(
 # Phase 7: billing preflight + metering
 # ---------------------------------------------------------------------------
 
+async def _user_apps(user_id: Optional[str]) -> list:
+    """Look up users.apps for a given user_id. Cached briefly per call."""
+    if not user_id:
+        return []
+    try:
+        from app.db.database import async_session
+        from app.db.models import User as _User
+        from sqlalchemy import select as _select
+        async with async_session() as s:
+            r = await s.execute(_select(_User).where(_User.id == user_id))
+            u = r.scalar_one_or_none()
+            return list(u.apps or []) if u else []
+    except Exception:
+        return []
+
+
 async def _fetch_user_attrs(user: AuthUser) -> tuple:
     """Return ``(user_attrs, billing_state)`` for a Brigade chat caller.
 
@@ -194,9 +210,12 @@ async def _fetch_user_attrs(user: AuthUser) -> tuple:
     filtered by ``{"paid_only": true}`` policies. For everyone else we hit
     Ops-Center's ``/api/v1/billing/state`` (cached 30s) and project the
     result into the attrs dict consumed by ``evaluate_agent_access``.
+
+    Also surfaces user.apps from the DB so accessPolicy.apps checks work.
     """
+    apps = await _user_apps(getattr(user, "user_id", None) or getattr(user, "id", None)) if user else []
     if not user or user.role == UserRole.ADMIN:
-        return {"paid": True, "key_name": (getattr(user, "key_name", "") or "")}, {
+        return {"paid": True, "key_name": (getattr(user, "key_name", "") or ""), "apps": apps}, {
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": "admin",
@@ -213,7 +232,7 @@ async def _fetch_user_attrs(user: AuthUser) -> tuple:
     }
     key_name = (getattr(user, "key_name", "") or "").lower()
     if key_name and key_name in trusted_names:
-        return {"paid": True, "key_name": key_name}, {
+        return {"paid": True, "key_name": key_name, "apps": apps}, {
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": f"service:{key_name}",
@@ -221,13 +240,13 @@ async def _fetch_user_attrs(user: AuthUser) -> tuple:
     email = (getattr(user, "email", "") or "").lower()
     user_kn = (getattr(user, "key_name", "") or "").lower()
     if not email:
-        return {"paid": False, "key_name": user_kn}, {
+        return {"paid": False, "key_name": user_kn, "apps": apps}, {
             "paid": False,
             "credits_remaining": 0.0,
             "subscription_tier": None,
         }
     state = await get_billing_state(email)
-    return {"paid": bool(state.get("paid")), "key_name": user_kn}, state
+    return {"paid": bool(state.get("paid")), "key_name": user_kn, "apps": apps}, state
 
 
 def _enforce_billing_or_402(user: AuthUser, billing_state: dict) -> None:

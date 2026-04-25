@@ -4,6 +4,55 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] — 2026-04-25
+
+Apps-based access model. Replaces the `key_names` proxy with the
+architecturally correct pattern: **users have apps, agents serve apps,
+access = intersection.** A user can use an agent if they're a member
+of at least one app the agent is offered through. Multi-app users
+(e.g., an admin in Crisis Ops + LibreChat + OpenCode) reach more agents
+without needing per-app keys.
+
+### Added
+- **`User.apps`** column (`JSONB`, default `[]`). DB migration applied
+  inline (`ALTER TABLE users ADD COLUMN IF NOT EXISTS apps JSONB DEFAULT
+  '[]'::jsonb` + GIN index).
+- **`accessPolicy.apps`** field in `evaluate_agent_access`. List of app
+  slugs this agent is offered through. User passes if their `user.apps`
+  ∩ `agent.apps` is non-empty.
+- **`apps` field on `POST /api/v1/admin/user-keys`** request body. The
+  `_upsert_user` helper merges new apps into the existing list (apps
+  are additive — provisioning doesn't shrink the user's footprint).
+- **`_user_apps()`** helper in `agent_routes.py` reads `users.apps`
+  per chat call (cheap single-row lookup) and threads it into
+  `user_attrs` at all three return paths of `_fetch_user_attrs`.
+
+### Changed
+- **All 16 crisis agents migrated** from `accessPolicy.key_names:
+  ["crisis-ops"]` to `accessPolicy.apps: ["crisis-ops"]`. Behavior
+  unchanged for current users (Crisis Ops users have apps=[crisis-ops]),
+  but now multi-app users are first-class — Aaron's apps array includes
+  crisis-ops, librechat, opencode, stable, mission-control, brigade
+  and he can reach the appropriate agents from any of those surfaces.
+- `key_names` policy field still honored for backwards-compatibility
+  but new agents should use `apps` going forward.
+
+### Backfill
+- Existing crisis-ops users' `apps` field set to `["crisis-ops"]` via
+  one-shot SQL: `UPDATE users SET apps = '["crisis-ops"]'::jsonb WHERE
+  id IN (SELECT DISTINCT user_id FROM user_api_keys WHERE
+  name='crisis-ops')`.
+
+### Migration notes (1.5.0 → 1.6.0)
+- DB migration is additive — existing keys keep working. Provision new
+  users with `apps:[...]` in the request body to populate the new field.
+- Crisis Ops's `brigadeAuth.js` already sends `apps:["crisis-ops"]` on
+  provision (1.5.x integration).
+- LibreChat / OpenCode / Stable can adopt the same pattern by sending
+  `apps:["librechat"]` etc. on their next user-key provision call.
+- Future: derive `User.apps` from Keycloak realm roles on SSO callback
+  so apps follow the user's identity automatically. Tracked separately.
+
 ## [1.5.0] — 2026-04-25
 
 The Fixer (Crisis Ops orchestrator) joins the catalog. Cloud Claude is

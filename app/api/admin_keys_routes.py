@@ -68,6 +68,7 @@ class CreateUserKeyRequest(BaseModel):
     permissions: Optional[List[str]] = None
     rate_limit: Optional[int] = Field(None, description="Requests per minute")
     expires_in_days: Optional[int] = Field(90, description="Days until the key expires; null for no expiry")
+    apps: Optional[List[str]] = Field(None, description="Brigade-consumer apps this user is a member of (e.g., ['crisis-ops','librechat']). Merged into user.apps; existing apps are preserved.")
 
 
 class KeyResponse(BaseModel):
@@ -94,6 +95,7 @@ async def _upsert_user(
     email: str,
     role: str,
     display_name: Optional[str],
+    apps: Optional[List[str]] = None,
 ) -> User:
     """Find-or-create a Brigade users row and refresh role/name from the caller."""
     if role not in _VALID_ROLES:
@@ -112,6 +114,7 @@ async def _upsert_user(
             name=display_name or email.split("@")[0],
             password_hash=_NON_LOGIN_PASSWORD_HASH,
             role=role,
+            apps=sorted(set(apps or [])),
             is_active=True,
         )
         session.add(user)
@@ -130,11 +133,17 @@ async def _upsert_user(
     if not user.is_active:
         user.is_active = True
         changed = True
+    if apps:
+        existing_apps = set(user.apps or [])
+        merged = sorted(existing_apps.union(apps))
+        if list(merged) != list(user.apps or []):
+            user.apps = merged
+            changed = True
     if changed:
         user.updated_at = datetime.utcnow()
         await session.commit()
         await session.refresh(user)
-        logger.info(f"Refreshed Brigade user {email} (role={role}) via service delegation")
+        logger.info(f"Refreshed Brigade user {email} (role={role}, apps={user.apps}) via service delegation")
 
     return user
 
@@ -179,7 +188,7 @@ async def create_user_api_key(
     The user row is auto-provisioned if missing and role/name are refreshed
     from the caller on every call.
     """
-    user = await _upsert_user(session, body.email, body.role, body.display_name)
+    user = await _upsert_user(session, body.email, body.role, body.display_name, body.apps)
 
     permissions = body.permissions or _permissions_for_role(user.role)
     key_data = {

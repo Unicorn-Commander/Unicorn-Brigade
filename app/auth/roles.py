@@ -293,6 +293,14 @@ def evaluate_agent_access(
     if user_key_name and user_key_name in [str(k).lower() for k in allowed_key_names]:
         return True, "key-name-allowlist"
 
+    # App membership: agent.accessPolicy.apps is a list of Brigade-consumer
+    # apps this agent is offered through. User passes if they're a member of
+    # at least one. user.apps is sourced from the DB on each chat call.
+    allowed_apps = access_policy.get("apps") or []
+    user_apps = set(str(a).lower() for a in (attrs.get("apps") or []))
+    if user_apps and user_apps.intersection(set(str(a).lower() for a in allowed_apps)):
+        return True, "app-membership"
+
     return False, "no-match"
 
 
