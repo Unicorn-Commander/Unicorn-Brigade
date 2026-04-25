@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Any, Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 import json
 import logging
+import os
 import time
 
 from app.db.database import get_session
@@ -189,6 +190,23 @@ async def _fetch_user_attrs(user: AuthUser) -> tuple:
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": "admin",
+        }
+    # Service-delegated callers: keys minted via /api/v1/admin/user-keys are by
+    # definition for B2B customers whose upstream service is the paying
+    # subscriber (Crisis Ops, Ops-Center, etc.). Treat them as paid so the
+    # consumer billing wall doesn't block enterprise seats. The list of trusted
+    # key names is BRIGADE_TRUSTED_KEY_NAMES (comma-separated, case-insensitive).
+    trusted_names = {
+        n.strip().lower()
+        for n in os.getenv("BRIGADE_TRUSTED_KEY_NAMES", "crisis-ops,ops-center").split(",")
+        if n.strip()
+    }
+    key_name = (getattr(user, "key_name", "") or "").lower()
+    if key_name and key_name in trusted_names:
+        return {"paid": True}, {
+            "paid": True,
+            "credits_remaining": float("inf"),
+            "subscription_tier": f"service:{key_name}",
         }
     email = (getattr(user, "email", "") or "").lower()
     if not email:
