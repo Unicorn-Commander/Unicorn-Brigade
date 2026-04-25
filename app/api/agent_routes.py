@@ -42,10 +42,20 @@ import asyncio
 import re as _re
 
 def _strip_thinking(text: str) -> str:
-    """Strip <think>...</think> blocks from model output."""
+    """Strip <think>...</think> blocks from model output.
+
+    Handles two cases:
+      1. Closed blocks: <think>...</think> -> removed entirely.
+      2. Orphan opening (max-tokens cutoff mid-think): <think>... -> removed
+         from the opening tag through end-of-string. Returns empty if the
+         entire response was a truncated think block.
+    """
     if not text:
         return text
-    return _re.sub(r'<think>.*?</think>\s*', '', text, flags=_re.DOTALL).strip()
+    cleaned = _re.sub(r'<think>.*?</think>\s*', '', text, flags=_re.DOTALL)
+    # Drop any orphan opening tag through end-of-string
+    cleaned = _re.sub(r'<think>.*\Z', '', cleaned, flags=_re.DOTALL)
+    return cleaned.strip()
 
 
 logger = logging.getLogger(__name__)

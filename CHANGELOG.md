@@ -4,6 +4,70 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-04-25
+
+Persona cleanup, model upgrade, three new strategic agents, and a hardened
+think-tag stripper.
+
+### Changed
+- **Lean personas across the legal agent catalog.** The 10 drafter +
+  analytical agents had biographical filler ("you have 25 years of
+  experience...") that primed tone but added nothing actionable. Replaced
+  with 1-2-sentence functional personas: role + style + don'ts. The
+  systemPrompt does the real work; the persona just sets context.
+- **Model upgraded** for the same 10 agents from `midboy1/gemma-4-26B-A4B-it-UD-Q4_K_M`
+  to `local/Qwen3.6-35B-A3B-UD-Q4_K_XL` (the 35B-A3B MoE with expert
+  offload on bigboy's RTX 3090, 32K effective context per parallel slot).
+  Smoke verification: devils-advocate produced 681 tokens of clean Mt.
+  Healthy doctrine analysis with proper citations.
+- **`LOCAL_LLM_URL` defaulted to `http://unicorn-llama-router:8080`** in the
+  Brigade compose env (was inheriting an obsolete `unicorn-llama-cpp:8080`
+  default). Without this, agents using the `local/` model prefix hit a
+  DNS failure at first call.
+
+### Added — three more strategic agents
+- **settlement-modeler** — Bayesian settlement-range analysis. Inputs:
+  case-strength rating, P(plaintiff verdict), expected verdict
+  distribution, both sides' litigation costs, time-to-verdict, discount
+  rate, jurisdiction-specific settlement multiplier. Outputs floor /
+  target / opening offer / ceiling, with the math behind each, plus a
+  negotiation-posture section (when settlement is most likely, defense's
+  pressure points). Smoke-verified: produces structured EV analysis with
+  cited probability calibrations.
+- **cross-exam-builder** — Trial cross outlines (sibling to deposition-prep
+  but for the well of the court). Builds 3-5 themes per witness with a
+  question ladder per theme: setup → pin → contradiction (with exhibit) →
+  exit. Includes impeachment library, exhibit foundation script,
+  anticipated objections, and 2-3 closing-argument hooks pulled through
+  from cross.
+- **media-strategist** — Litigation-PR move recommendations with explicit
+  risk/leverage tradeoff. Recommends do-nothing / strategic leak /
+  on-the-record interview / op-ed / press conference / social media /
+  interest-group coordination. Refuses moves whose downside (jury pool,
+  Rule 12 fodder, judicial reaction) exceeds leverage gain.
+
+### Fixed
+- **Hardened `_strip_thinking`** to also remove orphan `<think>` opening
+  tags through end-of-string. Previously, a max-tokens cutoff mid-think
+  block leaked the agent's internal reasoning into the response body
+  (and into PDFs). Now the strip is two-pass: closed blocks first,
+  then any orphan opening through end-of-string.
+
+### Migration notes (1.3.0 → 1.4.0)
+- Set `LOCAL_LLM_URL=http://unicorn-llama-router:8080` (or your equivalent
+  llama-router endpoint) in your Brigade compose env, otherwise `local/`-
+  prefixed model names will fail with a DNS error.
+- Re-run `register_strategic_batch2.py` against Brigade with
+  `BRIGADE_ADMIN_KEY` set, OR POST the agent definitions to
+  `/api/v1/agents` directly.
+
+### Known limitations carried forward
+- **Cloud Claude routing** still requires setting `OPENROUTER_API_KEY`
+  (or `ANTHROPIC_API_KEY`) on the Brigade env, AND coordinating the
+  switch with the existing orchestrator agents (majik, gflow, the-general)
+  whose `model` field uses bare names like `Qwen3.6-35B-A3B-UD-Q4_K_XL`
+  that would suddenly route to OpenRouter and 404. Tracked separately.
+
 ## [1.3.0] — 2026-04-25
 
 Analytical / strategic agent batch + brigade-pdf-gen separated into its
