@@ -177,7 +177,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title=os.getenv("API_TITLE", "Unicorn Brigade API"),
-    version=os.getenv("API_VERSION", "1.4.0"),
+    version=os.getenv("API_VERSION", "1.5.0"),
     description="Multi-Agent Orchestration System with LangGraph + Graphiti/FalkorDB",
     lifespan=lifespan
 )
@@ -254,7 +254,7 @@ async def root():
     """Root endpoint"""
     return {
         "name": "Unicorn Brigade API",
-        "version": "1.4.0",
+        "version": "1.5.0",
         "status": "operational",
         "endpoints": {
             "health": "/api/v1/health",

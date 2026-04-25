@@ -196,7 +196,7 @@ async def _fetch_user_attrs(user: AuthUser) -> tuple:
     result into the attrs dict consumed by ``evaluate_agent_access``.
     """
     if not user or user.role == UserRole.ADMIN:
-        return {"paid": True}, {
+        return {"paid": True, "key_name": (getattr(user, "key_name", "") or "")}, {
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": "admin",
@@ -213,20 +213,21 @@ async def _fetch_user_attrs(user: AuthUser) -> tuple:
     }
     key_name = (getattr(user, "key_name", "") or "").lower()
     if key_name and key_name in trusted_names:
-        return {"paid": True}, {
+        return {"paid": True, "key_name": key_name}, {
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": f"service:{key_name}",
         }
     email = (getattr(user, "email", "") or "").lower()
+    user_kn = (getattr(user, "key_name", "") or "").lower()
     if not email:
-        return {"paid": False}, {
+        return {"paid": False, "key_name": user_kn}, {
             "paid": False,
             "credits_remaining": 0.0,
             "subscription_tier": None,
         }
     state = await get_billing_state(email)
-    return {"paid": bool(state.get("paid"))}, state
+    return {"paid": bool(state.get("paid")), "key_name": user_kn}, state
 
 
 def _enforce_billing_or_402(user: AuthUser, billing_state: dict) -> None:

@@ -285,6 +285,14 @@ def evaluate_agent_access(
     if access_policy.get("paid_only") is True and attrs.get("paid") is True:
         return True, "paid"
 
+    # Service-key-name allowlist: agents reserved for users provisioned by a
+    # specific upstream service (Crisis Ops, etc.) check this. The auth_user
+    # carries key_name from the API key record, threaded through user_attrs.
+    allowed_key_names = access_policy.get("key_names") or []
+    user_key_name = (attrs.get("key_name") or "").lower()
+    if user_key_name and user_key_name in [str(k).lower() for k in allowed_key_names]:
+        return True, "key-name-allowlist"
+
     return False, "no-match"
 
 

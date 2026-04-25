@@ -4,6 +4,63 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-04-25
+
+The Fixer (Crisis Ops orchestrator) joins the catalog. Cloud Claude is
+now the default for the legal agents (via OpenRouter). All 16 crisis-
+case agents are scoped to `key_names: ["crisis-ops"]` so they don't
+leak to other Brigade consumers (LibreChat, OpenCode, Stable, etc.).
+
+### Added
+- **The Fixer (`the-fixer`)** — Crisis Ops orchestrator. Cross-domain
+  fixer pattern: scopes vague asks with a single pointed question,
+  decomposes multi-step asks into specialist calls, integrates answers,
+  and tells the user what to do next. Roster covers all 15 crisis
+  specialists (3 investigators + 6 drafters + 6 analytical/strategic).
+  Smoke verified: a "prep us for Tuesday's mediation" ask produced a
+  complete settlement packet with damages math, ranked defense
+  pushback, tactical day-of notes, and immediate action items in one
+  call (22K tokens, ~$0.10).
+- **`key_names` access-policy field** — `evaluate_agent_access` now
+  honors `accessPolicy: {"key_names": ["service-name", ...]}` to
+  restrict an agent to users provisioned via that upstream service.
+  All 16 crisis agents are locked to `crisis-ops`. LibreChat-style
+  callers (with key name "librechat") are blocked at billing wall +
+  policy check (defense in depth).
+- **`key_name` threaded into `user_attrs`** at all three return paths
+  of `_fetch_user_attrs` so the access-policy check can see it.
+
+### Changed
+- **All 13 legal agents now default to `anthropic/claude-sonnet-4.6`**
+  (1M ctx, $3/M in $15/M out via OpenRouter) instead of the local
+  Qwen3.6-35B fallback. Smoke comparison: cloud Claude pulls exact
+  case-record quotes (e.g., investigators' characterizations of Doe), names specific evidence, applies
+  the governing legal doctrines with sharper case-specific framing.
+  Local Qwen remains a per-call override option.
+- **Orchestrator agents (majik, gflow, the-general, gunny) migrated
+  from bare `Qwen3.6-35B-A3B-UD-Q4_K_XL` to `local/Qwen3.6-35B-A3B-UD-Q4_K_XL`**
+  so they keep hitting the local llama-router after `OPENROUTER_API_KEY`
+  is set on the env (without this, bare names start routing to
+  OpenRouter and 404 on local model IDs).
+
+### Cost notes
+Per-call cost for the legal agents now lands at $0.06–0.10 for typical
+drafter calls (5K input, 3K output) and $0.10–0.20 for orchestrator
+calls that pull large MCP context (20K input). Anthropic direct API
+would be ~10–20% cheaper than OpenRouter; planned for when the direct
+keys are wired.
+
+### Migration notes (1.4.0 → 1.5.0)
+- Set `OPENROUTER_API_KEY` on the Brigade env (compose passthrough +
+  value in your secret store of choice). Without it, agents using
+  `anthropic/`, `deepseek/`, `openai/` etc. model prefixes fail.
+- Re-run `register_fixer_and_scope.py` to create The Fixer and apply
+  the access policy to existing crisis agents.
+- Crisis Ops user-key minting (via `/api/v1/admin/user-keys`) MUST use
+  `name: "crisis-ops"` — otherwise the new agents will refuse the call.
+  The Crisis Ops `brigadeAuth.js` already does this; nothing to change
+  on the consumer side.
+
 ## [1.4.0] — 2026-04-25
 
 Persona cleanup, model upgrade, three new strategic agents, and a hardened
