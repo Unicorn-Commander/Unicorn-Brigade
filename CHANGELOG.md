@@ -4,6 +4,46 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-04-25
+
+Analytical / strategic agent batch + brigade-pdf-gen separated into its
+own repo for cleaner companion-service deployment.
+
+### Added — Analytical agents (4)
+
+- **damages-modeler** — Quantified damages worksheets with stated
+  assumptions, transparent calculations, and sensitivity ranges. Lost
+  wages, present-value front pay, jurisdiction-benchmark emotional
+  distress, punitive multiplier (Gore / State Farm / Campbell), §1988
+  attorneys' fees. Output drives demand letters and complaint prayers.
+- **devils-advocate** — Steel-mans every argument opposing counsel will
+  raise, ranks by strength (1-10), drafts best response + flags residual
+  risk for each. Internal-only output. Use before filing major papers
+  or going into settlement talks. Smoke-verified against the official-duties question for the Doe case.
+- **deposition-prep** — Witness-specific binders: profile, exhibits to
+  mark in strategic order, chronological + topical question groups,
+  anticipated objections + how to handle, impeachment material from
+  the record.
+- **legal-theory-evaluator** — Element-by-element strength rating per
+  cause of action against the current record, gaps that would close
+  weak elements, recommendation matrix (plead now / alternative pleading
+  / hold for amendment / do not plead), top discovery priorities.
+
+All four use the Crisis MCP tool list and the integrity rules + WEAK
+POINTS pattern from the drafter family.
+
+### Changed
+- brigade-pdf microservice now lives at its own repo:
+  `git.unicorncommander.ai/UnicornCommander/brigade-pdf-gen`. Brigade's
+  `generate_pdf` tool unchanged; the relocation is purely repo hygiene.
+
+### Migration notes (1.2.0 → 1.3.0)
+- New agents are DB-registered. Re-run `register_analytical.py` against
+  Brigade with `BRIGADE_ADMIN_KEY` set, or POST the agents directly to
+  `/api/v1/agents`.
+- Crisis Ops `/drafts` page now lists all 10 agents (6 drafters + 4
+  analytical). No backend migration required.
+
 ## [1.2.0] — 2026-04-25
 
 Drafter family, Crisis MCP tool wiring, and the brigade-pdf microservice
