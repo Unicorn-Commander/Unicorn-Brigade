@@ -4,6 +4,38 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] — 2026-04-26
+
+Per-call correlation: orchestration events emitted during a single chat
+can now be filtered to that chat by a downstream subscriber. Powers
+Crisis Ops's live progress badges that show what The Fixer is doing
+during the 30-90s wait.
+
+### Added
+- **`OpenAIChatRequest.mission_id`** — per-call correlation id. Forwarded
+  to `ChatRequest.mission_id`. If not provided, `chat_with_agent`
+  generates one (`chat-<12-hex>`).
+- **`ChatRequest.mission_id`** — internal Brigade chat schema mirror.
+- **`mission_id` threaded into all `emit_*` helpers** in `chat_with_agent`:
+  `emit_agent_started`, `emit_tool_call`, `emit_tool_result`,
+  `emit_agent_completed`. The `OrchestrationEvent.mission_id` field already
+  existed; this just populates it consistently.
+- **`delegation_tools._CURRENT_MISSION_ID`** ContextVar. `chat_with_agent`
+  sets it at the top of each call; `delegate_to_agent_handler` reads it
+  and forwards `mission_id` in the downstream chat body. Lets a Fixer's
+  events AND every nested specialist's events share the same correlation
+  id, so a subscriber sees the full delegation chain.
+- **`GET /api/v1/orchestration/events?mission_id=X`** filter on the SSE
+  firehose. Events with non-matching `mission_id` are dropped from the
+  stream. Lets multiple concurrent chats subscribe without bleeding into
+  each other.
+
+### Migration notes (1.8.0 → 1.9.0)
+- All additive — clients that don't send `mission_id` see no change.
+- Subscribers that want per-chat events should send `?mission_id=` on the
+  events URL; without it, the stream is the unfiltered firehose (existing
+  behavior).
+
 ## [1.8.0] — 2026-04-25
 
 Per-call model override on the OpenAI-compat surface so consumer apps

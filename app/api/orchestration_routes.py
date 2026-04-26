@@ -80,6 +80,7 @@ def init_orchestration_routes(client: OpsCenterLLMClient):
 
 @router.get("/events")
 async def stream_events(
+    mission_id: Optional[str] = None,
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
@@ -89,13 +90,19 @@ async def stream_events(
     - Agent activity (started, thinking, tool calls, completed)
     - Mission progress
     - Agent creation/delegation
+
+    If ``mission_id`` is provided, only events with a matching mission_id
+    are streamed. Used by Crisis Ops to surface per-chat progress without
+    bleeding events from other concurrent chats into the user's view.
     """
     async def generate():
         # Send initial connection event
-        yield f"data: {json.dumps({'type': 'connected', 'message': 'Connected to orchestration stream'})}\n\n"
+        yield f"data: {json.dumps({'type': 'connected', 'mission_id': mission_id})}\n\n"
 
-        # Stream events as they come
+        # Stream events as they come, filtering by mission_id when set
         async for event in event_bus.subscribe():
+            if mission_id and event.mission_id != mission_id:
+                continue
             yield event.to_sse()
 
     return StreamingResponse(

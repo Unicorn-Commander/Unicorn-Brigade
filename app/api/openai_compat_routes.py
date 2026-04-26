@@ -47,6 +47,10 @@ class OpenAIChatRequest(BaseModel):
     # Lets a UI surface (Crisis Ops Drafts wizard) pick best/cheap/local per call
     # without forking an agent definition per quality tier.
     model_override: Optional[str] = None
+    # Per-call correlation id. Forwarded to chat_with_agent's mission_id so a
+    # downstream subscriber to /api/v1/orchestration/events?mission_id=X
+    # receives only events from THIS chat call (and any nested delegations).
+    mission_id: Optional[str] = None
 
 
 def _verify_admin_key(x_api_key: Optional[str], authorization: Optional[str]) -> None:
@@ -209,7 +213,8 @@ async def openai_chat_completions(
         temperature=request.temperature,
         maxTokens=request.max_tokens,
         history=history,
-        model=request.model_override,  # None lets the agent default win; set to override per-call
+        model=request.model_override,
+        mission_id=request.mission_id,
     )
 
     # Streaming path (enhanced mode only, no client tools)

@@ -365,6 +365,11 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = "anonymous"
     history: Optional[List[Dict[str, str]]] = []
     speaker_name: Optional[str] = None
+    # Per-call correlation id. When set, every orchestration event emitted
+    # during this chat (and any nested delegate_to_agent calls) carries this
+    # value as mission_id, so a downstream subscriber can filter events that
+    # belong only to this chat. If unset, chat_with_agent generates one.
+    mission_id: Optional[str] = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -670,6 +675,16 @@ async def chat_with_agent(
         tool_calls_log = []
         agent_name = agent.get("displayName", agent["name"])
 
+        # Per-call correlation: tag every orchestration event emitted during
+        # this chat with the same mission_id so a downstream subscriber can
+        # filter events that belong only to this run. Generated if not given.
+        import uuid as _uuid_mod
+        mission_id = request.mission_id or f"chat-{_uuid_mod.uuid4().hex[:12]}"
+        # Stash on a context var so delegate_to_agent_handler (called from a
+        # tool handler) can read it without an explicit parameter chain.
+        from app.llm.delegation_tools import _CURRENT_MISSION_ID
+        _mission_token = _CURRENT_MISSION_ID.set(mission_id)
+
         # Initialize Langfuse tracer for observability
         tracer = get_tracer(
             agent_id=agent["id"],
@@ -688,6 +703,7 @@ async def chat_with_agent(
             agent_id=agent["id"],
             agent_name=agent_name,
             task=request.message[:100],
+            mission_id=mission_id,
         )
 
         if agent_tools:
@@ -705,6 +721,7 @@ async def chat_with_agent(
                     agent_name=agent_name,
                     tool_name=tc.name,
                     arguments=tc.arguments,
+                    mission_id=mission_id,
                 ))
 
             def on_tool_result(tr: ToolResult):
@@ -730,6 +747,7 @@ async def chat_with_agent(
                     agent_name=agent_name,
                     tool_name=tr.name,
                     result=tr.result if not tr.error else {"error": tr.error},
+                    mission_id=mission_id,
                 ))
 
             response = await llm_client.execute_tool_loop(
@@ -811,6 +829,7 @@ async def chat_with_agent(
             agent_id=agent["id"],
             agent_name=agent_name,
             result=content[:200] if content else "",
+            mission_id=mission_id,
         )
 
         # End Langfuse trace

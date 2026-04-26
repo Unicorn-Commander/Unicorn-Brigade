@@ -8,9 +8,16 @@ Detective Holmes can ask Gunny for help building an agent.
 
 import os
 import logging
+from contextvars import ContextVar
 from typing import Dict, Any, Optional
 
 import httpx
+
+# Context var: chat_with_agent sets this at the start of each chat call so
+# delegate_to_agent_handler can forward the mission_id to the downstream
+# chat call. Lets a Crisis Ops orchestrator's events + every nested
+# specialist's events share one correlation id.
+_CURRENT_MISSION_ID: ContextVar[Optional[str]] = ContextVar("_CURRENT_MISSION_ID", default=None)
 
 from app.llm.ops_center_client import ToolDefinition, ToolParameter
 
@@ -50,6 +57,11 @@ async def delegate_to_agent_handler(
     body: Dict[str, Any] = {"message": message}
     if caller_user_id:
         body["user_id"] = caller_user_id
+    # Forward parent's mission_id so the downstream specialist's events
+    # carry the same correlation id.
+    parent_mission = _CURRENT_MISSION_ID.get()
+    if parent_mission:
+        body["mission_id"] = parent_mission
 
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:
