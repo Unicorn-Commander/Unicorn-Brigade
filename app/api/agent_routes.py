@@ -365,6 +365,11 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = "anonymous"
     history: Optional[List[Dict[str, str]]] = []
     speaker_name: Optional[str] = None
+    # Per-case scope: when set, memory groups become {user}__{case}__{agent}
+    # so the same user's memories don't bleed across cases. Crisis Ops sends
+    # this on every chat; other Brigade consumers can omit and get the
+    # legacy {user}__{agent} grouping.
+    case_id: Optional[str] = None
     # Per-call correlation id. When set, every orchestration event emitted
     # during this chat (and any nested delegate_to_agent calls) carries this
     # value as mission_id, so a downstream subscriber can filter events that
@@ -682,8 +687,9 @@ async def chat_with_agent(
         mission_id = request.mission_id or f"chat-{_uuid_mod.uuid4().hex[:12]}"
         # Stash on a context var so delegate_to_agent_handler (called from a
         # tool handler) can read it without an explicit parameter chain.
-        from app.llm.delegation_tools import _CURRENT_MISSION_ID
+        from app.llm.delegation_tools import _CURRENT_MISSION_ID, _CURRENT_CASE_ID
         _mission_token = _CURRENT_MISSION_ID.set(mission_id)
+        _case_token = _CURRENT_CASE_ID.set(request.case_id) if request.case_id else None
 
         # Initialize Langfuse tracer for observability
         tracer = get_tracer(

@@ -18,6 +18,7 @@ import httpx
 # chat call. Lets a Crisis Ops orchestrator's events + every nested
 # specialist's events share one correlation id.
 _CURRENT_MISSION_ID: ContextVar[Optional[str]] = ContextVar("_CURRENT_MISSION_ID", default=None)
+_CURRENT_CASE_ID: ContextVar[Optional[str]] = ContextVar("_CURRENT_CASE_ID", default=None)
 
 from app.llm.ops_center_client import ToolDefinition, ToolParameter
 
@@ -62,6 +63,11 @@ async def delegate_to_agent_handler(
     parent_mission = _CURRENT_MISSION_ID.get()
     if parent_mission:
         body["mission_id"] = parent_mission
+    # Forward parent's case_id so the specialist's memory writes/reads use
+    # the same case-scoped group_id.
+    parent_case = _CURRENT_CASE_ID.get()
+    if parent_case:
+        body["case_id"] = parent_case
 
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:

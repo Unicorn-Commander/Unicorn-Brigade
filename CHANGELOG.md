@@ -4,6 +4,36 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] — 2026-04-26
+
+Per-case memory scoping. Memories now live at
+`{user}__{case}__{agent}` instead of `{user}__{agent}`, so the same
+user's chats with the same agent across different cases don't bleed
+together. Crisis Ops sends `case_id` on every chat call. Brigade
+consumers that don't send `case_id` keep the legacy two-part group_id
+(no breakage).
+
+### Added
+- **`OpenAIChatRequest.case_id`** — per-call case scope. Forwarded into
+  `ChatRequest.case_id`.
+- **`ChatRequest.case_id`** field.
+- **`graphiti_manager._group_id(user, agent, case_id=None)`** — extended
+  signature; case_id is appended to the group when set.
+- **`graphiti_manager.store(... case_id=None)`** and **`.retrieve(...
+  case_id=None)`** signatures threaded.
+- **All memory call sites in agent_routes.py + openai_compat_routes.py
+  pass `request.case_id`** through to memory store/retrieve.
+- **`delegation_tools._CURRENT_CASE_ID`** ContextVar — `chat_with_agent`
+  sets it; `delegate_to_agent_handler` forwards it in the downstream
+  body so a Fixer's case scope flows through nested specialist chats.
+
+### Migration notes (1.9.0 → 1.10.0)
+- All additive — pre-existing memories still addressable as
+  `{user}__{agent}` for callers that don't send case_id.
+- New chats from Crisis Ops will write to `{user}__{case}__{agent}`
+  groups. Pre-1.10 memories for the same user+agent stay where they
+  are; the agent will gradually migrate as the user works new cases.
+
 ## [1.9.0] — 2026-04-26
 
 Per-call correlation: orchestration events emitted during a single chat

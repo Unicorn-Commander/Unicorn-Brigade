@@ -162,12 +162,18 @@ class GraphitiMemoryManager:
                 return False
         return True
 
-    def _group_id(self, user_id, agent_id):
+    def _group_id(self, user_id, agent_id, case_id=None):
+        """Per-user-per-case-per-agent isolation. case_id is optional for
+        callers that aren't case-scoped (existing Brigade consumers like
+        LibreChat); when None, the group is {user}__{agent} as before."""
+        parts = [_slug(user_id)]
+        if case_id:
+            parts.append(_slug(case_id))
         if agent_id:
-            return f"{_slug(user_id)}__{_slug(agent_id)}"
-        return _slug(user_id)
+            parts.append(_slug(agent_id))
+        return "__".join(parts)
 
-    async def _store_episode_now(self, user_id, agent_id, messages, metadata):
+    async def _store_episode_now(self, user_id, agent_id, messages, metadata, case_id=None):
         try:
             lines = []
             for m in messages:
@@ -175,36 +181,41 @@ class GraphitiMemoryManager:
                 content = m.get("content", "")
                 lines.append(f"{role}: {content}")
             episode_body = "\n".join(lines)
-            source_description = f"Chat exchange between {user_id} and agent {agent_id}"
+            case_suffix = f" (case {case_id})" if case_id else ""
+            source_description = f"Chat exchange between {user_id} and agent {agent_id}{case_suffix}"
             if metadata and metadata.get("agent_name"):
-                source_description = f"Chat with {metadata['agent_name']} ({agent_id}) and user {user_id}"
+                source_description = f"Chat with {metadata['agent_name']} ({agent_id}) and user {user_id}{case_suffix}"
+            name_parts = ["chat", _slug(user_id)]
+            if case_id:
+                name_parts.append(_slug(case_id))
+            name_parts.extend([_slug(agent_id), str(int(datetime.now(timezone.utc).timestamp()))])
             await self.graphiti.add_episode(
-                name=f"chat-{_slug(user_id)}-{_slug(agent_id)}-{int(datetime.now(timezone.utc).timestamp())}",
+                name="-".join(name_parts),
                 episode_body=episode_body,
                 source=EpisodeType.message,
                 source_description=source_description,
                 reference_time=datetime.now(timezone.utc),
-                group_id=self._group_id(user_id, agent_id),
+                group_id=self._group_id(user_id, agent_id, case_id),
             )
-            logger.info(f"Graphiti stored episode user={user_id} agent={agent_id}")
+            logger.info(f"Graphiti stored episode user={user_id} agent={agent_id} case={case_id}")
         except Exception as e:
             logger.error(f"Background graphiti store failed: {e}")
 
-    async def store(self, user_id, agent_id, messages, metadata=None):
+    async def store(self, user_id, agent_id, messages, metadata=None, case_id=None):
         if not self.graphiti:
             return False
         if not await self._ensure_indices():
             return False
-        asyncio.create_task(self._store_episode_now(user_id, agent_id, messages, metadata))
+        asyncio.create_task(self._store_episode_now(user_id, agent_id, messages, metadata, case_id))
         return True
 
-    async def retrieve(self, user_id, query, agent_id=None, limit=10):
+    async def retrieve(self, user_id, query, agent_id=None, limit=10, case_id=None):
         if not self.graphiti:
             return []
         if not await self._ensure_indices():
             return []
         try:
-            group_id = self._group_id(user_id, agent_id)
+            group_id = self._group_id(user_id, agent_id, case_id)
             edges = await asyncio.wait_for(
                 self.graphiti.search(query=query, group_ids=[group_id], num_results=limit),
                 timeout=15.0,
@@ -214,7 +225,7 @@ class GraphitiMemoryManager:
                 fact = getattr(edge, "fact", None) or getattr(edge, "name", None)
                 if fact:
                     memories.append({"memory": fact, "uuid": getattr(edge, "uuid", None)})
-            logger.info(f"Retrieved {len(memories)} graphiti memories for user={user_id} agent={agent_id}")
+            logger.info(f"Retrieved {len(memories)} graphiti memories user={user_id} agent={agent_id} case={case_id}")
             return memories
         except asyncio.TimeoutError:
             logger.warning("Graphiti retrieve timed out")

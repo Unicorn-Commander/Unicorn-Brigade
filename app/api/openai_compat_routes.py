@@ -51,6 +51,10 @@ class OpenAIChatRequest(BaseModel):
     # downstream subscriber to /api/v1/orchestration/events?mission_id=X
     # receives only events from THIS chat call (and any nested delegations).
     mission_id: Optional[str] = None
+    # Per-case scope. When set, memory groups become {user}__{case}__{agent}
+    # so memories don't bleed across cases. Forwarded through ChatRequest +
+    # delegate_to_agent's downstream calls.
+    case_id: Optional[str] = None
 
 
 def _verify_admin_key(x_api_key: Optional[str], authorization: Optional[str]) -> None:
@@ -215,6 +219,7 @@ async def openai_chat_completions(
         history=history,
         model=request.model_override,
         mission_id=request.mission_id,
+        case_id=request.case_id,
     )
 
     # Streaming path (enhanced mode only, no client tools)
@@ -384,6 +389,7 @@ async def _passthrough_chat(
                 query=request.messages[-1].content if request.messages else "",
                 agent_id=agent["id"],
                 limit=5,
+                case_id=request.case_id,
             )
             if recalled:
                 lines = []
@@ -497,6 +503,7 @@ async def _passthrough_chat(
                             {"role": "assistant", "content": reply},
                         ],
                         metadata={"model": model, "mode": "passthrough"},
+                        case_id=request.case_id,
                     )
                 )
     except Exception as e:
@@ -709,6 +716,7 @@ async def _dual_layer_chat(
                 query=latest_user,
                 agent_id=agent["id"],
                 limit=5,
+                case_id=request.case_id,
             )
             if recalled:
                 lines = []
@@ -991,6 +999,7 @@ async def _enhanced_stream_chat(
                 query=latest_user,
                 agent_id=agent["id"],
                 limit=5,
+                case_id=request.case_id,
             )
             if recalled:
                 lines = []
