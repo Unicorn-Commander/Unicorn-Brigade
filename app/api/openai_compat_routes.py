@@ -43,6 +43,10 @@ class OpenAIChatRequest(BaseModel):
     tools: Optional[List[Dict[str, Any]]] = None
     tool_choice: Optional[Any] = None
     response_format: Optional[Dict[str, Any]] = None
+    # Per-call model override: if set, replaces the agent's configured model.
+    # Lets a UI surface (Crisis Ops Drafts wizard) pick best/cheap/local per call
+    # without forking an agent definition per quality tier.
+    model_override: Optional[str] = None
 
 
 def _verify_admin_key(x_api_key: Optional[str], authorization: Optional[str]) -> None:
@@ -205,7 +209,7 @@ async def openai_chat_completions(
         temperature=request.temperature,
         maxTokens=request.max_tokens,
         history=history,
-        model=None,  # let the agent's configured model win
+        model=request.model_override,  # None lets the agent default win; set to override per-call
     )
 
     # Streaming path (enhanced mode only, no client tools)
@@ -513,6 +517,46 @@ async def _passthrough_chat(
     except Exception as _meter_err:
         logger.debug(f"passthrough meter skipped: {_meter_err}")
 
+    # If the client asked for streaming, wrap the final response as SSE. The
+    # passthrough path calls upstream non-streaming under the hood (so Brigade
+    # can inject persona + memory + tools), but opencode/Cursor expect SSE when
+    # stream=true. Emit one content chunk + stop + [DONE].
+    if request.stream:
+        import json as _json, time as _time, uuid as _uuid
+        from fastapi.responses import StreamingResponse as _Stream
+        chat_id = raw.get("id") or f"chatcmpl-brigade-{_uuid.uuid4().hex[:12]}"
+        created = raw.get("created") or int(_time.time())
+        model_name = raw.get("model") or request.model
+        choice0 = (raw.get("choices") or [{}])[0]
+        msg = choice0.get("message") or {}
+        content = msg.get("content") or ""
+        tool_calls = msg.get("tool_calls") or []
+
+        def _chunk(delta, finish=None):
+            return "data: " + _json.dumps({
+                "id": chat_id, "object": "chat.completion.chunk",
+                "created": created, "model": model_name,
+                "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+            }) + "\n\n"
+
+        async def _gen():
+            yield _chunk({"role": "assistant"})
+            if content:
+                yield _chunk({"content": content})
+            if tool_calls:
+                for i, tc in enumerate(tool_calls):
+                    fn = tc.get("function") or {}
+                    yield _chunk({"tool_calls": [{
+                        "index": i, "id": tc.get("id"),
+                        "type": tc.get("type", "function"),
+                        "function": {"name": fn.get("name"), "arguments": fn.get("arguments") or ""},
+                    }]})
+            yield _chunk({}, finish=choice0.get("finish_reason") or ("tool_calls" if tool_calls else "stop"))
+            yield "data: [DONE]\n\n"
+
+        return _Stream(_gen(), media_type="text/event-stream",
+                       headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
     return raw
 
 
@@ -551,6 +595,59 @@ async def _dual_layer_chat(
         _log_rbac_denial as _audit_denial,
         _meter_chat_to_lago,
     )
+    from fastapi.responses import StreamingResponse as _Stream
+
+    def _dual_to_sse(raw_resp: Dict[str, Any]) -> _Stream:
+        """Wrap a completed non-stream chat.completion response into OpenAI SSE chunks.
+
+        Dual-layer runs synchronously (server tools, memory, token metering),
+        so by the time we call this we already have the final content and/or
+        tool_calls. Emit them as two chunks (delta + stop) + [DONE].
+        """
+        chat_id = raw_resp.get("id") or f"chatcmpl-brigade-{_uuid.uuid4().hex[:12]}"
+        created = raw_resp.get("created") or int(_time.time())
+        model_name = raw_resp.get("model") or request.model
+        choice0 = (raw_resp.get("choices") or [{}])[0]
+        msg = choice0.get("message") or {}
+        content = msg.get("content") or ""
+        tool_calls = msg.get("tool_calls") or []
+
+        def _chunk(delta: Dict[str, Any], finish: Optional[str] = None) -> str:
+            payload = {
+                "id": chat_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model_name,
+                "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+            }
+            return f"data: {_json.dumps(payload)}\n\n"
+
+        async def _gen():
+            # Open with a role marker (required by some SDKs).
+            yield _chunk({"role": "assistant"})
+            if content:
+                yield _chunk({"content": content})
+            if tool_calls:
+                # Emit each tool_call in a delta. OpenAI format expects indexed tool_calls.
+                for i, tc in enumerate(tool_calls):
+                    fn = tc.get("function") or {}
+                    yield _chunk({
+                        "tool_calls": [{
+                            "index": i,
+                            "id": tc.get("id"),
+                            "type": tc.get("type", "function"),
+                            "function": {
+                                "name": fn.get("name"),
+                                "arguments": fn.get("arguments") or "",
+                            },
+                        }],
+                    })
+            finish = choice0.get("finish_reason") or ("tool_calls" if tool_calls else "stop")
+            yield _chunk({}, finish=finish)
+            yield "data: [DONE]\n\n"
+
+        headers = {"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
+        return _Stream(_gen(), media_type="text/event-stream", headers=headers)
 
     # --- Phase 7: billing preflight + user_attrs ---
     _user_attrs, _billing_state = await _fetch_user_attrs(auth_user)
@@ -655,7 +752,7 @@ async def _dual_layer_chat(
     from app.api.agent_routes import llm_client as _llm_client
     if _llm_client is None:
         raise HTTPException(status_code=503, detail="LLM client not initialized")
-    model = agent.get("model") or "default"
+    model = request.model_override or agent.get("model") or "default"
     temperature = request.temperature if request.temperature is not None else agent.get("temperature", 0.7)
     max_tokens = request.max_tokens or agent.get("maxTokens", 2000)
 
@@ -745,6 +842,8 @@ async def _dual_layer_chat(
                 )
             except Exception as _me:
                 logger.debug(f"dual-layer meter skipped: {_me}")
+            if request.stream:
+                return _dual_to_sse(raw)
             return raw
 
         # Classify tool calls
@@ -776,6 +875,8 @@ async def _dual_layer_chat(
                 )
             except Exception as _me:
                 logger.debug(f"dual-layer meter skipped: {_me}")
+            if request.stream:
+                return _dual_to_sse(raw)
             return raw
 
         # Only server calls — execute locally and loop

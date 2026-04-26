@@ -4,6 +4,30 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] — 2026-04-25
+
+Per-call model override on the OpenAI-compat surface so consumer apps
+can pick the model per request without forking agent definitions per
+quality tier.
+
+### Added
+- **`model_override` field on `OpenAIChatRequest`.** When set, replaces
+  the agent's configured `model` for this call only. Threaded into
+  `chat_with_agent` (which already honored `request.model` as override)
+  via `ChatRequest.model`. Also threaded into `_enhanced_stream_chat`'s
+  resolver. Lets a Crisis Ops drafter quality picker (best/default/cheap/
+  local) work without per-tier agent forks.
+
+### Notes
+- `_enhanced_stream_chat` does NOT run a server-side tool loop — it
+  streams pure LLM output. Agents that depend on Crisis MCP tools
+  (drafters, analytical, The Fixer) should keep using `stream:false`
+  through the openai-compat adapter to preserve tool-call functionality.
+  Streaming-with-tool-calls is a Tier-2 follow-up.
+
+### Migration notes (1.7.0 → 1.8.0)
+- No DB migration. New field is additive; existing clients ignore it.
+
 ## [1.7.0] — 2026-04-25
 
 Apps follow identity (Keycloak roles → User.apps), delegation works
