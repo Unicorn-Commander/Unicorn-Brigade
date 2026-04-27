@@ -1050,6 +1050,14 @@ async def _enhanced_stream_chat(
         if effective_user_id and effective_user_id not in ("anonymous","dev-bypass",""):
             headers["X-User-ID"] = effective_user_id
 
+    # Resolve agent's tool list. If non-empty, the LLM stream becomes a tool
+    # loop: stream tokens, accumulate tool_calls, when finish_reason=tool_calls
+    # execute server-side, append role=tool results, restart upstream stream.
+    from app.llm.tool_resolver import get_tools_for_agent as _get_tools_for_agent
+    _agent_tools = _get_tools_for_agent(agent) or []
+    _agent_tool_defs = [t.to_openai_format() for t in _agent_tools]
+    _agent_tools_by_name = {t.name: t for t in _agent_tools}
+
     payload = {
         "model": resolved_model,
         "messages": llm_messages,
@@ -1057,113 +1065,232 @@ async def _enhanced_stream_chat(
         "max_tokens": max_tokens,
         "stream": True,
     }
+    if _agent_tool_defs:
+        payload["tools"] = _agent_tool_defs
 
     chat_id = f"chatcmpl-brigade-{_uuid.uuid4().hex[:12]}"
     created = int(_time.time())
     full_text_buffer: list[str] = []  # for memory store after stream completes
+    MAX_TOOL_ITERATIONS = 8
 
     async def _gen():
-        # Strip <think>...</think> tags from streamed text. We hold the buffer
-        # until we know we're not inside a thinking block.
+        # Strip <think>...</think> tags from streamed text. State carries
+        # across tool iterations (a thinking block could span them).
         in_think = False
         carry = ""
-        try:
-            async with _llm_client.client.stream("POST", endpoint, json=payload, headers=headers) as resp:
-                if resp.status_code >= 400:
-                    error_body = await resp.aread()
-                    error_text = error_body.decode("utf-8", errors="replace")[:500]
-                    err_chunk = {
-                        "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
-                        "choices": [{"index": 0, "delta": {"content": f"[Brigade upstream error {resp.status_code}: {error_text}]"}, "finish_reason": "stop"}],
-                    }
-                    yield f"data: {_json.dumps(err_chunk)}\n\n"
-                    yield "data: [DONE]\n\n"
-                    return
 
-                async for line in resp.aiter_lines():
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:].strip()
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        upstream = _json.loads(data_str)
-                    except Exception:
-                        continue
-                    choice = (upstream.get("choices") or [{}])[0]
-                    delta_content = (choice.get("delta") or {}).get("content")
-                    if delta_content is None:
-                        continue
-                    # Handle <think> tag stripping across chunk boundaries
-                    chunk = carry + delta_content
-                    carry = ""
-                    out = ""
-                    i = 0
-                    while i < len(chunk):
-                        if not in_think:
-                            tag = chunk.find("<think>", i)
-                            if tag == -1:
-                                # Could still be in middle of "<think" partial
-                                if "<th" in chunk[max(i, len(chunk)-7):]:
-                                    safe_to = max(i, len(chunk)-7)
-                                    out += chunk[i:safe_to]
-                                    carry = chunk[safe_to:]
-                                else:
-                                    out += chunk[i:]
-                                break
-                            out += chunk[i:tag]
-                            in_think = True
-                            i = tag + len("<think>")
+        def _emit_content(delta_content):
+            """Run delta_content through think-stripping; return SSE chunk or None."""
+            nonlocal in_think, carry
+            if delta_content is None:
+                return None
+            chunk = carry + delta_content
+            carry = ""
+            out = ""
+            i = 0
+            while i < len(chunk):
+                if not in_think:
+                    tag = chunk.find("<think>", i)
+                    if tag == -1:
+                        if "<th" in chunk[max(i, len(chunk)-7):]:
+                            safe_to = max(i, len(chunk)-7)
+                            out += chunk[i:safe_to]
+                            carry = chunk[safe_to:]
                         else:
-                            end = chunk.find("</think>", i)
-                            if end == -1:
-                                if "</thi" in chunk[max(i, len(chunk)-8):]:
-                                    carry = chunk[max(i, len(chunk)-8):]
-                                break
-                            in_think = False
-                            i = end + len("</think>")
-                    if not out:
-                        continue
-                    full_text_buffer.append(out)
-                    out_chunk = {
+                            out += chunk[i:]
+                        break
+                    out += chunk[i:tag]
+                    in_think = True
+                    i = tag + len("<think>")
+                else:
+                    end = chunk.find("</think>", i)
+                    if end == -1:
+                        if "</thi" in chunk[max(i, len(chunk)-8):]:
+                            carry = chunk[max(i, len(chunk)-8):]
+                        break
+                    in_think = False
+                    i = end + len("</think>")
+            if not out:
+                return None
+            full_text_buffer.append(out)
+            return "data: " + _json.dumps({
+                "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
+                "choices": [{"index": 0, "delta": {"content": out}, "finish_reason": None}],
+            }) + "\n\n"
+
+        running_messages = list(llm_messages)
+        iterations = 0
+
+        try:
+            while True:
+                iterations += 1
+                if iterations > MAX_TOOL_ITERATIONS:
+                    yield "data: " + _json.dumps({
                         "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
-                        "choices": [{"index": 0, "delta": {"content": out}, "finish_reason": None}],
-                    }
-                    yield f"data: {_json.dumps(out_chunk)}\n\n"
+                        "choices": [{"index": 0, "delta": {"content": f"\n[Tool loop hit {MAX_TOOL_ITERATIONS}-iteration cap; stopping.]"}, "finish_reason": "stop"}],
+                    }) + "\n\n"
+                    break
 
-                # Final stop chunk
-                final = {
-                    "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-                }
-                yield f"data: {_json.dumps(final)}\n\n"
-                yield "data: [DONE]\n\n"
+                iter_payload = {**payload, "messages": running_messages}
+                tool_calls_acc = {}  # index -> {"id", "name", "arguments"}
+                finish_reason = None
 
-                # Store memory of the exchange in the background
-                full_text = "".join(full_text_buffer).strip()
-                latest_user_msg = next(
-                    (m.content for m in reversed(request.messages) if m.role == "user"),
-                    None,
-                )
-                if _mm and effective_user_id and effective_user_id != "anonymous" and latest_user_msg and full_text:
-                    _asyncio.create_task(
-                        _mm.store(
-                            user_id=effective_user_id,
-                            agent_id=agent["id"],
-                            messages=[
-                                {"role": "user", "content": latest_user_msg},
-                                {"role": "assistant", "content": full_text},
-                            ],
-                            metadata={"model": model, "mode": "stream"},
-                        )
+                async with _llm_client.client.stream("POST", endpoint, json=iter_payload, headers=headers) as resp:
+                    if resp.status_code >= 400:
+                        error_body = await resp.aread()
+                        error_text = error_body.decode("utf-8", errors="replace")[:500]
+                        yield "data: " + _json.dumps({
+                            "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
+                            "choices": [{"index": 0, "delta": {"content": f"[Brigade upstream error {resp.status_code}: {error_text}]"}, "finish_reason": "stop"}],
+                        }) + "\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+
+                    async for line in resp.aiter_lines():
+                        if not line or not line.startswith("data: "):
+                            continue
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            upstream = _json.loads(data_str)
+                        except Exception:
+                            continue
+                        choice = (upstream.get("choices") or [{}])[0]
+                        delta = choice.get("delta") or {}
+
+                        emitted = _emit_content(delta.get("content"))
+                        if emitted:
+                            yield emitted
+
+                        for tc_frag in (delta.get("tool_calls") or []):
+                            idx = tc_frag.get("index", 0)
+                            slot = tool_calls_acc.setdefault(idx, {"id": None, "name": None, "arguments": ""})
+                            if tc_frag.get("id"):
+                                slot["id"] = tc_frag["id"]
+                            fn = tc_frag.get("function") or {}
+                            if fn.get("name"):
+                                slot["name"] = fn["name"]
+                            if fn.get("arguments"):
+                                slot["arguments"] += fn["arguments"]
+
+                        if choice.get("finish_reason"):
+                            finish_reason = choice["finish_reason"]
+
+                if finish_reason == "tool_calls" and tool_calls_acc:
+                    assembled_calls = []
+                    for idx in sorted(tool_calls_acc.keys()):
+                        slot = tool_calls_acc[idx]
+                        if not slot.get("name"):
+                            continue
+                        assembled_calls.append({
+                            "id": slot["id"] or f"call_{_uuid.uuid4().hex[:8]}",
+                            "type": "function",
+                            "function": {"name": slot["name"], "arguments": slot["arguments"] or "{}"},
+                        })
+                    if not assembled_calls:
+                        break
+
+                    running_messages.append({
+                        "role": "assistant",
+                        "content": "".join(full_text_buffer) or None,
+                        "tool_calls": assembled_calls,
+                    })
+
+                    # Read mission_id from ContextVar (set by chat_with_agent path)
+                    _mid = None
+                    try:
+                        from app.llm.delegation_tools import _CURRENT_MISSION_ID as _CMI
+                        _mid = _CMI.get()
+                    except Exception:
+                        pass
+
+                    try:
+                        from app.orchestration import emit_tool_call as _etc, emit_tool_result as _etr
+                    except Exception:
+                        _etc = None
+                        _etr = None
+
+                    for tc in assembled_calls:
+                        fn_name = tc["function"]["name"]
+                        try:
+                            fn_args = _json.loads(tc["function"]["arguments"] or "{}")
+                        except Exception:
+                            fn_args = {}
+                        tool_def = _agent_tools_by_name.get(fn_name)
+
+                        if _etc:
+                            try:
+                                await _etc(agent_id=agent["id"], agent_name=agent.get("displayName") or agent["name"],
+                                           tool_name=fn_name, arguments=fn_args, mission_id=_mid)
+                            except Exception:
+                                pass
+
+                        if tool_def and tool_def.handler:
+                            try:
+                                result = await tool_def.handler(**fn_args)
+                                result_text = _json.dumps(result, default=str)[:8000]
+                                err = None
+                            except Exception as exc:
+                                result_text = _json.dumps({"error": str(exc)})
+                                err = str(exc)
+                        else:
+                            result_text = _json.dumps({"error": f"unknown tool: {fn_name}"})
+                            err = "unknown tool"
+
+                        if _etr:
+                            try:
+                                _result_for_event = {"error": err} if err else (
+                                    _json.loads(result_text) if result_text.startswith("{") else {"text": result_text}
+                                )
+                                await _etr(agent_id=agent["id"], agent_name=agent.get("displayName") or agent["name"],
+                                           tool_name=fn_name, result=_result_for_event, mission_id=_mid)
+                            except Exception:
+                                pass
+
+                        running_messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "name": fn_name,
+                            "content": result_text,
+                        })
+                    continue  # restart upstream stream with appended messages
+
+                # Natural finish — break out of the iteration loop
+                break
+
+            # Final stop chunk + DONE
+            yield "data: " + _json.dumps({
+                "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }) + "\n\n"
+            yield "data: [DONE]\n\n"
+
+            # Background memory store of the final exchange
+            full_text = "".join(full_text_buffer).strip()
+            latest_user_msg = next(
+                (m.content for m in reversed(request.messages) if m.role == "user"),
+                None,
+            )
+            if _mm and effective_user_id and effective_user_id != "anonymous" and latest_user_msg and full_text:
+                _asyncio.create_task(
+                    _mm.store(
+                        user_id=effective_user_id,
+                        agent_id=agent["id"],
+                        messages=[
+                            {"role": "user", "content": latest_user_msg},
+                            {"role": "assistant", "content": full_text},
+                        ],
+                        metadata={"model": model, "mode": "stream"},
+                        case_id=request.case_id,
                     )
+                )
         except Exception as e:
             logger.error(f"stream error: {e}")
-            err_chunk = {
+            yield "data: " + _json.dumps({
                 "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
                 "choices": [{"index": 0, "delta": {"content": f"[stream error: {e}]"}, "finish_reason": "stop"}],
-            }
-            yield f"data: {_json.dumps(err_chunk)}\n\n"
+            }) + "\n\n"
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(

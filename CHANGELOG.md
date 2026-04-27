@@ -4,6 +4,45 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] — 2026-04-27
+
+Streaming-with-tools. The OpenAI-compat enhanced streaming path now runs
+a tool loop server-side: tokens stream as they're generated, tool calls
+fire mid-stream, results feed back into the next iteration, all without
+breaking the SSE contract clients expect. Time-to-first-token drops from
+30-90s (full response wait) to ~2-3s for The Fixer.
+
+### Added
+- **`_enhanced_stream_chat` runs a tool loop while streaming.**
+  Resolves agent's tool list via `get_tools_for_agent`, sends OpenAI
+  tool definitions on the upstream LLM call. As the upstream stream
+  yields chunks:
+  - `delta.content` → forwarded to client (after think-tag stripping
+    that survives chunk boundaries)
+  - `delta.tool_calls` → accumulated by index (id, name, arguments
+    fragments concatenated)
+  - On `finish_reason == "tool_calls"`: assembled calls executed via
+    the tool's handler, role=tool result messages appended to the
+    running history, upstream stream restarted. Repeats up to
+    `MAX_TOOL_ITERATIONS` (8) per chat to prevent runaways.
+- **Tool execution emits `emit_tool_call` + `emit_tool_result` to the
+  orchestration bus** with the parent's `mission_id` (read from
+  `_CURRENT_MISSION_ID` ContextVar). Crisis Ops's existing live-progress
+  badges keep working — same event shape, same correlation, just now
+  alongside real token streaming.
+- **Memory store still happens at the end** of the full multi-iteration
+  exchange (case-scoped via `request.case_id`).
+
+### Migration notes (1.10.0 → 1.11.0)
+- **Stream consumers see no schema change.** Each chunk is still a
+  standard OpenAI `chat.completion.chunk` with `delta.content`. Tools
+  are server-side; the client never sees `delta.tool_calls`.
+- **Agents with empty `tools` list** behave identically to the prior
+  pure-streaming path — payload omits the `tools` key.
+- **Non-streaming path unchanged.** The `chat_with_agent` non-streaming
+  handler continues to handle the `stream=false` case via
+  `execute_tool_loop`. Streaming + non-streaming both work.
+
 ## [1.10.0] — 2026-04-26
 
 Per-case memory scoping. Memories now live at
