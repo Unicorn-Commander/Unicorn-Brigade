@@ -84,6 +84,12 @@ def _lazy_register_providers() -> None:
     except ImportError:
         logger.debug("Custom provider not available")
 
+    try:
+        from app.voice.providers.tts_orator import OratorTTSProvider
+        register_provider("orator", OratorTTSProvider)
+    except ImportError:
+        logger.debug("Orator provider not available")
+
 
 def get_tts_provider(
     provider_name: Optional[str] = None,

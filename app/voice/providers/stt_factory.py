@@ -98,6 +98,9 @@ def list_available_providers() -> List[str]:
     except ImportError:
         pass
 
+    # Amanuensis is HTTP-based, always available
+    available.append("amanuensis")
+
     return available
 
 
@@ -183,6 +186,10 @@ def get_stt_provider(
     elif provider_name in ("mlx-whisper", "mlxwhisper"):
         from app.voice.providers.stt_mlx_whisper import MLXWhisperProvider
         return MLXWhisperProvider(config)
+
+    elif provider_name == "amanuensis":
+        from app.voice.providers.stt_amanuensis import AmanuensisSTTProvider
+        return AmanuensisSTTProvider(config)
 
     else:
         available = list_available_providers()

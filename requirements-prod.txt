@@ -82,3 +82,8 @@ numpy>=1.24.0
 
 # HuggingFace Hub
 huggingface_hub>=0.20.0
+
+# LiveKit voice
+livekit>=0.13.0
+livekit-api>=0.6.0
+livekit-agents>=0.11.0

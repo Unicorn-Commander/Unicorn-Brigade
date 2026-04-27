@@ -35,6 +35,7 @@ RUN for f in \
 
 # Copy application code
 COPY app/ app/
+COPY scripts/ scripts/
 COPY tests/ tests/
 COPY pytest.ini .
 

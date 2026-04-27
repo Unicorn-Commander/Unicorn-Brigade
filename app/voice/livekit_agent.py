@@ -104,8 +104,8 @@ class VoiceRoomManager:
         api_secret: Optional[str] = None,
     ):
         self.livekit_url = livekit_url or os.getenv("LIVEKIT_URL", "ws://localhost:7880")
-        self.api_key = api_key or os.getenv("LIVEKIT_API_KEY", "devkey")
-        self.api_secret = api_secret or os.getenv("LIVEKIT_API_SECRET", "REMOVED")
+        self.api_key = api_key or os.getenv("LIVEKIT_API_KEY", "unicorn")
+        self.api_secret = api_secret or os.getenv("LIVEKIT_API_SECRET", "unicorn-brigade-secret-key-change-me")
 
         # In-memory room tracking (for now)
         self._rooms: Dict[str, VoiceRoom] = {}
@@ -129,9 +129,6 @@ class VoiceRoomManager:
             from livekit.api import AccessToken, VideoGrants
 
             token = AccessToken(self.api_key, self.api_secret)
-            token.identity = participant_identity
-            token.name = participant_identity
-            token.ttl = timedelta(seconds=ttl_seconds)
 
             # Set permissions
             grants = VideoGrants(
@@ -147,7 +144,13 @@ class VoiceRoomManager:
                 grants.room_admin = True
                 grants.room_record = True
 
-            token.video_grants = grants
+            # livekit-api v1.x uses chaining methods
+            token = (
+                token.with_identity(participant_identity)
+                .with_name(participant_identity)
+                .with_ttl(timedelta(seconds=ttl_seconds))
+                .with_grants(grants)
+            )
 
             return token.to_jwt()
 

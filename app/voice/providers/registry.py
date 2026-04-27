@@ -482,4 +482,34 @@ def register_builtin_providers() -> None:
         license="Apache-2.0",
     )
 
+    # Register HTTP-based providers (call out to running containers)
+    try:
+        from app.voice.providers.stt_amanuensis import AmanuensisSTTProvider
+        VoiceProviderRegistry.register_stt(
+            name="amanuensis",
+            provider_class=AmanuensisSTTProvider,
+            description="Self-hosted Whisper STT via Unicorn Amanuensis (NPU-accelerated)",
+            supported_models=["base", "large-v3"],
+            supports_streaming=False,
+            hardware_requirements="AMD Phoenix NPU (via Amanuensis container)",
+            license="Apache-2.0",
+        )
+    except ImportError:
+        logger.debug("Amanuensis STT provider not available")
+
+    try:
+        from app.voice.providers.tts_orator import OratorTTSProvider
+        VoiceProviderRegistry.register_tts(
+            name="orator",
+            provider_class=OratorTTSProvider,
+            description="Self-hosted Pocket TTS via Unicorn Orator (CPU-optimized, 8 voices)",
+            supported_models=["pocket-tts"],
+            supports_streaming=True,
+            supports_voice_cloning=True,
+            hardware_requirements="CPU (via Orator container)",
+            license="Apache-2.0",
+        )
+    except ImportError:
+        logger.debug("Orator TTS provider not available")
+
     logger.info("Registered built-in voice providers")
