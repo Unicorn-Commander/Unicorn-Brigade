@@ -4,6 +4,22 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] — 2026-04-28
+
+Better error visibility for tool-enabled completion failures. The
+exception logging path was producing empty strings when an exception
+had no useful str(). Now logs the exception type and repr so failures
+bubble visibly into the application log.
+
+### Fixed
+- The `_enhanced_stream_chat` tool-loop error log now formats as
+  `Error in tool-enabled completion [TypeName]: repr(e)` instead of the
+  prior bare `Error in tool-enabled completion: ` with no information
+  when the exception had no string representation. Surfaced during
+  Crisis Ops intake testing where a downstream failure was silently
+  hitting an except block.
+
+
 ## [1.11.0] — 2026-04-27
 
 Streaming-with-tools. The OpenAI-compat enhanced streaming path now runs

@@ -648,7 +648,7 @@ class OpsCenterLLMClient:
                 )
             except Exception:
                 pass
-            logger.error(f"Error in tool-enabled completion: {e}")
+            logger.error(f"Error in tool-enabled completion [{type(e).__name__}]: {repr(e)}")
             raise
 
     def parse_tool_calls(self, response: Dict[str, Any]) -> List[ToolCall]:
