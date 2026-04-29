@@ -19,6 +19,7 @@ from app.llm.ops_center_client import OpsCenterLLMClient
 from app.api.agent_routes import router as agent_router, init_agent_routes
 from app.api.openai_compat_routes import router as openai_compat_router
 from app.api.welcome_route import router as welcome_router
+from app.observability.metrics import metrics_middleware, metrics_endpoint
 from app.api.landing_route import router as landing_router
 from app.api.memory_inspector_routes import router as memory_inspector_router, init_memory_routes as init_memory_inspector
 from app.api.tool_routes import router as tool_router
@@ -207,6 +208,12 @@ app.add_middleware(
 )
 
 # Include routers — existing router FIRST (has /agents/execute which must match before /agents/{id})
+# Prometheus metrics middleware + scrape endpoint. Bound label cardinality
+# via UUID scrubbing in the metrics module. /metrics is unauthenticated —
+# Brigade is internal-only on the docker network so this is safe.
+app.middleware("http")(metrics_middleware)
+app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_schema=False)
+
 app.include_router(router, prefix="/api/v1", tags=["core"])
 app.include_router(agent_router, prefix="/api/v1", tags=["agents"])
 app.include_router(openai_compat_router, prefix="/api/v1/openai/v1", tags=["openai-compat"])

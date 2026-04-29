@@ -4,6 +4,29 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] — 2026-04-29
+
+Prometheus metrics endpoint. Brigade now exposes /metrics with HTTP
+request counters/histograms (UUID-scrubbed for bounded label cardinality)
+plus agent-chat and tool-call counters. Wires into the bigboy Prometheus
+stack alongside crisis-api so the existing centerdeep Alertmanager has
+real signal to fire on.
+
+### Added
+- `app/observability/metrics.py` — `metrics_middleware` records every
+  request (method, route, status_class, duration); `metrics_endpoint`
+  serves the standard prometheus-client text format. Counters defined:
+  `brigade_http_requests_total`, `brigade_http_request_duration_seconds`,
+  `brigade_agent_chat_total{agent,outcome}`, `brigade_agent_tool_calls_total`,
+  `brigade_agent_active` gauge.
+- Mounted in `app/main.py` after CORS as middleware + GET /metrics route.
+  Unauthenticated — Brigade is internal-only on the docker network.
+
+### Companion alerts (in Crisis Ops bigboy Prometheus)
+New rule groups `brigade` (HighErrorRate, AgentChatFailures, SlowRequests
+via p95) and `crisis-api` (HighErrorRate). Routes to centerdeep
+Alertmanager → ntfy.sh.
+
 ## [1.11.1] — 2026-04-28
 
 Better error visibility for tool-enabled completion failures. The
