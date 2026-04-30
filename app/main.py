@@ -194,7 +194,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title=os.getenv("API_TITLE", "Unicorn Brigade API"),
-    version=os.getenv("API_VERSION", "1.11.0"),
+    version=os.getenv("API_VERSION", "1.13.0"),
     description="Multi-Agent Orchestration System with LangGraph + Graphiti/FalkorDB",
     lifespan=lifespan
 )
@@ -278,7 +278,7 @@ async def root():
     """Root endpoint"""
     return {
         "name": "Unicorn Brigade API",
-        "version": "1.11.0",
+        "version": "1.13.0",
         "status": "operational",
         "endpoints": {
             "health": "/api/v1/health",
@@ -541,6 +541,17 @@ async def root():
             "recent_attributions": "/api/v1/trace/recent",
             "stats": "/api/v1/trace/stats",
             "generate_report": "POST /api/v1/trace/report"
+        },
+        "scheduled_runs": {
+            "description": "Cron-style persistent scheduling of agent runs",
+            "list": "/api/v1/scheduled-runs",
+            "create": "POST /api/v1/scheduled-runs",
+            "detail": "/api/v1/scheduled-runs/{id}",
+            "update": "PUT /api/v1/scheduled-runs/{id}",
+            "delete": "DELETE /api/v1/scheduled-runs/{id}",
+            "run_now": "POST /api/v1/scheduled-runs/{id}/run-now",
+            "history": "/api/v1/scheduled-runs/{id}/history",
+            "admin_reload": "POST /api/v1/scheduled-runs/admin/reload"
         }
     }
 

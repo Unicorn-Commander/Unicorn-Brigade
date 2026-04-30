@@ -28,7 +28,6 @@ psycopg2-binary==2.9.9
 
 # Scheduler (cron engine for app/services/scheduler.py)
 APScheduler==3.10.4
-croniter==2.0.5
 
 # Redis (>=7.1 required by falkordb)
 redis==7.1.1

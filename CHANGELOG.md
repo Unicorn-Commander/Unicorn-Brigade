@@ -4,6 +4,65 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] — 2026-04-30
+
+Persistent scheduled-runs surface. Brigade now owns recurring/monitoring
+agent invocations end-to-end — the schedule lives in `brigade_db`, the
+runtime is APScheduler embedded in the Brigade process, and Brigade is
+the source of truth on every restart. Replaces the bigboy-side cron +
+projectops-verify.sh wrapper that previously kept the
+project-ops-assistant smoke test alive.
+
+### Why
+Crisis-Ops, Ops-Center, and Project-Ops all depend on Brigade. Schedules
+that lived in `crontab -l` on bigboy weren't visible to those consumers,
+weren't audited, and didn't survive host moves. Brigade already had the
+agent registry and per-user JWT propagation into Project-Ops MCP — the
+missing piece was a place to store schedules and a runtime to fire them.
+
+### Added
+- `app/db/models.py` — `ScheduledRun` (cron, timezone, owner_user_id,
+  enabled, max_runtime_seconds, last_run_at/status/summary) and
+  `ScheduledRunHistory` (started_at, finished_at, status, output_summary,
+  error, tool_calls_count). Tables auto-created via `Base.metadata.create_all`.
+- `app/services/scheduler.py` — `BrigadeScheduler` wraps an in-process
+  `AsyncIOScheduler`. On startup `reload_all()` reads enabled rows and
+  registers `CronTrigger`s. Each fire mirrors the
+  `POST /api/v1/agents/{id}/chat` code path (system prompt, tool loop)
+  and forwards `owner_user_id` as `user_id` so per-user JWT propagation
+  works in scheduled runs. `asyncio.wait_for` honors
+  `max_runtime_seconds`; failures land as `status=timeout` or
+  `status=error` in history.
+- `app/api/scheduled_run_routes.py` — REST surface at
+  `/api/v1/scheduled-runs`: list (admin: all, non-admin: own), CRUD,
+  `POST /{id}/run-now`, paginated `/{id}/history`, and admin
+  `/admin/reload`.
+- `frontend/src/pages/ScheduledRuns.jsx` — admin page with table,
+  enabled toggle, run-now button, edit modal, and inline history expand.
+  Wired into the System nav section at `/scheduled-runs`.
+- `tests/test_scheduler.py` — cron parsing + scheduler lifecycle tests.
+
+### Design choice — DB is the source of truth
+APScheduler's SQLAlchemyJobStore is sync-only and a poor fit for our
+async stack. Instead, `scheduled_runs` rows are the truth and
+APScheduler is just the in-memory cron engine; we re-register all
+enabled rows on every restart. This keeps schedules inspectable via
+plain SQL and avoids serialized-job-blob drift.
+
+### Migration
+Bigboy crontab `0 13 * * * /home/muut/UC-Cloud-production/scripts/projectops-verify.sh ...`
+removed. Equivalent ScheduledRun created against
+`project-ops-assistant` on the same daily 13:00 UTC schedule, owned by
+Aaron's Project-Ops user id (so the MCP per-user JWT path is unchanged
+end-to-end). The legacy `projectops-verify.sh` and its log file are
+left in place for one verification cycle (~2 weeks) before removal.
+
+### Out of scope
+Distributed/multi-instance scheduling (Brigade is single-replica),
+in-flight pause/resume (only `enabled` + `max_runtime_seconds`
+cancellation), failure-webhooks (the agent's own prompt can invoke
+notify tools).
+
 ## [1.12.0] — 2026-04-29
 
 Prometheus metrics endpoint. Brigade now exposes /metrics with HTTP
