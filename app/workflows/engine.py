@@ -247,6 +247,30 @@ class WorkflowEngine:
 
             # Workflow complete
             if execution.state == WorkflowExecutionState.RUNNING:
+                # End-of-workflow checkpoints: any HUMAN_APPROVAL whose
+                # `after_step` is empty fires AFTER the final step. The
+                # mid-workflow loop above only fires checkpoints whose
+                # `after_step` matches a specific step id, so end-of-flow
+                # approvals (used by ~18 professional workflows for
+                # "review the final deal memo / report" gates) need this
+                # explicit pass — without it they were silently dead code.
+                for checkpoint in workflow.checkpoints:
+                    if checkpoint.after_step:
+                        continue  # already handled in the per-step loop
+                    if checkpoint.type != CheckpointType.HUMAN_APPROVAL:
+                        continue
+                    execution.state = WorkflowExecutionState.WAITING_CHECKPOINT
+                    execution.pending_checkpoint = checkpoint.id
+                    if on_checkpoint:
+                        response = await on_checkpoint(checkpoint, step_outputs)
+                        execution.checkpoint_responses[checkpoint.id] = response
+                        if not response.get("approved", False):
+                            execution.state = WorkflowExecutionState.CANCELLED
+                            execution.error = "End-of-workflow checkpoint not approved"
+                            break
+                    execution.state = WorkflowExecutionState.RUNNING
+
+            if execution.state == WorkflowExecutionState.RUNNING:
                 execution.state = WorkflowExecutionState.COMPLETED
                 # Gather final outputs
                 for output_key in workflow.final_outputs:

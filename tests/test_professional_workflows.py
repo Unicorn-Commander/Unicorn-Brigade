@@ -60,17 +60,17 @@ class TestWorkflowStructure:
         "vendor-risk-assessment",
         "employee-onboarding",
         # Security & Ops
-        "soc-analyst",
+        "soc-analyst-assistant",
         "vulnerability-assessment",
         "change-management",
         "disaster-recovery-test",
         # Domain-Specific
         "real-estate-transaction",
-        "product-research",
-        "patent-analysis",
+        "product-research-assistant",
+        "patent-analysis-pipeline",
         "meeting-assistant",
         # Content & Intelligence
-        "lead-score-flow",
+        "lead-scoring-flow",
         "email-auto-responder",
     ])
     def test_workflow_exists(self, workflow_id: str):
@@ -166,7 +166,15 @@ class TestWorkflowStructure:
 
     @pytest.mark.parametrize("workflow_id", list_test_workflows())
     def test_workflow_checkpoint_references_valid(self, workflow_id: str):
-        """Verify checkpoint after_step references exist."""
+        """Every checkpoint's `after_step` must either reference a real step
+        id or be empty.
+
+        Empty `after_step` is the sentinel for "fires at end of workflow"
+        — the engine has an explicit end-of-flow pass that handles those
+        (see `app/workflows/engine.py`, post-step-loop block). This is how
+        the 18 professional workflows express their "review the final deal
+        memo" approval gates without needing a fake terminal step.
+        """
         workflow = get_workflow(workflow_id)
         if workflow is None:
             pytest.skip(f"Workflow {workflow_id} not yet implemented")
@@ -174,8 +182,12 @@ class TestWorkflowStructure:
         step_ids = {step.id for step in workflow.steps}
 
         for checkpoint in workflow.checkpoints:
-            assert checkpoint.after_step in step_ids, \
-                f"Checkpoint {checkpoint.id} references unknown step: {checkpoint.after_step}"
+            target = checkpoint.after_step
+            assert target == "" or target in step_ids, (
+                f"Checkpoint {checkpoint.id} references unknown step: "
+                f"{target!r} (must be empty for end-of-workflow or match "
+                f"one of {sorted(step_ids)})"
+            )
 
 
 # =============================================================================
@@ -193,11 +205,11 @@ class TestWorkflowRegistry:
             # HR & Sales
             "recruiting-pipeline", "rfp-proposal-response", "vendor-risk-assessment", "employee-onboarding",
             # Security & Ops
-            "soc-analyst", "vulnerability-assessment", "change-management", "disaster-recovery-test",
+            "soc-analyst-assistant", "vulnerability-assessment", "change-management", "disaster-recovery-test",
             # Domain-Specific
-            "real-estate-transaction", "product-research", "patent-analysis", "meeting-assistant",
+            "real-estate-transaction", "product-research-assistant", "patent-analysis-pipeline", "meeting-assistant",
             # Content & Intelligence
-            "lead-score-flow", "email-auto-responder",
+            "lead-scoring-flow", "email-auto-responder",
         ]
 
         registered = list_workflows()
@@ -280,7 +292,7 @@ class TestMockedExecution:
     @pytest.mark.parametrize("workflow_id", [
         "ma-due-diligence",
         "contract-review",
-        "soc-analyst",
+        "soc-analyst-assistant",
     ])
     async def test_workflow_execution_flow(self, mock_llm_client, workflow_id: str):
         """Test workflow execution produces expected structure."""
@@ -398,8 +410,8 @@ class TestCostEstimation:
     @pytest.mark.parametrize("workflow_id", [
         "ma-due-diligence",
         "contract-review",
-        "soc-analyst",
-        "product-research",
+        "soc-analyst-assistant",
+        "product-research-assistant",
     ])
     def test_workflow_cost_estimate_reasonable(self, workflow_id: str):
         """Verify workflow cost estimates are within reasonable bounds."""
