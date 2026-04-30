@@ -471,6 +471,37 @@ UPLOAD_DOCUMENT_TOOL = ToolDefinition(
 )
 
 
+UPDATE_BILLING_FIELDS_TOOL = ToolDefinition(
+    name="update_billing_fields",
+    description=(
+        "Patch a project's billing/invoicing data. Pass only the fields you want "
+        "to change — omitted fields are left alone. Identify the project by id "
+        "or projectNumber. Use for 'mark this paid', 'set invoice number', "
+        "'update billing amount' type questions. CLIENT-role users can't call this."
+    ),
+    parameters=[
+        ToolParameter(name="id", type="string", description="Project UUID.", required=False),
+        ToolParameter(name="projectNumber", type="string", description="Project number (e.g. P-00001).", required=False),
+        ToolParameter(name="invoiceNumber", type="string", description="Invoice identifier.", required=False),
+        ToolParameter(name="billingAmount", type="number", description="Total invoiced amount.", required=False),
+        ToolParameter(name="amountPaid", type="number", description="Amount paid to date.", required=False),
+        ToolParameter(
+            name="paymentStatus",
+            type="string",
+            description="Payment state.",
+            required=False,
+            enum=["UNPAID", "PARTIALLY_PAID", "PAID", "OVERDUE", "CANCELLED"],
+        ),
+        ToolParameter(name="billingDate", type="string", description="Date the invoice was issued (YYYY-MM-DD).", required=False),
+        ToolParameter(name="paymentDueDate", type="string", description="Due date (YYYY-MM-DD).", required=False),
+        ToolParameter(name="paymentReceivedDate", type="string", description="Date payment was received (YYYY-MM-DD).", required=False),
+        ToolParameter(name="billingNotes", type="string", description="Free-form notes about billing.", required=False),
+    ],
+    handler=_make_handler("update_billing_fields"),
+    needs_caller_context=True,
+)
+
+
 PROJECT_OPS_MCP_TOOLS: Dict[str, ToolDefinition] = {
     "list_my_projects": LIST_MY_PROJECTS_TOOL,
     "get_project": GET_PROJECT_TOOL,
@@ -485,4 +516,5 @@ PROJECT_OPS_MCP_TOOLS: Dict[str, ToolDefinition] = {
     "list_project_documents": LIST_PROJECT_DOCUMENTS_TOOL,
     "get_document_content": GET_DOCUMENT_CONTENT_TOOL,
     "upload_document": UPLOAD_DOCUMENT_TOOL,
+    "update_billing_fields": UPDATE_BILLING_FIELDS_TOOL,
 }
