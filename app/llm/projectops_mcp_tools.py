@@ -1,9 +1,11 @@
 """Project-Ops MCP tools — proxies into the Project-Ops MCP server.
 
-Exposes the six project-ops tools (list_my_projects, get_project,
-list_my_tasks, search_projects, get_recent_activity, add_task_comment)
-as Brigade ToolDefinitions so any agent that lists them in its
-``tools`` field gets them as callable LLM functions.
+Exposes the project-ops tools (list_my_projects, get_project, list_my_tasks,
+search_projects, get_recent_activity, add_task_comment, create_project,
+update_project_status, create_task, update_task_status, list_project_documents,
+get_document_content, upload_document) as Brigade ToolDefinitions so any
+agent that lists them in its ``tools`` field gets them as callable LLM
+functions.
 
 The handler proxies via JSON-RPC 2.0 over Project-Ops's Streamable HTTP
 MCP transport. Two transport quirks vs. crisis-mcp:
@@ -411,6 +413,63 @@ LIST_PROJECT_DOCUMENTS_TOOL = ToolDefinition(
     needs_caller_context=True,
 )
 
+GET_DOCUMENT_CONTENT_TOOL = ToolDefinition(
+    name="get_document_content",
+    description=(
+        "Read a Project Ops document the calling user can see and return its text "
+        "content (truncated to 50KB). Identify by documentId, or by fileName + "
+        "projectNumber. Text-friendly mime types (text/*, application/json, "
+        "application/pdf, Office formats) come back as extracted text. Other mime "
+        "types return {supported: false, downloadUrl} — hand the user the link "
+        "instead of trying to render. PDFs are extracted via pdf-parse when "
+        "available; if not, the tool returns a downloadUrl fallback."
+    ),
+    parameters=[
+        ToolParameter(name="documentId", type="string", description="Document UUID.", required=False),
+        ToolParameter(
+            name="fileName",
+            type="string",
+            description="File name to look up (must be paired with projectNumber).",
+            required=False,
+        ),
+        ToolParameter(
+            name="projectNumber",
+            type="string",
+            description="Project number (e.g. P-00042); used with fileName to locate the doc.",
+            required=False,
+        ),
+    ],
+    handler=_make_handler("get_document_content"),
+    needs_caller_context=True,
+)
+
+UPLOAD_DOCUMENT_TOOL = ToolDefinition(
+    name="upload_document",
+    description=(
+        "Persist a new document on a Project Ops project the caller can see. "
+        "Provide projectId or projectNumber, fileName, mimeType, and content "
+        "(plain text for text/* and application/json, base64-encoded bytes "
+        "otherwise). Cap: 25MB after decoding. CLIENT-role users cannot call "
+        "this. Use when the agent already has the bytes in memory and wants to "
+        "attach them to a project without the staged presigned-URL flow."
+    ),
+    parameters=[
+        ToolParameter(name="projectId", type="string", description="Project UUID.", required=False),
+        ToolParameter(name="projectNumber", type="string", description="Project number (e.g. P-00001).", required=False),
+        ToolParameter(name="fileName", type="string", description="File name including extension.", required=True),
+        ToolParameter(
+            name="content",
+            type="string",
+            description="Plain text for text/*, base64-encoded bytes otherwise.",
+            required=True,
+        ),
+        ToolParameter(name="mimeType", type="string", description="Mime type (e.g. application/pdf).", required=True),
+        ToolParameter(name="description", type="string", description="Optional description.", required=False),
+    ],
+    handler=_make_handler("upload_document"),
+    needs_caller_context=True,
+)
+
 
 PROJECT_OPS_MCP_TOOLS: Dict[str, ToolDefinition] = {
     "list_my_projects": LIST_MY_PROJECTS_TOOL,
@@ -424,4 +483,6 @@ PROJECT_OPS_MCP_TOOLS: Dict[str, ToolDefinition] = {
     "create_task": CREATE_TASK_TOOL,
     "update_task_status": UPDATE_TASK_STATUS_TOOL,
     "list_project_documents": LIST_PROJECT_DOCUMENTS_TOOL,
+    "get_document_content": GET_DOCUMENT_CONTENT_TOOL,
+    "upload_document": UPLOAD_DOCUMENT_TOOL,
 }
