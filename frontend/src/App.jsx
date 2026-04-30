@@ -17,6 +17,7 @@ import MCPDocs from './pages/MCPDocs';
 import CodeAttribution from './pages/CodeAttribution';
 import Monitoring from './pages/Monitoring';
 import RalphMonitor from './pages/RalphMonitor';
+import ScheduledRuns from './pages/ScheduledRuns';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -288,6 +289,14 @@ function App() {
               <ProtectedRoute>
                 <AppLayout>
                   <Monitoring />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/scheduled-runs" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <ScheduledRuns />
                 </AppLayout>
               </ProtectedRoute>
             } />

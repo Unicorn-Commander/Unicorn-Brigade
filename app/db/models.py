@@ -419,3 +419,93 @@ class CodeAttribution(Base):
             "metadata": self.metadata_,
             "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
         }
+
+
+class ScheduledRun(Base):
+    """
+    Persistent cron-style scheduled invocations of Brigade agents.
+
+    Owned source-of-truth for the Brigade scheduler. APScheduler is used
+    only as the in-memory cron engine; on every restart the runtime reads
+    these rows and (re)registers triggers. This keeps schedule storage
+    explicit and inspectable, instead of pickled inside an APScheduler
+    job-store.
+    """
+    __tablename__ = "scheduled_runs"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    name = Column(String(255), nullable=False)
+    agent_id = Column(String(255), ForeignKey("agents.id", ondelete="CASCADE"),
+                      nullable=False, index=True)
+    prompt = Column(Text, nullable=False)
+    cron = Column(String(120), nullable=False)  # standard 5-field cron
+    timezone = Column(String(64), nullable=False, default="UTC")
+    # Free-form opaque user identifier. NOT a FK to users.id, because
+    # scheduled runs frequently target a downstream service's user namespace
+    # (e.g. Project-Ops user uuids) — that id is passed straight through as
+    # the `user_id` on the chat call, where downstream tools mint per-user
+    # JWTs from it. Validating against Brigade's local users table here would
+    # break that pass-through.
+    owner_user_id = Column(UUID(as_uuid=False), nullable=True, index=True)
+    enabled = Column(Boolean, nullable=False, default=True, index=True)
+    max_runtime_seconds = Column(Integer, nullable=False, default=300)
+    last_run_at = Column(DateTime, nullable=True)
+    last_status = Column(String(32), nullable=True)  # success | error | timeout | skipped
+    last_result_summary = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    history = relationship(
+        "ScheduledRunHistory",
+        back_populates="scheduled_run",
+        cascade="all, delete-orphan",
+        order_by="desc(ScheduledRunHistory.started_at)",
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "agentId": self.agent_id,
+            "prompt": self.prompt,
+            "cron": self.cron,
+            "timezone": self.timezone,
+            "ownerUserId": str(self.owner_user_id) if self.owner_user_id else None,
+            "enabled": self.enabled,
+            "maxRuntimeSeconds": self.max_runtime_seconds,
+            "lastRunAt": self.last_run_at.isoformat() + "Z" if self.last_run_at else None,
+            "lastStatus": self.last_status,
+            "lastResultSummary": self.last_result_summary,
+            "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() + "Z" if self.updated_at else None,
+        }
+
+
+class ScheduledRunHistory(Base):
+    """One row per fired execution of a ScheduledRun."""
+    __tablename__ = "scheduled_run_history"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    scheduled_run_id = Column(UUID(as_uuid=False),
+                              ForeignKey("scheduled_runs.id", ondelete="CASCADE"),
+                              nullable=False, index=True)
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    finished_at = Column(DateTime, nullable=True)
+    status = Column(String(32), nullable=False, default="running")
+    output_summary = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    tool_calls_count = Column(Integer, nullable=False, default=0)
+
+    scheduled_run = relationship("ScheduledRun", back_populates="history")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id),
+            "scheduledRunId": str(self.scheduled_run_id),
+            "startedAt": self.started_at.isoformat() + "Z" if self.started_at else None,
+            "finishedAt": self.finished_at.isoformat() + "Z" if self.finished_at else None,
+            "status": self.status,
+            "outputSummary": self.output_summary,
+            "error": self.error,
+            "toolCallsCount": self.tool_calls_count,
+        }

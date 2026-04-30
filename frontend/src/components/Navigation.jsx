@@ -67,6 +67,7 @@ const Navigation = () => {
     '/docs': 'Explore API documentation and interactive testing',
     '/code-attribution': 'Track AI-generated code attribution and lineage',
     '/monitoring': 'System health, performance metrics, and logs',
+    '/scheduled-runs': 'Cron-based agent invocations that survive container restarts',
     '/settings': 'Configure platform settings and preferences',
   };
 
@@ -360,6 +361,16 @@ const Navigation = () => {
             >
               <Activity className="w-4 h-4" />
               <span className="text-sm font-medium">Monitoring</span>
+            </NavLink>
+            <NavLink
+              to="/scheduled-runs"
+              className={navLinkClass}
+              data-tooltip-id="nav-tooltip"
+              data-tooltip-content={TOOLTIP_CONTENT['/scheduled-runs']}
+              data-tooltip-place="right"
+            >
+              <Activity className="w-4 h-4" />
+              <span className="text-sm font-medium">Scheduled Runs</span>
             </NavLink>
             <NavLink
               to="/settings"

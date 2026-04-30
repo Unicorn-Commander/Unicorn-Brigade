@@ -51,6 +51,8 @@ from app.api.medical_routes import router as medical_router, init_medical_routes
 from app.api.benchmark_routes import router as benchmark_router
 from app.api.ralph_routes import router as ralph_router
 from app.api.crisis_routes import router as crisis_router, init_crisis_routes
+from app.api.scheduled_run_routes import router as scheduled_run_router
+from app.services.scheduler import init_scheduler, get_scheduler
 from app.agents.crisis_registration import register_crisis_agents
 from app.api.trace_routes import router as trace_router
 from app.api.speaker_routes import router as speaker_router
@@ -154,9 +156,23 @@ async def lifespan(app: FastAPI):
     # apikey_routes and conversation_routes use Depends(get_session) directly
     logger.info("All route modules initialized")
 
+    # Initialize Brigade scheduler (cron-style scheduled agent runs).
+    # Reads scheduled_runs rows from DB and (re)registers APScheduler jobs.
+    try:
+        scheduler = init_scheduler(llm_client)
+        await scheduler.start()
+    except Exception as e:
+        logger.error("Brigade scheduler failed to start: %s", e)
+
     yield
 
     # Cleanup
+    try:
+        sched = get_scheduler()
+        if sched is not None:
+            await sched.shutdown()
+    except Exception as e:
+        logger.warning("Scheduler shutdown error: %s", e)
     await close_db()
     if llm_client:
         await llm_client.close()
@@ -251,6 +267,7 @@ app.include_router(trace_router, prefix="/api/v1", tags=["trace"])
 app.include_router(speaker_router, prefix="/api/v1", tags=["speakers"])
 app.include_router(ralph_router, tags=["ralph"])
 app.include_router(crisis_router, prefix="/api/v1", tags=["crisis"])
+app.include_router(scheduled_run_router, prefix="/api/v1", tags=["scheduled-runs"])
 # OIDC / Keycloak auth routes - mounted at /api/v1 (primary) AND /api (matches
 # the Keycloak-registered callback URL https://brigade.magicunicorn.dev/api/auth/oidc/callback)
 app.include_router(oidc_router, prefix="/api/v1", tags=["auth"])
