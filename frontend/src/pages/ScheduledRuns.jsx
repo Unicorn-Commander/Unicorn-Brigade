@@ -16,7 +16,16 @@ import { toast } from 'react-hot-toast';
 import { buildAuthHeaders, handleUnauthorized } from '../services/authHeaders';
 import Breadcrumbs from '../components/Breadcrumbs';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+// Use a normalized base: trim a trailing slash, ensure it ends with /api/v1.
+// VITE_API_URL is sometimes set to "" or "/" in production builds (which made
+// fetches land on the SPA shell and return HTML). Falling back to a relative
+// "/api/v1" keeps us inside Traefik's API routing.
+const API_BASE = (() => {
+  let raw = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+  if (!raw) raw = '/api/v1';
+  if (!raw.endsWith('/api/v1')) raw = raw + '/api/v1';
+  return raw;
+})();
 
 const STATUS_ICON = {
   success: CheckCircle2,
@@ -55,7 +64,18 @@ async function api(path, options = {}) {
   if (res.status === 401) handleUnauthorized();
   if (res.status === 204) return null;
   const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
+  let data = {};
+  if (text) {
+    try { data = JSON.parse(text); }
+    catch {
+      // Non-JSON response — most often the SPA index.html when the request
+      // accidentally fell off the API path. Don't crash the page.
+      const ct = res.headers.get('content-type') || '';
+      throw new Error(
+        `Non-JSON response from ${path} (status ${res.status}, content-type ${ct})`
+      );
+    }
+  }
   if (!res.ok) {
     const msg = data?.detail?.message || data?.detail || res.statusText;
     throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
