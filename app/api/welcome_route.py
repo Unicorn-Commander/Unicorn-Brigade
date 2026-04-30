@@ -218,8 +218,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <h3 style="margin-top:32px">Use it now</h3>
       <div class="surfaces">
         <div class="surface">
-          <a href="https://libre.magicunicorn.dev" target="_blank">Open chat ↗</a>
-          <small>libre.magicunicorn.dev</small>
+          <a href="https://brigade.magicunicorn.dev/chat" target="_blank">Open chat ↗</a>
+          <small>brigade.magicunicorn.dev/chat</small>
         </div>
         <div class="surface">
           <a href="https://stable.magicunicorn.dev" target="_blank">Voice rooms ↗</a>

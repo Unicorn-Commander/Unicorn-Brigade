@@ -226,7 +226,7 @@ LANDING_HTML = r"""<!DOCTYPE html>
     <p class="lede">Twenty specialist AI agents with persistent memory, real delegation between agents, and tools that actually work. All running on your own hardware.</p>
     <div class="hero-cta">
       <a class="btn btn-primary" href="/welcome">Create account</a>
-      <a class="btn btn-ghost" href="https://libre.magicunicorn.dev">Open chat ↗</a>
+      <a class="btn btn-ghost" href="https://brigade.magicunicorn.dev/chat">Open chat ↗</a>
     </div>
   </section>
 
@@ -298,9 +298,9 @@ LANDING_HTML = r"""<!DOCTYPE html>
     <h2>Talk to them however you want</h2>
     <p class="sub">One backend, many front doors. Pick the surface that fits your workflow.</p>
     <div class="surfaces">
-      <a class="surface-card" href="https://libre.magicunicorn.dev" target="_blank">
+      <a class="surface-card" href="https://brigade.magicunicorn.dev/chat" target="_blank">
         <div class="title">💬 Chat in your browser</div>
-        <div class="url">libre.magicunicorn.dev</div>
+        <div class="url">brigade.magicunicorn.dev/chat</div>
         <div class="desc">Web chat UI with streaming, markdown, tool traces. Keycloak SSO.</div>
       </a>
       <a class="surface-card" href="https://stable.magicunicorn.dev" target="_blank">
