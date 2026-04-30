@@ -37,8 +37,15 @@ async def knowledge_store_handler(
     properties: Optional[Dict[str, Any]] = None,
     confidence: float = 1.0,
     source: Optional[str] = None,
-    agent_id: Optional[str] = None
+    agent_id: Optional[str] = None,
+    caller_user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    # Per-user memory scoping. The injected caller_user_id (Brigade puts it
+    # there because the ToolDefinition has needs_caller_context=True) wins
+    # over a literal agent_id arg the LLM might pass. This keeps facts I
+    # store about user A out of user B's recall.
+    if caller_user_id:
+        agent_id = f"user:{caller_user_id}"
     """
     Store facts, entities, and relationships in the knowledge graph.
 
@@ -194,6 +201,7 @@ Examples:
         ),
     ],
     handler=knowledge_store_handler,
+    needs_caller_context=True,
 )
 
 
@@ -209,8 +217,14 @@ async def knowledge_query_handler(
     direction: str = "both",
     max_depth: int = 2,
     agent_id: Optional[str] = None,
-    limit: int = 20
+    limit: int = 20,
+    caller_user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    # Per-user memory scoping (matches knowledge_store_handler). caller_user_id
+    # is auto-injected by Brigade's tool dispatcher since the ToolDefinition
+    # below has needs_caller_context=True.
+    if caller_user_id:
+        agent_id = f"user:{caller_user_id}"
     """
     Query the knowledge graph for entities, relationships, and patterns.
 
@@ -356,6 +370,7 @@ Examples:
         ),
     ],
     handler=knowledge_query_handler,
+    needs_caller_context=True,
 )
 
 
