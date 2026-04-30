@@ -11,7 +11,8 @@
  *     user is bounced through Keycloak.
  */
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import { API_BASE } from './apiBase';
+const API_URL = API_BASE;
 const JWT_KEY = 'brigade_jwt';
 const JWT_EXPIRES_AT_KEY = 'brigade_jwt_expires_at';
 const LEGACY_API_KEY = 'apiKey';

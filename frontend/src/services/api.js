@@ -1,10 +1,11 @@
 // API Service for Unicorn Command & Control
 import { toast } from 'react-hot-toast';
 import { buildAuthHeaders, handleUnauthorized } from './authHeaders';
+import { API_BASE } from './apiBase';
 
 class APIService {
   constructor() {
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+    this.baseURL = API_BASE;
   }
 
   // Live accessor so callers that call getApiKey() still work if anything depends on it.

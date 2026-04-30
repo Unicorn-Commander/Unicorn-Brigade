@@ -16,16 +16,7 @@ import { toast } from 'react-hot-toast';
 import { buildAuthHeaders, handleUnauthorized } from '../services/authHeaders';
 import Breadcrumbs from '../components/Breadcrumbs';
 
-// Use a normalized base: trim a trailing slash, ensure it ends with /api/v1.
-// VITE_API_URL is sometimes set to "" or "/" in production builds (which made
-// fetches land on the SPA shell and return HTML). Falling back to a relative
-// "/api/v1" keeps us inside Traefik's API routing.
-const API_BASE = (() => {
-  let raw = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
-  if (!raw) raw = '/api/v1';
-  if (!raw.endsWith('/api/v1')) raw = raw + '/api/v1';
-  return raw;
-})();
+import { API_BASE } from '../services/apiBase';
 
 const STATUS_ICON = {
   success: CheckCircle2,
