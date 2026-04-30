@@ -294,6 +294,124 @@ ADD_TASK_COMMENT_TOOL = ToolDefinition(
 )
 
 
+CREATE_PROJECT_TOOL = ToolDefinition(
+    name="create_project",
+    description=(
+        "Create a new Project Ops project. Use when the user asks to start a project. "
+        "Auto-assigns the next P-XXXXX number. Defaults: status NEW, priority MEDIUM, "
+        "assignee = the calling user. CLIENT-role users can't call this."
+    ),
+    parameters=[
+        ToolParameter(name="title", type="string", description="Project title.", required=True),
+        ToolParameter(name="description", type="string", description="Free-form description.", required=False),
+        ToolParameter(name="clientName", type="string", description="Client display name.", required=True),
+        ToolParameter(name="organizationId", type="string", description="Optional organization UUID.", required=False),
+        ToolParameter(
+            name="priority",
+            type="string",
+            description="Project priority.",
+            required=False,
+            enum=["LOW", "MEDIUM", "HIGH", "URGENT"],
+        ),
+        ToolParameter(name="dueDate", type="string", description="Due date in ISO YYYY-MM-DD.", required=False),
+        ToolParameter(name="assignedToId", type="string", description="User UUID to assign; defaults to caller.", required=False),
+    ],
+    handler=_make_handler("create_project"),
+    needs_caller_context=True,
+)
+
+UPDATE_PROJECT_STATUS_TOOL = ToolDefinition(
+    name="update_project_status",
+    description=(
+        "Set a project's status (NEW / IN_PROGRESS / UNDER_REVIEW / COMPLETED / "
+        "ARCHIVED / ON_HOLD). Identify the project by id or projectNumber. Setting "
+        "COMPLETED also stamps completedAt."
+    ),
+    parameters=[
+        ToolParameter(name="id", type="string", description="Project UUID.", required=False),
+        ToolParameter(name="projectNumber", type="string", description="Project number (e.g. P-00001).", required=False),
+        ToolParameter(
+            name="status",
+            type="string",
+            description="New status.",
+            required=True,
+            enum=["NEW", "IN_PROGRESS", "UNDER_REVIEW", "COMPLETED", "ARCHIVED", "ON_HOLD"],
+        ),
+    ],
+    handler=_make_handler("update_project_status"),
+    needs_caller_context=True,
+)
+
+CREATE_TASK_TOOL = ToolDefinition(
+    name="create_task",
+    description=(
+        "Create a task on a project the caller can see. Use when the user asks to "
+        "break a scope into tasks or to capture a follow-up. Identify the project "
+        "by projectId or projectNumber. Defaults: priority MEDIUM, type OTHER, "
+        "assignee = caller. CLIENT-role users can't call this."
+    ),
+    parameters=[
+        ToolParameter(name="projectId", type="string", description="Project UUID.", required=False),
+        ToolParameter(name="projectNumber", type="string", description="Project number (e.g. P-00001).", required=False),
+        ToolParameter(name="title", type="string", description="Task title.", required=True),
+        ToolParameter(name="description", type="string", description="Free-form description.", required=False),
+        ToolParameter(
+            name="type",
+            type="string",
+            description="Task type.",
+            required=False,
+            enum=["DOCUMENT_REQUEST", "QUESTION", "IRS_CALL", "REVIEW", "FILING", "OTHER"],
+        ),
+        ToolParameter(
+            name="priority",
+            type="string",
+            description="Task priority.",
+            required=False,
+            enum=["LOW", "MEDIUM", "HIGH", "URGENT"],
+        ),
+        ToolParameter(name="dueDate", type="string", description="Due date in ISO YYYY-MM-DD.", required=False),
+        ToolParameter(name="assignedToId", type="string", description="User UUID to assign; defaults to caller.", required=False),
+    ],
+    handler=_make_handler("create_task"),
+    needs_caller_context=True,
+)
+
+UPDATE_TASK_STATUS_TOOL = ToolDefinition(
+    name="update_task_status",
+    description=(
+        "Set a task's status (PENDING / IN_PROGRESS / WAITING_FOR_CLIENT / "
+        "COMPLETED / CANCELLED). Setting COMPLETED also stamps completedAt."
+    ),
+    parameters=[
+        ToolParameter(name="taskId", type="string", description="Task UUID.", required=True),
+        ToolParameter(
+            name="status",
+            type="string",
+            description="New status.",
+            required=True,
+            enum=["PENDING", "IN_PROGRESS", "WAITING_FOR_CLIENT", "COMPLETED", "CANCELLED"],
+        ),
+    ],
+    handler=_make_handler("update_task_status"),
+    needs_caller_context=True,
+)
+
+LIST_PROJECT_DOCUMENTS_TOOL = ToolDefinition(
+    name="list_project_documents",
+    description=(
+        "List documents attached to a project the user can see — file name, size, "
+        "mime type, uploader, uploaded date. Useful for 'what files are on this "
+        "project' questions before generating reports or PDFs."
+    ),
+    parameters=[
+        ToolParameter(name="projectId", type="string", description="Project UUID.", required=False),
+        ToolParameter(name="projectNumber", type="string", description="Project number (e.g. P-00001).", required=False),
+    ],
+    handler=_make_handler("list_project_documents"),
+    needs_caller_context=True,
+)
+
+
 PROJECT_OPS_MCP_TOOLS: Dict[str, ToolDefinition] = {
     "list_my_projects": LIST_MY_PROJECTS_TOOL,
     "get_project": GET_PROJECT_TOOL,
@@ -301,4 +419,9 @@ PROJECT_OPS_MCP_TOOLS: Dict[str, ToolDefinition] = {
     "search_projects": SEARCH_PROJECTS_TOOL,
     "get_recent_activity": GET_RECENT_ACTIVITY_TOOL,
     "add_task_comment": ADD_TASK_COMMENT_TOOL,
+    "create_project": CREATE_PROJECT_TOOL,
+    "update_project_status": UPDATE_PROJECT_STATUS_TOOL,
+    "create_task": CREATE_TASK_TOOL,
+    "update_task_status": UPDATE_TASK_STATUS_TOOL,
+    "list_project_documents": LIST_PROJECT_DOCUMENTS_TOOL,
 }
