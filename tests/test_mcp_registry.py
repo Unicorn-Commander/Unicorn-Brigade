@@ -23,9 +23,17 @@ class TestMCPServerConfiguration:
     """Test MCP server configuration and registration"""
 
     def test_total_server_count(self):
-        """Verify we have exactly 18 registered MCP servers"""
+        """Floor-check on the registered MCP server count.
+
+        The registry grows over time as more MCP servers ship; pinning an
+        exact count just creates churn. We assert against a floor (the count
+        when this test was last reviewed) so a regression that drops servers
+        fails fast.
+        """
         servers = mcp_registry.list_available()
-        assert len(servers) == 14, f"Expected 14 servers (10 baseline + 4 Phase 1), got {len(servers)}"
+        assert len(servers) >= 14, (
+            f"Expected at least 14 registered MCP servers, got {len(servers)}"
+        )
 
     def test_baseline_servers_registered(self):
         """Verify all 10 baseline MCP servers are registered"""

@@ -306,6 +306,20 @@ async def get_current_user_profile(
             detail="Authentication required",
         )
 
+    # The legacy admin X-API-Key authenticates as a synthetic AuthUser with
+    # id="admin" — there's no row in the users table for it, so a UUID
+    # lookup against `users.id` would 500 on the asyncpg side. Return a
+    # virtual profile so the frontend can show "logged in as admin" without
+    # the route blowing up.
+    if current_user.id == "admin":
+        return UserResponse(
+            id="admin",
+            email=getattr(current_user, "email", "") or "admin@brigade.local",
+            name="Brigade Admin",
+            role="admin",
+            isActive=True,
+        )
+
     repo = UserRepository(session)
     user = await repo.get_by_id(current_user.id)
 

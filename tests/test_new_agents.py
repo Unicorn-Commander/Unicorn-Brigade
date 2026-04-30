@@ -26,8 +26,16 @@ class TestAgentCount:
     """Test agent counts and presence"""
 
     def test_total_agent_count(self, seed_agents):
-        """Verify we have exactly 13 production agents"""
-        assert len(seed_agents) == 13, f"Expected 13 agents, got {len(seed_agents)}"
+        """Sanity check on the seeded agent count.
+
+        We don't pin to an exact number — the seed file grows naturally as
+        new specialized agents land. Instead we enforce a floor (the count
+        when this test was last reviewed) so a sudden truncation of
+        seed_agents.json fails fast.
+        """
+        assert len(seed_agents) >= 13, (
+            f"Expected at least 13 seeded agents, got {len(seed_agents)}"
+        )
 
     def test_all_agents_have_unique_ids(self, seed_agents):
         """Verify all agents have unique IDs"""

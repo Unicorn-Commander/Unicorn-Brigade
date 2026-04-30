@@ -27,15 +27,18 @@ from app.workflows.team_leads import (
     INVESTIGATION_TEAM_LEAD,
 )
 
-# Import professional workflows (temporarily disabled - checkpoints need fixing)
-PROFESSIONAL_WORKFLOWS_AVAILABLE = False
-ALL_PROFESSIONAL_WORKFLOWS = {}
-# try:
-#     from app.workflows.professional import ALL_PROFESSIONAL_WORKFLOWS
-#     PROFESSIONAL_WORKFLOWS_AVAILABLE = True
-# except ImportError:
-#     ALL_PROFESSIONAL_WORKFLOWS = {}
-#     PROFESSIONAL_WORKFLOWS_AVAILABLE = False
+# Import professional workflows. Previously disabled because the Checkpoint
+# schema used to require `name` and `after_step`, neither of which the
+# professional workflow files set on their inline checkpoints. Those fields
+# are now optional with safe defaults (see app/workflows/schema.py), so the
+# import path is healthy and the 18 professional workflows are exposed via
+# get_workflow() and the hierarchical routes.
+try:
+    from app.workflows.professional import ALL_PROFESSIONAL_WORKFLOWS
+    PROFESSIONAL_WORKFLOWS_AVAILABLE = True
+except ImportError:
+    ALL_PROFESSIONAL_WORKFLOWS = {}
+    PROFESSIONAL_WORKFLOWS_AVAILABLE = False
 
 
 # =============================================================================

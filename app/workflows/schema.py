@@ -183,9 +183,17 @@ class WorkflowStep(BaseModel):
 class Checkpoint(BaseModel):
     """Human-in-the-loop checkpoint"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
-    name: str
+    # `name` and `after_step` are optional with safe defaults so that
+    # workflow definitions can construct checkpoints inline (where the
+    # parent step provides ordering context) or at the workflow level
+    # (where after_step is implicitly "after the last step"). The engine
+    # only consults `after_step` to attach top-level checkpoints to
+    # specific steps — when it's empty, the checkpoint simply never
+    # matches mid-workflow, which is the right behavior for end-of-flow
+    # approvals.
+    name: str = ""
     type: CheckpointType
-    after_step: str  # Step ID after which this checkpoint occurs
+    after_step: str = ""  # Step ID after which this checkpoint occurs
 
     # For HUMAN_INPUT type
     prompt: str = ""  # Question to ask human
