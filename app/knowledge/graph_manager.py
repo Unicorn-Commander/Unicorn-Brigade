@@ -89,21 +89,27 @@ class KnowledgeGraphManager:
         if not graph:
             return False
 
-        try:
-            # Create indexes for common queries
-            # Entity index on name and type
-            graph.query("CREATE INDEX IF NOT EXISTS FOR (e:Entity) ON (e.name)")
-            graph.query("CREATE INDEX IF NOT EXISTS FOR (e:Entity) ON (e.type)")
-
-            # Fact index for temporal queries
-            graph.query("CREATE INDEX IF NOT EXISTS FOR (f:Fact) ON (f.learned_at)")
-            graph.query("CREATE INDEX IF NOT EXISTS FOR (f:Fact) ON (f.source_agent)")
-
-            logger.info(f"Graph schema ensured for: {graph_name}")
-            return True
-        except Exception as e:
-            logger.warning(f"Could not create indexes (may already exist): {e}")
-            return True  # Continue even if indexes exist
+        # FalkorDB does not support 'CREATE INDEX IF NOT EXISTS' (Neo4j syntax) —
+        # raises 'Attribute X is already indexed' on duplicate. Each index runs
+        # in its own try/except so a missing or pre-existing index never blocks
+        # the others, and 'already indexed' is logged at debug, not warn.
+        indexes = [
+            ("CREATE INDEX FOR (e:Entity) ON (e.name)", "Entity.name"),
+            ("CREATE INDEX FOR (e:Entity) ON (e.type)", "Entity.type"),
+            ("CREATE INDEX FOR (f:Fact) ON (f.learned_at)", "Fact.learned_at"),
+            ("CREATE INDEX FOR (f:Fact) ON (f.source_agent)", "Fact.source_agent"),
+        ]
+        for ddl, label in indexes:
+            try:
+                graph.query(ddl)
+            except Exception as e:
+                msg = str(e).lower()
+                if "already indexed" in msg:
+                    logger.debug(f"Index {label} already exists in {graph_name}")
+                else:
+                    logger.warning(f"Could not create index {label} in {graph_name}: {e}")
+        logger.info(f"Graph schema ensured for: {graph_name}")
+        return True
 
     async def store_entity(
         self,
