@@ -22,6 +22,9 @@ import logging
 import uuid
 import time
 import json
+import os
+
+_PUBLIC_BASE_URL = os.environ.get("BRIGADE_URL") or os.environ.get("BRIGADE_PUBLIC_URL") or "http://localhost:8100"
 
 from app.db.database import get_session
 from app.db.repositories import AgentRepository
@@ -59,7 +62,9 @@ def init_a2a_routes(client: OpsCenterLLMClient):
     llm_client = client
 
 
-def _agent_to_card(agent: Dict[str, Any], base_url: str = "http://localhost:8100") -> AgentCard:
+def _agent_to_card(agent: Dict[str, Any], base_url: str = None) -> AgentCard:
+    if base_url is None:
+        base_url = _PUBLIC_BASE_URL
     """Convert a DB agent to an A2A AgentCard."""
     agent_id = agent["id"]
 
