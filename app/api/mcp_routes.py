@@ -17,6 +17,9 @@ from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
+import os
+
+_PUBLIC_BASE_URL = os.environ.get("BRIGADE_URL") or os.environ.get("BRIGADE_PUBLIC_URL") or "http://localhost:8100"
 
 from app.db.database import get_session
 from app.protocols.mcp import mcp_server, MCPTool, MCPToolParameter
@@ -225,7 +228,7 @@ async def get_mcp_config():
             "mcpServers": {
                 "unicorn-brigade": {
                     "transport": "http",
-                    "url": "http://localhost:8100/api/v1/mcp/request",
+                    "url": f"{_PUBLIC_BASE_URL}/api/v1/mcp/request",
                     "description": "Unicorn Brigade AI Agent Factory",
                 }
             }
