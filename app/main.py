@@ -58,6 +58,7 @@ from app.api.trace_routes import router as trace_router
 from app.api.speaker_routes import router as speaker_router
 from app.api.oidc_routes import router as oidc_router
 from app.api.llm_models import router as llm_models_router
+from app.federation.jwks_routes import router as jwks_router
 from app.workflows.benchmark import init_benchmark_engine
 from app.db.database import init_db, close_db
 from app.db.init_db import seed_agents
@@ -236,6 +237,7 @@ app.include_router(agent_router, prefix="/api/v1", tags=["agents"])
 app.include_router(openai_compat_router, prefix="/api/v1/openai/v1", tags=["openai-compat"])
 app.include_router(welcome_router, tags=["welcome"])
 app.include_router(landing_router, tags=["landing"])
+app.include_router(jwks_router, tags=["federation"])  # /.well-known/jwks.json - RS256 public keys, root path, no auth
 app.include_router(memory_inspector_router, tags=["memory-inspector"])
 app.include_router(tool_router, prefix="/api/v1", tags=["tools"])
 app.include_router(system_router, prefix="/api/v1", tags=["system"])
