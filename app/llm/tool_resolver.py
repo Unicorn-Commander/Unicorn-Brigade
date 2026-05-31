@@ -31,6 +31,7 @@ from app.llm.extended_tools import (
     NOTIFY_TOOL,
     QRCODE_TOOL,
 )
+from app.llm.analytics_tools import ANALYTICS_SQL_TOOL
 from app.llm.advanced_tools import (
     BROWSER_TOOL,
     CODE_SANDBOX_TOOL,
@@ -82,6 +83,7 @@ TOOL_REGISTRY: Dict[str, ToolDefinition] = {
     "database": DATABASE_TOOL,
     "notify": NOTIFY_TOOL,
     "qrcode": QRCODE_TOOL,
+    "analytics_sql": ANALYTICS_SQL_TOOL,
     # Advanced tools (cutting-edge capabilities)
     "browser": BROWSER_TOOL,
     "code_sandbox": CODE_SANDBOX_TOOL,

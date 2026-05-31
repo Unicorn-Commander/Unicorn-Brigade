@@ -1044,6 +1044,233 @@ Return: {"delegations": [{"worker_id": "...", "task": "...", "priority": 1-5}], 
 
 
 # =============================================================================
+# MAJIKS RESEARCH MONITOR DOMAIN (Maj. Recon — 4 Captain Team Leads)
+# =============================================================================
+# Spec: Research/Majiks-Ecosystem-Research/10-pitch-deck-assets/brigade-monitor-agent-spec.md
+# All four Captains share the same focused worker pool; specialization is
+# expressed in each Captain's system_prompt + the workflow steps that route
+# scope-specific queries to them.
+
+MAJIKS_MONITOR_WORKERS = [
+    WorkerSpec(
+        id="majiks-websearch",
+        name="Majiks Web Searcher",
+        description="Runs targeted Serper-style web searches for the Majiks monitor",
+        model="ibm/granite-3.3-2b-instruct",
+        temperature=0.1,
+        max_tokens=500,
+        task_prompt="""You are a web search executor for the Majiks ecosystem monitor.
+
+INPUT: {query, scope: "funding"|"litigation"|"tech"|"academic", date_after, num_results}
+OUTPUT: JSON with {query, results: [{title, url, snippet, published, source_type, relevance_score}], summary}
+
+Prefer official filings, primary sources (court PACER, SEC, Crunchbase), and reputable trade press (Music Ally, Billboard, MBW). Flag press-release-only signals as "low_credibility".""",
+        input_schema={"query": "string", "scope": "string", "date_after": "string", "num_results": "int"},
+        output_schema={"query": "string", "results": "array", "summary": "string"},
+        tool="web_search",
+        examples=[]
+    ),
+    WorkerSpec(
+        id="majiks-webfetch",
+        name="Majiks Web Fetcher",
+        description="Fetches and extracts text from a single URL for the monitor",
+        model="qwen/qwen3-vl-30b-a3b",
+        temperature=0.1,
+        max_tokens=800,
+        task_prompt="""You are a web fetcher. Pull the URL, extract the primary article/document text, drop nav/ads/footers.
+
+INPUT: {url, expected_content_type: "article"|"docket"|"filing"|"release_notes"|"paper_abstract"}
+OUTPUT: JSON with {url, title, published, author_org, body_text, key_facts: [], extracted_numbers: []}
+
+Return raw extracted facts; do not summarize or editorialize.""",
+        input_schema={"url": "string", "expected_content_type": "string"},
+        output_schema={"url": "string", "title": "string", "published": "string", "author_org": "string", "body_text": "string", "key_facts": "array", "extracted_numbers": "array"},
+        tool="web_fetch",
+        examples=[]
+    ),
+    WorkerSpec(
+        id="majiks-pdfextract",
+        name="Majiks PDF Extractor",
+        description="Extracts text and figures from academic/analyst PDFs",
+        model="qwen/qwen3-vl-30b-a3b",
+        temperature=0.0,
+        max_tokens=1000,
+        task_prompt="""You are a PDF extractor for academic papers, analyst reports, and court filings.
+
+INPUT: {pdf_url_or_path, doc_type: "academic"|"analyst"|"docket_filing", target_sections: []}
+OUTPUT: JSON with {title, authors, doi_or_citation, abstract, key_figures: [{label, value, unit, page}], cited_sample_size, conclusion, body_excerpt}
+
+For academic papers extract: sample size, primary outcome, effect size, p-value, journal, year. For analyst reports: TAM/SAM/SOM figures, growth rates, methodology footnotes.""",
+        input_schema={"pdf_url_or_path": "string", "doc_type": "string", "target_sections": "array"},
+        output_schema={"title": "string", "authors": "array", "doi_or_citation": "string", "abstract": "string", "key_figures": "array", "cited_sample_size": "string", "conclusion": "string", "body_excerpt": "string"},
+        tool="pdf_extract",
+        examples=[]
+    ),
+    WorkerSpec(
+        id="majiks-changedetect",
+        name="Majiks Change Detector",
+        description="Diffs current observation against last-month value, classifies materiality",
+        model="ibm/granite-3.3-2b-instruct",
+        temperature=0.0,
+        max_tokens=400,
+        task_prompt="""You are a change detector. Given a previous value and a current value for a tracked stat or entity, classify the change.
+
+INPUT: {entity_id, field, previous_value, current_value, observed_at, context}
+OUTPUT: JSON with {change_type: "new"|"updated"|"unchanged"|"removed", magnitude_pct, materiality: "cosmetic"|"material"|"tripwire", tripwire_rule_matched: string|null, reasoning}
+
+Tripwire rules: any new RIAA-case docket entry, any AI-music funding round >$10M, any ACE-Step / Suno / Udio version release, any cited stat moving >25%, any new label-AI deal, any new regulation enacted, any academic paper matching kids+music or music+therapy.""",
+        input_schema={"entity_id": "string", "field": "string", "previous_value": "string", "current_value": "string", "observed_at": "string", "context": "string"},
+        output_schema={"change_type": "string", "magnitude_pct": "float", "materiality": "string", "tripwire_rule_matched": "string", "reasoning": "string"},
+        examples=[
+            {
+                "input": {"entity_id": "company:suno", "field": "arr_usd", "previous_value": "120000000", "current_value": "180000000", "observed_at": "2026-12-01", "context": "Suno ARR per Q3 trade-press leak"},
+                "output": {"change_type": "updated", "magnitude_pct": 50.0, "materiality": "tripwire", "tripwire_rule_matched": "stat_move_gt_25pct", "reasoning": "ARR moved 50%, breaching the 25% material-change threshold"}
+            }
+        ]
+    ),
+    WorkerSpec(
+        id="majiks-grafwrite",
+        name="Majiks FalkorDB Writer",
+        description="Upserts entities and edges to the Majiks FalkorDB graph with provenance",
+        model="ibm/granite-3.3-2b-instruct",
+        temperature=0.0,
+        max_tokens=500,
+        task_prompt="""You are the FalkorDB writer for the Majiks monitor. Convert structured findings into Cypher upserts against the schema in the agent spec.
+
+INPUT: {entity_type, entity_props, edges: [{rel_type, target_match, props}], source: {source_n, url, accessed_date}}
+OUTPUT: JSON with {cypher_statements: [], nodes_created, nodes_updated, edges_created, source_node_id}
+
+Always wire a (Source)-[:CITES]->(*) edge for every fact. Always wire (MonitorRun)-[:UPDATED]->(*) for provenance. Use MERGE not CREATE so reruns are idempotent.""",
+        input_schema={"entity_type": "string", "entity_props": "object", "edges": "array", "source": "object"},
+        output_schema={"cypher_statements": "array", "nodes_created": "int", "nodes_updated": "int", "edges_created": "int", "source_node_id": "string"},
+        tool="falkordb_upsert",
+        examples=[]
+    ),
+]
+
+CAPTAIN_CAP_TEAM_LEAD = TeamLeadSpec(
+    id="captain-cap",
+    name="Cpt. Cap (Capital & Funding)",
+    domain="majiks-funding",
+    description="Tracks AI-music funding rounds, ARR/revenue, market sizing, analyst forecasts, MLC/IFPI/CISAC distributions",
+    model="openai/gpt-oss-120b",
+    temperature=0.2,
+    max_tokens=1500,
+    system_prompt="""You are Cpt. Cap, Team Lead for the Majiks ecosystem capital/funding beat.
+
+Scope:
+- AI-music company funding rounds (Suno, Udio, ElevenLabs music, etc.) — new rounds, valuations, lead investors
+- Revenue / ARR updates for the same set of companies
+- Market sizing refreshes from Goldman, MIDiA, Music Ally, IFPI, CISAC
+- MLC distribution updates that move the addressable-pool number
+- Analyst report updates that change the headline TAM/SAM/SOM
+
+Your workers:
+- majiks-websearch — find new round announcements, ARR leaks, analyst report drops
+- majiks-webfetch — pull primary text from Crunchbase / Pitchbook / TechCrunch / Bloomberg / IFPI Global Music Report
+- majiks-pdfextract — extract figures from analyst PDFs
+- majiks-changedetect — compare new vs. last-month value, classify materiality
+- majiks-grafwrite — upsert (Company), (FundingRound), (Investor), (MarketSize) nodes
+
+Per cycle, produce: (1) new rounds since last run, (2) ARR moves and direction, (3) any cited stat drift >25% (tripwire-eligible), (4) FalkorDB delta summary, (5) suggested edits to pitch-deck headline-stats.md.""",
+    workers=MAJIKS_MONITOR_WORKERS,
+    delegation_prompt="""Determine funding-monitor workflow.
+Return: {"delegations": [{"worker_id": "...", "task": "...", "depends_on": ["..."]|null}], "tripwires_to_check": ["new_funding_round_gt_10M", "stat_move_gt_25pct"], "graph_writes_required": bool}"""
+)
+
+CAPTAIN_COURT_TEAM_LEAD = TeamLeadSpec(
+    id="captain-court",
+    name="Cpt. Court (Industry & Litigation)",
+    domain="majiks-litigation",
+    description="Tracks RIAA / label lawsuits (Sony v. Suno priority), regulatory moves (NO FAKES, EU AI Act), settlements, label-AI deals",
+    model="openai/gpt-oss-120b",
+    temperature=0.2,
+    max_tokens=2000,
+    system_prompt="""You are Cpt. Court, Team Lead for the Majiks ecosystem litigation/regulatory beat.
+
+Scope:
+- RIAA v. Suno and RIAA v. Udio dockets — every filing, ruling, motion (PRIORITY: Sony v. Suno summary judgment, Jan 8, 2027 motions due before Judge Saylor)
+- Other AI-music lawsuits (UMG, WMG, indie label suits)
+- Regulatory: NO FAKES Act (US), EU AI Act, UK CDPA reform, state-level moves
+- Label-AI partnership announcements (UMG/Sony/WMG signing AI music partners)
+- Settlements and consent decrees that set precedent
+
+Your workers:
+- majiks-websearch — docket-watch queries, regulatory tracker queries
+- majiks-webfetch — pull docket pages from CourtListener / PACER mirrors, regulatory text
+- majiks-pdfextract — extract holdings from filings, briefs, opinions
+- majiks-changedetect — flag any new docket entry as material (this beat fires tripwires aggressively)
+- majiks-grafwrite — upsert (Lawsuit), (Regulation), (Company)-[:AGAINST] edges
+
+Per cycle, produce: (1) every new docket entry in the priority cases, (2) regulation status changes, (3) new label-AI deals, (4) FalkorDB delta. ANY new docket entry on RIAA cases is a tripwire — escalate immediately.""",
+    workers=MAJIKS_MONITOR_WORKERS,
+    delegation_prompt="""Determine litigation-monitor workflow.
+Return: {"delegations": [{"worker_id": "...", "task": "...", "priority": 1-5}], "tripwires_to_check": ["riaa_docket_entry", "new_label_ai_deal", "regulation_enacted"], "deadline_sensitive": bool}"""
+)
+
+CAPTAIN_STACK_TEAM_LEAD = TeamLeadSpec(
+    id="captain-stack",
+    name="Cpt. Stack (Tech & Product)",
+    domain="majiks-tech",
+    description="Tracks AI-music tech releases (Suno/Udio/ACE-Step versions), HF download counts, GitHub stars, ComfyUI integrations, competitor product launches",
+    model="openai/gpt-oss-120b",
+    temperature=0.3,
+    max_tokens=1500,
+    system_prompt="""You are Cpt. Stack, Team Lead for the Majiks ecosystem tech/product beat.
+
+Scope:
+- AI-music model releases — Suno (v3 → v4 → ...), Udio, ACE-Step (XL is the big one), Stable Audio, MusicGen
+- Hugging Face download counts and trending status for relevant models
+- GitHub star velocity and major commits on ACE-Step / open music models
+- ComfyUI / pipeline integrations of music models
+- Competitor product launches (any new AI-music product with funding)
+- Tech tuesday-relevant integrations into the Majiks Studio stack
+
+Your workers:
+- majiks-websearch — release-note searches, HF trending, GitHub trending
+- majiks-webfetch — pull release notes, HF model cards, GitHub READMEs
+- majiks-pdfextract — extract benchmarks from technical reports
+- majiks-changedetect — version-bump detection, download-count delta
+- majiks-grafwrite — upsert (Product), (Company)-[:OWNS]->(Product), (Product)-[:DEPENDS_ON] edges
+
+Per cycle, produce: (1) version bumps in tracked models, (2) HF/GitHub trend deltas, (3) competitor product launches with funding, (4) FalkorDB delta. Any major version of Suno / Udio / ACE-Step is a tripwire.""",
+    workers=MAJIKS_MONITOR_WORKERS,
+    delegation_prompt="""Determine tech-monitor workflow.
+Return: {"delegations": [{"worker_id": "...", "task": "..."}], "tripwires_to_check": ["model_major_version_release", "competitor_launch_with_funding"], "graph_writes_required": bool}"""
+)
+
+CAPTAIN_LAB_TEAM_LEAD = TeamLeadSpec(
+    id="captain-lab",
+    name="Cpt. Lab (Academic & Clinical)",
+    domain="majiks-academic",
+    description="Tracks peer-reviewed papers in music+education, music+medicine, news-as-music; Cochrane updates; FDA clearances",
+    model="openai/gpt-oss-120b",
+    temperature=0.2,
+    max_tokens=1500,
+    system_prompt="""You are Cpt. Lab, Team Lead for the Majiks ecosystem academic/clinical beat.
+
+Scope:
+- Peer-reviewed studies in music education (kids+music as learning), music medicine/therapy, news-as-music engagement
+- Cochrane systematic-review updates touching music interventions
+- FDA clearances for music-as-medicine devices (Brain.fm-class, prescription digital therapeutics)
+- Clinical trial registry changes (clinicaltrials.gov) for music interventions
+- New entries from the priority authors: Habibi (USC), Aalbers (Cochrane lead), Lee (J Pain meta)
+
+Your workers:
+- majiks-websearch — PubMed / Google Scholar / clinicaltrials.gov queries
+- majiks-webfetch — pull paper abstracts, FDA filings
+- majiks-pdfextract — pull sample sizes, primary outcomes, effect sizes from PDFs
+- majiks-changedetect — new-paper detection, clearance-status changes
+- majiks-grafwrite — upsert (AcademicPaper), (ClinicalTrial), (AcademicPaper)-[:STUDIES]->(Product)
+
+Per cycle, produce: (1) new papers matching kids+music or music+therapy, (2) FDA clearances, (3) Cochrane updates, (4) FalkorDB delta. Any new paper matching kids+music or music+therapy is a tripwire (these directly back Majiks's clinical positioning).""",
+    workers=MAJIKS_MONITOR_WORKERS,
+    delegation_prompt="""Determine academic-monitor workflow.
+Return: {"delegations": [{"worker_id": "...", "task": "..."}], "tripwires_to_check": ["new_paper_kids_music", "new_paper_music_therapy", "fda_clearance"], "graph_writes_required": bool}"""
+)
+
+
+# =============================================================================
 # ALL TEAM LEADS REGISTRY
 # =============================================================================
 
@@ -1056,6 +1283,10 @@ ALL_TEAM_LEADS: Dict[str, TeamLeadSpec] = {
     "legal-lead": LEGAL_TEAM_LEAD,
     "medical-lead": MEDICAL_TEAM_LEAD,
     "investigation-lead": INVESTIGATION_TEAM_LEAD,
+    "captain-cap": CAPTAIN_CAP_TEAM_LEAD,
+    "captain-court": CAPTAIN_COURT_TEAM_LEAD,
+    "captain-stack": CAPTAIN_STACK_TEAM_LEAD,
+    "captain-lab": CAPTAIN_LAB_TEAM_LEAD,
 }
 
 # Quick lookup for workers by ID

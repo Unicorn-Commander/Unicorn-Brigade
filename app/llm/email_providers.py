@@ -388,8 +388,12 @@ class ResendEmailProvider(EmailProvider):
     """Resend email provider (send-only)."""
 
     def __init__(self):
-        self.api_key = os.getenv("RESEND_API_KEY", "")
-        self.default_from = os.getenv("RESEND_FROM_EMAIL", "noreply@unicorncommander.ai")
+        self.api_key = os.getenv("RESEND_API_KEY") or os.getenv("EMAIL_API_KEY", "")
+        self.default_from = (
+            os.getenv("RESEND_FROM_EMAIL")
+            or os.getenv("EMAIL_FROM")
+            or "noreply@unicorncommander.ai"
+        )
 
     @property
     def name(self) -> str:

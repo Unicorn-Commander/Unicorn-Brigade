@@ -1555,6 +1555,7 @@ async def kg_query_handler(
     target_type: Optional[str] = None,
     max_depth: int = 2,
     limit: int = 50,
+    graph: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Query or store data in the FalkorDB knowledge graph.
@@ -1577,6 +1578,16 @@ async def kg_query_handler(
             "success": False,
             "error": "Knowledge graph not available. Enable FalkorDB with FALKORDB_ENABLED=true"
         }
+
+    # Optional per-call graph override. Lets specific agents (e.g., maj-recon)
+    # scope all kg_query reads + writes to a domain graph (e.g.,
+    # ``majiks_research``) without touching every call site downstream. The
+    # override is implemented as a ContextVar in graph_manager — see the
+    # docstring on ``_get_graph`` there for details.
+    override_token = None
+    if graph:
+        from app.knowledge.graph_manager import kg_target_graph_override
+        override_token = kg_target_graph_override.set(graph)
 
     try:
         if query_type == "store":
@@ -1676,6 +1687,10 @@ async def kg_query_handler(
     except Exception as e:
         logger.error(f"Knowledge graph error: {e}")
         return {"success": False, "error": str(e)}
+    finally:
+        if override_token is not None:
+            from app.knowledge.graph_manager import kg_target_graph_override
+            kg_target_graph_override.reset(override_token)
 
 
 KG_QUERY_TOOL = ToolDefinition(
@@ -1753,6 +1768,18 @@ KG_QUERY_TOOL = ToolDefinition(
             description="Maximum results to return (default 50)",
             required=False,
             default=50,
+        ),
+        ToolParameter(
+            name="graph",
+            type="string",
+            description=(
+                "Optional graph name override. When set, all reads + writes for this "
+                "call route to the named graph instead of the agent default. Use this "
+                "when you want to query or update a specific domain graph (e.g., "
+                "'majiks_research' for the Majiks ecosystem research catalog). Leave "
+                "unset for the default per-agent + global routing."
+            ),
+            required=False,
         ),
     ],
     handler=kg_query_handler,

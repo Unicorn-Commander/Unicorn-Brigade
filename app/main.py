@@ -57,6 +57,7 @@ from app.agents.crisis_registration import register_crisis_agents
 from app.api.trace_routes import router as trace_router
 from app.api.speaker_routes import router as speaker_router
 from app.api.oidc_routes import router as oidc_router
+from app.api.llm_models import router as llm_models_router
 from app.workflows.benchmark import init_benchmark_engine
 from app.db.database import init_db, close_db
 from app.db.init_db import seed_agents
@@ -265,6 +266,7 @@ app.include_router(medical_router, prefix="/api/v1", tags=["medical"])
 app.include_router(benchmark_router, prefix="/api/v1", tags=["benchmarks"])
 app.include_router(trace_router, prefix="/api/v1", tags=["trace"])
 app.include_router(speaker_router, prefix="/api/v1", tags=["speakers"])
+app.include_router(llm_models_router, prefix="/api/v1", tags=["llm-models"])
 app.include_router(ralph_router, tags=["ralph"])
 app.include_router(crisis_router, prefix="/api/v1", tags=["crisis"])
 app.include_router(scheduled_run_router, prefix="/api/v1", tags=["scheduled-runs"])
