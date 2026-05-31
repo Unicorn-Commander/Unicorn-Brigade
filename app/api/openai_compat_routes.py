@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_session
 from app.db.repositories import AgentRepository
+from app.llm.gemma_sanitize import strip_channel_artifacts
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -477,6 +478,10 @@ async def _passthrough_chat(
         resp = await _llm_client.client.post(endpoint, json=payload, headers=headers)
         resp.raise_for_status()
         raw = resp.json()
+        for _c in (raw.get("choices") or []):
+            _m = _c.get("message")
+            if isinstance(_m, dict) and isinstance(_m.get("content"), str):
+                _m["content"] = strip_channel_artifacts(_m["content"])
     except Exception as e:
         logger.error(f"passthrough LLM call failed: {e}")
         raise HTTPException(status_code=500, detail=f"LLM call failed: {e}")
@@ -822,6 +827,9 @@ async def _dual_layer_chat(
         if not tool_calls:
             # Terminal text response — store memory and return.
             reply = msg.get("content") or ""
+            reply = strip_channel_artifacts(reply)
+            if isinstance(msg, dict):
+                msg["content"] = reply
             try:
                 latest_user = next(
                     (m.content for m in reversed(request.messages) if m.role == "user"),
@@ -1267,7 +1275,7 @@ async def _enhanced_stream_chat(
             yield "data: [DONE]\n\n"
 
             # Background memory store of the final exchange
-            full_text = "".join(full_text_buffer).strip()
+            full_text = strip_channel_artifacts("".join(full_text_buffer)).strip()
             latest_user_msg = next(
                 (m.content for m in reversed(request.messages) if m.role == "user"),
                 None,

@@ -1044,6 +1044,7 @@ async def _stream_chat(
                 except (json.JSONDecodeError, IndexError, KeyError):
                     continue
 
+            accumulated = strip_channel_artifacts(accumulated)
             yield f"data: {json.dumps({'type': 'complete', 'content': accumulated, 'model': model})}\n\n"
             yield "data: [DONE]\n\n"
 
