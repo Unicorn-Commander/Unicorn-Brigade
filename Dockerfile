@@ -40,6 +40,7 @@ RUN for f in \
 # Copy application code
 COPY app/ app/
 COPY tests/ tests/
+COPY scripts/ scripts/
 COPY pytest.ini .
 
 # Create logs directory

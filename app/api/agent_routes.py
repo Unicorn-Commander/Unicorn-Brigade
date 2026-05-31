@@ -44,17 +44,22 @@ import re as _re
 def _strip_thinking(text: str) -> str:
     """Strip <think>...</think> blocks from model output.
 
-    Handles two cases:
+    Handles three cases:
       1. Closed blocks: <think>...</think> -> removed entirely.
-      2. Orphan opening (max-tokens cutoff mid-think): <think>... -> removed
-         from the opening tag through end-of-string. Returns empty if the
-         entire response was a truncated think block.
+      2. Orphan opening with usable content: chat templates that prefill
+         '<think>\n' but where the model produces its actual answer inside
+         that block (e.g. Qwen3 nothink.jinja under llama.cpp). We strip
+         just the opening tag and preserve the content so the user sees
+         a real reply instead of an empty string.
+      3. Truncated mid-thinking with nothing after: handled by step 2 —
+         the content (still raw thinking) is preserved rather than dropped,
+         which is less bad than an empty response.
     """
     if not text:
         return text
     cleaned = _re.sub(r'<think>.*?</think>\s*', '', text, flags=_re.DOTALL)
-    # Drop any orphan opening tag through end-of-string
-    cleaned = _re.sub(r'<think>.*\Z', '', cleaned, flags=_re.DOTALL)
+    # Strip orphan opening tag but preserve content after it
+    cleaned = _re.sub(r'<think>\n?', '', cleaned)
     return cleaned.strip()
 
 

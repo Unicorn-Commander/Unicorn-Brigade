@@ -17,6 +17,7 @@ Key features:
 """
 
 from typing import Any, Optional, List, Dict, Tuple
+from contextvars import ContextVar
 from datetime import datetime
 import logging
 import os
@@ -32,6 +33,16 @@ try:
 except ImportError:
     FALKORDB_AVAILABLE = False
     logger.warning("falkordb package not installed. Knowledge graph features disabled.")
+
+
+# Per-request override for the target graph. When set (typically by the
+# kg_query tool handler before invoking a manager method), all global-graph
+# and per-agent-graph lookups in this manager redirect to this name. This
+# lets a specific agent (e.g., maj-recon) keep its reads + writes scoped to
+# a domain graph (majiks_research) without changing call-sites elsewhere.
+kg_target_graph_override: ContextVar[Optional[str]] = ContextVar(
+    "kg_target_graph_override", default=None
+)
 
 
 class KnowledgeGraphManager:
@@ -70,9 +81,22 @@ class KnowledgeGraphManager:
             logger.info("KnowledgeGraphManager disabled (FALKORDB_ENABLED=false)")
 
     def _get_graph(self, graph_name: str):
-        """Get or create a graph instance"""
+        """Get or create a graph instance.
+
+        Honors the ``kg_target_graph_override`` ContextVar — when set, any
+        request for the GLOBAL_GRAPH is transparently redirected to the
+        override graph. This is how per-agent domain-graph routing
+        (e.g., maj-recon → majiks_research) plugs in without touching every
+        call site that reads / writes the global graph.
+        """
         if not self.db:
             return None
+
+        override = kg_target_graph_override.get()
+        if override and graph_name == self.GLOBAL_GRAPH:
+            graph_name = override
+            if graph_name not in self._graphs:
+                self._ensure_graph_schema(graph_name)
 
         if graph_name not in self._graphs:
             self._graphs[graph_name] = self.db.select_graph(graph_name)
@@ -80,7 +104,15 @@ class KnowledgeGraphManager:
         return self._graphs[graph_name]
 
     def _get_agent_graph_name(self, agent_id: str) -> str:
-        """Get the graph name for a specific agent"""
+        """Get the graph name for a specific agent.
+
+        When ``kg_target_graph_override`` is set, prefer that graph so the
+        agent-scoped store collapses into the override target — keeping the
+        agent's reads + writes on the same graph.
+        """
+        override = kg_target_graph_override.get()
+        if override:
+            return override
         return f"{self.AGENT_GRAPH_PREFIX}{agent_id.replace('-', '_')}"
 
     def _ensure_graph_schema(self, graph_name: str) -> bool:
@@ -89,27 +121,21 @@ class KnowledgeGraphManager:
         if not graph:
             return False
 
-        # FalkorDB does not support 'CREATE INDEX IF NOT EXISTS' (Neo4j syntax) —
-        # raises 'Attribute X is already indexed' on duplicate. Each index runs
-        # in its own try/except so a missing or pre-existing index never blocks
-        # the others, and 'already indexed' is logged at debug, not warn.
-        indexes = [
-            ("CREATE INDEX FOR (e:Entity) ON (e.name)", "Entity.name"),
-            ("CREATE INDEX FOR (e:Entity) ON (e.type)", "Entity.type"),
-            ("CREATE INDEX FOR (f:Fact) ON (f.learned_at)", "Fact.learned_at"),
-            ("CREATE INDEX FOR (f:Fact) ON (f.source_agent)", "Fact.source_agent"),
-        ]
-        for ddl, label in indexes:
-            try:
-                graph.query(ddl)
-            except Exception as e:
-                msg = str(e).lower()
-                if "already indexed" in msg:
-                    logger.debug(f"Index {label} already exists in {graph_name}")
-                else:
-                    logger.warning(f"Could not create index {label} in {graph_name}: {e}")
-        logger.info(f"Graph schema ensured for: {graph_name}")
-        return True
+        try:
+            # Create indexes for common queries
+            # Entity index on name and type
+            graph.query("CREATE INDEX IF NOT EXISTS FOR (e:Entity) ON (e.name)")
+            graph.query("CREATE INDEX IF NOT EXISTS FOR (e:Entity) ON (e.type)")
+
+            # Fact index for temporal queries
+            graph.query("CREATE INDEX IF NOT EXISTS FOR (f:Fact) ON (f.learned_at)")
+            graph.query("CREATE INDEX IF NOT EXISTS FOR (f:Fact) ON (f.source_agent)")
+
+            logger.info(f"Graph schema ensured for: {graph_name}")
+            return True
+        except Exception as e:
+            logger.warning(f"Could not create indexes (may already exist): {e}")
+            return True  # Continue even if indexes exist
 
     async def store_entity(
         self,
@@ -140,18 +166,19 @@ class KnowledgeGraphManager:
             props = properties or {}
             props["name"] = name
             props["type"] = entity_type
+            props["entity_type"] = entity_type
             props["created_at"] = datetime.utcnow().isoformat()
             if agent_id:
                 props["created_by"] = agent_id
 
-            # Build property string for Cypher
-            prop_str = ", ".join([f"{k}: ${k}" for k in props.keys()])
+            set_props = ", ".join([f"e.{k} = ${k}" for k in props.keys()])
 
-            # MERGE to avoid duplicates (match on name and type)
+            # MERGE to avoid duplicates. Keep entity_type as a property, not
+            # a Cypher label, so arbitrary type strings cannot break syntax.
             query = f"""
-                MERGE (e:Entity:{entity_type} {{name: $name, type: $type}})
-                ON CREATE SET {", ".join([f"e.{k} = ${k}" for k in props.keys()])}
-                ON MATCH SET e.updated_at = $updated_at
+                MERGE (e:Entity {{name: $name}})
+                ON CREATE SET {set_props}
+                ON MATCH SET {set_props}, e.updated_at = $updated_at
                 RETURN e
             """
             props["updated_at"] = datetime.utcnow().isoformat()
@@ -229,8 +256,10 @@ class KnowledgeGraphManager:
             rel_type = relationship.upper().replace(" ", "_")
 
             query = f"""
-                MERGE (a:Entity:{from_type} {{name: $from_name, type: $from_type}})
-                MERGE (b:Entity:{to_type} {{name: $to_name, type: $to_type}})
+                MERGE (a:Entity {{name: $from_name}})
+                SET a.type = $from_type, a.entity_type = $from_type
+                MERGE (b:Entity {{name: $to_name}})
+                SET b.type = $to_type, b.entity_type = $to_type
                 MERGE (a)-[r:{rel_type}]->(b)
                 SET r.learned_at = $learned_at
                 {"SET r.source_agent = $source_agent" if agent_id else ""}
@@ -750,7 +779,10 @@ class KnowledgeGraphManager:
                 "graphs": {}
             }
 
-            # Get stats for global graph
+            # Get stats for global graph (or the override target if set).
+            # Use the resolved name as the response key so callers see the
+            # graph they actually queried, not the literal "brigade_global".
+            resolved_name = kg_target_graph_override.get() or self.GLOBAL_GRAPH
             global_graph = self._get_graph(self.GLOBAL_GRAPH)
             if global_graph:
                 try:
@@ -762,12 +794,12 @@ class KnowledgeGraphManager:
                     rel_result = global_graph.query("MATCH ()-[r]->() RETURN count(r) as count")
                     rel_count = rel_result.result_set[0][0] if rel_result.result_set else 0
 
-                    stats["graphs"][self.GLOBAL_GRAPH] = {
+                    stats["graphs"][resolved_name] = {
                         "nodes": node_count,
                         "relationships": rel_count
                     }
                 except Exception as e:
-                    stats["graphs"][self.GLOBAL_GRAPH] = {"error": str(e)}
+                    stats["graphs"][resolved_name] = {"error": str(e)}
 
             return stats
 
