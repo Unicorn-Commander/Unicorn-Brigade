@@ -12,7 +12,9 @@ Identity (see project_brigade_federation_identity_model): sub = the
 authenticated customer's email, the shared identifier Brigade has today. Apps
 resolve by email (eg PO's validateKeycloakUser email fallback). Upgrade to the
 opaque uchub sub once Brigade stores keycloakId on its User at OIDC login.
-org_id is omitted for now; apps derive org from the resolved user.
+The minted token carries the suite-canonical claims (SUITE-IDENTITY §0.1): `act`
+records the Brigade->caller delegation chain; `workspace_id`/`entitlements` are
+threaded once resolved from uc-registry (Phase 1). `org_id` is retired entirely.
 
 Locked properties:
 - customer-context JWT: sub = the caller, never a brigade-service identity
@@ -96,7 +98,12 @@ async def _handle_tools_call(
     jwt = mint_app_jwt(
         sub=customer_sub,
         aud=aud,
-        org_id=None,  # apps derive org from the resolved user; see identity model
+        # Suite-canonical claims (SUITE-IDENTITY §0.1). `act` records the
+        # delegation chain: the actor on the customer-MCP path is Brigade acting
+        # for the caller. `workspace_id`/`entitlements` are threaded once
+        # resolved from uc-registry (handoff §3.3, Phase 1); omitted (not
+        # invented from email — D2) until then. `org_id` is gone.
+        act={"sub": customer_sub, "client_id": "brigade"},
         scopes=resolved["scopes_required"],
     )
     # jti for the audit log (decode is unverified, it is our own freshly minted token).
