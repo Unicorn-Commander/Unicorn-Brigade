@@ -52,18 +52,55 @@ def _b64url_uint(value: int) -> str:
 
 
 def test_roundtrip_jose_rs256():
-    """Brigade-signed RS256 token verifies under the apps' python-jose call."""
-    tok = mint_app_jwt(sub="u-123", aud="project-ops", org_id="org-9",
+    """Brigade-signed RS256 token verifies under the apps' python-jose call.
+
+    Asserts the suite-canonical claim set (SUITE-IDENTITY §0.1) round-trips:
+    workspace_id (uuidv7), act (RFC 8693 actor chain), entitlements (SKU array).
+    """
+    ws = "0190d3c2-7b8a-7e21-9c4f-2a1b3c4d5e6f"  # uuidv7 string
+    actor = {"sub": "uc-uid-abc", "client_id": "brigade"}
+    tok = mint_app_jwt(sub="u-123", aud="project-ops",
+                       workspace_id=ws, act=actor,
+                       entitlements=["project-ops", "accounting-ops"],
                        scopes=["read:projects", "write:tasks"])
     claims = jose_jwt.decode(tok, _public_jwk(), algorithms=["RS256"],
                              audience="project-ops", issuer=ISS)
     assert claims["sub"] == "u-123"
-    assert claims["org_id"] == "org-9"
+    assert claims["workspace_id"] == ws
+    assert claims["act"] == actor
+    assert claims["entitlements"] == ["project-ops", "accounting-ops"]
     assert claims["scopes"] == ["read:projects", "write:tasks"]
     assert claims["iss"] == ISS
     assert claims["aud"] == "project-ops"
     assert claims["exp"] > claims["iat"] and claims["nbf"] <= claims["iat"]
     assert claims["jti"]
+
+
+def test_org_id_absent():
+    """REGRESSION: the retired `org_id` claim must never appear (SUITE-IDENTITY
+    §0.1 / D6 — org_id is gone, not a fallback)."""
+    tok = mint_app_jwt(sub="u-123", aud="project-ops",
+                       workspace_id="0190d3c2-7b8a-7e21-9c4f-2a1b3c4d5e6f",
+                       act={"sub": "u-123", "client_id": "brigade"},
+                       entitlements=["project-ops"],
+                       scopes=["read:projects"])
+    claims = jose_jwt.decode(tok, _public_jwk(), algorithms=["RS256"],
+                             audience="project-ops", issuer=ISS)
+    assert "org_id" not in claims
+    # And the mint must not accept org_id as a kwarg (no back-compat shim).
+    with pytest.raises(TypeError):
+        mint_app_jwt(sub="u-1", aud="project-ops", org_id="org-9")  # type: ignore[call-arg]
+
+
+def test_jti_unique_per_mint():
+    """Each mint must produce a fresh jti (anti-replay; no token reuse)."""
+    jtis = set()
+    for _ in range(25):
+        tok = mint_app_jwt(sub="u-1", aud="project-ops", scopes=[])
+        claims = jose_jwt.decode(tok, _public_jwk(), algorithms=["RS256"],
+                                 audience="project-ops", issuer=ISS)
+        jtis.add(claims["jti"])
+    assert len(jtis) == 25, "jti must be unique across mints"
 
 
 def test_kid_header_present():

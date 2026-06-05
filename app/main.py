@@ -61,6 +61,7 @@ from app.api.llm_models import router as llm_models_router
 from app.federation.jwks_routes import router as jwks_router
 from app.federation.registration_routes import router as federation_admin_router
 from app.federation.mcp_gateway import router as federation_mcp_router
+from app.federation.exchange import router as federation_exchange_router
 from app.workflows.benchmark import init_benchmark_engine
 from app.db.database import init_db, close_db
 from app.db.init_db import seed_agents
@@ -243,10 +244,12 @@ app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_sche
 # Federation broker surface — always mounted, customer-facing on prod.
 # /.well-known/jwks.json is unauthenticated (RS256 public keys);
 # /api/v1/admin/federated-apps/* is admin-gated;
-# /mcp is the federation gateway for customer MCP clients.
+# /mcp is the federation gateway for customer MCP clients;
+# /api/v1/federation/token is the RFC-8693 app->app token exchange.
 app.include_router(jwks_router, tags=["federation"])
 app.include_router(federation_admin_router)
 app.include_router(federation_mcp_router)
+app.include_router(federation_exchange_router)
 app.include_router(router, prefix="/api/v1", tags=["core"])  # /info, /health
 
 if not FEDERATION_ONLY:
