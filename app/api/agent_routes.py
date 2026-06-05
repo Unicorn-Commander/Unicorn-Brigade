@@ -18,6 +18,7 @@ from app.db.repositories import AgentRepository, ToolExecutionRepository
 from app.llm.ops_center_client import OpsCenterLLMClient, ToolCall, ToolResult
 from app.llm.tool_resolver import get_tools_for_agent
 from app.llm.mlx_provider import MLXLLMClient
+from app.llm.gemma_sanitize import strip_channel_artifacts
 from app.auth.middleware import require_api_key, require_operator, require_admin, AuthUser
 from app.auth.roles import UserRole
 from app.security.rate_limit import rate_limit
@@ -781,7 +782,7 @@ async def chat_with_agent(
                 user_id=request.user_id,
             )
 
-        content = _strip_thinking(llm_client.get_response_content(response))
+        content = strip_channel_artifacts(_strip_thinking(llm_client.get_response_content(response)))
         usage = response.get("usage", {})
 
         result = {
@@ -1004,7 +1005,7 @@ async def _stream_chat(
                 logger.warning(f"Failed to log tool executions: {log_err}")
 
             # Emit final content as tokens (simulate streaming from the already-complete response)
-            content = _strip_thinking(llm_client.get_response_content(response))
+            content = strip_channel_artifacts(_strip_thinking(llm_client.get_response_content(response)))
             # Send in chunks to keep SSE behavior consistent
             chunk_size = 20
             for i in range(0, len(content), chunk_size):
@@ -1043,6 +1044,7 @@ async def _stream_chat(
                 except (json.JSONDecodeError, IndexError, KeyError):
                     continue
 
+            accumulated = strip_channel_artifacts(accumulated)
             yield f"data: {json.dumps({'type': 'complete', 'content': accumulated, 'model': model})}\n\n"
             yield "data: [DONE]\n\n"
 
@@ -1239,7 +1241,7 @@ async def direct_chat_completion(
             max_tokens=request.maxTokens,
         )
 
-        content = _strip_thinking(llm_client.get_response_content(response))
+        content = strip_channel_artifacts(_strip_thinking(llm_client.get_response_content(response)))
         usage = response.get("usage", {})
 
         return {
