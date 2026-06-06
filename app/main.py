@@ -66,6 +66,7 @@ from app.workflows.benchmark import init_benchmark_engine
 from app.db.database import init_db, close_db
 from app.db.init_db import seed_agents
 from app.observability import flush as langfuse_flush, shutdown as langfuse_shutdown
+from app.config import FEDERATION_ONLY, INTERNAL_AGENTS_ENABLED
 
 # Load environment variables
 load_dotenv()
@@ -109,84 +110,89 @@ async def lifespan(app: FastAPI):
     llm_client = OpsCenterLLMClient()
     logger.info("OpsCenterLLMClient initialized")
 
-    # Initialize database and seed agents
+    # Initialize database (federation needs the federated_apps table either way).
     await init_db()
-    await seed_agents()
-    logger.info("Database initialized and seeded")
+    if INTERNAL_AGENTS_ENABLED:
+        await seed_agents()
+        logger.info("Database initialized and seeded")
+    else:
+        logger.info("Database initialized — agent seeding skipped (INTERNAL_AGENTS_ENABLED=false)")
 
-    # Inject dependencies into route modules (no more AgentStore)
-    init_agent_routes(llm_client, memory=memory_manager)
-    init_memory_inspector(memory_manager)
-    init_system_routes(model_catalog, llm_client)
-    init_builder_routes(llm_client)
-    init_a2a_routes(llm_client)
-    init_orchestration_routes(llm_client)
-    init_voice_routes()  # Voice routes initialize their own room manager
-    init_voice_settings_routes()  # Register voice providers and settings
-    init_langflow_routes()  # Langflow visual workflow integration
-    init_slack_routes(llm_client)  # Slack webhook handlers
-    init_knowledge_routes()  # Knowledge graph browser routes
-    init_support_routes(memory_manager, llm_client)  # Customer support agent routes
-    init_calendar_routes()  # Calendar and meeting scheduling routes
-    init_sales_routes(llm_client, memory_manager)  # Sales outreach multi-agent routes
-    init_content_routes(llm_client, memory_manager)  # Content generation routes
-    init_finance_routes(memory_manager, llm_client)  # Financial analysis routes
+    if FEDERATION_ONLY:
+        logger.info("FEDERATION_ONLY mode: skipping internal route/agent initialization")
+    else:
+        # Inject dependencies into route modules (no more AgentStore)
+        init_agent_routes(llm_client, memory=memory_manager)
+        init_memory_inspector(memory_manager)
+        init_system_routes(model_catalog, llm_client)
+        init_builder_routes(llm_client)
+        init_a2a_routes(llm_client)
+        init_orchestration_routes(llm_client)
+        init_voice_routes()  # Voice routes initialize their own room manager
+        init_voice_settings_routes()  # Register voice providers and settings
+        init_langflow_routes()  # Langflow visual workflow integration
+        init_slack_routes(llm_client)  # Slack webhook handlers
+        init_knowledge_routes()  # Knowledge graph browser routes
+        init_support_routes(memory_manager, llm_client)  # Customer support agent routes
+        init_calendar_routes()  # Calendar and meeting scheduling routes
+        init_sales_routes(llm_client, memory_manager)  # Sales outreach multi-agent routes
+        init_content_routes(llm_client, memory_manager)  # Content generation routes
+        init_finance_routes(memory_manager, llm_client)  # Financial analysis routes
 
-    # Initialize monitoring routes with Slack integration
-    try:
-        from app.integrations.slack import get_slack_client
-        slack_client = get_slack_client()
-        init_monitoring_routes(slack_client=slack_client, memory_manager=memory_manager)
-    except Exception as e:
-        logger.warning(f"Slack client not available for monitoring: {e}")
-        init_monitoring_routes(memory_manager=memory_manager)
+        # Initialize monitoring routes with Slack integration
+        try:
+            from app.integrations.slack import get_slack_client
+            slack_client = get_slack_client()
+            init_monitoring_routes(slack_client=slack_client, memory_manager=memory_manager)
+        except Exception as e:
+            logger.warning(f"Slack client not available for monitoring: {e}")
+            init_monitoring_routes(memory_manager=memory_manager)
 
-    # Initialize hierarchical workflow routes (3-tier: Orchestrator → Team Leads → Workers)
-    init_hierarchical_routes(llm_client, enable_local_models=True)
-    logger.info("Hierarchical workflow routes initialized (8 domains, 40 workers)")
+        # Initialize hierarchical workflow routes (3-tier: Orchestrator → Team Leads → Workers)
+        init_hierarchical_routes(llm_client, enable_local_models=True)
+        logger.info("Hierarchical workflow routes initialized (8 domains, 40 workers)")
 
-    # Initialize medical AI routes (HuggingFace medical models)
-    init_medical_routes()
-    logger.info("Medical AI routes initialized (HuggingFace integration)")
+        # Initialize medical AI routes (HuggingFace medical models)
+        init_medical_routes()
+        logger.info("Medical AI routes initialized (HuggingFace integration)")
 
-    # Initialize benchmark engine for A/B testing workflows
-    init_benchmark_engine(llm_client, judge_model="openai/gpt-4o-mini")
-    logger.info("Benchmark engine initialized for A/B testing")
+        # Initialize benchmark engine for A/B testing workflows
+        init_benchmark_engine(llm_client, judge_model="openai/gpt-4o-mini")
+        logger.info("Benchmark engine initialized for A/B testing")
 
-    # Initialize Crisis Investigation agents and routes
-    register_crisis_agents(workflow_manager, memory_manager=memory_manager, llm_client=llm_client)
-    init_crisis_routes(llm_client=llm_client, memory_manager=memory_manager)
-    logger.info("Crisis investigation agents initialized (evidence_correlator, gap_analyzer, timeline_builder)")
+        # Initialize Crisis Investigation agents and routes
+        register_crisis_agents(workflow_manager, memory_manager=memory_manager, llm_client=llm_client)
+        init_crisis_routes(llm_client=llm_client, memory_manager=memory_manager)
+        logger.info("Crisis investigation agents initialized (evidence_correlator, gap_analyzer, timeline_builder)")
 
-    # apikey_routes and conversation_routes use Depends(get_session) directly
-    logger.info("All route modules initialized")
+        # apikey_routes and conversation_routes use Depends(get_session) directly
+        logger.info("All route modules initialized")
 
-    # Initialize Brigade scheduler (cron-style scheduled agent runs).
-    # Reads scheduled_runs rows from DB and (re)registers APScheduler jobs.
-    try:
-        scheduler = init_scheduler(llm_client)
-        await scheduler.start()
-    except Exception as e:
-        logger.error("Brigade scheduler failed to start: %s", e)
+        # Initialize Brigade scheduler (cron-style scheduled agent runs).
+        # Reads scheduled_runs rows from DB and (re)registers APScheduler jobs.
+        try:
+            scheduler = init_scheduler(llm_client)
+            await scheduler.start()
+        except Exception as e:
+            logger.error("Brigade scheduler failed to start: %s", e)
 
     yield
 
     # Cleanup
-    try:
-        sched = get_scheduler()
-        if sched is not None:
-            await sched.shutdown()
-    except Exception as e:
-        logger.warning("Scheduler shutdown error: %s", e)
+    if not FEDERATION_ONLY:
+        try:
+            sched = get_scheduler()
+            if sched is not None:
+                await sched.shutdown()
+        except Exception as e:
+            logger.warning("Scheduler shutdown error: %s", e)
     await close_db()
     if llm_client:
         await llm_client.close()
-    # Shutdown GitHub routes
-    await shutdown_github_routes()
-    # Shutdown monitoring routes
-    await shutdown_monitoring_routes()
-    # Shutdown medical routes
-    await shutdown_medical_routes()
+    if not FEDERATION_ONLY:
+        await shutdown_github_routes()
+        await shutdown_monitoring_routes()
+        await shutdown_medical_routes()
     # Flush and shutdown Langfuse observability
     try:
         langfuse_flush()
@@ -235,53 +241,62 @@ app.add_middleware(
 app.middleware("http")(metrics_middleware)
 app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_schema=False)
 
-app.include_router(router, prefix="/api/v1", tags=["core"])
-app.include_router(agent_router, prefix="/api/v1", tags=["agents"])
-app.include_router(openai_compat_router, prefix="/api/v1/openai/v1", tags=["openai-compat"])
-app.include_router(welcome_router, tags=["welcome"])
-app.include_router(landing_router, tags=["landing"])
-app.include_router(jwks_router, tags=["federation"])  # /.well-known/jwks.json - RS256 public keys, root path, no auth
-app.include_router(federation_admin_router)  # /api/v1/admin/federated-apps register/list/refresh/delete, admin-gated
-app.include_router(federation_mcp_router)  # POST /mcp federation gateway for customer MCP clients
-app.include_router(federation_exchange_router)  # POST /api/v1/federation/token RFC-8693 app->app token exchange
-app.include_router(memory_inspector_router, tags=["memory-inspector"])
-app.include_router(tool_router, prefix="/api/v1", tags=["tools"])
-app.include_router(system_router, prefix="/api/v1", tags=["system"])
-app.include_router(builder_router, prefix="/api/v1", tags=["builder"])
-app.include_router(apikey_router, prefix="/api/v1", tags=["api-keys"])
-app.include_router(admin_keys_router)
-app.include_router(conversation_router, prefix="/api/v1", tags=["conversations"])
-app.include_router(mcp_router, prefix="/api/v1", tags=["mcp"])
-app.include_router(a2a_router, prefix="/api/v1", tags=["a2a"])
-app.include_router(orchestration_router, prefix="/api/v1", tags=["orchestration"])
-app.include_router(voice_router, prefix="/api/v1", tags=["voice"])
-app.include_router(voice_settings_router, prefix="/api/v1", tags=["voice-settings"])
-app.include_router(langflow_router, prefix="/api/v1", tags=["langflow"])
-app.include_router(slack_router, prefix="/api/v1", tags=["slack"])
-app.include_router(knowledge_router, prefix="/api/v1", tags=["knowledge"])
-app.include_router(mcp_registry_router, prefix="/api/v1", tags=["mcp-registry"])
-app.include_router(user_router, prefix="/api/v1", tags=["users"])
-app.include_router(support_router, prefix="/api/v1", tags=["support"])
-app.include_router(github_router, prefix="/api/v1", tags=["github"])
-app.include_router(document_router, prefix="/api/v1", tags=["documents"])
-app.include_router(calendar_router, prefix="/api/v1", tags=["calendar"])
-app.include_router(sales_router, prefix="/api/v1", tags=["sales"])
-app.include_router(content_router, prefix="/api/v1", tags=["content"])
-app.include_router(finance_router, prefix="/api/v1", tags=["finance"])
-app.include_router(monitoring_router, prefix="/api/v1", tags=["monitoring"])
-app.include_router(hierarchical_router, prefix="/api/v1", tags=["hierarchical"])
-app.include_router(medical_router, prefix="/api/v1", tags=["medical"])
-app.include_router(benchmark_router, prefix="/api/v1", tags=["benchmarks"])
-app.include_router(trace_router, prefix="/api/v1", tags=["trace"])
-app.include_router(speaker_router, prefix="/api/v1", tags=["speakers"])
-app.include_router(llm_models_router, prefix="/api/v1", tags=["llm-models"])
-app.include_router(ralph_router, tags=["ralph"])
-app.include_router(crisis_router, prefix="/api/v1", tags=["crisis"])
-app.include_router(scheduled_run_router, prefix="/api/v1", tags=["scheduled-runs"])
-# OIDC / Keycloak auth routes - mounted at /api/v1 (primary) AND /api (matches
-# the Keycloak-registered callback URL https://brigade.magicunicorn.dev/api/auth/oidc/callback)
-app.include_router(oidc_router, prefix="/api/v1", tags=["auth"])
-app.include_router(oidc_router, prefix="/api", tags=["auth"], include_in_schema=False)
+# Federation broker surface — always mounted, customer-facing on prod.
+# /.well-known/jwks.json is unauthenticated (RS256 public keys);
+# /api/v1/admin/federated-apps/* is admin-gated;
+# /mcp is the federation gateway for customer MCP clients;
+# /api/v1/federation/token is the RFC-8693 app->app token exchange.
+app.include_router(jwks_router, tags=["federation"])
+app.include_router(federation_admin_router)
+app.include_router(federation_mcp_router)
+app.include_router(federation_exchange_router)
+app.include_router(router, prefix="/api/v1", tags=["core"])  # /info, /health
+
+if not FEDERATION_ONLY:
+    # Internal/dogfood surface — agents, voice, slack, knowledge, all the
+    # internal tooling. Skipped on the customer-facing prod instance.
+    app.include_router(agent_router, prefix="/api/v1", tags=["agents"])
+    app.include_router(openai_compat_router, prefix="/api/v1/openai/v1", tags=["openai-compat"])
+    app.include_router(welcome_router, tags=["welcome"])
+    app.include_router(landing_router, tags=["landing"])
+    app.include_router(memory_inspector_router, tags=["memory-inspector"])
+    app.include_router(tool_router, prefix="/api/v1", tags=["tools"])
+    app.include_router(system_router, prefix="/api/v1", tags=["system"])
+    app.include_router(builder_router, prefix="/api/v1", tags=["builder"])
+    app.include_router(apikey_router, prefix="/api/v1", tags=["api-keys"])
+    app.include_router(admin_keys_router)
+    app.include_router(conversation_router, prefix="/api/v1", tags=["conversations"])
+    app.include_router(mcp_router, prefix="/api/v1", tags=["mcp"])
+    app.include_router(a2a_router, prefix="/api/v1", tags=["a2a"])
+    app.include_router(orchestration_router, prefix="/api/v1", tags=["orchestration"])
+    app.include_router(voice_router, prefix="/api/v1", tags=["voice"])
+    app.include_router(voice_settings_router, prefix="/api/v1", tags=["voice-settings"])
+    app.include_router(langflow_router, prefix="/api/v1", tags=["langflow"])
+    app.include_router(slack_router, prefix="/api/v1", tags=["slack"])
+    app.include_router(knowledge_router, prefix="/api/v1", tags=["knowledge"])
+    app.include_router(mcp_registry_router, prefix="/api/v1", tags=["mcp-registry"])
+    app.include_router(user_router, prefix="/api/v1", tags=["users"])
+    app.include_router(support_router, prefix="/api/v1", tags=["support"])
+    app.include_router(github_router, prefix="/api/v1", tags=["github"])
+    app.include_router(document_router, prefix="/api/v1", tags=["documents"])
+    app.include_router(calendar_router, prefix="/api/v1", tags=["calendar"])
+    app.include_router(sales_router, prefix="/api/v1", tags=["sales"])
+    app.include_router(content_router, prefix="/api/v1", tags=["content"])
+    app.include_router(finance_router, prefix="/api/v1", tags=["finance"])
+    app.include_router(monitoring_router, prefix="/api/v1", tags=["monitoring"])
+    app.include_router(hierarchical_router, prefix="/api/v1", tags=["hierarchical"])
+    app.include_router(medical_router, prefix="/api/v1", tags=["medical"])
+    app.include_router(benchmark_router, prefix="/api/v1", tags=["benchmarks"])
+    app.include_router(trace_router, prefix="/api/v1", tags=["trace"])
+    app.include_router(speaker_router, prefix="/api/v1", tags=["speakers"])
+    app.include_router(llm_models_router, prefix="/api/v1", tags=["llm-models"])
+    app.include_router(ralph_router, tags=["ralph"])
+    app.include_router(crisis_router, prefix="/api/v1", tags=["crisis"])
+    app.include_router(scheduled_run_router, prefix="/api/v1", tags=["scheduled-runs"])
+    # OIDC / Keycloak auth routes - mounted at /api/v1 (primary) AND /api (matches
+    # the Keycloak-registered callback URL https://brigade.magicunicorn.dev/api/auth/oidc/callback)
+    app.include_router(oidc_router, prefix="/api/v1", tags=["auth"])
+    app.include_router(oidc_router, prefix="/api", tags=["auth"], include_in_schema=False)
 
 @app.get("/")
 async def root():
