@@ -380,6 +380,13 @@ class ChatRequest(BaseModel):
     # value as mission_id, so a downstream subscriber can filter events that
     # belong only to this chat. If unset, chat_with_agent generates one.
     mission_id: Optional[str] = None
+    # Stable room context. When the caller is a Stable chat/voice room, these
+    # identify the room so room-aware tools (ToolDefinition.needs_room_context,
+    # e.g. the canvas authoring tools) can act on the right room on the agent's
+    # behalf. Both optional; other Brigade consumers omit them and behave
+    # exactly as before.
+    room_id: Optional[str] = None
+    room_name: Optional[str] = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -770,6 +777,12 @@ async def chat_with_agent(
                 user_id=request.user_id,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
+                # Room context for room-aware tools (needs_room_context).
+                # agent_id is the running agent's id, injected as
+                # caller_agent_id alongside caller_room_id/caller_room_name.
+                agent_id=agent["id"],
+                room_id=request.room_id,
+                room_name=request.room_name,
             )
         else:
             # ---- No tools, plain chat ----

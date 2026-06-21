@@ -45,6 +45,13 @@ class ToolDefinition:
     # caller_user_id) into the handler kwargs. Tools that make authenticated
     # downstream calls on behalf of the caller use this to preserve identity.
     needs_caller_context: bool = False
+    # If True, the tool invocation layer injects room context
+    # (caller_room_id, caller_room_name, caller_agent_id) into the handler
+    # kwargs. Tools that author into a specific chat/voice room (e.g. the
+    # Stable canvas tools) use this to know which room + which agent they are
+    # acting on behalf of. Parallel to ``needs_caller_context``; a tool may set
+    # either, both, or neither. When False, NOTHING extra is injected.
+    needs_room_context: bool = False
 
     def to_openai_format(self) -> Dict[str, Any]:
         """Convert to OpenAI function calling format"""
@@ -164,6 +171,12 @@ OPS_CENTER_LLM_ENDPOINT = os.getenv("OPS_CENTER_LLM_ENDPOINT", "")
 # Per-node OpenAI-compatible endpoints for explicit model routing by prefix.
 MIDBOY1_LLM_URL = os.getenv("MIDBOY1_LLM_URL", "http://192.168.10.68:8087")
 
+# UC gateway (llm.unicorncommander.ai) for metered 'uc/'-prefixed models. When
+# UC_GATEWAY_URL is set, 'uc/<model>' routes here with a Bearer key so usage
+# meters as ai_api_call (+ the gateway's failover). Additive + inert when unset.
+UC_GATEWAY_URL = os.getenv("UC_GATEWAY_URL", "")
+UC_GATEWAY_KEY = os.getenv("UC_GATEWAY_KEY", "")
+
 # Brigade service key for authentication
 BRIGADE_SERVICE_KEY = os.getenv("BRIGADE_SERVICE_KEY", "sk-brigade-service-key-2025")
 
@@ -206,6 +219,7 @@ class OpsCenterLLMClient:
         Returns (url, model_name, route_type) tuple where route_type is one of:
           "local"       — local llama.cpp / Ollama (models prefixed 'local/')
           "openrouter"  — direct OpenRouter BYOK (when OPENROUTER_API_KEY is set)
+          "gateway"     — metered UC gateway (uc/-prefixed models, Bearer key)
           "ops-center"  — Ops-Center cloud proxy (default)
         """
         if model.startswith("local/"):
@@ -214,6 +228,9 @@ class OpsCenterLLMClient:
         if model.startswith("midboy1/"):
             midboy1_model = model[len("midboy1/"):]
             return MIDBOY1_LLM_URL, midboy1_model, "local"
+        if UC_GATEWAY_URL and model.startswith("uc/"):
+            # Metered UC gateway: keep the full 'uc/<model>' name the gateway expects.
+            return UC_GATEWAY_URL, model, "gateway"
         if OPENROUTER_API_KEY:
             return OPENROUTER_URL, model, "openrouter"
         if OPS_CENTER_LLM_ENDPOINT:
@@ -298,6 +315,14 @@ class OpsCenterLLMClient:
                 }
                 endpoint = f"{target_url}/chat/completions"
                 logger.info(f"Sending chat completion to OpenRouter: {resolved_model}")
+            elif route_type == "gateway":
+                # Metered UC gateway: OpenAI-compatible, Bearer key meters usage.
+                headers = {
+                    "Authorization": f"Bearer {UC_GATEWAY_KEY}",
+                    "Content-Type": "application/json",
+                }
+                endpoint = f"{target_url}/chat/completions"
+                logger.info(f"Sending chat completion to UC gateway: {resolved_model}")
             else:
                 headers = {
                     "Authorization": f"Bearer {self.service_key}",
@@ -454,6 +479,12 @@ class OpsCenterLLMClient:
                     "Content-Type": "application/json",
                 }
                 endpoint = f"{target_url}/chat/completions"
+            elif route_type == "gateway":
+                headers = {
+                    "Authorization": f"Bearer {UC_GATEWAY_KEY}",
+                    "Content-Type": "application/json",
+                }
+                endpoint = f"{target_url}/chat/completions"
             else:
                 headers = {
                     "Authorization": f"Bearer {self.service_key}",
@@ -574,6 +605,13 @@ class OpsCenterLLMClient:
                 }
                 endpoint = f"{target_url}/chat/completions"
                 logger.info(f"Sending tool-enabled request to OpenRouter: {resolved_model} with {len(tools)} tools")
+            elif route_type == "gateway":
+                headers = {
+                    "Authorization": f"Bearer {UC_GATEWAY_KEY}",
+                    "Content-Type": "application/json",
+                }
+                endpoint = f"{target_url}/chat/completions"
+                logger.info(f"Sending tool-enabled request to UC gateway: {resolved_model} with {len(tools)} tools")
             else:
                 headers = {
                     "Authorization": f"Bearer {self.service_key}",
@@ -744,6 +782,8 @@ class OpsCenterLLMClient:
         trace_recorder=None,  # Optional AgentTraceRecorder for code attribution
         agent_id: Optional[str] = None,  # Agent ID for tracing
         agent_name: Optional[str] = None,  # Agent name for tracing
+        room_id: Optional[str] = None,  # Stable room id (for needs_room_context tools)
+        room_name: Optional[str] = None,  # Stable livekit room name (for needs_room_context tools)
     ) -> Dict[str, Any]:
         """
         Execute a complete tool use loop.
@@ -867,6 +907,14 @@ class OpsCenterLLMClient:
                         call_args = dict(tc.arguments)
                         if getattr(tool_def, "needs_caller_context", False):
                             call_args["caller_user_id"] = user_id
+                        # Inject room context (room id/name + the running
+                        # agent's id) when the tool declared it needs room
+                        # context. Parallel to caller-context injection above;
+                        # additive — tools without the flag get nothing extra.
+                        if getattr(tool_def, "needs_room_context", False):
+                            call_args["caller_room_id"] = room_id
+                            call_args["caller_room_name"] = room_name
+                            call_args["caller_agent_id"] = agent_id
                         tool_output = await tool_def.handler(**call_args)
                         result = ToolResult(
                             tool_call_id=tc.id,
