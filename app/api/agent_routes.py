@@ -693,9 +693,16 @@ async def chat_with_agent(
         mission_id = request.mission_id or f"chat-{_uuid_mod.uuid4().hex[:12]}"
         # Stash on a context var so delegate_to_agent_handler (called from a
         # tool handler) can read it without an explicit parameter chain.
-        from app.llm.delegation_tools import _CURRENT_MISSION_ID, _CURRENT_CASE_ID
+        from app.llm.delegation_tools import (
+            _CURRENT_MISSION_ID, _CURRENT_CASE_ID,
+            _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME,
+        )
         _mission_token = _CURRENT_MISSION_ID.set(mission_id)
         _case_token = _CURRENT_CASE_ID.set(request.case_id) if request.case_id else None
+        # Identify the running agent so a delegate_to_agent call from inside its
+        # tool loop can emit a source->target edge for the live org chart.
+        _CURRENT_AGENT_ID.set(agent["id"])
+        _CURRENT_AGENT_NAME.set(agent_name)
 
         # Initialize Langfuse tracer for observability
         tracer = get_tracer(
@@ -952,6 +959,12 @@ async def _stream_chat(
             task=(messages[-1].get("content", "") if messages else "")[:100],
             mission_id=None,
         )
+        # Identify the running agent for delegation-edge emits (same as the
+        # non-streaming path); the generator body is the context the tool loop
+        # runs in, so a delegate_to_agent call below can read these.
+        from app.llm.delegation_tools import _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME
+        _CURRENT_AGENT_ID.set(agent["id"])
+        _CURRENT_AGENT_NAME.set(agent_name)
 
         tool_calls_log = []
 

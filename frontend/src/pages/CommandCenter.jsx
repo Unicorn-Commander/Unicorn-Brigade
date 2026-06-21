@@ -3,15 +3,24 @@ import { useCommsStore } from '../stores/useCommsStore';
 import CommsLayer from '../components/command/CommsLayer';
 import { useOrchestrationStream } from '../hooks/useOrchestrationStream';
 import ActivityGrid from '../components/command/ActivityGrid';
-import { ReactFlow, Background, BackgroundVariant, Controls, MiniMap } from '@xyflow/react';
+import { ReactFlow, Background, BackgroundVariant, Controls, MiniMap, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Network, Boxes, LayoutGrid, Radio } from 'lucide-react';
+import { Network, Boxes, LayoutGrid, Radio, Zap } from 'lucide-react';
 import { useAgents } from '../hooks/useAgents';
 import { buildOrgTree } from '../utils/orgTree';
 import { useOrgLayout } from '../hooks/useOrgLayout';
 import OrgAgentNode from '../components/command/OrgAgentNode';
 
 const nodeTypes = { orgAgent: OrgAgentNode };
+
+// Live delegation-edge color by protocol (matches the knowledge-graph legend).
+const PROTOCOL_COLOR = {
+  internal: '#ec4899', // unicorn pink — in-Brigade delegation
+  a2a: '#22d3ee', // cyan — agent-to-agent
+  ap2: '#f59e0b', // amber — agent payments
+  peer: '#a855f7', // purple — peer comms
+};
+const RESTING_EDGE = { stroke: '#475569', strokeWidth: 1.5 };
 
 /**
  * Command Center — "The General's War Room".
@@ -23,7 +32,7 @@ export default function CommandCenter() {
   const { agents, loading } = useAgents();
   const openWindow = useCommsStore((s) => s.openWindow);
   const [view, setView] = useState('chart');
-  const { statuses, connected } = useOrchestrationStream();
+  const { statuses, connected, invocations } = useOrchestrationStream();
 
   const tree = useMemo(() => buildOrgTree(agents), [agents]);
 
@@ -38,18 +47,71 @@ export default function CommandCenter() {
     [tree]
   );
 
-  const edges = useMemo(
-    () =>
-      tree.edgesResting.map((e) => ({
-        ...e,
-        type: 'smoothstep',
-        animated: false,
-        style: { stroke: '#475569', strokeWidth: 1.5 },
-      })),
+  // Stable topology drives the dagre layout — it must NOT change with live
+  // activity, or the nodes would jump every time a comm fires.
+  const layoutEdges = useMemo(
+    () => tree.edgesResting.map((e) => ({ ...e, type: 'smoothstep' })),
     [tree]
   );
+  const positioned = useOrgLayout(rawNodes, layoutEdges);
 
-  const nodes = useOrgLayout(rawNodes, edges);
+  // Inject live per-agent status into the positioned nodes so the chart faces
+  // light up (thinking / tool / responding) just like the Activity grid.
+  const nodes = useMemo(
+    () =>
+      positioned.map((n) => ({
+        ...n,
+        data: { ...n.data, status: statuses[n.id]?.status || 'idle' },
+      })),
+    [positioned, statuses]
+  );
+
+  // Active delegation edges, keyed source->target (latest wins).
+  const liveByPair = useMemo(() => {
+    const m = new Map();
+    for (const inv of invocations) m.set(`${inv.source}->${inv.target}`, inv);
+    return m;
+  }, [invocations]);
+
+  // Resting chain-of-command edges, lit + animated where a delegation is live,
+  // plus transient edges for comms that jump across the hierarchy.
+  const edges = useMemo(() => {
+    const staticPairs = new Set();
+    const base = tree.edgesResting.map((e) => {
+      staticPairs.add(`${e.source}->${e.target}`);
+      staticPairs.add(`${e.target}->${e.source}`);
+      const live =
+        liveByPair.get(`${e.source}->${e.target}`) || liveByPair.get(`${e.target}->${e.source}`);
+      if (live) {
+        const color = PROTOCOL_COLOR[live.protocol] || PROTOCOL_COLOR.internal;
+        return {
+          ...e,
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: color, strokeWidth: 2.75 },
+          markerEnd: { type: MarkerType.ArrowClosed, color },
+          zIndex: 10,
+        };
+      }
+      return { ...e, type: 'smoothstep', animated: false, style: RESTING_EDGE };
+    });
+    const extra = [];
+    for (const [key, inv] of liveByPair) {
+      if (staticPairs.has(key)) continue;
+      const color = PROTOCOL_COLOR[inv.protocol] || PROTOCOL_COLOR.internal;
+      extra.push({
+        id: `live-${key}`,
+        source: inv.source,
+        target: inv.target,
+        type: 'smoothstep',
+        animated: true,
+        style: { stroke: color, strokeWidth: 2, strokeDasharray: '6 4' },
+        markerEnd: { type: MarkerType.ArrowClosed, color },
+        zIndex: 10,
+      });
+    }
+    return [...base, ...extra];
+  }, [tree, liveByPair]);
 
   const onNodeClick = useCallback(
     (_, node) => {
@@ -91,6 +153,15 @@ export default function CommandCenter() {
               <LayoutGrid className="h-3.5 w-3.5" /> Activity
             </button>
           </div>
+          {liveByPair.size > 0 && (
+            <div
+              className="flex items-center gap-1.5 rounded-full border border-unicorn-500/40 bg-unicorn-500/10 px-2.5 py-1 text-xs font-medium text-unicorn-200"
+              title="Agents are delegating to each other right now"
+            >
+              <Zap className="h-3.5 w-3.5 animate-pulse text-unicorn-300" />
+              {liveByPair.size} live comm{liveByPair.size > 1 ? 's' : ''}
+            </div>
+          )}
           <div
             className="flex items-center gap-1.5 text-xs text-slate-400"
             title={connected ? 'Live feed connected' : 'Live feed offline'}

@@ -19,6 +19,11 @@ import httpx
 # specialist's events share one correlation id.
 _CURRENT_MISSION_ID: ContextVar[Optional[str]] = ContextVar("_CURRENT_MISSION_ID", default=None)
 _CURRENT_CASE_ID: ContextVar[Optional[str]] = ContextVar("_CURRENT_CASE_ID", default=None)
+# The chat paths set this to the running agent (the would-be delegator) so the
+# handler below can emit a source->target invocation edge for the live org chart
+# without threading the id through every call.
+_CURRENT_AGENT_ID: ContextVar[Optional[str]] = ContextVar("_CURRENT_AGENT_ID", default=None)
+_CURRENT_AGENT_NAME: ContextVar[Optional[str]] = ContextVar("_CURRENT_AGENT_NAME", default=None)
 
 from app.llm.ops_center_client import ToolDefinition, ToolParameter
 
@@ -54,6 +59,26 @@ async def delegate_to_agent_handler(
     message = task
     if context:
         message = f"Context: {context}\n\nTask: {task}"
+
+    # Light up the live org-chart edge: running agent (delegator) -> target.
+    # Best-effort and fire-before-call so the edge pulses while the delegated
+    # agent works; a telemetry hiccup must never break the delegation itself.
+    try:
+        from app.orchestration.event_bus import emit_agent_invocation
+
+        _src = _CURRENT_AGENT_ID.get()
+        if _src and _src != agent_id:
+            await emit_agent_invocation(
+                agent_id=_src,
+                agent_name=_CURRENT_AGENT_NAME.get() or _src,
+                target_agent_id=agent_id,
+                target_agent_name=agent_id,
+                purpose=(task or "").strip()[:80],
+                protocol="internal",
+                mission_id=_CURRENT_MISSION_ID.get(),
+            )
+    except Exception as _emit_err:  # noqa: BLE001 - telemetry is advisory
+        logger.debug("delegation invocation emit failed: %s", _emit_err)
 
     body: Dict[str, Any] = {"message": message}
     if caller_user_id:

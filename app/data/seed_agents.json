@@ -27,7 +27,8 @@
       "web_search",
       "memory",
       "json",
-      "datetime"
+      "datetime",
+      "delegate_to_agent"
     ],
     "createdAt": "2025-01-01T00:00:00Z"
   },

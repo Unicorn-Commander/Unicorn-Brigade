@@ -23,8 +23,10 @@ const domainRing = {
 };
 
 const statusDot = {
-  streaming: 'bg-emerald-400',
   thinking: 'bg-amber-400',
+  tool: 'bg-cyan-400',
+  responding: 'bg-emerald-400',
+  streaming: 'bg-emerald-400',
   error: 'bg-red-400',
   idle: 'bg-slate-500',
 };
@@ -34,26 +36,27 @@ function OrgAgentNodeBase({ data }) {
   const ring = domainRing[agent.domain?.toLowerCase()] || domainRing.default;
   const stars = rankStars(agent.rank);
   const avatarSize = isRoot ? 56 : 44;
+  const active = status !== 'idle';
+
+  const restingBorder = isRoot
+    ? 'border-yellow-300/50 bg-yellow-300/[0.06] shadow-lg shadow-yellow-300/10'
+    : 'border-slate-700/60 bg-slate-900/70';
 
   return (
     <div
       className={`relative flex items-center gap-3 rounded-xl border px-3 py-2 backdrop-blur-md transition-colors
-        ${
-          isRoot
-            ? 'border-yellow-300/50 bg-yellow-300/[0.06] shadow-lg shadow-yellow-300/10'
-            : 'border-slate-700/60 bg-slate-900/70'
-        }
+        ${active ? 'border-unicorn-500/70 bg-slate-900/90 shadow-lg shadow-unicorn-500/20' : restingBorder}
         hover:border-unicorn-500/70 hover:bg-slate-900/90`}
       style={{ width: 208 }}
     >
       <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-0 !bg-slate-600" />
 
-      <div className={`relative shrink-0 rounded-full ring-2 ${isRoot ? 'ring-yellow-300/80' : ring}`}>
+      <div className={`relative shrink-0 rounded-full ring-2 ${active ? 'ring-unicorn-500/70' : isRoot ? 'ring-yellow-300/80' : ring}`}>
         <AgentAvatar agent={agent} size={avatarSize} rounded="rounded-full" />
         <span
           className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-900 ${
             statusDot[status] || statusDot.idle
-          }`}
+          } ${active ? 'animate-pulse' : ''}`}
         />
       </div>
 
