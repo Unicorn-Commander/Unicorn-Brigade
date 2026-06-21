@@ -16,7 +16,9 @@ class APIService {
   async request(endpoint, options = {}) {
     const { params, suppressToast, ...fetchOptions } = options;
     try {
-      const url = new URL(`${this.baseURL}${endpoint}`);
+      // Pass an explicit base so a relative API_BASE (e.g. "/api/v1" behind a
+      // dev proxy or same-origin prod) is valid; an absolute base still wins.
+      const url = new URL(`${this.baseURL}${endpoint}`, window.location.origin);
       if (params) {
         Object.entries(params).forEach(([key, value]) => {
           if (value !== undefined && value !== null) {

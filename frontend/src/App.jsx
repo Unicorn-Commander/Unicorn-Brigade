@@ -44,6 +44,7 @@ const WebGLFallbackPage = () => (
 const Orchestration = lazy(() => import('./pages/Orchestration').catch(() => ({ default: WebGLFallbackPage })));
 const OrchestrationDemo = lazy(() => import('./pages/OrchestrationDemo').catch(() => ({ default: WebGLFallbackPage })));
 const KnowledgeGraph = lazy(() => import('./pages/KnowledgeGraph').catch(() => ({ default: WebGLFallbackPage })));
+const CommandCenter = lazy(() => import('./pages/CommandCenter'));
 
 const queryClient = new QueryClient();
 
@@ -182,6 +183,16 @@ function App() {
                 <AppLayout>
                   <Suspense fallback={<LazyFallback />}>
                     <OrchestrationDemo />
+                  </Suspense>
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/command" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Suspense fallback={<LazyFallback />}>
+                    <CommandCenter />
                   </Suspense>
                 </AppLayout>
               </ProtectedRoute>

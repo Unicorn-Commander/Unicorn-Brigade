@@ -97,12 +97,18 @@ const AgentChat = () => {
       const res = await fetch(`${API_BASE}/agents`);
       const data = await res.json();
       setAgents(data.agents || []);
-      // Auto-select first active agent only if no conversation is being loaded
+      // Pick the agent from ?agent=<id> if present, else the first active one —
+      // but only when not loading a specific conversation. (Fixes click-to-chat
+      // deep-links from Dashboard / AgentLibrary / the org chart, which pass
+      // ?agent= but were previously ignored.)
       const convId = searchParams.get('conversation');
       if (!convId) {
+        const agentId = searchParams.get('agent');
+        const requested = agentId && (data.agents || []).find(a => a.id === agentId);
         const active = (data.agents || []).find(a => a.status === 'active');
-        if (active && !selectedAgent) {
-          setSelectedAgent(active);
+        const pick = requested || active;
+        if (pick && !selectedAgent) {
+          setSelectedAgent(pick);
         }
       }
     } catch (err) {
