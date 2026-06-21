@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCommsStore } from '../stores/useCommsStore';
+import CommsLayer from '../components/command/CommsLayer';
 import { ReactFlow, Background, BackgroundVariant, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Network, Boxes } from 'lucide-react';
@@ -17,8 +18,8 @@ const nodeTypes = { orgAgent: OrgAgentNode };
  * Phase 1 = static chart (dagre layout, resting chain-of-command edges).
  */
 export default function CommandCenter() {
-  const navigate = useNavigate();
   const { agents, loading } = useAgents();
+  const openWindow = useCommsStore((s) => s.openWindow);
 
   const tree = useMemo(() => buildOrgTree(agents), [agents]);
 
@@ -46,7 +47,13 @@ export default function CommandCenter() {
 
   const nodes = useOrgLayout(rawNodes, edges);
 
-  const onNodeClick = useCallback((_, node) => navigate(`/chat?agent=${node.id}`), [navigate]);
+  const onNodeClick = useCallback(
+    (_, node) => {
+      const agent = tree.byId.get(node.id);
+      if (agent) openWindow(agent);
+    },
+    [tree, openWindow]
+  );
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -92,6 +99,7 @@ export default function CommandCenter() {
             className="!border-slate-700 !bg-slate-900"
           />
         </ReactFlow>
+        <CommsLayer />
       </div>
     </div>
   );

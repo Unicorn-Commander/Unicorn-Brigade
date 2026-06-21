@@ -13,6 +13,20 @@ class APIService {
     return localStorage.getItem('apiKey');
   }
 
+  // Raw streaming POST for per-agent chat — returns the Response so the caller
+  // can read the SSE body. Auth-aware (buildAuthHeaders + credentials), unlike
+  // the legacy raw fetch welded into the AgentChat page.
+  async streamAgentChat(agentId, body, { signal } = {}) {
+    const url = new URL(`${this.baseURL}/agents/${agentId}/chat`, window.location.origin);
+    return fetch(url.toString(), {
+      method: 'POST',
+      credentials: 'include',
+      headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+      signal,
+    });
+  }
+
   async request(endpoint, options = {}) {
     const { params, suppressToast, ...fetchOptions } = options;
     try {
