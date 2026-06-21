@@ -1,18 +1,43 @@
 import { byRankDesc } from './rank';
 
 /**
+ * Owner-confirmed chain of command for the 17 named agents.
+ *
+ * Authored here as a reviewable constant rather than in seed_agents.json,
+ * because the agents table has fixed columns (no `reports_to`) — a seed field
+ * wouldn't reach the API without a schema migration + reseed. `buildOrgTree`
+ * still *prefers* an agent's `reportsTo` if the API ever provides one, so this
+ * promotes cleanly to a backend column later with no UI change.
+ */
+export const CHAIN_OF_COMMAND = {
+  'the-general': null, // Field Marshal — apex
+  'col-finance': 'the-general',
+  'lt-taxstrat': 'col-finance',
+  'maj-devops': 'the-general',
+  'cpt-fullstack': 'maj-devops',
+  'sgt-cipher': 'maj-devops',
+  'code-reviewer': 'cpt-fullstack',
+  'prof-datasci': 'the-general',
+  'sql-analyst': 'prof-datasci',
+  'lt-docanalyst': 'prof-datasci',
+  gunny: 'the-general',
+  'sgt-scribe': 'gunny',
+  'judge-advocate': 'the-general',
+  'doc-medresearch': 'the-general',
+  'detective-holmes': 'the-general',
+  'maj-leadgen': 'the-general',
+  'support-agent': 'the-general',
+};
+
+/**
  * Build the chain-of-command tree from the agent roster.
  *
- * Prefers an explicit `reportsTo` field (to be authored in seed_agents.json,
- * pending owner sign-off). Until that exists it falls back to a rank-aware
- * domain derivation so the chart renders today: within each domain the highest
- * rank leads and reports to the orchestrator; the rest of the domain report to
- * that lead. (Pure domain+rank is flatter than a hand-authored tree — which is
- * exactly why `reportsTo` is worth authoring.)
+ * Per-agent parent precedence:
+ *   1. `agent.reportsTo` from the API (future backend column)
+ *   2. the authored CHAIN_OF_COMMAND map (today)
+ *   3. a rank-aware domain fallback (any agent not covered above, e.g. a new one)
  *
  * Returns { agents, byId, root, parentOf, childrenById, edgesResting }.
- *
- * Note: lives in utils/ (not lib/) because the repo's .gitignore ignores lib/.
  */
 export function buildOrgTree(agents) {
   const list = (Array.isArray(agents) ? agents : []).filter(Boolean);
@@ -21,18 +46,23 @@ export function buildOrgTree(agents) {
     list.find((a) => a.type === 'orchestrator') || byId.get('the-general') || list[0] || null;
 
   const parentOf = new Map(); // childId -> parentId
-  const hasReportsTo = list.some((a) => a.reportsTo);
+  const unplaced = [];
 
-  if (root && hasReportsTo) {
-    list.forEach((a) => {
-      if (a.id === root.id) return;
-      const pid = a.reportsTo && byId.has(a.reportsTo) ? a.reportsTo : root.id;
-      parentOf.set(a.id, pid);
-    });
-  } else if (root) {
+  list.forEach((a) => {
+    if (!root || a.id === root.id) return;
+    const authored =
+      a.reportsTo ?? (a.id in CHAIN_OF_COMMAND ? CHAIN_OF_COMMAND[a.id] : undefined);
+    if (authored === undefined) {
+      unplaced.push(a);
+    } else {
+      parentOf.set(a.id, authored && byId.has(authored) ? authored : root.id);
+    }
+  });
+
+  // Rank-aware domain fallback for anyone not in the authored map.
+  if (root && unplaced.length) {
     const byDomain = new Map();
-    list.forEach((a) => {
-      if (a.id === root.id) return;
+    unplaced.forEach((a) => {
       const d = (a.domain || 'general').toLowerCase();
       if (!byDomain.has(d)) byDomain.set(d, []);
       byDomain.get(d).push(a);
@@ -49,9 +79,7 @@ export function buildOrgTree(agents) {
   parentOf.forEach((pid, id) => {
     if (childrenById.has(pid)) childrenById.get(pid).push(id);
   });
-  childrenById.forEach((kids) =>
-    kids.sort((x, y) => byRankDesc(byId.get(x), byId.get(y)))
-  );
+  childrenById.forEach((kids) => kids.sort((x, y) => byRankDesc(byId.get(x), byId.get(y))));
 
   const edgesResting = [];
   parentOf.forEach((pid, id) =>
