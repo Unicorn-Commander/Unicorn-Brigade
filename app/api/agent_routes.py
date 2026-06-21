@@ -943,6 +943,16 @@ async def _stream_chat(
         }
         yield f"data: {json.dumps(start_event)}\n\n"
 
+        # Emit to the orchestration bus so the live Activity view lights up for
+        # streaming chats too (the non-streaming branch already emits these).
+        agent_name = agent.get("displayName", agent["name"])
+        await emit_agent_started(
+            agent_id=agent["id"],
+            agent_name=agent_name,
+            task=(messages[-1].get("content", "") if messages else "")[:100],
+            mission_id=None,
+        )
+
         tool_calls_log = []
 
         # If agent has tools, run the tool loop first (non-streaming),
@@ -975,6 +985,10 @@ async def _stream_chat(
 
             # Emit tool events
             for tc in tool_calls_log:
+                await emit_tool_call(
+                    agent_id=agent["id"], agent_name=agent_name,
+                    tool_name=tc["name"], arguments=tc.get("arguments"), mission_id=None,
+                )
                 yield f"data: {json.dumps({'type': 'tool_call', 'name': tc['name'], 'arguments': tc['arguments']})}\n\n"
                 result_event = {
                     "type": "tool_result",
@@ -983,6 +997,12 @@ async def _stream_chat(
                     "error": tc.get("error"),
                     "success": tc.get("error") is None,
                 }
+                await emit_tool_result(
+                    agent_id=agent["id"], agent_name=agent_name,
+                    tool_name=tc["name"],
+                    result=tc.get("result") if not tc.get("error") else {"error": tc.get("error")},
+                    mission_id=None,
+                )
                 yield f"data: {json.dumps(result_event)}\n\n"
 
             # Log tool executions to DB
@@ -1068,6 +1088,17 @@ async def _stream_chat(
     except Exception as e:
         logger.error(f"Stream error: {e}")
         yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+    finally:
+        # Always return the agent to idle on the orchestration bus.
+        try:
+            await emit_agent_completed(
+                agent_id=agent["id"],
+                agent_name=agent.get("displayName", agent["name"]),
+                result="",
+                mission_id=None,
+            )
+        except Exception:
+            pass
 
 
 # ---- Agent Tools Management ----
