@@ -83,7 +83,7 @@
       "security-audit",
       "incident-response"
     ],
-    "model": "claude-3.5-haiku",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.3,
     "maxTokens": 3000,
     "tools": [
@@ -116,7 +116,7 @@
       "debugging",
       "api-design"
     ],
-    "model": "claude-3-5-sonnet-20241022",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.3,
     "maxTokens": 4000,
     "tools": [
@@ -149,7 +149,7 @@
       "cloud-architecture",
       "monitoring"
     ],
-    "model": "claude-3.5-haiku",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.3,
     "maxTokens": 3000,
     "tools": [
@@ -214,7 +214,7 @@
       "deduction-optimization",
       "business-structure"
     ],
-    "model": "claude-3.5-haiku",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.3,
     "maxTokens": 3000,
     "tools": [
@@ -341,7 +341,7 @@
       "feature-engineering",
       "predictive-modeling"
     ],
-    "model": "claude-3-5-sonnet-20241022",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.3,
     "maxTokens": 4000,
     "tools": [
@@ -374,7 +374,7 @@
       "escalation",
       "multi-channel"
     ],
-    "model": "claude-3.5-haiku",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.3,
     "maxTokens": 2000,
     "tools": [
@@ -407,7 +407,7 @@
       "style-check",
       "github-integration"
     ],
-    "model": "claude-3.5-haiku",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.3,
     "maxTokens": 4000,
     "tools": [
@@ -440,7 +440,7 @@
       "performance-tuning",
       "database-analysis"
     ],
-    "model": "claude-3.5-haiku",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.2,
     "maxTokens": 3000,
     "tools": [
@@ -474,7 +474,7 @@
       "summary-generation",
       "follow-up-coordination"
     ],
-    "model": "claude-3-5-sonnet-20241022",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.3,
     "maxTokens": 4000,
     "tools": [
@@ -509,7 +509,7 @@
       "outreach-personalization",
       "sales-intelligence"
     ],
-    "model": "claude-3-5-sonnet-20241022",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.4,
     "maxTokens": 4000,
     "tools": [
@@ -545,7 +545,7 @@
       "knowledge-extraction",
       "multi-document-processing"
     ],
-    "model": "claude-3-5-sonnet-20241022",
+    "model": "qwen3.6-35b-a3b",
     "temperature": 0.3,
     "maxTokens": 4000,
     "tools": [
