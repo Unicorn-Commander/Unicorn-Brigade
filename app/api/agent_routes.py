@@ -473,15 +473,6 @@ async def get_agent(
     """Get agent detail by ID."""
     _ensure_agent_access(user, agent_id)
 
-    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
-    # authenticated identity. Admins may pass user_id explicitly (for delegation,
-    # batch ops, admin tooling, etc.).
-    from app.auth.roles import UserRole as _UserRole
-    if user and user.role != _UserRole.ADMIN:
-        authenticated_id = user.user_id or user.id
-        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
-            request.user_id = authenticated_id
-
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -1134,15 +1125,6 @@ async def get_agent_tools(
     """Get tools attached to an agent."""
     _ensure_agent_access(user, agent_id)
 
-    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
-    # authenticated identity. Admins may pass user_id explicitly (for delegation,
-    # batch ops, admin tooling, etc.).
-    from app.auth.roles import UserRole as _UserRole
-    if user and user.role != _UserRole.ADMIN:
-        authenticated_id = user.user_id or user.id
-        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
-            request.user_id = authenticated_id
-
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -1159,15 +1141,6 @@ async def attach_tool(
 ):
     """Attach a tool to an agent."""
     _ensure_agent_access(user, agent_id)
-
-    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
-    # authenticated identity. Admins may pass user_id explicitly (for delegation,
-    # batch ops, admin tooling, etc.).
-    from app.auth.roles import UserRole as _UserRole
-    if user and user.role != _UserRole.ADMIN:
-        authenticated_id = user.user_id or user.id
-        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
-            request.user_id = authenticated_id
 
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
@@ -1199,15 +1172,6 @@ async def detach_tool(
     """Detach a tool from an agent."""
     _ensure_agent_access(user, agent_id)
 
-    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
-    # authenticated identity. Admins may pass user_id explicitly (for delegation,
-    # batch ops, admin tooling, etc.).
-    from app.auth.roles import UserRole as _UserRole
-    if user and user.role != _UserRole.ADMIN:
-        authenticated_id = user.user_id or user.id
-        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
-            request.user_id = authenticated_id
-
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
@@ -1229,15 +1193,6 @@ async def update_tool_config(
 ):
     """Update tool configuration for an agent."""
     _ensure_agent_access(user, agent_id)
-
-    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
-    # authenticated identity. Admins may pass user_id explicitly (for delegation,
-    # batch ops, admin tooling, etc.).
-    from app.auth.roles import UserRole as _UserRole
-    if user and user.role != _UserRole.ADMIN:
-        authenticated_id = user.user_id or user.id
-        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
-            request.user_id = authenticated_id
 
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
@@ -1332,15 +1287,6 @@ async def chat_with_agent_local(
     # without a billing check free users could burn GPU indefinitely).
     user_attrs, billing_state = await _fetch_user_attrs(user)
     _enforce_billing_or_402(user, billing_state)
-
-    # Memory isolation: non-admin users cannot spoof user_id. Force it to their
-    # authenticated identity. Admins may pass user_id explicitly (for delegation,
-    # batch ops, admin tooling, etc.).
-    from app.auth.roles import UserRole as _UserRole
-    if user and user.role != _UserRole.ADMIN:
-        authenticated_id = user.user_id or user.id
-        if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
-            request.user_id = authenticated_id
 
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
