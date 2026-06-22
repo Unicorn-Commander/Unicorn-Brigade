@@ -52,7 +52,7 @@ function OrgAgentNodeBase({ data }) {
       <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-0 !bg-slate-600" />
 
       <div className={`relative shrink-0 rounded-full ring-2 ${active ? 'ring-unicorn-500/70' : isRoot ? 'ring-yellow-300/80' : ring}`}>
-        <AgentAvatar agent={agent} size={avatarSize} rounded="rounded-full" />
+        <AgentAvatar agent={agent} size={avatarSize} rounded="rounded-full" status={status} />
         <span
           className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-900 ${
             statusDot[status] || statusDot.idle

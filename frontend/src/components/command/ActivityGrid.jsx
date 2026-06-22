@@ -44,7 +44,7 @@ export default function ActivityGrid({ agents, statuses, onOpen }) {
               }`}
             >
               <div className="relative shrink-0">
-                <AgentAvatar agent={a} size={40} rounded="rounded-lg" />
+                <AgentAvatar agent={a} size={40} rounded="rounded-lg" status={st} />
                 <span
                   className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-slate-900 ${s.dot} ${
                     active ? 'animate-pulse' : ''
