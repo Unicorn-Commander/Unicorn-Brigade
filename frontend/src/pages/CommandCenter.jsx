@@ -5,7 +5,8 @@ import { useOrchestrationStream } from '../hooks/useOrchestrationStream';
 import ActivityGrid from '../components/command/ActivityGrid';
 import { ReactFlow, Background, BackgroundVariant, Controls, MiniMap, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Network, Boxes, LayoutGrid, Radio, Zap, Orbit, Loader2 } from 'lucide-react';
+import { Network, Boxes, LayoutGrid, Radio, Zap, Orbit, Loader2, Megaphone } from 'lucide-react';
+import BriefingView from '../components/command/BriefingView';
 
 // Heavy (three.js) — only loaded when the operator flips to the 3D view.
 const WorkflowVisualization3D = lazy(() => import('../components/WorkflowVisualization3D'));
@@ -169,6 +170,14 @@ export default function CommandCenter() {
             >
               <Orbit className="h-3.5 w-3.5" /> 3D
             </button>
+            <button
+              onClick={() => setView('briefing')}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                view === 'briefing' ? 'bg-unicorn-500/20 text-unicorn-200' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Megaphone className="h-3.5 w-3.5" /> Briefing
+            </button>
           </div>
           {liveByPair.size > 0 && (
             <div
@@ -218,7 +227,7 @@ export default function CommandCenter() {
           </ReactFlow>
         ) : view === 'activity' ? (
           <ActivityGrid agents={agents} statuses={statuses} onOpen={openWindow} />
-        ) : (
+        ) : view === 'graph3d' ? (
           <Suspense
             fallback={
               <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
@@ -236,6 +245,8 @@ export default function CommandCenter() {
               }}
             />
           </Suspense>
+        ) : (
+          <BriefingView tree={tree} onPromote={openWindow} />
         )}
         <CommsLayer />
       </div>
