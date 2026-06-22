@@ -26,6 +26,13 @@ const PROTOCOL_COLOR = {
 };
 const RESTING_EDGE = { stroke: '#475569', strokeWidth: 1.5 };
 
+const VIEWS = [
+  { id: 'chart', icon: Network, label: 'Org Chart' },
+  { id: 'activity', icon: LayoutGrid, label: 'Activity' },
+  { id: 'graph3d', icon: Orbit, label: '3D' },
+  { id: 'briefing', icon: Megaphone, label: 'Briefing' },
+];
+
 /**
  * Command Center — "The General's War Room".
  * The whole Brigade as a top-down org chart of real agent faces. Click any
@@ -51,9 +58,10 @@ export default function CommandCenter() {
           isRoot: a.id === tree.root?.id,
           status: 'idle',
           subordinates: (tree.childrenById.get(a.id) || []).length,
+          onOpen: openWindow, // keyboard activation path (mouse uses onNodeClick)
         },
       })),
-    [tree]
+    [tree, openWindow]
   );
 
   // Stable topology drives the dagre layout — it must NOT change with live
@@ -164,39 +172,24 @@ export default function CommandCenter() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <div className="flex items-center gap-1 rounded-lg border border-slate-700/60 bg-slate-900/60 p-0.5">
-            <button
-              onClick={() => setView('chart')}
-              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                view === 'chart' ? 'bg-unicorn-500/20 text-unicorn-200' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Network className="h-3.5 w-3.5" /> Org Chart
-            </button>
-            <button
-              onClick={() => setView('activity')}
-              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                view === 'activity' ? 'bg-unicorn-500/20 text-unicorn-200' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" /> Activity
-            </button>
-            <button
-              onClick={() => setView('graph3d')}
-              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                view === 'graph3d' ? 'bg-unicorn-500/20 text-unicorn-200' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Orbit className="h-3.5 w-3.5" /> 3D
-            </button>
-            <button
-              onClick={() => setView('briefing')}
-              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                view === 'briefing' ? 'bg-unicorn-500/20 text-unicorn-200' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Megaphone className="h-3.5 w-3.5" /> Briefing
-            </button>
+          <div
+            role="tablist"
+            aria-label="Command Center view"
+            className="flex items-center gap-1 rounded-lg border border-slate-700/60 bg-slate-900/60 p-0.5"
+          >
+            {VIEWS.map(({ id, icon: Icon, label }) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={view === id}
+                onClick={() => setView(id)}
+                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  view === id ? 'bg-unicorn-500/20 text-unicorn-200' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" /> {label}
+              </button>
+            ))}
           </div>
           {liveByPair.size > 0 && (
             <div
@@ -211,9 +204,14 @@ export default function CommandCenter() {
             className="flex items-center gap-1.5 text-xs text-slate-400"
             title={connected ? 'Live feed connected' : 'Live feed offline'}
           >
-            <Radio className={`h-3.5 w-3.5 ${connected ? 'text-emerald-400' : 'text-slate-600'}`} />
-            <Boxes className="h-4 w-4" />
+            <Radio
+              aria-hidden="true"
+              className={`h-3.5 w-3.5 ${connected ? 'text-emerald-400' : 'text-slate-600'}`}
+            />
+            <span className="sr-only">{connected ? 'Live feed connected. ' : 'Live feed disconnected. '}</span>
+            <Boxes aria-hidden="true" className="h-4 w-4" />
             {loading ? '…' : agents.length}
+            <span className="sr-only"> agents</span>
           </div>
         </div>
       </div>

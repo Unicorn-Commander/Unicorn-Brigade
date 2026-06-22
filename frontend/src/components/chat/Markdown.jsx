@@ -9,8 +9,15 @@ const components = {
   strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   a: ({ children, href }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="text-unicorn-300 underline underline-offset-2 hover:text-unicorn-200">
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Opens in a new tab"
+      className="text-unicorn-300 underline underline-offset-2 hover:text-unicorn-200"
+    >
       {children}
+      <span className="sr-only"> (opens in a new tab)</span>
     </a>
   ),
   ul: ({ children }) => <ul className="my-1 ml-4 list-disc space-y-0.5">{children}</ul>,

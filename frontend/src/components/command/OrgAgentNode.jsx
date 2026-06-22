@@ -45,7 +45,16 @@ function OrgAgentNodeBase({ data }) {
 
   return (
     <div
-      className={`group relative flex items-center gap-3 rounded-xl border px-3 py-2 backdrop-blur-md transition-colors
+      role="button"
+      tabIndex={0}
+      aria-label={`Open comms with ${agent.displayName || agent.name}, ${agent.rank}${active ? `, currently ${status}` : ''}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          data.onOpen?.(agent);
+        }
+      }}
+      className={`group relative flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 backdrop-blur-md transition-colors
         ${active ? 'border-unicorn-500/70 bg-slate-900/90 shadow-lg shadow-unicorn-500/20' : restingBorder}
         hover:border-unicorn-500/70 hover:bg-slate-900/90`}
       style={{ width: 208 }}
@@ -65,9 +74,9 @@ function OrgAgentNodeBase({ data }) {
         <div className="truncate text-sm font-semibold text-white">
           {agent.displayName || agent.name}
         </div>
-        <div className="truncate text-[11px] text-slate-400">{agent.title || agent.rank}</div>
+        <div className="truncate text-[11px] text-slate-300">{agent.title || agent.rank}</div>
         {stars > 0 && (
-          <div className="mt-0.5 flex gap-px text-[9px] leading-none text-yellow-400">
+          <div aria-hidden="true" className="mt-0.5 flex gap-px text-[9px] leading-none text-yellow-400">
             {Array.from({ length: stars }).map((_, i) => (
               <span key={i}>★</span>
             ))}

@@ -9,10 +9,17 @@ import Markdown from './Markdown';
  */
 export default function ChatPanel({ agent, messages, isThinking, currentTool, isStreaming, onSend, onAbort }) {
   const [input, setInput] = useState('');
-  const endRef = useRef(null);
+  const scrollRef = useRef(null);
 
+  // Stick to the bottom only when the user is already near it, and scroll the
+  // panel itself (not the nearest page/canvas) so streaming never hijacks the
+  // org-chart scroll position.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages, isThinking]);
 
   const submit = () => {
@@ -24,7 +31,7 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3" role="log" aria-live="polite" aria-atomic="false">
         {messages.length === 0 && (
           <p className="mt-4 px-2 text-center text-xs text-slate-500">
             {agent?.bio || `Start chatting with ${agent?.displayName || 'this agent'}.`}
@@ -69,7 +76,6 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
             {currentTool ? `running ${currentTool}…` : 'thinking…'}
           </div>
         )}
-        <div ref={endRef} />
       </div>
 
       <div className="border-t border-slate-800 p-2">
