@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Send, Loader2, Wrench } from 'lucide-react';
+import Markdown from './Markdown';
 
 /**
  * Presentational chat surface — fills its container (no h-screen), so it works
@@ -29,28 +30,39 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
             {agent?.bio || `Start chatting with ${agent?.displayName || 'this agent'}.`}
           </p>
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={m.role === 'user' ? 'text-right' : 'text-left'}>
-            <div
-              className={`inline-block max-w-[88%] whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-left text-sm ${
-                m.role === 'user'
-                  ? 'bg-unicorn-500/20 text-white'
-                  : m.isError
-                    ? 'bg-red-500/15 text-red-200'
-                    : 'bg-slate-800/70 text-slate-100'
-              }`}
-            >
-              {(m.toolCalls || []).map((tc, i) => (
-                <div key={i} className="mb-1 flex items-center gap-1 text-[11px] text-cyan-300/80">
-                  <Wrench className="h-3 w-3" />
-                  {tc.name}
-                  {tc.result === undefined && tc.error === undefined ? '…' : ''}
-                </div>
-              ))}
-              {m.content || (m.role === 'assistant' && m.isStreaming ? '…' : '')}
+        {messages.map((m) => {
+          const isUser = m.role === 'user';
+          return (
+            <div key={m.id} className={isUser ? 'text-right' : 'text-left'}>
+              <div
+                className={`inline-block max-w-[88%] break-words rounded-xl px-3 py-2 text-left text-sm ${
+                  isUser
+                    ? 'whitespace-pre-wrap bg-unicorn-500/20 text-white'
+                    : m.isError
+                      ? 'bg-red-500/15 text-red-200'
+                      : 'bg-slate-800/70 text-slate-100'
+                }`}
+              >
+                {(m.toolCalls || []).map((tc, i) => (
+                  <div key={i} className="mb-1 flex items-center gap-1 text-[11px] text-cyan-300/80">
+                    <Wrench className="h-3 w-3" />
+                    {tc.name}
+                    {tc.result === undefined && tc.error === undefined ? '…' : ''}
+                  </div>
+                ))}
+                {isUser ? (
+                  m.content
+                ) : m.content ? (
+                  <Markdown>{m.content}</Markdown>
+                ) : m.isStreaming ? (
+                  '…'
+                ) : (
+                  ''
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {isThinking && (
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <Loader2 className="h-3 w-3 animate-spin" />

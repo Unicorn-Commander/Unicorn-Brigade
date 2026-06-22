@@ -1,11 +1,14 @@
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, lazy, Suspense } from 'react';
 import { useCommsStore } from '../stores/useCommsStore';
 import CommsLayer from '../components/command/CommsLayer';
 import { useOrchestrationStream } from '../hooks/useOrchestrationStream';
 import ActivityGrid from '../components/command/ActivityGrid';
 import { ReactFlow, Background, BackgroundVariant, Controls, MiniMap, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Network, Boxes, LayoutGrid, Radio, Zap } from 'lucide-react';
+import { Network, Boxes, LayoutGrid, Radio, Zap, Orbit, Loader2 } from 'lucide-react';
+
+// Heavy (three.js) — only loaded when the operator flips to the 3D view.
+const WorkflowVisualization3D = lazy(() => import('../components/WorkflowVisualization3D'));
 import { useAgents } from '../hooks/useAgents';
 import { buildOrgTree } from '../utils/orgTree';
 import { useOrgLayout } from '../hooks/useOrgLayout';
@@ -32,7 +35,7 @@ export default function CommandCenter() {
   const { agents, loading } = useAgents();
   const openWindow = useCommsStore((s) => s.openWindow);
   const [view, setView] = useState('chart');
-  const { statuses, connected, invocations } = useOrchestrationStream();
+  const { statuses, connected, invocations, events } = useOrchestrationStream();
 
   const tree = useMemo(() => buildOrgTree(agents), [agents]);
 
@@ -121,6 +124,12 @@ export default function CommandCenter() {
     [tree, openWindow]
   );
 
+  // Active agent ids (for the 3D graph's node highlighting).
+  const activeAgents = useMemo(
+    () => Object.entries(statuses).filter(([, v]) => v && v.status !== 'idle').map(([id]) => id),
+    [statuses]
+  );
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* HUD header */}
@@ -151,6 +160,14 @@ export default function CommandCenter() {
               }`}
             >
               <LayoutGrid className="h-3.5 w-3.5" /> Activity
+            </button>
+            <button
+              onClick={() => setView('graph3d')}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                view === 'graph3d' ? 'bg-unicorn-500/20 text-unicorn-200' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Orbit className="h-3.5 w-3.5" /> 3D
             </button>
           </div>
           {liveByPair.size > 0 && (
@@ -199,8 +216,26 @@ export default function CommandCenter() {
               className="!border-slate-700 !bg-slate-900"
             />
           </ReactFlow>
-        ) : (
+        ) : view === 'activity' ? (
           <ActivityGrid agents={agents} statuses={statuses} onOpen={openWindow} />
+        ) : (
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+                <Loader2 className="h-5 w-5 animate-spin" /> Loading 3D comms graph…
+              </div>
+            }
+          >
+            <WorkflowVisualization3D
+              agents={agents}
+              activeAgents={activeAgents}
+              realtimeEvents={events}
+              onAgentClick={(node) => {
+                const a = node?.id ? tree.byId.get(node.id) : null;
+                if (a) openWindow(a);
+              }}
+            />
+          </Suspense>
         )}
         <CommsLayer />
       </div>
