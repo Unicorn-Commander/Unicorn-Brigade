@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { memo, useRef } from 'react';
 import { X, Minus, Maximize2, Cpu } from 'lucide-react';
 import AgentAvatar from '../AgentAvatar';
 import ChatPanel from '../chat/ChatPanel';
@@ -13,7 +13,7 @@ import { MODEL_OPTIONS } from '../../utils/models';
  * Carries an optional per-window model override + a seeded conversation (e.g.
  * promoted from a briefing answer).
  */
-export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromote, onDrag }) {
+function CommsWindow({ win, onFocus, onMinimize, onClose, onPromote, onDrag }) {
   const { agent, x, y, z } = win;
   const setModel = useCommsStore((s) => s.setModel);
   const chat = useAgentChat(agent, { model: win.model, initialMessages: win.seed });
@@ -61,6 +61,8 @@ export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromo
   return (
     <div
       onPointerDown={() => onFocus(agent.id)}
+      role="dialog"
+      aria-label={`Comms with ${agent.displayName || agent.name}`}
       style={{ position: 'absolute', left: x, top: y, zIndex: z, width: 'min(340px, 92vw)', height: 'min(440px, 80dvh)' }}
       className="flex animate-fade-in flex-col overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/95 shadow-2xl shadow-black/60 backdrop-blur-md"
     >
@@ -82,13 +84,13 @@ export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromo
           </div>
           <div className="truncate text-[10px] leading-tight text-slate-400">{subtitle}</div>
         </div>
-        <button onClick={() => onPromote(agent.id)} title="Open full chat" className="p-1 text-slate-400 hover:text-white">
+        <button onClick={() => onPromote(agent.id)} title="Open full chat" aria-label="Open full chat" className="p-1 text-slate-400 hover:text-white">
           <Maximize2 className="h-3.5 w-3.5" />
         </button>
-        <button onClick={() => onMinimize(agent.id)} title="Minimize" className="p-1 text-slate-400 hover:text-white">
+        <button onClick={() => onMinimize(agent.id)} title="Minimize" aria-label="Minimize window" className="p-1 text-slate-400 hover:text-white">
           <Minus className="h-3.5 w-3.5" />
         </button>
-        <button onClick={() => onClose(agent.id)} title="Close" className="p-1 text-slate-400 hover:text-red-300">
+        <button onClick={() => onClose(agent.id)} title="Close" aria-label="Close window" className="p-1 text-slate-400 hover:text-red-300">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -101,6 +103,7 @@ export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromo
           onChange={(e) => setModel(agent.id, e.target.value)}
           onPointerDown={(e) => e.stopPropagation()}
           title="Model for this window"
+          aria-label="Model for this window"
           className="flex-1 cursor-pointer bg-transparent text-[11px] text-slate-300 focus:outline-none"
         >
           {MODEL_OPTIONS.map((m) => (
@@ -125,3 +128,7 @@ export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromo
     </div>
   );
 }
+
+// Memoized so dragging one window (which only changes that window's object in
+// the store) doesn't re-render every other open window and its chat.
+export default memo(CommsWindow);

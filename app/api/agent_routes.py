@@ -995,6 +995,8 @@ async def _stream_chat(
     user_email: Optional[str] = None,
 ):
     """SSE streaming chat generator with function calling support."""
+    from app.llm.delegation_tools import _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME
+    _agent_tok = _agentname_tok = None
     try:
         tool_names = [t.name for t in agent_tools] if agent_tools else []
 
@@ -1018,9 +1020,8 @@ async def _stream_chat(
         # Identify the running agent for delegation-edge emits (same as the
         # non-streaming path); the generator body is the context the tool loop
         # runs in, so a delegate_to_agent call below can read these.
-        from app.llm.delegation_tools import _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME
-        _CURRENT_AGENT_ID.set(agent["id"])
-        _CURRENT_AGENT_NAME.set(agent_name)
+        _agent_tok = _CURRENT_AGENT_ID.set(agent["id"])
+        _agentname_tok = _CURRENT_AGENT_NAME.set(agent_name)
 
         tool_calls_log = []
 
@@ -1094,18 +1095,18 @@ async def _stream_chat(
             except Exception as log_err:
                 logger.warning(f"Failed to log tool executions: {log_err}")
 
-            # Emit final content as tokens (simulate streaming from the already-complete response)
+            # The tool-loop response is already complete; emit it as a few larger
+            # chunks (a light "typing" feel) rather than hundreds of tiny frames.
             content = strip_channel_artifacts(_strip_thinking(llm_client.get_response_content(response)))
-            # Send in chunks to keep SSE behavior consistent
-            chunk_size = 20
+            chunk_size = 180
             for i in range(0, len(content), chunk_size):
                 chunk = content[i:i + chunk_size]
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
 
             yield f"data: {json.dumps({'type': 'complete', 'content': content, 'model': model, 'toolCalls': tool_calls_log})}\n\n"
-            yield "data: [DONE]\n\n"
 
-            # Phase 7: meter the tool-loop response (has real usage dict)
+            # Phase 7: meter BEFORE [DONE] so a client disconnect after the answer
+            # doesn't drop the billing row (the call is best-effort + idempotent).
             await _meter_chat_to_lago(
                 user_email, model, {
                     "model": response.get("model", model),
@@ -1113,6 +1114,8 @@ async def _stream_chat(
                     "usage": response.get("usage", {}),
                 }
             )
+
+            yield "data: [DONE]\n\n"
 
         else:
             # No tools — stream directly from LLM, stripping <think> live so the
@@ -1145,12 +1148,11 @@ async def _stream_chat(
             # Canonical final content uses the same strip as the non-stream path.
             final = strip_channel_artifacts(_strip_thinking(accumulated))
             yield f"data: {json.dumps({'type': 'complete', 'content': final, 'model': model})}\n\n"
-            yield "data: [DONE]\n\n"
 
-            # Phase 7: meter the streamed response. chat_completion_stream doesn't
-            # surface token counts reliably, so we estimate from the prompt +
-            # accumulated reply (~4 chars/token) to keep something flowing into
-            # Lago. Cloud-routed streams are skipped by is_local_route().
+            # Phase 7: meter BEFORE [DONE] so a disconnect after the answer doesn't
+            # drop billing. chat_completion_stream doesn't surface token counts
+            # reliably, so we estimate from the prompt + accumulated reply
+            # (~4 chars/token). Cloud-routed streams are skipped by is_local_route().
             try:
                 prompt_chars = sum(len((m or {}).get("content", "") or "") for m in (messages or []))
                 est_tokens = max(1, (prompt_chars + len(accumulated)) // 4)
@@ -1164,10 +1166,20 @@ async def _stream_chat(
             except Exception as _meter_err:
                 logger.debug(f"Stream meter estimate failed: {_meter_err}")
 
+            yield "data: [DONE]\n\n"
+
     except Exception as e:
         logger.error(f"Stream error: {e}")
         yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
     finally:
+        # Reset the agent-id contextvars (defensive — the generator has its own
+        # task context, but keep it clean).
+        for _tok, _var in ((_agent_tok, _CURRENT_AGENT_ID), (_agentname_tok, _CURRENT_AGENT_NAME)):
+            if _tok is not None:
+                try:
+                    _var.reset(_tok)
+                except Exception:
+                    pass
         # Always return the agent to idle on the orchestration bus.
         try:
             await emit_agent_completed(

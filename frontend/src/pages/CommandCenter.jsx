@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, useEffect, lazy, Suspense } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useCommsStore } from '../stores/useCommsStore';
 import CommsLayer from '../components/command/CommsLayer';
 import { useOrchestrationStream } from '../hooks/useOrchestrationStream';
@@ -73,15 +73,22 @@ export default function CommandCenter() {
   const positioned = useOrgLayout(rawNodes, layoutEdges);
 
   // Inject live per-agent status into the positioned nodes so the chart faces
-  // light up (thinking / tool / responding) just like the Activity grid.
-  const nodes = useMemo(
-    () =>
-      positioned.map((n) => ({
-        ...n,
-        data: { ...n.data, status: statuses[n.id]?.status || 'idle' },
-      })),
-    [positioned, statuses]
-  );
+  // light up. Reuse the exact node object when a node's source + status are
+  // unchanged, so an SSE tick re-renders only the one node that changed (not all
+  // 17), and skip the work entirely when the chart isn't the active view.
+  const nodesCache = useRef(new Map());
+  const nodes = useMemo(() => {
+    if (view !== 'chart') return positioned;
+    const cache = nodesCache.current;
+    const next = positioned.map((n) => {
+      const status = statuses[n.id]?.status || 'idle';
+      const cached = cache.get(n.id);
+      if (cached && cached.__src === n && cached.__status === status) return cached;
+      return { ...n, data: { ...n.data, status }, __src: n, __status: status };
+    });
+    nodesCache.current = new Map(next.map((nn) => [nn.id, nn]));
+    return next;
+  }, [positioned, statuses, view]);
 
   // Active delegation edges, keyed source->target (latest wins).
   const liveByPair = useMemo(() => {
@@ -93,6 +100,7 @@ export default function CommandCenter() {
   // Resting chain-of-command edges, lit + animated where a delegation is live,
   // plus transient edges for comms that jump across the hierarchy.
   const edges = useMemo(() => {
+    if (view !== 'chart') return []; // ReactFlow isn't mounted in other views
     const staticPairs = new Set();
     const base = tree.edgesResting.map((e) => {
       staticPairs.add(`${e.source}->${e.target}`);
@@ -128,7 +136,7 @@ export default function CommandCenter() {
       });
     }
     return [...base, ...extra];
-  }, [tree, liveByPair]);
+  }, [tree, liveByPair, view]);
 
   const onNodeClick = useCallback(
     (_, node) => {

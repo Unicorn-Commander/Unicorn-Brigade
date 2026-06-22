@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCommsStore } from '../../stores/useCommsStore';
 import CommsWindow from './CommsWindow';
@@ -19,10 +20,15 @@ export default function CommsLayer() {
   const open = windows.filter((w) => !w.minimized);
   const min = windows.filter((w) => w.minimized);
 
-  const promote = (id) => {
-    close(id);
-    navigate(`/chat?agent=${id}`);
-  };
+  // Stable so the memoized CommsWindow isn't re-rendered just because this
+  // callback was recreated on a drag-triggered render.
+  const promote = useCallback(
+    (id) => {
+      close(id);
+      navigate(`/chat?agent=${id}`);
+    },
+    [close, navigate]
+  );
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
