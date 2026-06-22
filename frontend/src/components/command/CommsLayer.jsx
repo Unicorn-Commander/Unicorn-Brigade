@@ -29,6 +29,7 @@ export default function CommsLayer() {
       {open.map((w) => (
         <div key={w.agent.id} className="pointer-events-auto">
           <CommsWindow
+            key={`${w.agent.id}:${w.seedKey || 0}`}
             win={w}
             onFocus={focusWindow}
             onMinimize={minimize}

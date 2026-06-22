@@ -62,6 +62,7 @@ const WorkflowVisualization3D = ({
 }) => {
   const fgRef = useRef();
   const containerRef = useRef();
+  const fadeTimers = useRef(new Set());
   const [viewMode, setViewMode] = useState('3d');
   const [selectedNode, setSelectedNode] = useState(null);
   const [isAnimating, setIsAnimating] = useState(animate);
@@ -124,10 +125,12 @@ const WorkflowVisualization3D = ({
         return [...prev, newConnection];
       });
 
-      // Auto-fade after 5 seconds
-      setTimeout(() => {
+      // Auto-fade after 5 seconds (tracked so unmount can clear it).
+      const t = setTimeout(() => {
+        fadeTimers.current.delete(t);
         setActiveConnections(prev => prev.filter(c => c.id !== newConnection.id));
       }, 5000);
+      fadeTimers.current.add(t);
     }
 
     // Check for delegation or message events with a target agent
@@ -148,12 +151,25 @@ const WorkflowVisualization3D = ({
       // Add connection
       setActiveConnections(prev => [...prev, newConnection]);
 
-      // Auto-fade after 5 seconds
-      setTimeout(() => {
+      // Auto-fade after 5 seconds (tracked so unmount can clear it).
+      const t = setTimeout(() => {
+        fadeTimers.current.delete(t);
         setActiveConnections(prev => prev.filter(c => c.id !== newConnection.id));
       }, 5000);
+      fadeTimers.current.add(t);
     }
   }, [realtimeEvents]);
+
+  // Clear any pending fade timers on unmount (the 3D view is lazy/Suspense-
+  // mounted, so switching away mid-delegation otherwise leaks timers and warns
+  // on setState-after-unmount).
+  useEffect(() => {
+    const timers = fadeTimers.current;
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
 
   // Transform data for force-graph
   const graphData = useMemo(() => {

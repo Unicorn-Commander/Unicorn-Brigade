@@ -17,8 +17,9 @@ export default function BriefingView({ tree, onPromote }) {
   const [round, setRound] = useState(0);
   const [sentPrompt, setSentPrompt] = useState('');
 
+  // childrenById maps a parent id -> array of child *id strings* (not objects).
   const leadIds = useMemo(
-    () => new Set((tree.childrenById.get(root?.id) || []).map((a) => a.id)),
+    () => new Set(tree.childrenById.get(root?.id) || []),
     [tree, root]
   );
   const domains = useMemo(

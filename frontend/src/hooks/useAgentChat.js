@@ -21,12 +21,16 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
   const [currentTool, setCurrentTool] = useState(null);
   const abortRef = useRef(null);
   const idRef = useRef(0);
+  // Synchronous reentrancy guard: state updates are async, so two Enter presses
+  // in one tick both read isStreaming===false. A ref is set immediately.
+  const sendingRef = useRef(false);
   const nextId = () => `m-${(idRef.current += 1)}`;
 
   const send = useCallback(
     async (text) => {
       const content = (text ?? '').trim();
-      if (!content || !agent || isStreaming) return;
+      if (!content || !agent || isStreaming || sendingRef.current) return;
+      sendingRef.current = true;
 
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
       const userMsg = { id: nextId(), role: 'user', content };
@@ -89,7 +93,7 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
-                    ? { ...m, toolCalls: [...(m.toolCalls || []), { name: ev.name, arguments: ev.arguments }] }
+                    ? { ...m, toolCalls: [...(m.toolCalls || []), { id: ev.id, name: ev.name, arguments: ev.arguments }] }
                     : m
                 )
               );
@@ -98,11 +102,21 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
               setMessages((prev) =>
                 prev.map((m) => {
                   if (m.id !== assistantId) return m;
-                  const calls = (m.toolCalls || []).map((tc) =>
-                    tc.name === ev.name && tc.result === undefined
-                      ? { ...tc, result: ev.result, error: ev.error }
-                      : tc
-                  );
+                  // Match the result to its call by id (the backend now carries
+                  // it); fall back to the first unfilled same-name call so two
+                  // calls to the same tool in one turn never cross-attach.
+                  let matched = false;
+                  const calls = (m.toolCalls || []).map((tc) => {
+                    if (matched) return tc;
+                    const isMatch = ev.id
+                      ? tc.id === ev.id
+                      : tc.name === ev.name && tc.result === undefined;
+                    if (isMatch) {
+                      matched = true;
+                      return { ...tc, result: ev.result, error: ev.error };
+                    }
+                    return tc;
+                  });
                   return { ...m, toolCalls: calls };
                 })
               );
@@ -153,6 +167,7 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
         setIsStreaming(false);
         setCurrentTool(null);
         abortRef.current = null;
+        sendingRef.current = false;
       }
     },
     [agent, messages, isStreaming, model]

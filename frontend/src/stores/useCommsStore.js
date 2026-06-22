@@ -24,7 +24,19 @@ export const useCommsStore = create((set, get) => ({
         return {
           zTop: z,
           windows: state.windows.map((w) =>
-            w.agent.id === agent.id ? { ...w, minimized: false, z } : w
+            w.agent.id === agent.id
+              ? {
+                  ...w,
+                  minimized: false,
+                  z,
+                  // A promote carrying a seed re-seeds the window; bump seedKey so
+                  // CommsWindow remounts with the new conversation (a mounted
+                  // useAgentChat can't be re-seeded in place). Honors the
+                  // "carries this answer" promise even when the window is open.
+                  ...(opts.seed ? { seed: opts.seed, seedKey: (w.seedKey || 0) + 1 } : {}),
+                  ...(opts.model ? { model: opts.model } : {}),
+                }
+              : w
           ),
         };
       }
@@ -37,6 +49,7 @@ export const useCommsStore = create((set, get) => ({
         minimized: false,
         model: opts.model,
         seed: opts.seed,
+        seedKey: 0,
       };
       let windows = [...state.windows, next];
       // Cap visible windows: minimize the least-recently-focused if over the cap.

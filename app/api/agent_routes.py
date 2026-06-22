@@ -1058,9 +1058,10 @@ async def _stream_chat(
                     agent_id=agent["id"], agent_name=agent_name,
                     tool_name=tc["name"], arguments=tc.get("arguments"), mission_id=None,
                 )
-                yield f"data: {json.dumps({'type': 'tool_call', 'name': tc['name'], 'arguments': tc['arguments']})}\n\n"
+                yield f"data: {json.dumps({'type': 'tool_call', 'id': tc['id'], 'name': tc['name'], 'arguments': tc['arguments']})}\n\n"
                 result_event = {
                     "type": "tool_result",
+                    "id": tc["id"],
                     "name": tc["name"],
                     "result": tc.get("result"),
                     "error": tc.get("error"),

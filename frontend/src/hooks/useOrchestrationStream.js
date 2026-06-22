@@ -87,9 +87,13 @@ export function useOrchestrationStream() {
           [
             {
               key: `ev-${seq.current}`,
+              id: `ev-${seq.current}`,
               agentId: id,
               agentName: ev.agentName || ev.data?.agentName,
               type: ev.type,
+              // Preserve the raw event data (e.g. data.toAgent/protocol/purpose)
+              // so consumers like the 3D graph can draw live peer edges.
+              data: ev.data,
               detail,
               ts: ev.timestamp,
             },
