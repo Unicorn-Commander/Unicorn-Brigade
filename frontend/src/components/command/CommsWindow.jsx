@@ -1,18 +1,31 @@
 import { useRef } from 'react';
-import { X, Minus, Maximize2 } from 'lucide-react';
+import { X, Minus, Maximize2, Cpu } from 'lucide-react';
 import AgentAvatar from '../AgentAvatar';
 import ChatPanel from '../chat/ChatPanel';
 import { useAgentChat } from '../../hooks/useAgentChat';
+import { useCommsStore } from '../../stores/useCommsStore';
+import { MODEL_OPTIONS } from '../../utils/models';
 
 /**
  * One floating, draggable comms window for a single agent. Mounts its own
  * useAgentChat so each window streams independently. Drag via the header
  * (manual pointer drag → store x/y, so it never fights an absolute layout).
+ * Carries an optional per-window model override + a seeded conversation (e.g.
+ * promoted from a briefing answer).
  */
 export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromote, onDrag }) {
   const { agent, x, y, z } = win;
-  const chat = useAgentChat(agent);
+  const setModel = useCommsStore((s) => s.setModel);
+  const chat = useAgentChat(agent, { model: win.model, initialMessages: win.seed });
   const drag = useRef(null);
+
+  const status = chat.isThinking
+    ? 'thinking'
+    : chat.currentTool
+      ? 'tool'
+      : chat.isStreaming
+        ? 'responding'
+        : 'idle';
 
   const onHeaderPointerDown = (e) => {
     // ignore drags that start on the header buttons
@@ -53,7 +66,7 @@ export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromo
         className="flex cursor-grab items-center gap-2 border-b border-slate-800 px-2 py-1.5 active:cursor-grabbing"
       >
         <div className="relative">
-          <AgentAvatar agent={agent} size={26} rounded="rounded-full" />
+          <AgentAvatar agent={agent} size={26} rounded="rounded-full" status={status} />
           <span
             className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-slate-900 ${
               chat.isStreaming ? 'bg-emerald-400' : 'bg-slate-500'
@@ -75,6 +88,24 @@ export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromo
         <button onClick={() => onClose(agent.id)} title="Close" className="p-1 text-slate-400 hover:text-red-300">
           <X className="h-3.5 w-3.5" />
         </button>
+      </div>
+
+      {/* Per-window model override */}
+      <div className="flex items-center gap-1.5 border-b border-slate-800 bg-slate-900/50 px-2 py-1">
+        <Cpu className="h-3 w-3 shrink-0 text-slate-500" />
+        <select
+          value={win.model || ''}
+          onChange={(e) => setModel(agent.id, e.target.value)}
+          onPointerDown={(e) => e.stopPropagation()}
+          title="Model for this window"
+          className="flex-1 cursor-pointer bg-transparent text-[11px] text-slate-300 focus:outline-none"
+        >
+          {MODEL_OPTIONS.map((m) => (
+            <option key={m.id} value={m.id} className="bg-slate-900 text-slate-200">
+              {m.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="min-h-0 flex-1">

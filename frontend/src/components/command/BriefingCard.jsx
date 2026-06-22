@@ -65,8 +65,8 @@ export default function BriefingCard({ agent, prompt, round, onPromote }) {
           <div className={`truncate text-[11px] ${active ? 'text-unicorn-200' : 'text-slate-500'}`}>{label}</div>
         </div>
         <button
-          onClick={() => onPromote?.(agent)}
-          title="Open full comms"
+          onClick={() => onPromote?.(agent, { seed: chat.messages })}
+          title="Open in a comms window (carries this answer)"
           className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
         >
           <Maximize2 className="h-3.5 w-3.5" />

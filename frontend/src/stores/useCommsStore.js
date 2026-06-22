@@ -13,7 +13,10 @@ export const useCommsStore = create((set, get) => ({
   windows: [], // [{ agent, x, y, z, minimized }]
   zTop: 10,
 
-  openWindow: (agent) =>
+  // opts: { seed?: Message[], model?: string }. `seed` pre-loads a prior
+  // conversation (e.g. promoting a briefing answer) and only applies when the
+  // window is first created; re-opening just focuses the existing one.
+  openWindow: (agent, opts = {}) =>
     set((state) => {
       const z = state.zTop + 1;
       const existing = state.windows.find((w) => w.agent.id === agent.id);
@@ -26,7 +29,15 @@ export const useCommsStore = create((set, get) => ({
         };
       }
       const n = state.windows.length;
-      const next = { agent, x: 140 + (n % 5) * 30, y: 96 + (n % 5) * 30, z, minimized: false };
+      const next = {
+        agent,
+        x: 140 + (n % 5) * 30,
+        y: 96 + (n % 5) * 30,
+        z,
+        minimized: false,
+        model: opts.model,
+        seed: opts.seed,
+      };
       let windows = [...state.windows, next];
       // Cap visible windows: minimize the least-recently-focused if over the cap.
       const open = windows.filter((w) => !w.minimized);
@@ -56,6 +67,12 @@ export const useCommsStore = create((set, get) => ({
   setPos: (id, x, y) =>
     set((state) => ({
       windows: state.windows.map((w) => (w.agent.id === id ? { ...w, x, y } : w)),
+    })),
+
+  // Per-window model override (undefined = use the agent's own default model).
+  setModel: (id, model) =>
+    set((state) => ({
+      windows: state.windows.map((w) => (w.agent.id === id ? { ...w, model: model || undefined } : w)),
     })),
 }));
 

@@ -10,8 +10,12 @@ import api from '../services/api';
  * complete / error (+ [DONE]). Routes through api.streamAgentChat so it carries
  * auth headers + credentials.
  */
-export function useAgentChat(agent, { model } = {}) {
-  const [messages, setMessages] = useState([]);
+export function useAgentChat(agent, { model, initialMessages } = {}) {
+  // Seed from a prior conversation (e.g. promoting a briefing answer). Re-id so
+  // the seeds never collide with this instance's own m-N ids, and mark them done.
+  const [messages, setMessages] = useState(() =>
+    (initialMessages || []).map((m, i) => ({ ...m, id: `seed-${i}`, isStreaming: false }))
+  );
   const [isStreaming, setIsStreaming] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [currentTool, setCurrentTool] = useState(null);
