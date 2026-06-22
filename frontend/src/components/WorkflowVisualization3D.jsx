@@ -623,7 +623,7 @@ const WorkflowVisualization3D = ({
             nodeOpacity={0.9}
             linkColor={link => link.color || 'rgba(139, 92, 246, 0.4)'}
             linkWidth={link => link.temporary ? 2.5 : 1.5}
-            linkOpacity={link => link.temporary ? 0.9 : 0.6}
+            linkOpacity={0.8}
             linkDirectionalParticles={link => link.temporary ? 4 : 2}
             linkDirectionalParticleSpeed={link => link.temporary ? 0.008 : 0.005}
             linkDirectionalParticleWidth={2}
