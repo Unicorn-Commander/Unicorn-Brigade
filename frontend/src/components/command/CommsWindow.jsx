@@ -62,7 +62,7 @@ export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromo
     <div
       onPointerDown={() => onFocus(agent.id)}
       style={{ position: 'absolute', left: x, top: y, zIndex: z, width: 'min(340px, 92vw)', height: 'min(440px, 80dvh)' }}
-      className="flex animate-[fade-in_0.15s_ease-out] flex-col overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/95 shadow-2xl shadow-black/60 backdrop-blur-md"
+      className="flex animate-fade-in flex-col overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/95 shadow-2xl shadow-black/60 backdrop-blur-md"
     >
       <div
         onPointerDown={onHeaderPointerDown}

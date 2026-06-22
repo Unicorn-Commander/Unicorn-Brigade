@@ -26,16 +26,25 @@ import {
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
 
-// Domain colors for agents
+// Domain colors — one per seed domain, matched to the org chart's ring hues so
+// the 3D graph and the org chart speak the same color language.
 const domainColors = {
-  financial: '#10b981',
-  legal: '#3b82f6',
-  medical: '#ef4444',
-  technology: '#8b5cf6',
-  intelligence: '#f59e0b',
-  investigation: '#ec4899',
-  cybersecurity: '#06b6d4',
-  general: '#6b7280',
+  orchestration: '#fde047', // yellow-300
+  meta: '#e879f9', // fuchsia-400
+  financial: '#fbbf24', // amber-400
+  legal: '#60a5fa', // blue-400
+  medical: '#fb7185', // rose-400
+  technology: '#22d3ee', // cyan-400
+  engineering: '#22d3ee', // cyan-400
+  investigation: '#fb923c', // orange-400
+  intelligence: '#818cf8', // indigo-400
+  support: '#f472b6', // pink-400
+  data: '#38bdf8', // sky-400
+  knowledge: '#a78bfa', // violet-400
+  productivity: '#2dd4bf', // teal-400
+  sales: '#34d399', // emerald-400
+  cybersecurity: '#06b6d4', // cyan (subdomain)
+  general: '#6b7280', // slate fallback
 };
 
 // Hex to RGB helper
@@ -76,7 +85,7 @@ const WorkflowVisualization3D = ({
         const rect = containerRef.current.getBoundingClientRect();
         setDimensions({
           width: rect.width || 800,
-          height: isFullscreen ? window.innerHeight : 600
+          height: isFullscreen ? window.innerHeight : (rect.height || 600)
         });
       }
     };
@@ -443,7 +452,7 @@ const WorkflowVisualization3D = ({
   return (
     <div
       ref={containerRef}
-      className={`relative ${isFullscreen ? 'fixed inset-0 z-50' : 'w-full h-[600px]'} bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl overflow-hidden border border-slate-700/50`}
+      className={`relative ${isFullscreen ? 'fixed inset-0 z-50' : 'w-full h-full'} bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-hidden border border-slate-700/50`}
     >
       {/* Background grid effect */}
       <div className="absolute inset-0 opacity-10 pointer-events-none">
@@ -463,7 +472,7 @@ const WorkflowVisualization3D = ({
             onClick={toggleViewMode}
             className={`p-2 rounded-lg transition-all ${
               viewMode === '3d'
-                ? 'bg-purple-600 text-white'
+                ? 'bg-unicorn-500/80 text-white'
                 : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
             }`}
             title={viewMode === '3d' ? 'Switch to 2D' : 'Switch to 3D'}
@@ -474,7 +483,7 @@ const WorkflowVisualization3D = ({
             onClick={toggleAnimation}
             className={`p-2 rounded-lg transition-all ${
               isAnimating
-                ? 'bg-green-600 text-white'
+                ? 'bg-unicorn-500/80 text-white'
                 : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
             }`}
             title={isAnimating ? 'Pause animation' : 'Resume animation'}
@@ -527,9 +536,12 @@ const WorkflowVisualization3D = ({
         <div>
           <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Domains</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            {Object.entries(domainColors).slice(0, 6).map(([domain, color]) => (
+            {[...new Set(agents.map((a) => a.domain).filter(Boolean))].sort().map((domain) => (
               <div key={domain} className="flex items-center space-x-1.5">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: domainColors[domain] || domainColors.general }}
+                />
                 <span className="text-[10px] text-slate-400 capitalize">{domain}</span>
               </div>
             ))}
@@ -667,7 +679,7 @@ const WorkflowVisualization3D = ({
       </div>
 
       {/* Title overlay */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
         <div className="px-4 py-2 rounded-full bg-slate-800/80 backdrop-blur-sm border border-slate-700/50">
           <p className="text-xs text-slate-400 flex items-center space-x-2">
             <Eye className="w-3 h-3" />
