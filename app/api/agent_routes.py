@@ -64,12 +64,77 @@ def _strip_thinking(text: str) -> str:
     return cleaned.strip()
 
 
+def _make_think_stripper():
+    """Stateful streaming stripper for <think>...</think> blocks.
+
+    The non-streaming path strips think blocks after the fact, but a token
+    stream can't — so this state machine suppresses think content as it flows,
+    holding back only the trailing text that might be an incomplete tag (so a
+    tag split across tokens is still caught). Returns (feed, flush): feed(delta)
+    yields the emittable, think-free text; flush() returns any safe remainder.
+    """
+    OPEN, CLOSE = "<think>", "</think>"
+    st = {"in": False, "buf": ""}
+
+    def _safe_len(buf, tag):
+        # All of buf except a trailing run that is a proper prefix of tag and so
+        # could grow into the full tag on the next token.
+        for k in range(min(len(tag) - 1, len(buf)), 0, -1):
+            if buf.endswith(tag[:k]):
+                return len(buf) - k
+        return len(buf)
+
+    def feed(delta):
+        st["buf"] += delta or ""
+        out = []
+        while True:
+            buf = st["buf"]
+            if not st["in"]:
+                i = buf.find(OPEN)
+                if i == -1:
+                    n = _safe_len(buf, OPEN)
+                    out.append(buf[:n])
+                    st["buf"] = buf[n:]
+                    break
+                out.append(buf[:i])
+                st["buf"] = buf[i + len(OPEN):]
+                st["in"] = True
+            else:
+                i = buf.find(CLOSE)
+                if i == -1:
+                    # Drop the think content; keep only a possible partial close tag.
+                    n = _safe_len(buf, CLOSE)
+                    st["buf"] = buf[n:]
+                    break
+                st["buf"] = buf[i + len(CLOSE):]
+                st["in"] = False
+        return "".join(out)
+
+    def flush():
+        rest = "" if st["in"] else st["buf"]
+        st["buf"] = ""
+        return rest
+
+    return feed, flush
+
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Injected during startup via init_agent_routes()
 llm_client: OpsCenterLLMClient = None
 memory_manager = None
+
+# Strong refs to fire-and-forget emit tasks so the event loop can't GC them
+# mid-flight (asyncio keeps only a weak ref to a bare create_task result).
+_bg_tasks: set = set()
+
+
+def _spawn(coro) -> None:
+    """Fire-and-forget a coroutine, holding a strong ref until it completes."""
+    t = asyncio.create_task(coro)
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
 
 
 def init_agent_routes(client: OpsCenterLLMClient, memory=None):
@@ -726,7 +791,7 @@ async def chat_with_agent(
                 })
                 logger.info(f"Tool call: {tc.name}({tc.arguments})")
                 # Emit to orchestration event bus
-                asyncio.create_task(emit_tool_call(
+                _spawn(emit_tool_call(
                     agent_id=agent["id"],
                     agent_name=agent_name,
                     tool_name=tc.name,
@@ -752,7 +817,7 @@ async def chat_with_agent(
                     success=not tr.error,
                 )
                 # Emit to orchestration event bus
-                asyncio.create_task(emit_tool_result(
+                _spawn(emit_tool_result(
                     agent_id=agent["id"],
                     agent_name=agent_name,
                     tool_name=tr.name,
@@ -1049,8 +1114,11 @@ async def _stream_chat(
             )
 
         else:
-            # No tools — stream directly from LLM
+            # No tools — stream directly from LLM, stripping <think> live so the
+            # raw chain-of-thought never reaches the client (parity with the
+            # tool-loop path, which strips before chunking).
             accumulated = ""
+            feed, flush = _make_think_stripper()
             async for chunk_data in llm_client.chat_completion_stream(
                 messages=messages,
                 model=model,
@@ -1064,12 +1132,18 @@ async def _stream_chat(
                     token = delta.get("content", "")
                     if token:
                         accumulated += token
-                        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+                        visible = feed(token)
+                        if visible:
+                            yield f"data: {json.dumps({'type': 'token', 'content': visible})}\n\n"
                 except (json.JSONDecodeError, IndexError, KeyError):
                     continue
 
-            accumulated = strip_channel_artifacts(accumulated)
-            yield f"data: {json.dumps({'type': 'complete', 'content': accumulated, 'model': model})}\n\n"
+            tail = flush()
+            if tail:
+                yield f"data: {json.dumps({'type': 'token', 'content': tail})}\n\n"
+            # Canonical final content uses the same strip as the non-stream path.
+            final = strip_channel_artifacts(_strip_thinking(accumulated))
+            yield f"data: {json.dumps({'type': 'complete', 'content': final, 'model': model})}\n\n"
             yield "data: [DONE]\n\n"
 
             # Phase 7: meter the streamed response. chat_completion_stream doesn't

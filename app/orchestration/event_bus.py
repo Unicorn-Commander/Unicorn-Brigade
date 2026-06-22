@@ -186,11 +186,19 @@ class OrchestrationEventBus:
         if event.mission_id:
             self._update_mission(event)
 
-        # Broadcast to all subscribers
+        # Broadcast to all subscribers. Non-blocking: a slow or abandoned client
+        # must never block the publisher or grow memory without bound, so on a
+        # full queue we drop the oldest event to make room for the newest.
         dead_subscribers = set()
         for queue in self._subscribers:
             try:
-                await queue.put(event)
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                try:
+                    queue.get_nowait()
+                    queue.put_nowait(event)
+                except Exception:
+                    pass
             except Exception as e:
                 logger.warning(f"Failed to publish to subscriber: {e}")
                 dead_subscribers.add(queue)
@@ -262,7 +270,9 @@ class OrchestrationEventBus:
 
     async def subscribe(self) -> AsyncGenerator[OrchestrationEvent, None]:
         """Subscribe to orchestration events (SSE stream)"""
-        queue: asyncio.Queue = asyncio.Queue()
+        # Bounded so a slow/stalled SSE client can't grow memory without limit;
+        # publish() drops the oldest event when this is full.
+        queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
         self._subscribers.add(queue)
 
         logger.info(f"New subscriber connected. Total: {len(self._subscribers)}")
