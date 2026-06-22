@@ -210,6 +210,9 @@ async def create_mission(
     request: CreateMissionRequest,
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_operator)] = None,
+    # auto_assign fires a frontier model per mission — cap it so it can't run
+    # unbounded LLM spend.
+    _rl: Annotated[None, rate_limit("orch_mission", 15, 60)] = None,
 ):
     """
     Create a new mission.
@@ -299,6 +302,9 @@ async def send_command(
     request: CommandRequest,
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_operator)] = None,
+    # Runs an unrestricted frontier chat (and can drive agent creation) — cap it
+    # so it can't run unbounded LLM spend.
+    _rl: Annotated[None, rate_limit("orch_command", 10, 60)] = None,
 ):
     """
     Send a command to The General.
