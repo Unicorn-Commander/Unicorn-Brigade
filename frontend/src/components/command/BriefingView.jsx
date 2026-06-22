@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Megaphone, Send } from 'lucide-react';
 import { byRankDesc } from '../../utils/rank';
 import BriefingCard from './BriefingCard';
@@ -16,6 +16,11 @@ export default function BriefingView({ tree, onPromote }) {
   const [scope, setScope] = useState('all');
   const [round, setRound] = useState(0);
   const [sentPrompt, setSentPrompt] = useState('');
+  const [statuses, setStatuses] = useState({}); // agentId -> status, for the aggregate header
+  const onCardStatus = useCallback(
+    (id, st) => setStatuses((s) => (s[id] === st ? s : { ...s, [id]: st })),
+    []
+  );
 
   // childrenById maps a parent id -> array of child *id strings* (not objects).
   const leadIds = useMemo(
@@ -47,9 +52,23 @@ export default function BriefingView({ tree, onPromote }) {
   const send = () => {
     const t = prompt.trim();
     if (!t || recipients.length === 0) return;
+    setStatuses({});
     setSentPrompt(t);
     setRound((r) => r + 1);
   };
+
+  const progress = useMemo(() => {
+    let responding = 0,
+      done = 0,
+      error = 0;
+    for (const a of recipients) {
+      const st = statuses[a.id];
+      if (st === 'error') error += 1;
+      else if (st === 'done') done += 1;
+      else if (st === 'thinking' || st === 'tool' || st === 'responding') responding += 1;
+    }
+    return { responding, done, error, total: recipients.length };
+  }, [recipients, statuses]);
 
   const chip = (id, text, key) => (
     <button
@@ -103,16 +122,35 @@ export default function BriefingView({ tree, onPromote }) {
 
       {/* Response grid */}
       <div className="flex-1 overflow-y-auto p-3">
-        {round === 0 ? (
+        {recipients.length === 0 ? (
+          <div className="mt-10 text-center text-sm text-slate-500">No agents match this group.</div>
+        ) : round === 0 ? (
           <div className="mt-10 text-center text-sm text-slate-500">
             Pick a group, write one prompt, and brief them all at once — every answer streams in below.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-            {recipients.map((a) => (
-              <BriefingCard key={a.id} agent={a} prompt={sentPrompt} round={round} onPromote={onPromote} />
-            ))}
-          </div>
+          <>
+            <div className="mb-3 px-1 text-xs text-slate-400" aria-live="polite">
+              Briefed {progress.total}
+              {progress.responding > 0 && (
+                <span className="text-unicorn-200"> · {progress.responding} responding</span>
+              )}
+              {progress.done > 0 && <span className="text-emerald-300"> · {progress.done} done</span>}
+              {progress.error > 0 && <span className="text-red-300"> · {progress.error} error</span>}
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {recipients.map((a) => (
+                <BriefingCard
+                  key={a.id}
+                  agent={a}
+                  prompt={sentPrompt}
+                  round={round}
+                  onPromote={onPromote}
+                  onStatus={onCardStatus}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

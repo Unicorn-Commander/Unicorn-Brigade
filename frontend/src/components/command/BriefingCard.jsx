@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Maximize2, Loader2, Wrench } from 'lucide-react';
+import { Maximize2, Loader2, Wrench, RotateCw } from 'lucide-react';
 import AgentAvatar from '../AgentAvatar';
 import Markdown from '../chat/Markdown';
 import { useAgentChat } from '../../hooks/useAgentChat';
@@ -10,7 +10,7 @@ import { useAgentChat } from '../../hooks/useAgentChat';
  * bumps `round` when the operator sends a briefing). The card's own chat state
  * drives the avatar expression, so faces visibly react here as each agent works.
  */
-export default function BriefingCard({ agent, prompt, round, onPromote }) {
+export default function BriefingCard({ agent, prompt, round, onPromote, onStatus }) {
   const chat = useAgentChat(agent);
   const fired = useRef(0);
 
@@ -22,6 +22,13 @@ export default function BriefingCard({ agent, prompt, round, onPromote }) {
     // Fire exactly once per round; chat.send/prompt intentionally excluded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [round]);
+
+  // Abort any in-flight stream when this card unmounts (e.g. the operator
+  // changes scope or leaves the briefing) so we don't leak open SSE requests.
+  useEffect(() => {
+    return () => chat.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const assistant = useMemo(
     () => [...chat.messages].reverse().find((m) => m.role === 'assistant'),
@@ -36,9 +43,17 @@ export default function BriefingCard({ agent, prompt, round, onPromote }) {
         ? 'responding'
         : assistant?.isError
           ? 'error'
-          : 'idle';
+          : assistant
+            ? 'done'
+            : 'idle';
 
-  const active = status !== 'idle';
+  // Report status up so the briefing can show an aggregate progress header.
+  useEffect(() => {
+    onStatus?.(agent.id, status);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, agent.id]);
+
+  const active = status === 'thinking' || status === 'tool' || status === 'responding';
   const label =
     status === 'thinking'
       ? 'thinking…'
@@ -46,9 +61,9 @@ export default function BriefingCard({ agent, prompt, round, onPromote }) {
         ? `running ${chat.currentTool}…`
         : status === 'responding'
           ? 'responding…'
-          : assistant?.isError
+          : status === 'error'
             ? 'error'
-            : assistant
+            : status === 'done'
               ? 'done'
               : 'standing by';
 
@@ -64,9 +79,20 @@ export default function BriefingCard({ agent, prompt, round, onPromote }) {
           <div className="truncate text-sm font-semibold text-white">{agent.displayName || agent.name}</div>
           <div className={`truncate text-[11px] ${active ? 'text-unicorn-200' : 'text-slate-500'}`}>{label}</div>
         </div>
+        {!active && fired.current > 0 && (
+          <button
+            onClick={() => prompt && chat.send(prompt)}
+            title="Re-run this agent"
+            aria-label="Re-run this agent"
+            className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           onClick={() => onPromote?.(agent, { seed: chat.messages })}
           title="Open in a comms window (carries this answer)"
+          aria-label="Open in a comms window"
           className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
         >
           <Maximize2 className="h-3.5 w-3.5" />

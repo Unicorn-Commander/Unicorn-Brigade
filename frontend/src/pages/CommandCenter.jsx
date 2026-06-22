@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, lazy, Suspense } from 'react';
+import { useMemo, useCallback, useState, useEffect, lazy, Suspense } from 'react';
 import { useCommsStore } from '../stores/useCommsStore';
 import CommsLayer from '../components/command/CommsLayer';
 import { useOrchestrationStream } from '../hooks/useOrchestrationStream';
@@ -33,7 +33,7 @@ const RESTING_EDGE = { stroke: '#475569', strokeWidth: 1.5 };
  * Phase 1 = static chart (dagre layout, resting chain-of-command edges).
  */
 export default function CommandCenter() {
-  const { agents, loading } = useAgents();
+  const { agents, loading, error, reload } = useAgents();
   const openWindow = useCommsStore((s) => s.openWindow);
   const [view, setView] = useState('chart');
   const { statuses, connected, invocations, events } = useOrchestrationStream();
@@ -136,8 +136,22 @@ export default function CommandCenter() {
     [statuses]
   );
 
+  // Only surface a disconnect after it persists ~2.5s, so brief EventSource
+  // reconnect blips don't flash a banner.
+  const [staleFeed, setStaleFeed] = useState(false);
+  useEffect(() => {
+    if (connected) {
+      setStaleFeed(false);
+      return undefined;
+    }
+    const t = setTimeout(() => setStaleFeed(true), 2500);
+    return () => clearTimeout(t);
+  }, [connected]);
+
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    // Fill the viewport minus the mobile top bar (lg uses the sidebar, no top
+    // bar) so the Controls, tray, and Briefing composer never clip off-screen.
+    <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden lg:h-[100dvh]">
       {/* HUD header */}
       <div className="flex items-center gap-3 border-b border-slate-800 px-6 py-3.5">
         <div className="rounded-xl border border-unicorn-500/30 bg-gradient-to-br from-unicorn-500/30 to-purple-600/20 p-2">
@@ -206,7 +220,26 @@ export default function CommandCenter() {
 
       {/* Canvas — org chart or live activity; comms windows float over both */}
       <div className="relative flex-1">
-        {view === 'chart' ? (
+        {staleFeed && (
+          <div className="absolute left-1/2 top-2 z-30 -translate-x-1/2 rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 text-xs text-amber-200 shadow-lg">
+            Live feed disconnected — reconnecting…
+          </div>
+        )}
+        {error ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm">
+            <p className="text-slate-300">Couldn&apos;t load the agent roster.</p>
+            <button
+              onClick={reload}
+              className="rounded-lg bg-unicorn-500/80 px-3 py-1.5 font-medium text-white hover:bg-unicorn-500"
+            >
+              Retry
+            </button>
+          </div>
+        ) : loading && !agents.length ? (
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin" /> Loading the Brigade…
+          </div>
+        ) : view === 'chart' ? (
           <ReactFlow
             nodes={nodes}
             edges={edges}

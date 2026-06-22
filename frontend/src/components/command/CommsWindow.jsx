@@ -34,10 +34,13 @@ export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromo
     drag.current = { sx: e.clientX, sy: e.clientY, ox: x, oy: y };
     const move = (ev) => {
       if (!drag.current) return;
+      // Clamp so the title bar always stays grabbable on-screen.
+      const maxX = Math.max(0, window.innerWidth - 320);
+      const maxY = Math.max(0, window.innerHeight - 80);
       onDrag(
         agent.id,
-        Math.max(0, drag.current.ox + (ev.clientX - drag.current.sx)),
-        Math.max(0, drag.current.oy + (ev.clientY - drag.current.sy))
+        Math.min(maxX, Math.max(0, drag.current.ox + (ev.clientX - drag.current.sx))),
+        Math.min(maxY, Math.max(0, drag.current.oy + (ev.clientY - drag.current.sy)))
       );
     };
     const up = () => {
@@ -58,7 +61,7 @@ export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromo
   return (
     <div
       onPointerDown={() => onFocus(agent.id)}
-      style={{ position: 'absolute', left: x, top: y, zIndex: z, width: 340, height: 440 }}
+      style={{ position: 'absolute', left: x, top: y, zIndex: z, width: 'min(340px, 92vw)', height: 'min(440px, 80dvh)' }}
       className="flex animate-[fade-in_0.15s_ease-out] flex-col overflow-hidden rounded-xl border border-slate-700/70 bg-slate-900/95 shadow-2xl shadow-black/60 backdrop-blur-md"
     >
       <div
@@ -116,6 +119,7 @@ export default function CommsWindow({ win, onFocus, onMinimize, onClose, onPromo
           currentTool={chat.currentTool}
           isStreaming={chat.isStreaming}
           onSend={chat.send}
+          onAbort={chat.abort}
         />
       </div>
     </div>

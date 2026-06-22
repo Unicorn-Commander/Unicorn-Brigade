@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Loader2, Wrench } from 'lucide-react';
+import { Send, Loader2, Wrench, Square } from 'lucide-react';
 import Markdown from './Markdown';
 
 /**
@@ -7,7 +7,7 @@ import Markdown from './Markdown';
  * inside a floating comms window or a full page. Driven entirely by props from
  * useAgentChat; holds only the draft input locally.
  */
-export default function ChatPanel({ agent, messages, isThinking, currentTool, isStreaming, onSend }) {
+export default function ChatPanel({ agent, messages, isThinking, currentTool, isStreaming, onSend, onAbort }) {
   const [input, setInput] = useState('');
   const endRef = useRef(null);
 
@@ -81,20 +81,35 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 submit();
+              } else if (e.key === 'Escape' && isStreaming) {
+                e.preventDefault();
+                onAbort?.();
               }
             }}
             rows={1}
             placeholder={`Message ${agent?.displayName || 'agent'}…`}
             className="max-h-24 flex-1 resize-none rounded-lg bg-slate-800/70 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-unicorn-500/50"
           />
-          <button
-            onClick={submit}
-            disabled={isStreaming || !input.trim()}
-            className="rounded-lg bg-unicorn-500/80 p-2 text-white hover:bg-unicorn-500 disabled:opacity-40"
-            title="Send"
-          >
-            <Send className="h-4 w-4" />
-          </button>
+          {isStreaming ? (
+            <button
+              onClick={() => onAbort?.()}
+              className="rounded-lg bg-slate-700 p-2 text-white hover:bg-slate-600"
+              title="Stop generating (Esc)"
+              aria-label="Stop generating"
+            >
+              <Square className="h-4 w-4" fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              onClick={submit}
+              disabled={!input.trim()}
+              className="rounded-lg bg-unicorn-500/80 p-2 text-white hover:bg-unicorn-500 disabled:opacity-40"
+              title="Send"
+              aria-label="Send message"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
     </div>

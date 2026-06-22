@@ -41,12 +41,12 @@ export default function CommsLayer() {
       ))}
 
       {min.length > 0 && (
-        <div className="pointer-events-auto absolute bottom-3 left-3 flex flex-wrap gap-2">
+        <div className="pointer-events-auto absolute bottom-3 left-1/2 flex max-w-[80%] -translate-x-1/2 flex-wrap justify-center gap-2">
           {min.map((w) => (
             <button
               key={w.agent.id}
               onClick={() => focusWindow(w.agent.id)}
-              title={`Reopen ${w.agent.displayName}`}
+              title={`Reopen ${w.agent.displayName || w.agent.name}`}
               className="flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/90 px-2 py-1 shadow-lg hover:border-unicorn-500/60"
             >
               <AgentAvatar agent={w.agent} size={20} rounded="rounded-full" />
