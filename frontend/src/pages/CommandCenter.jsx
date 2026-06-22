@@ -46,7 +46,12 @@ export default function CommandCenter() {
         id: a.id,
         type: 'orgAgent',
         position: { x: 0, y: 0 },
-        data: { agent: a, isRoot: a.id === tree.root?.id, status: 'idle' },
+        data: {
+          agent: a,
+          isRoot: a.id === tree.root?.id,
+          status: 'idle',
+          subordinates: (tree.childrenById.get(a.id) || []).length,
+        },
       })),
     [tree]
   );
