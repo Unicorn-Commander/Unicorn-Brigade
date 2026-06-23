@@ -19,7 +19,15 @@ import json
 
 from app.db.database import get_session
 from app.db.repositories import AgentRepository
-from app.auth.middleware import require_api_key, require_operator, require_admin, AuthUser
+from app.auth.middleware import (
+    require_api_key,
+    require_operator,
+    require_admin,
+    require_sse_access,
+    get_current_user_optional,
+    AuthUser,
+)
+from app.auth.sse_ticket import mint_ticket, TTL_SECONDS as SSE_TICKET_TTL
 from app.security.rate_limit import rate_limit
 from app.orchestration import (
     event_bus,
@@ -78,10 +86,33 @@ def init_orchestration_routes(client: OpsCenterLLMClient):
 # SSE Event Stream
 # ============================================================================
 
+@router.post("/events/ticket")
+async def mint_events_ticket(
+    user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+    _rl: Annotated[None, rate_limit("orch_sse_ticket", 30, 60)] = None,
+):
+    """Mint a short-lived, single-use ticket for the SSE stream.
+
+    A browser ``EventSource`` can't send auth headers, so the client calls this
+    (with its normal Bearer/X-API-Key/cookie auth) and then opens
+    ``GET /events?ticket=<t>``. Authenticating here at *viewer* level — rather
+    than via ``require_operator`` (every POST under /orchestration would
+    otherwise demand operator) — matches what reading the stream requires, so
+    viewer-role users can still see the live feed. The ticket only ever grants
+    the holder's own access.
+    """
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required to open the activity stream",
+        )
+    return {"ticket": mint_ticket(user), "expires_in": SSE_TICKET_TTL}
+
+
 @router.get("/events")
 async def stream_events(
     mission_id: Optional[str] = None,
-    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+    user: Annotated[AuthUser, Depends(require_sse_access)] = None,
 ):
     """
     Server-Sent Events stream of orchestration activity.

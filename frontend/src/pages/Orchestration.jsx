@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { orchestrationEventsUrl } from '../services/orchestrationStream';
 import {
   Globe,
   Cpu,
@@ -171,15 +172,12 @@ const Orchestration = () => {
   useEffect(() => {
     if (!isLive) return;
 
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-    const eventSource = new EventSource(`${apiUrl}/orchestration/events`);
+    let eventSource = null;
+    let cancelled = false;
+    let retryTimer = null;
+    let backoff = 1000;
 
-    eventSource.onopen = () => {
-      console.log('Connected to orchestration stream');
-      setIsConnected(true);
-    };
-
-    eventSource.onmessage = (e) => {
+    const handleMessage = (e) => {
       try {
         const event = JSON.parse(e.data);
 
@@ -263,13 +261,58 @@ const Orchestration = () => {
       }
     };
 
-    eventSource.onerror = (err) => {
+    const handleError = (err) => {
       console.error('SSE error:', err);
       setIsConnected(false);
+      // Close so the browser won't auto-retry with the spent single-use ticket;
+      // reconnect ourselves with a fresh one (debounced backoff).
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      scheduleReconnect();
     };
 
+    const scheduleReconnect = () => {
+      if (cancelled || retryTimer) return;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        backoff = Math.min(backoff * 2, 15000);
+        connect();
+      }, backoff);
+    };
+
+    async function connect() {
+      if (cancelled) return;
+      let url;
+      try {
+        url = await orchestrationEventsUrl();
+      } catch {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+        url = `${apiUrl}/orchestration/events`;
+      }
+      if (cancelled) return;
+      try {
+        eventSource = new EventSource(url, { withCredentials: true });
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+      eventSource.onopen = () => {
+        backoff = 1000;
+        console.log('Connected to orchestration stream');
+        setIsConnected(true);
+      };
+      eventSource.onmessage = handleMessage;
+      eventSource.onerror = handleError;
+    }
+
+    connect();
+
     return () => {
-      eventSource.close();
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (eventSource) eventSource.close();
       setIsConnected(false);
     };
   }, [isLive]);

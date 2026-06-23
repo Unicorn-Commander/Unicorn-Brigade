@@ -17,7 +17,7 @@ from typing import Optional, Annotated
 from dataclasses import dataclass
 from datetime import datetime
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -474,5 +474,45 @@ def require_operator(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Operator access required",
+        )
+    return user
+
+
+async def require_sse_access(
+    request: Request,
+    ticket: Annotated[Optional[str], Query()] = None,
+    user_via_headers: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+) -> AuthUser:
+    """Auth dependency for browser ``EventSource`` (SSE) endpoints.
+
+    ``EventSource`` cannot send ``Authorization``/``X-API-Key`` headers, so in
+    addition to the normal header/cookie auth this accepts a short-lived,
+    single-use ``?ticket=<t>`` minted via an authenticated POST (see
+    ``app.auth.sse_ticket``). It is purely additive: header/cookie callers are
+    resolved exactly as before, and the same minimum-role check the path would
+    otherwise enforce is still applied to whichever user we end up with — so the
+    ticket can never grant more than its holder already has.
+    """
+    from app.auth import sse_ticket  # local import keeps sse_ticket dependency-free
+
+    user: Optional[AuthUser] = sse_ticket.consume_ticket(ticket) if ticket else None
+    if user is None:
+        user = user_via_headers
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing credentials (X-API-Key, Bearer token, or SSE ticket)",
+            headers={"WWW-Authenticate": f"Bearer, ApiKey realm=\"{AUTH_HEADER}\""},
+        )
+
+    # Apply the same path/method minimum-role check as get_current_user.
+    required_role = get_minimum_role_for_method(request.url.path, request.method)
+    role_hierarchy = [UserRole.VIEWER, UserRole.OPERATOR, UserRole.ADMIN]
+    user_level = role_hierarchy.index(user.role) if user.role in role_hierarchy else -1
+    required_level = role_hierarchy.index(required_role) if required_role in role_hierarchy else 0
+    if user_level < required_level:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Insufficient permissions. Required role: {required_role.value}",
         )
     return user

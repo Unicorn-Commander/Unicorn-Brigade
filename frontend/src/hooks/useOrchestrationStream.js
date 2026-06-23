@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { API_BASE } from '../services/apiBase';
+import { orchestrationEventsUrl } from '../services/orchestrationStream';
 
 // Map orchestration event types -> a coarse per-agent status.
 const STATUS_BY_EVENT = {
@@ -33,16 +34,12 @@ export function useOrchestrationStream() {
   const seq = useRef(0);
 
   useEffect(() => {
-    let es;
-    try {
-      es = new EventSource(`${API_BASE}/orchestration/events`, { withCredentials: true });
-    } catch {
-      return undefined;
-    }
-    esRef.current = es;
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false);
-    es.onmessage = (e) => {
+    let es = null;
+    let cancelled = false;
+    let retryTimer = null;
+    let backoff = 1000;
+
+    const handleMessage = (e) => {
       let ev;
       try {
         ev = JSON.parse(e.data);
@@ -102,8 +99,56 @@ export function useOrchestrationStream() {
         );
       }
     };
+
+    const scheduleReconnect = () => {
+      if (cancelled || retryTimer) return;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        backoff = Math.min(backoff * 2, 15000);
+        connect();
+      }, backoff);
+    };
+
+    async function connect() {
+      if (cancelled) return;
+      let url;
+      try {
+        url = await orchestrationEventsUrl();
+      } catch {
+        url = `${API_BASE}/orchestration/events`;
+      }
+      if (cancelled) return;
+      try {
+        es = new EventSource(url, { withCredentials: true });
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+      esRef.current = es;
+      es.onopen = () => {
+        backoff = 1000;
+        setConnected(true);
+      };
+      es.onerror = () => {
+        setConnected(false);
+        // Close so the browser won't auto-retry with the now-spent single-use
+        // ticket; reconnect ourselves with a fresh one (debounced backoff).
+        if (es) {
+          es.close();
+          es = null;
+        }
+        esRef.current = null;
+        scheduleReconnect();
+      };
+      es.onmessage = handleMessage;
+    }
+
+    connect();
+
     return () => {
-      es.close();
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (es) es.close();
       esRef.current = null;
     };
   }, []);
