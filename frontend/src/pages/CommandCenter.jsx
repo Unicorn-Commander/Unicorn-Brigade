@@ -3,6 +3,7 @@ import { useCommsStore } from '../stores/useCommsStore';
 import CommsLayer from '../components/command/CommsLayer';
 import { useOrchestrationStream } from '../hooks/useOrchestrationStream';
 import ActivityGrid from '../components/command/ActivityGrid';
+import ActivityFeed from '../components/command/ActivityFeed';
 import { ReactFlow, Background, BackgroundVariant, Controls, MiniMap, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Network, Boxes, LayoutGrid, Radio, Zap, Orbit, Loader2, Megaphone } from 'lucide-react';
@@ -270,7 +271,14 @@ export default function CommandCenter() {
             />
           </ReactFlow>
         ) : view === 'activity' ? (
-          <ActivityGrid agents={agents} statuses={statuses} onOpen={openWindow} />
+          <div className="flex h-full min-h-0 flex-col lg:flex-row">
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <ActivityGrid agents={agents} statuses={statuses} onOpen={openWindow} />
+            </div>
+            <div className="min-h-0 shrink-0 border-t border-slate-800 bg-slate-950/40 lg:w-80 lg:border-l lg:border-t-0">
+              <ActivityFeed events={events} agents={agents} onOpen={openWindow} />
+            </div>
+          </div>
         ) : view === 'graph3d' ? (
           <Suspense
             fallback={
