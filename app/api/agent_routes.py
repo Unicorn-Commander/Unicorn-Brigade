@@ -381,6 +381,13 @@ class ChatRequest(BaseModel):
     # value as mission_id, so a downstream subscriber can filter events that
     # belong only to this chat. If unset, chat_with_agent generates one.
     mission_id: Optional[str] = None
+    # Stable room context. When the caller is a Stable chat/voice room, these
+    # identify the room so room-aware tools (ToolDefinition.needs_room_context,
+    # e.g. the canvas authoring tools) can act on the right room on the agent's
+    # behalf. Both optional; other Brigade consumers omit them and behave
+    # exactly as before.
+    room_id: Optional[str] = None
+    room_name: Optional[str] = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -771,6 +778,12 @@ async def chat_with_agent(
                 user_id=request.user_id,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
+                # Room context for room-aware tools (needs_room_context).
+                # agent_id is the running agent's id, injected as
+                # caller_agent_id alongside caller_room_id/caller_room_name.
+                agent_id=agent["id"],
+                room_id=request.room_id,
+                room_name=request.room_name,
             )
         else:
             # ---- No tools, plain chat ----
@@ -948,21 +961,43 @@ async def _stream_chat(
         # If agent has tools, run the tool loop first (non-streaming),
         # emitting tool_call / tool_result events, then stream the final response.
         if agent_tools:
+            import asyncio as _asyncio
+            _live_q: "_asyncio.Queue" = _asyncio.Queue()
+
             def on_tool_call(tc: ToolCall):
                 tool_calls_log.append({
                     "id": tc.id,
                     "name": tc.name,
                     "arguments": tc.arguments,
                 })
+                # Emit LIVE while the loop is still running, so the client can
+                # show "using <tool>…" progress DURING the wait instead of a
+                # static placeholder until the whole 5-15s tool loop finishes.
+                _live_q.put_nowait({
+                    "type": "tool_call",
+                    "name": tc.name,
+                    "arguments": tc.arguments,
+                })
 
             def on_tool_result(tr: ToolResult):
+                _name = None
                 for entry in tool_calls_log:
                     if entry["id"] == tr.tool_call_id:
                         entry["result"] = tr.result
                         entry["error"] = tr.error
+                        _name = entry["name"]
                         break
+                _live_q.put_nowait({
+                    "type": "tool_result",
+                    "name": _name,
+                    "result": tr.result,
+                    "error": tr.error,
+                    "success": tr.error is None,
+                })
 
-            response = await llm_client.execute_tool_loop(
+            # Run the tool loop as a task and forward tool events from the queue
+            # as the callbacks fire mid-loop; drain whatever's left once done.
+            _loop_task = _asyncio.create_task(llm_client.execute_tool_loop(
                 messages=messages,
                 tools=agent_tools,
                 model=model,
@@ -971,19 +1006,14 @@ async def _stream_chat(
                 user_id=user_id,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
-            )
-
-            # Emit tool events
-            for tc in tool_calls_log:
-                yield f"data: {json.dumps({'type': 'tool_call', 'name': tc['name'], 'arguments': tc['arguments']})}\n\n"
-                result_event = {
-                    "type": "tool_result",
-                    "name": tc["name"],
-                    "result": tc.get("result"),
-                    "error": tc.get("error"),
-                    "success": tc.get("error") is None,
-                }
-                yield f"data: {json.dumps(result_event)}\n\n"
+            ))
+            while not _loop_task.done() or not _live_q.empty():
+                try:
+                    _evt = await _asyncio.wait_for(_live_q.get(), timeout=0.25)
+                    yield f"data: {json.dumps(_evt)}\n\n"
+                except _asyncio.TimeoutError:
+                    continue
+            response = await _loop_task
 
             # Log tool executions to DB
             try:

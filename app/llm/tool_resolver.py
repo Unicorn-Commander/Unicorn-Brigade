@@ -63,6 +63,9 @@ from app.llm.delegation_tools import (
 )
 from app.llm.crisis_mcp_tools import CRISIS_MCP_TOOLS
 from app.llm.projectops_mcp_tools import PROJECT_OPS_MCP_TOOLS
+from app.llm.centerdeep_mcp_tools import CENTERDEEP_MCP_TOOLS
+from app.llm.stable_canvas_tools import STABLE_CANVAS_TOOLS
+from app.llm.stable_knowledge_tools import STABLE_KNOWLEDGE_TOOLS
 
 # Registry mapping tool names to their definitions
 TOOL_REGISTRY: Dict[str, ToolDefinition] = {
@@ -115,6 +118,21 @@ TOOL_REGISTRY.update(CRISIS_MCP_TOOLS)
 
 # Project-Ops MCP tools (proxied to Project-Ops MCP via JSON-RPC over Streamable HTTP)
 TOOL_REGISTRY.update(PROJECT_OPS_MCP_TOOLS)
+
+# Center Deep Research MCP tools (proxied to CD's FastMCP via JSON-RPC over
+# Streamable HTTP, authed with a uchub client_credentials bearer)
+TOOL_REGISTRY.update(CENTERDEEP_MCP_TOOLS)
+
+# Stable canvas tools (author artifacts into a Stable room's canvas via the
+# Stable backend's internal artifact API; room/agent identity is server-injected
+# via ToolDefinition.needs_room_context, not exposed to the model)
+TOOL_REGISTRY.update(STABLE_CANVAS_TOOLS)
+
+# Stable knowledge tool (search the knowledge bases attached to a Stable
+# room via the Stable backend's internal knowledge-search API; room/agent
+# identity is server-injected via ToolDefinition.needs_room_context, not
+# exposed to the model)
+TOOL_REGISTRY.update(STABLE_KNOWLEDGE_TOOLS)
 
 # ── Optional integrations (loaded when configured) ─────────────────
 # Home Assistant tools — only available when HA is configured
