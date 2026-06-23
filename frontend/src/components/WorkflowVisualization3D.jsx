@@ -57,6 +57,29 @@ const hexToRgb = (hex) => {
   } : { r: 139, g: 92, b: 246 };
 };
 
+// Recursively dispose a cached node object's GPU resources (geometries,
+// materials, and any textures they reference) so reusing/clearing the cache
+// doesn't leak VRAM.
+const disposeNodeObject = (object) => {
+  if (!object) return;
+  object.traverse((child) => {
+    if (child.geometry && typeof child.geometry.dispose === 'function') {
+      child.geometry.dispose();
+    }
+    const materials = Array.isArray(child.material)
+      ? child.material
+      : (child.material ? [child.material] : []);
+    materials.forEach((material) => {
+      if (material.map && typeof material.map.dispose === 'function') {
+        material.map.dispose();
+      }
+      if (typeof material.dispose === 'function') {
+        material.dispose();
+      }
+    });
+  });
+};
+
 const WorkflowVisualization3D = ({
   agents = [],
   connections = [],
@@ -72,6 +95,11 @@ const WorkflowVisualization3D = ({
   const fgRef = useRef();
   const containerRef = useRef();
   const fadeTimers = useRef(new Set());
+  // Cache of per-node Three.js objects so react-force-graph reuses the same
+  // Group/sprite/material/texture across refreshes instead of allocating (and
+  // leaking) a fresh set on every graphData update. Keyed by node id; each entry
+  // remembers the inputs it was built from so we only rebuild when they change.
+  const nodeObjectCache = useRef(new Map());
   const [viewMode, setViewMode] = useState('3d');
   const [selectedNode, setSelectedNode] = useState(null);
   const [isAnimating, setIsAnimating] = useState(animate);
@@ -247,6 +275,32 @@ const WorkflowVisualization3D = ({
     return { nodes, links };
   }, [agents, connections, activeAgents, activeConnections]);
 
+  // Prune cached Three.js objects for nodes that are no longer present so the
+  // cache can't grow without bound as agents come and go. Disposes each removed
+  // entry's GPU resources.
+  useEffect(() => {
+    const cache = nodeObjectCache.current;
+    const liveIds = new Set(graphData.nodes.map((n) => n.id));
+    for (const [id, entry] of cache) {
+      if (!liveIds.has(id)) {
+        disposeNodeObject(entry.object);
+        cache.delete(id);
+      }
+    }
+  }, [graphData]);
+
+  // Dispose every cached node object on unmount so switching away from the 3D
+  // view (it is lazy/Suspense-mounted) releases all GPU memory it held.
+  useEffect(() => {
+    const cache = nodeObjectCache.current;
+    return () => {
+      for (const entry of cache.values()) {
+        disposeNodeObject(entry.object);
+      }
+      cache.clear();
+    };
+  }, []);
+
   // Handle node click
   const handleNodeClick = useCallback((node) => {
     setSelectedNode(node);
@@ -285,8 +339,10 @@ const WorkflowVisualization3D = ({
     }
   };
 
-  // Custom node rendering - Avatar sprites with borders/glows
-  const nodeThreeObject = useCallback((node) => {
+  // Build the actual Three.js avatar group for a node. This allocates GPU
+  // resources, so it must only run when a node's visual inputs change — the
+  // cached wrapper below decides when to call it.
+  const buildNodeObject = useCallback((node) => {
     // Create sprite group
     const group = new THREE.Group();
 
@@ -439,6 +495,44 @@ const WorkflowVisualization3D = ({
 
     return group;
   }, []);
+
+  // Cache key for a node: the set of inputs buildNodeObject reads. If none of
+  // these change, the previously built object is byte-for-byte equivalent and
+  // can be reused as-is. node.color already folds in active-vs-domain state, and
+  // node.name is included because it can select a different logo (e.g. Gunny).
+  const nodeObjectKey = useCallback((node) => (
+    [
+      node.id,
+      node.color || '',
+      node.avatar || '',
+      node.agentType || 'local',
+      node.name || '',
+    ].join('|')
+  ), []);
+
+  // Custom node rendering — returns a cached Three.js object per node, rebuilding
+  // only when the node's visual inputs change. react-force-graph calls this on
+  // every graphData refresh, so without the cache each refresh would allocate
+  // (and never dispose) a new Group + sprite + textures + geometries per node.
+  const nodeThreeObject = useCallback((node) => {
+    const cache = nodeObjectCache.current;
+    const key = nodeObjectKey(node);
+    const cached = cache.get(node.id);
+
+    if (cached && cached.key === key) {
+      return cached.object;
+    }
+
+    // Inputs changed (or first build) — dispose the stale object before
+    // replacing it so we don't leak its GPU resources.
+    if (cached) {
+      disposeNodeObject(cached.object);
+    }
+
+    const object = buildNodeObject(node);
+    cache.set(node.id, { key, object });
+    return object;
+  }, [buildNodeObject, nodeObjectKey]);
 
   // Node label
   const nodeLabel = useCallback((node) => {
