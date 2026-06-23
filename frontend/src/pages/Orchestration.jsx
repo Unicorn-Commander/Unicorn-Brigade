@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { orchestrationEventsUrl } from '../services/orchestrationStream';
+import { connectOrchestrationStream } from '../services/orchestrationStream';
 import {
   Globe,
   Cpu,
@@ -170,17 +170,10 @@ const Orchestration = () => {
 
   // Connect to real-time orchestration events via SSE
   useEffect(() => {
-    if (!isLive) return;
+    if (!isLive) return undefined;
 
-    let eventSource = null;
-    let cancelled = false;
-    let retryTimer = null;
-    let backoff = 1000;
-
-    const handleMessage = (e) => {
+    const handleEvent = (event) => {
       try {
-        const event = JSON.parse(e.data);
-
         // Skip connection confirmation
         if (event.type === 'connected') return;
 
@@ -261,58 +254,17 @@ const Orchestration = () => {
       }
     };
 
-    const handleError = (err) => {
-      console.error('SSE error:', err);
-      setIsConnected(false);
-      // Close so the browser won't auto-retry with the spent single-use ticket;
-      // reconnect ourselves with a fresh one (debounced backoff).
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
-      }
-      scheduleReconnect();
-    };
-
-    const scheduleReconnect = () => {
-      if (cancelled || retryTimer) return;
-      retryTimer = setTimeout(() => {
-        retryTimer = null;
-        backoff = Math.min(backoff * 2, 15000);
-        connect();
-      }, backoff);
-    };
-
-    async function connect() {
-      if (cancelled) return;
-      let url;
-      try {
-        url = await orchestrationEventsUrl();
-      } catch {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-        url = `${apiUrl}/orchestration/events`;
-      }
-      if (cancelled) return;
-      try {
-        eventSource = new EventSource(url, { withCredentials: true });
-      } catch {
-        scheduleReconnect();
-        return;
-      }
-      eventSource.onopen = () => {
-        backoff = 1000;
+    const conn = connectOrchestrationStream({
+      onConnected: () => {
         console.log('Connected to orchestration stream');
         setIsConnected(true);
-      };
-      eventSource.onmessage = handleMessage;
-      eventSource.onerror = handleError;
-    }
-
-    connect();
+      },
+      onDisconnected: () => setIsConnected(false),
+      onEvent: handleEvent,
+    });
 
     return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-      if (eventSource) eventSource.close();
+      conn.close();
       setIsConnected(false);
     };
   }, [isLive]);

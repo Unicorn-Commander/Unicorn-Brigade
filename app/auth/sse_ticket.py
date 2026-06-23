@@ -28,6 +28,11 @@ TTL_SECONDS = 60
 # the primary guard). Keeps the store provably bounded regardless of user count.
 MAX_TICKETS = 10000
 
+# Cookie the mint endpoint sets so a browser EventSource can carry the ticket
+# WITHOUT putting it in the URL (keeps it out of access logs). Scoped + HttpOnly
+# server-side; the ?ticket= query param stays supported as a fallback.
+SSE_TICKET_COOKIE = "brigade_sse_ticket"
+
 # ticket -> (user, expires_at_monotonic)
 _tickets: Dict[str, Tuple[Any, float]] = {}
 

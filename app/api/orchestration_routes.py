@@ -9,7 +9,7 @@ Endpoints:
 - POST /api/v1/orchestration/command - Send command to The General
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -27,7 +27,7 @@ from app.auth.middleware import (
     get_current_user_optional,
     AuthUser,
 )
-from app.auth.sse_ticket import mint_ticket, TTL_SECONDS as SSE_TICKET_TTL
+from app.auth.sse_ticket import mint_ticket, TTL_SECONDS as SSE_TICKET_TTL, SSE_TICKET_COOKIE
 from app.security.rate_limit import rate_limit
 from app.orchestration import (
     event_bus,
@@ -88,25 +88,41 @@ def init_orchestration_routes(client: OpsCenterLLMClient):
 
 @router.post("/events/ticket")
 async def mint_events_ticket(
+    response: Response,
     user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
     _rl: Annotated[None, rate_limit("orch_sse_ticket", 30, 60)] = None,
 ):
     """Mint a short-lived, single-use ticket for the SSE stream.
 
     A browser ``EventSource`` can't send auth headers, so the client calls this
-    (with its normal Bearer/X-API-Key/cookie auth) and then opens
-    ``GET /events?ticket=<t>``. Authenticating here at *viewer* level — rather
-    than via ``require_operator`` (every POST under /orchestration would
-    otherwise demand operator) — matches what reading the stream requires, so
-    viewer-role users can still see the live feed. The ticket only ever grants
-    the holder's own access.
+    (with its normal Bearer/X-API-Key/cookie auth) and then opens the stream.
+    Authenticating here at *viewer* level — rather than via ``require_operator``
+    (every POST under /orchestration would otherwise demand operator) — matches
+    what reading the stream requires, so viewer-role users can still see the
+    live feed. The ticket only ever grants the holder's own access.
+
+    The ticket is returned BOTH in the body and as an HttpOnly cookie scoped to
+    the orchestration routes: the client opens ``GET /events`` and the cookie
+    carries the ticket automatically, keeping it out of the URL/access logs. The
+    ``?ticket=`` query param stays supported as a fallback (older clients / if
+    the cookie is stripped in transit).
     """
     if user is None:
         raise HTTPException(
             status_code=401,
             detail="Authentication required to open the activity stream",
         )
-    return {"ticket": mint_ticket(user), "expires_in": SSE_TICKET_TTL}
+    ticket = mint_ticket(user)
+    response.set_cookie(
+        key=SSE_TICKET_COOKIE,
+        value=ticket,
+        max_age=SSE_TICKET_TTL,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/api/v1/orchestration",
+    )
+    return {"ticket": ticket, "expires_in": SSE_TICKET_TTL}
 
 
 @router.get("/events")

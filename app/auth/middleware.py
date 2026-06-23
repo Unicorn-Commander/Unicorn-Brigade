@@ -495,7 +495,11 @@ async def require_sse_access(
     """
     from app.auth import sse_ticket  # local import keeps sse_ticket dependency-free
 
-    user: Optional[AuthUser] = sse_ticket.consume_ticket(ticket) if ticket else None
+    # The ticket may arrive as ?ticket= or, preferably, in the HttpOnly cookie
+    # the mint endpoint set (keeps it out of the URL/access logs). Either way it
+    # is single-use and consumed here.
+    ticket_val = ticket or request.cookies.get(sse_ticket.SSE_TICKET_COOKIE)
+    user: Optional[AuthUser] = sse_ticket.consume_ticket(ticket_val) if ticket_val else None
     if user is None:
         user = user_via_headers
     if user is None:
