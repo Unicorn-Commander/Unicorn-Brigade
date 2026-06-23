@@ -1156,6 +1156,7 @@ async def _stream_chat(
             # tool-loop path, which strips before chunking).
             accumulated = ""
             feed, flush = _make_think_stripper()
+            real_usage = None
             async for chunk_data in llm_client.chat_completion_stream(
                 messages=messages,
                 model=model,
@@ -1165,7 +1166,14 @@ async def _stream_chat(
             ):
                 try:
                     chunk = json.loads(chunk_data)
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    # Final usage chunk (stream_options.include_usage) carries the
+                    # real token counts and has an empty choices array.
+                    if chunk.get("usage"):
+                        real_usage = chunk["usage"]
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta", {})
                     token = delta.get("content", "")
                     if token:
                         accumulated += token
@@ -1183,21 +1191,30 @@ async def _stream_chat(
             yield f"data: {json.dumps({'type': 'complete', 'content': final, 'model': model})}\n\n"
 
             # Phase 7: meter BEFORE [DONE] so a disconnect after the answer doesn't
-            # drop billing. chat_completion_stream doesn't surface token counts
-            # reliably, so we estimate from the prompt + accumulated reply
-            # (~4 chars/token). Cloud-routed streams are skipped by is_local_route().
+            # drop billing. Prefer the REAL usage from the stream's final
+            # include_usage chunk; fall back to a ~4-chars/token estimate when the
+            # upstream didn't surface it. Cloud-routed streams are skipped by
+            # is_local_route() inside _meter_chat_to_lago.
             try:
-                prompt_chars = sum(len((m or {}).get("content", "") or "") for m in (messages or []))
-                est_tokens = max(1, (prompt_chars + len(accumulated)) // 4)
+                if real_usage and (
+                    real_usage.get("total_tokens")
+                    or real_usage.get("completion_tokens")
+                    or real_usage.get("prompt_tokens")
+                ):
+                    meter_usage = real_usage
+                else:
+                    prompt_chars = sum(len((m or {}).get("content", "") or "") for m in (messages or []))
+                    est_tokens = max(1, (prompt_chars + len(accumulated)) // 4)
+                    meter_usage = {"total_tokens": est_tokens}
                 await _meter_chat_to_lago(
                     user_email, model, {
                         "model": model,
                         "provider": None,
-                        "usage": {"total_tokens": est_tokens},
+                        "usage": meter_usage,
                     }
                 )
             except Exception as _meter_err:
-                logger.debug(f"Stream meter estimate failed: {_meter_err}")
+                logger.debug(f"Stream meter failed: {_meter_err}")
 
             yield "data: [DONE]\n\n"
 

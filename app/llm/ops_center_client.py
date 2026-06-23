@@ -464,7 +464,14 @@ class OpsCenterLLMClient:
                 "model": resolved_model,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
-                "stream": True
+                "stream": True,
+                # Ask OpenAI-compatible servers (llama.cpp / vLLM / gateway /
+                # OpenRouter) to emit a final usage chunk with REAL token counts,
+                # so streamed chats can be metered accurately instead of by a
+                # chars/token estimate. The chunk has an empty choices[] and is
+                # captured by the caller; servers that ignore the field just
+                # fall back to the estimate.
+                "stream_options": {"include_usage": True},
             }
 
             if route_type == "local":
