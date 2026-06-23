@@ -260,3 +260,47 @@
   .syntax-key { @apply text-purple-400; }
   .syntax-punctuation { @apply text-slate-500; }
 }
+
+@layer base {
+  /* Thin, on-brand scrollbars everywhere (was only on opt-in utility classes). */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(100 116 139 / 0.45) transparent;
+  }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background-color: rgb(100 116 139 / 0.45);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background-color: rgb(100 116 139 / 0.7); }
+
+  /* Visible keyboard-focus ring on interactive elements (mouse clicks unaffected). */
+  a:focus-visible,
+  button:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  input:focus-visible,
+  [tabindex]:focus-visible,
+  [role='button']:focus-visible,
+  [role='tab']:focus-visible {
+    outline: 2px solid rgb(236 72 153 / 0.75); /* unicorn-500 */
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+/* Respect the OS "reduce motion" setting: neutralize the infinite pulses,
+   particle flows, marching-ants edges, and slide/fade transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,13 @@
+# Dependencies — never commit these (they're installed from package.json).
+node_modules
+
+# Build output
+dist
+dist-ssr
+
+# Vite cache
+.vite
+
+# Local env / editor
+*.local
+.DS_Store

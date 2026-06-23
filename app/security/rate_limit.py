@@ -26,11 +26,21 @@ _requests: Dict[str, Deque[float]] = {}
 
 
 def _default_key_fn(request: Request) -> str:
+    # Delegated sub-chats POST from loopback with the shared service key plus an
+    # X-Delegate-User header naming the real end-user. Bucket on that user for
+    # loopback requests only (external callers can't reach this path), so
+    # concurrent delegations on behalf of different users don't all starve on a
+    # single service-key bucket.
+    client = request.client.host if request.client else "unknown"
+    if client in ("127.0.0.1", "::1", "localhost"):
+        delegate_user = request.headers.get("X-Delegate-User")
+        if delegate_user:
+            user_hash = hashlib.sha256(delegate_user.encode("utf-8")).hexdigest()[:16]
+            return f"deleg:{user_hash}"
     api_key = request.headers.get("X-API-Key")
     if api_key:
         key_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
         return f"api:{key_hash}"
-    client = request.client.host if request.client else "unknown"
     return f"ip:{client}"
 
 

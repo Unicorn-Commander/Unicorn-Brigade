@@ -12,6 +12,7 @@ import {
   Globe,
   Workflow,
   Network,
+  Shield,
   GitBranch,
   Server,
   FileText,
@@ -54,6 +55,7 @@ const Navigation = () => {
     '/dashboard': 'View system overview, recent activity, and quick stats',
     '/chat': 'Start a conversation with any agent',
     '/conversations': 'Browse and manage all conversation history',
+    '/command': "The General's War Room — the whole Brigade as a clickable org chart",
     '/orchestration': 'Real-time agent orchestration and command center',
     '/orchestration/demo': 'Hollywood-style demo with 1000+ agents and automated workflows',
     '/workflows': 'Execute and monitor hierarchical workflow templates',
@@ -198,6 +200,16 @@ const Navigation = () => {
             isCollapsed={collapsedSections.command}
             onToggle={() => toggleSection('command')}
           >
+            <NavLink
+              to="/command"
+              className={navLinkClass}
+              data-tooltip-id="nav-tooltip"
+              data-tooltip-content={TOOLTIP_CONTENT['/command']}
+              data-tooltip-place="right"
+            >
+              <Shield className="w-4 h-4" />
+              <span className="text-sm font-medium">Command Center</span>
+            </NavLink>
             <NavLink
               to="/orchestration"
               className={navLinkClass}

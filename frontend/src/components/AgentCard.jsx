@@ -1,4 +1,6 @@
 import { Star, Sparkles, Cpu, TrendingUp, Wrench, CheckCircle } from 'lucide-react';
+import AgentAvatar from './AgentAvatar';
+import { rankStars } from '../utils/rank';
 
 // Domain gradient backgrounds
 const domainGradients = {
@@ -24,16 +26,7 @@ const getModelIcon = (model) => {
 
 // Render star rating
 const StarRating = ({ rank }) => {
-  const rankMap = {
-    'Field Marshal': 5,
-    'General': 4,
-    'Colonel': 3,
-    'Major': 2,
-    'Captain': 1,
-    'Lieutenant': 1
-  };
-
-  const stars = rankMap[rank] || 3;
+  const stars = rankStars(rank);
 
   return (
     <div className="flex items-center space-x-0.5">
@@ -66,11 +59,13 @@ const AgentCard = ({ agent, onClick }) => {
       <div className={`h-24 bg-gradient-to-br ${gradient} relative`}>
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/50 to-transparent"></div>
 
-        {/* Unicorn Avatar */}
+        {/* Agent Avatar */}
         <div className="absolute -bottom-8 left-6">
-          <div className="w-16 h-16 rounded-xl bg-slate-900 border-2 border-slate-700 flex items-center justify-center text-4xl shadow-xl group-hover:scale-110 transition-transform">
-            {agent.avatar || '🦄'}
-          </div>
+          <AgentAvatar
+            agent={agent}
+            size="w-16 h-16"
+            className="border-2 border-slate-700 shadow-xl group-hover:scale-110 transition-transform"
+          />
         </div>
       </div>
 
