@@ -205,7 +205,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title=os.getenv("API_TITLE", "Unicorn Brigade API"),
-    version=os.getenv("API_VERSION", "1.13.0"),
+    version=os.getenv("API_VERSION", "1.14.0"),
     description="Multi-Agent Orchestration System with LangGraph + Graphiti/FalkorDB",
     lifespan=lifespan
 )
