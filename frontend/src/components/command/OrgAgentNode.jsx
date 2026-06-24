@@ -1,7 +1,14 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import { DollarSign } from 'lucide-react';
 import AgentAvatar from '../AgentAvatar';
 import { rankStars } from '../../utils/rank';
+import {
+  affiliationBorder,
+  modelTier,
+  modelTierChip,
+  paidToolInfo,
+} from '../../utils/agentClass';
 
 // Domain → ring color, so a node's chain-of-command rank reads at a glance.
 const domainRing = {
@@ -39,6 +46,12 @@ function OrgAgentNodeBase({ data }) {
   const active = status !== 'idle';
   const capabilities = (agent.capabilities || []).slice(0, 6);
 
+  // Classification signals (kept in sync with Stable).
+  const affBorder = affiliationBorder(agent.affiliation);
+  const tier = modelTier(agent.model);
+  const tierChip = modelTierChip(tier);
+  const paid = paidToolInfo(agent);
+
   const restingBorder = isRoot
     ? 'border-yellow-300/50 bg-yellow-300/[0.06] shadow-lg shadow-yellow-300/10'
     : 'border-slate-700/60 bg-slate-900/70';
@@ -54,7 +67,7 @@ function OrgAgentNodeBase({ data }) {
           data.onOpen?.(agent);
         }
       }}
-      className={`group relative flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 backdrop-blur-md transition-colors
+      className={`group relative flex cursor-pointer items-center gap-3 rounded-xl border border-l-4 ${affBorder} px-3 py-2 backdrop-blur-md transition-colors
         ${active ? 'border-unicorn-500/70 bg-slate-900/90 shadow-lg shadow-unicorn-500/20' : restingBorder}
         hover:border-unicorn-500/70 hover:bg-slate-900/90`}
       style={{ width: 208 }}
@@ -75,6 +88,18 @@ function OrgAgentNodeBase({ data }) {
           {agent.displayName || agent.name}
         </div>
         <div className="truncate text-[11px] text-slate-300">{agent.title || agent.rank}</div>
+        <div className="mt-0.5 flex items-center gap-1">
+          <span className={`rounded px-1.5 py-0.5 text-[10px] leading-none ${tierChip}`}>{tier}</span>
+          {paid.count > 0 && (
+            <span
+              title={paid.names.length ? `Paid tools: ${paid.names.join(', ')}` : `${paid.count} paid tool${paid.count > 1 ? 's' : ''}`}
+              className="flex items-center gap-0.5 rounded bg-amber-500/15 px-1 py-0.5 text-[10px] leading-none text-amber-200"
+            >
+              <DollarSign className="h-2.5 w-2.5" />
+              {paid.count}
+            </span>
+          )}
+        </div>
         {stars > 0 && (
           <div aria-hidden="true" className="mt-0.5 flex gap-px text-[9px] leading-none text-yellow-400">
             {Array.from({ length: stars }).map((_, i) => (
@@ -107,6 +132,15 @@ function OrgAgentNodeBase({ data }) {
           <div className="mt-2 text-[11px]">
             <span className="text-slate-500">Model: </span>
             <span className="text-cyan-300">{agent.model}</span>
+            <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] leading-none ${tierChip}`}>{tier}</span>
+          </div>
+        )}
+        {paid.count > 0 && (
+          <div className="mt-2 flex items-center gap-1 text-[11px] text-amber-200">
+            <DollarSign className="h-3 w-3" />
+            <span className="truncate">
+              {paid.names.length ? paid.names.join(', ') : `${paid.count} paid tool${paid.count > 1 ? 's' : ''}`}
+            </span>
           </div>
         )}
         {capabilities.length > 0 && (

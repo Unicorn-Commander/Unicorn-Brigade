@@ -1,6 +1,12 @@
-import { Star, Sparkles, Cpu, TrendingUp, Wrench, CheckCircle } from 'lucide-react';
+import { Star, Sparkles, Cpu, TrendingUp, Wrench, CheckCircle, DollarSign } from 'lucide-react';
 import AgentAvatar from './AgentAvatar';
 import { rankStars } from '../utils/rank';
+import {
+  affiliationBorder,
+  modelTier,
+  modelTierChip,
+  paidToolInfo,
+} from '../utils/agentClass';
 
 // Domain gradient backgrounds
 const domainGradients = {
@@ -44,8 +50,18 @@ const AgentCard = ({ agent, onClick }) => {
   const gradient = domainGradients[agent.domain?.toLowerCase()] || domainGradients.default;
   const ModelIcon = getModelIcon(agent.model);
   const capabilities = Array.isArray(agent.capabilities) ? agent.capabilities : [];
-  const tools = agent.agentTools || [];
+  // The API emits toolDetails (rich) and tools (string array); agentTools was dead.
+  const toolDetails = Array.isArray(agent.toolDetails) ? agent.toolDetails : [];
+  const toolNames = toolDetails.length
+    ? toolDetails.map((t) => t.displayName || t.name)
+    : (Array.isArray(agent.tools) ? agent.tools : []);
   const invocationCount = agent._count?.messages || 0;
+
+  // Classification signals (kept in sync with Stable).
+  const affBorder = affiliationBorder(agent.affiliation);
+  const tier = modelTier(agent.model);
+  const tierChip = modelTierChip(tier);
+  const paid = paidToolInfo(agent);
 
   // Calculate success rate (mock for now - could be from real data)
   const successRate = invocationCount > 0 ? 95 + Math.random() * 5 : 0;
@@ -53,7 +69,7 @@ const AgentCard = ({ agent, onClick }) => {
   return (
     <div
       onClick={onClick}
-      className="group relative overflow-hidden rounded-xl border border-slate-700/50 bg-slate-900/50 backdrop-blur-xl cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-unicorn-500/20"
+      className={`group relative overflow-hidden rounded-xl border border-slate-700/50 border-l-4 ${affBorder} bg-slate-900/50 backdrop-blur-xl cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-unicorn-500/20`}
     >
       {/* Gradient Header */}
       <div className={`h-24 bg-gradient-to-br ${gradient} relative`}>
@@ -93,6 +109,20 @@ const AgentCard = ({ agent, onClick }) => {
           <div className={`px-2 py-1 rounded-lg bg-gradient-to-r ${gradient} bg-opacity-20 border border-slate-700/50`}>
             <span className="text-xs text-white font-medium">{agent.domain || 'General'}</span>
           </div>
+
+          {/* Model Tier Chip */}
+          <span className={`px-2 py-1 rounded-lg text-xs font-medium ${tierChip}`}>{tier}</span>
+
+          {/* Paid Tools Badge */}
+          {paid.count > 0 && (
+            <span
+              title={paid.names.length ? `Paid tools: ${paid.names.join(', ')}` : `${paid.count} paid tool${paid.count > 1 ? 's' : ''}`}
+              className="flex items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-medium bg-amber-500/15 text-amber-200"
+            >
+              <DollarSign className="w-3 h-3" />
+              {paid.count}
+            </span>
+          )}
         </div>
 
         {/* Rank Stars */}
@@ -130,7 +160,7 @@ const AgentCard = ({ agent, onClick }) => {
         )}
 
         {/* Tools Section */}
-        {tools.length > 0 && (
+        {toolNames.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <div className="h-px flex-1 bg-slate-800"></div>
@@ -138,18 +168,25 @@ const AgentCard = ({ agent, onClick }) => {
               <div className="h-px flex-1 bg-slate-800"></div>
             </div>
             <div className="space-y-1">
-              {tools.slice(0, 2).map((toolRef) => (
-                <div
-                  key={toolRef.id}
-                  className="flex items-center space-x-2 text-xs text-slate-400"
-                >
-                  <Wrench className="w-3 h-3 text-cyan-400" />
-                  <span>{toolRef.tool?.name || 'Tool'}</span>
-                </div>
-              ))}
-              {tools.length > 2 && (
+              {toolNames.slice(0, 2).map((name, idx) => {
+                const isPaid = paid.names.includes(name);
+                return (
+                  <div
+                    key={`${name}-${idx}`}
+                    className="flex items-center space-x-2 text-xs text-slate-400"
+                  >
+                    {isPaid ? (
+                      <DollarSign className="w-3 h-3 text-amber-300" />
+                    ) : (
+                      <Wrench className="w-3 h-3 text-cyan-400" />
+                    )}
+                    <span>{name || 'Tool'}</span>
+                  </div>
+                );
+              })}
+              {toolNames.length > 2 && (
                 <div className="text-xs text-slate-500 pl-5">
-                  +{tools.length - 2} more tools
+                  +{toolNames.length - 2} more tools
                 </div>
               )}
             </div>
