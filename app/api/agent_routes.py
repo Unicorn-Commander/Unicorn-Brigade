@@ -548,6 +548,83 @@ class DeepResearchResponse(BaseModel):
 
 # ---- Agent CRUD (DB-backed) ----
 
+async def _load_tool_catalog(session: AsyncSession) -> Dict[str, Dict[str, Any]]:
+    """name -> {costTier, permissionLevel, provider, external, displayName}.
+
+    Best-effort: if the catalog table is absent/empty (fresh DB pre-migration) we
+    return {} and callers fall back to neutral defaults, so the roster never 500s
+    on a missing catalog.
+    """
+    from sqlalchemy import text
+    try:
+        rows = await session.execute(text(
+            "SELECT name, display_name, cost_tier, permission_level, provider, external "
+            "FROM tool_catalog"
+        ))
+        return {
+            r[0]: {
+                "name": r[0],
+                "displayName": r[1],
+                "costTier": r[2],
+                "permissionLevel": r[3],
+                "provider": r[4],
+                "external": r[5],
+            }
+            for r in rows
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"tool_catalog unavailable, serving roster without tool metadata: {exc}")
+        return {}
+
+
+def _enrich_agent_tools(agent: Dict[str, Any], catalog: Dict[str, Dict[str, Any]]) -> None:
+    """Attach per-tool cost/permission detail + a cost rollup to an agent dict.
+
+    Adds `toolDetails` (one entry per tool, catalog-looked-up with neutral
+    fallback) and `toolCostSummary` (counts so a UI can badge an agent without
+    re-deriving). Leaves the original `tools` string array untouched."""
+    tools = agent.get("tools") or []
+    details = []
+    paid = 0
+    external = 0
+    max_perm = 0
+    for t in tools:
+        meta = catalog.get(t)
+        if meta is None:
+            meta = {
+                "name": t,
+                "displayName": None,
+                "costTier": "free",
+                "permissionLevel": 1,
+                "provider": None,
+                "external": False,
+            }
+        details.append(meta)
+        if meta["costTier"] != "free":
+            paid += 1
+        if meta["external"]:
+            external += 1
+        if (meta["permissionLevel"] or 0) > max_perm:
+            max_perm = meta["permissionLevel"] or 0
+    agent["toolDetails"] = details
+    agent["toolCostSummary"] = {
+        "total": len(details),
+        "paid": paid,
+        "external": external,
+        "maxPermissionLevel": max_perm,
+    }
+
+
+@router.get("/tool-catalog")
+async def get_tool_catalog(
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
+    """The tool cost/permission catalog (for UI legends + admin review)."""
+    catalog = await _load_tool_catalog(session)
+    return {"tools": sorted(catalog.values(), key=lambda x: x["name"])}
+
+
 @router.get("/agents")
 async def list_agents(
     session: AsyncSession = Depends(get_session),
@@ -576,9 +653,11 @@ async def list_agents(
             )
         ]
 
+    catalog = await _load_tool_catalog(session)
     for agent in agents:
         agent.setdefault("_count", {"messages": 0, "tasks": 0, "apiKeys": 0})
         agent.setdefault("agentTools", [])
+        _enrich_agent_tools(agent, catalog)
     return {"agents": agents}
 
 
