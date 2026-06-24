@@ -180,8 +180,11 @@ UC_GATEWAY_KEY = os.getenv("UC_GATEWAY_KEY", "")
 # Brigade service key for authentication
 BRIGADE_SERVICE_KEY = os.getenv("BRIGADE_SERVICE_KEY", "sk-brigade-service-key-2025")
 
-# Default model to use when "default" is specified
-DEFAULT_MODEL = os.getenv("DEFAULT_LLM_MODEL", "claude-3.5-haiku")
+# Default model to use when "default" is specified.
+# Routes via the UC litellm gateway (uc/ prefix) to qwen 3.6 35B A3B on bigboy,
+# thinking-off. Single source of truth for the agent fallback model; override
+# per-deploy with DEFAULT_LLM_MODEL.
+DEFAULT_MODEL = os.getenv("DEFAULT_LLM_MODEL", "uc/chat-default-nothink")
 
 
 class OpsCenterLLMClient:

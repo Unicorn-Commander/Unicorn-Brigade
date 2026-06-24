@@ -20,12 +20,12 @@ _cache: Dict[str, Any] = {"expires_at": 0.0, "payload": None}
 FALLBACK_MODELS = {
     "models": [
         {
-            "id": "claude-3.5-haiku",
-            "display_name": "Claude 3.5 Haiku",
-            "provider": "Anthropic",
-            "input_price": 0.25,
-            "output_price": 1.25,
-            "category": "anthropic",
+            "id": "uc/chat-default-nothink",
+            "display_name": "Qwen 3.6 35B A3B (default)",
+            "provider": "Unicorn Commander",
+            "input_price": 0,
+            "output_price": 0,
+            "category": "local",
         },
         {
             "id": "claude-sonnet-4",

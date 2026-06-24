@@ -15,7 +15,7 @@ import time
 
 from app.db.database import get_session
 from app.db.repositories import AgentRepository, ToolExecutionRepository
-from app.llm.ops_center_client import OpsCenterLLMClient, ToolCall, ToolResult
+from app.llm.ops_center_client import OpsCenterLLMClient, ToolCall, ToolResult, DEFAULT_MODEL
 from app.llm.tool_resolver import get_tools_for_agent
 from app.llm.mlx_provider import MLXLLMClient
 from app.llm.gemma_sanitize import strip_channel_artifacts
@@ -724,7 +724,7 @@ async def chat_with_agent(
     messages.append({"role": "user", "content": request.message})
 
     # Resolve model and params
-    model = request.model or agent.get("model", "claude-3.5-haiku")
+    model = request.model or agent.get("model") or DEFAULT_MODEL
     temperature = request.temperature if request.temperature is not None else agent.get("temperature", 0.7)
     max_tokens = request.maxTokens or agent.get("maxTokens", 2000)
 

@@ -34,6 +34,7 @@ from sqlalchemy import select
 from app.db.database import async_session
 from app.db.models import Agent, ScheduledRun, ScheduledRunHistory
 from app.llm.tool_resolver import get_tools_for_agent
+from app.llm.ops_center_client import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +233,7 @@ class BrigadeScheduler:
             {"role": "system", "content": system_content},
             {"role": "user", "content": message},
         ]
-        model = agent.get("model") or "claude-3.5-haiku"
+        model = agent.get("model") or DEFAULT_MODEL
         temperature = agent.get("temperature", 0.7)
         max_tokens = agent.get("maxTokens", 2000)
 

@@ -19,6 +19,7 @@ load_dotenv()
 
 from app.db.database import engine, Base, async_session
 from app.db.models import Agent
+from app.llm.ops_center_client import DEFAULT_MODEL
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ async def seed_agents():
                 type=data.get("type", "individual"),
                 agent_type=data.get("agentType", "analysis"),
                 capabilities=data.get("capabilities", []),
-                model=data.get("model", "claude-3.5-haiku"),
+                model=data.get("model") or DEFAULT_MODEL,
                 temperature=data.get("temperature", 0.7),
                 max_tokens=data.get("maxTokens", 2000),
                 tools=data.get("tools", []),
