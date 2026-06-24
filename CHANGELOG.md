@@ -4,6 +4,67 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] — 2026-06-24
+
+Per-agent value billing, the Dr. Glitter Mane medical integration, and a
+switch of the default agent model to the metered qwen-3.6-35B gateway. Also
+adds a durable additive-migration runner so column additions actually reach
+already-deployed databases — SQLAlchemy `create_all` never ALTERs an existing
+table, so a new ORM column otherwise 500s the next `SELECT` in prod.
+
+### Why
+The bill an agent earns isn't the LLM token cost — it's the value the agent
+delivers (its tools, any specialized RAG it reaches for, and a successful
+outcome). The LLM is one input. This cycle lays the foundation: a charge-neutral
+`agent_work` event that is attributable per-agent AND per-user, sitting beside
+the existing `ai_api_call` COGS event, ready to be priced per rate-tier in Lago
+without changing anything billed today.
+
+### Added
+- **Per-agent value metering** (`app/integrations/lago.py`,
+  `app/api/agent_routes.py`) — a new `agent_work` event emitted alongside
+  `ai_api_call`, carrying user + agent + tools + rag + outcome. Crucially it
+  captures the end user even on `uc/`-gateway routes, where the LLM-cost path is
+  skipped and the user would otherwise be invisible. `mirror=False`, distinct
+  `brigade-work-` transaction prefix → additive and charge-neutral.
+- **Value dimensions + rate-tier classification** — `rate_tier`,
+  `rate_multiplier`, `rag_used`, `tools_used` on events; a `KNOWLEDGE_TOOLS`
+  allowlist that bumps a generic agent to `specialized` when it reaches for RAG;
+  a `RATE_TIERS` allowlist that clamps unknown tiers to `standard` so nothing
+  silently prices at zero.
+- **Agent value-billing columns** (`app/db/models.py`,
+  `app/db/repositories.py`) — `billing_tier`, `rate_multiplier`,
+  `base_price_per_call`, surfaced through the agent create/update API and
+  `to_dict`.
+- **Durable migration runner** (`app/db/migrations.py`, wired into
+  `app/db/database.py`) — versioned, additive, idempotent DDL applied after
+  `create_all` and recorded in `schema_migrations`. First migration adds the
+  three value-billing columns to an existing `agents` table.
+- **Dr. Glitter Mane medical agent** (`app/llm/glittermane_mcp_tools.py`) — 17
+  `glitter_*` tools registered into Brigade via Glitter's REST API, with
+  per-user HS256 JWT minting so caller identity flows through while PHI stays
+  server-side. Registered as an app/platform agent, not a default Brigade agent.
+
+### Changed
+- **Default agent model** is now `uc/chat-default-nothink` (metered UC gateway →
+  qwen-3.6-35B), replacing the dead `claude-3.5-haiku` literal across
+  `ops_center_client.py`, the ORM default, and the seed loader.
+- The chat metering path forwards the end `user` to the gateway and tags events
+  with agent + tools + outcome for per-user attribution.
+
+### Fixed
+- Removed dead `claude-3.5-haiku` references that 404'd the agent default.
+- Synced version declarations (`app/__init__.py`, `app/main.py`,
+  `frontend/package.json`, lockfile) that had drifted across 1.12–1.15.
+
+### Operations
+- Pruned the live roster 44 → 28 agents: deleted 16 unused seed-demo agents
+  (zero real usage, no app binding); kept all app/platform-registered agents
+  (Crisis-Ops litigation suite, `gflow`, Project-Ops, Dr. Glitter Mane,
+  Maj. Recon) and the used core (`the-general`, `gunny`, `majik`, `claude`).
+  Pure data change — full backup taken; startup seeder is skip-if-non-empty so
+  it does not resurrect them.
+
 ## [1.13.0] — 2026-04-30
 
 Persistent scheduled-runs surface. Brigade now owns recurring/monitoring
