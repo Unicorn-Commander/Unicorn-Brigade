@@ -79,31 +79,74 @@ def is_local_route(provider: Optional[str], model: Optional[str]) -> bool:
     return False
 
 
-def _build_event_envelope(
-    user: str,
-    model: str,
-    tokens: int,
-    cost: float,
-    transaction_id: str,
-    byok: bool = False,
-) -> dict:
-    props = {
-        "model": model or "unknown",
-        "tokens": str(tokens),
-        "cost": f"{cost:.8f}",
-        "user": user,
-    }
-    if byok:
-        props["byok"] = True
+# Tools whose use signals SPECIALIZED knowledge / RAG and should bill at a
+# higher value tier. This is the policy knob for the RAG surcharge — extend it
+# as new knowledge/RAG/specialist tools are added. (Agent-level specialization
+# is better expressed via the agent's billing_tier; this catches a generic
+# agent that reaches for specialized knowledge mid-task.)
+KNOWLEDGE_TOOLS = {
+    "knowledge_query", "knowledge_store", "agentic_rag",
+    "cdr_search", "cdr_quick_answer", "cdr_deep_research", "deep_research", "quick_answer",
+    "stable_knowledge_search",
+}
+
+
+def rag_used(tools_used) -> bool:
+    """True when the chat used a specialized knowledge/RAG tool."""
+    return any(name in KNOWLEDGE_TOOLS for name in (tools_used or []))
+
+
+def classify_rate_tier(agent: Optional[dict], used_rag: bool) -> str:
+    """The value tier for a chat. An explicit per-agent billing_tier wins;
+    otherwise specialized-knowledge use bumps the tier. Default 'standard'.
+    Dollar rates for each tier live in the Lago plan, not here."""
+    agent = agent or {}
+    tier = (agent.get("billingTier") or agent.get("billing_tier") or "").strip().lower()
+    if tier:
+        return tier
+    return "specialized" if used_rag else "standard"
+
+
+def _now_ts() -> int:
+    return int(datetime.utcnow().timestamp())
+
+
+def _envelope(code: str, user: str, properties: dict, transaction_id: str) -> dict:
     return {
         "event": {
             "transaction_id": transaction_id,
             "external_customer_id": user,
-            "code": "ai_api_call",
-            "timestamp": int(datetime.utcnow().timestamp()),
-            "properties": props,
+            "code": code,
+            "timestamp": _now_ts(),
+            "properties": properties,
         }
     }
+
+
+def _value_dims(
+    agent_id=None, agent_name=None, agent_domain=None,
+    tools_used=None, used_rag=False, rate_tier=None, rate_multiplier=None,
+) -> dict:
+    """Optional per-agent / value dimensions for an event's properties. All
+    optional + string-valued, so Lago and downstream consumers stay
+    backward-compatible (they ignore unknown keys)."""
+    p = {}
+    if agent_id:
+        p["agent_id"] = agent_id
+    if agent_name:
+        p["agent_name"] = agent_name
+    if agent_domain:
+        p["agent_domain"] = agent_domain
+    if tools_used:
+        p["tools_used"] = ",".join(tools_used)
+        p["tool_count"] = str(len(tools_used))
+    if used_rag:
+        p["rag_used"] = "true"
+    if rate_tier:
+        p["rate_tier"] = rate_tier
+    if rate_multiplier is not None:
+        p["rate_multiplier"] = f"{rate_multiplier}"
+    return p
 
 
 async def _mirror_to_ops_center_webhook(envelope: dict) -> bool:
@@ -139,31 +182,11 @@ async def _mirror_to_ops_center_webhook(envelope: dict) -> bool:
         return False
 
 
-async def emit_ai_api_call(
-    user: str,
-    model: str,
-    tokens: int,
-    cost: float,
-    transaction_id: Optional[str] = None,
-    byok: bool = False,
-) -> bool:
-    """Emit a single ``ai_api_call`` event and trigger credit deduction.
-
-    Two-step, independent best-effort:
-      1. POST to Lago /api/v1/events  (audit + billing aggregation)
-      2. POST same envelope as a ``event.emitted`` webhook to Ops-Center
-         so the credit balance decrements right now.
-
-    Either leg failing won't break the other. Returns True if Lago accepted
-    the event.
-    """
-    if not user or tokens <= 0:
-        return False
-
-    tx = transaction_id or f"brigade-{_uuid.uuid4()}"
-    envelope = _build_event_envelope(user, model, tokens, cost, tx, byok=byok)
-
-    # ---- 1. Lago emission ------------------------------------------------
+async def _post_event(envelope: dict, mirror: bool) -> bool:
+    """POST an event to Lago (best-effort) and, when ``mirror`` is set, also to
+    the Ops-Center deduction webhook. Returns True if Lago accepted it. Never
+    raises."""
+    user = envelope["event"].get("external_customer_id")
     lago_ok = False
     if LAGO_API_URL and LAGO_API_KEY:
         try:
@@ -182,16 +205,90 @@ async def emit_ai_api_call(
                 # No matching Lago customer — common for free-tier users.
                 logger.debug(f"Lago 422 for user={user} (likely unknown customer)")
             else:
-                logger.warning(
-                    f"Lago event POST failed: {r.status_code} {r.text[:200]}"
-                )
+                logger.warning(f"Lago event POST failed: {r.status_code} {r.text[:200]}")
         except Exception as e:
             logger.warning(f"Lago event emission failed: {e}")
     else:
         logger.debug("Lago not configured; skipping Lago leg")
 
-    # ---- 2. Ops-Center mirror (deduction) --------------------------------
-    # Fire-and-forget-ish; we await but don't fail-out on mirror errors.
-    await _mirror_to_ops_center_webhook(envelope)
-
+    if mirror:
+        # Fire-and-forget-ish; we await but don't fail-out on mirror errors.
+        await _mirror_to_ops_center_webhook(envelope)
     return lago_ok
+
+
+async def emit_ai_api_call(
+    user: str,
+    model: str,
+    tokens: int,
+    cost: float,
+    transaction_id: Optional[str] = None,
+    byok: bool = False,
+    agent_id: Optional[str] = None,
+    agent_name: Optional[str] = None,
+    agent_domain: Optional[str] = None,
+    tools_used: Optional[list] = None,
+    used_rag: bool = False,
+    rate_tier: Optional[str] = None,
+    rate_multiplier: Optional[float] = None,
+) -> bool:
+    """Emit the LLM-cost (COGS) ``ai_api_call`` event and trigger credit
+    deduction. Billing behavior is unchanged — still only the local-GPU token
+    cost, still mirrored to the deduction webhook. The optional value dimensions
+    (agent_id, tools_used, rag_used, rate_tier, ...) are added to ``properties``
+    for visibility/analytics and are backward-compatible.
+    """
+    if not user or tokens <= 0:
+        return False
+    tx = transaction_id or f"brigade-{_uuid.uuid4()}"
+    props = {
+        "model": model or "unknown",
+        "tokens": str(tokens),
+        "cost": f"{cost:.8f}",
+        "user": user,
+    }
+    if byok:
+        props["byok"] = True
+    props.update(_value_dims(agent_id, agent_name, agent_domain, tools_used,
+                             used_rag, rate_tier, rate_multiplier))
+    return await _post_event(_envelope("ai_api_call", user, props, tx), mirror=True)
+
+
+async def emit_agent_work(
+    user: str,
+    agent_id: str,
+    model: Optional[str] = None,
+    tokens: int = 0,
+    outcome: str = "success",
+    agent_name: Optional[str] = None,
+    agent_domain: Optional[str] = None,
+    tools_used: Optional[list] = None,
+    used_rag: bool = False,
+    rate_tier: str = "standard",
+    rate_multiplier: float = 1.0,
+    transaction_id: Optional[str] = None,
+) -> bool:
+    """Emit the per-agent VALUE event — the unit a customer is billed for: the
+    work an agent delivered, not raw LLM tokens. Carries user + agent + tools +
+    rag + outcome so usage is attributable per-agent AND per-user — notably for
+    ``uc/``-gateway routes, where the LLM-cost path is skipped and the end user
+    would otherwise be invisible.
+
+    Recorded to Lago for visibility/aggregation but deliberately NOT mirrored to
+    the immediate-deduction webhook: this event charges nothing until a Lago
+    billable-metric + plan is configured for ``agent_work``. So emitting it is
+    additive and changes nothing about what's billed today.
+    """
+    if not user or not agent_id:
+        return False
+    tx = transaction_id or f"brigade-work-{_uuid.uuid4()}"
+    props = {
+        "user": user,
+        "agent_id": agent_id,
+        "model": model or "unknown",
+        "tokens": str(tokens),
+        "outcome": outcome,
+    }
+    props.update(_value_dims(None, agent_name, agent_domain, tools_used,
+                             used_rag, rate_tier, rate_multiplier))
+    return await _post_event(_envelope("agent_work", user, props, tx), mirror=False)

@@ -34,8 +34,11 @@ from app.observability import get_tracer
 from app.agents.deep_research import DeepResearchAgent, ResearchDepth
 from app.integrations.lago import (
     emit_ai_api_call,
+    emit_agent_work,
     estimate_local_cost,
     is_local_route,
+    rag_used,
+    classify_rate_tier,
 )
 from app.integrations.ops_center_billing import get_billing_state
 import asyncio
@@ -351,14 +354,27 @@ async def _meter_chat_to_lago(
     user_email: Optional[str],
     model: Optional[str],
     response_dict: Optional[dict],
+    agent: Optional[dict] = None,
+    tools_called: Optional[list] = None,
+    outcome: str = "success",
 ) -> None:
-    """Best-effort: emit a single ``ai_api_call`` event for a completed chat.
+    """Meter a completed chat with TWO independent best-effort events:
 
-    Skips cloud-routed calls (LiteLLM / OpenRouter emit their own events)
-    and no-ops when usage is missing. Never raises.
+      * ``ai_api_call`` (LLM COGS) — unchanged behavior: only local-GPU routes,
+        mirrored to the credit-deduction webhook. Cloud/gateway routes are
+        skipped (they meter themselves). Now also carries the value dims for
+        analytics.
+      * ``agent_work`` (per-agent VALUE) — emitted for EVERY chat that has a
+        user + agent, on ALL routes, carrying agent/user/tools/rag/outcome.
+        This is what makes usage attributable per-agent AND per-user even on
+        ``uc/`` routes, and is the basis for value-based billing. It charges
+        nothing until a Lago plan is configured for it.
+
+    Never raises.
     """
-    if not user_email or not response_dict:
+    if not user_email:
         return
+    response_dict = response_dict or {}
     provider = response_dict.get("provider")
     usage = response_dict.get("usage") or {}
     total_tokens = int(
@@ -366,21 +382,55 @@ async def _meter_chat_to_lago(
         or (usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0)
         or 0
     )
-    if total_tokens <= 0:
-        return
     model_used = response_dict.get("model") or model
-    if not is_local_route(provider, model_used):
-        return
-    cost = estimate_local_cost(total_tokens)
+    agent = agent or {}
+    agent_id = agent.get("id")
+    tools_used = [t for t in (tools_called or []) if t]
+    used_rag = rag_used(tools_used)
+    rate_tier = classify_rate_tier(agent, used_rag)
     try:
-        await emit_ai_api_call(
-            user=user_email,
-            model=model_used or "unknown",
-            tokens=total_tokens,
-            cost=cost,
-        )
-    except Exception as e:
-        logger.debug(f"Lago emission failed (ignored): {e}")
+        rate_multiplier = float(agent.get("rateMultiplier", agent.get("rate_multiplier", 1.0)) or 1.0)
+    except (TypeError, ValueError):
+        rate_multiplier = 1.0
+    agent_name = agent.get("displayName") or agent.get("name")
+
+    # 1) LLM COGS — unchanged conditions (local-GPU routes, tokens > 0).
+    if total_tokens > 0 and is_local_route(provider, model_used):
+        try:
+            await emit_ai_api_call(
+                user=user_email,
+                model=model_used or "unknown",
+                tokens=total_tokens,
+                cost=estimate_local_cost(total_tokens),
+                agent_id=agent_id,
+                agent_name=agent_name,
+                agent_domain=agent.get("domain"),
+                tools_used=tools_used or None,
+                used_rag=used_rag,
+                rate_tier=rate_tier,
+                rate_multiplier=rate_multiplier,
+            )
+        except Exception as e:
+            logger.debug(f"Lago COGS emission failed (ignored): {e}")
+
+    # 2) Per-agent VALUE event — every chat with a user + agent, ALL routes.
+    if agent_id:
+        try:
+            await emit_agent_work(
+                user=user_email,
+                agent_id=agent_id,
+                model=model_used or model,
+                tokens=total_tokens,
+                outcome=outcome,
+                agent_name=agent_name,
+                agent_domain=agent.get("domain"),
+                tools_used=tools_used or None,
+                used_rag=used_rag,
+                rate_tier=rate_tier,
+                rate_multiplier=rate_multiplier,
+            )
+        except Exception as e:
+            logger.debug(f"Lago agent_work emission failed (ignored): {e}")
 
 
 # ---- Pydantic Models ----
@@ -404,6 +454,9 @@ class AgentCreateRequest(BaseModel):
     temperature: Optional[float] = 0.7
     maxTokens: Optional[int] = 2000
     tools: Optional[List[str]] = []
+    billingTier: Optional[str] = "standard"
+    rateMultiplier: Optional[float] = 1.0
+    basePricePerCall: Optional[float] = None
 
 
 class AgentUpdateRequest(BaseModel):
@@ -425,6 +478,9 @@ class AgentUpdateRequest(BaseModel):
     maxTokens: Optional[int] = None
     tools: Optional[List[str]] = None
     accessPolicy: Optional[Dict[str, Any]] = None
+    billingTier: Optional[str] = None
+    rateMultiplier: Optional[float] = None
+    basePricePerCall: Optional[float] = None
 
 
 class ChatRequest(BaseModel):
@@ -987,9 +1043,13 @@ async def chat_with_agent(
             except Exception as mem_err:
                 logger.warning(f"Memory store failed: {mem_err}")
 
-        # Phase 7: meter local-GPU calls to Lago. Cloud-routed calls (ops-center
-        # → LiteLLM, or direct OpenRouter BYOK) are metered elsewhere.
-        await _meter_chat_to_lago(user_email_for_metering, model, result)
+        # Phase 7: meter local-GPU LLM cost to Lago (cloud/gateway routes meter
+        # themselves) + emit the per-agent value event (all routes).
+        await _meter_chat_to_lago(
+            user_email_for_metering, model, result,
+            agent=agent,
+            tools_called=[t.get("name") for t in (tool_calls_log or [])],
+        )
 
         return result
 
@@ -1145,7 +1205,9 @@ async def _stream_chat(
                     "model": response.get("model", model),
                     "provider": response.get("provider"),
                     "usage": response.get("usage", {}),
-                }
+                },
+                agent=agent,
+                tools_called=[t.get("name") for t in (tool_calls_log or [])],
             )
 
             yield "data: [DONE]\n\n"
@@ -1211,7 +1273,9 @@ async def _stream_chat(
                         "model": model,
                         "provider": None,
                         "usage": meter_usage,
-                    }
+                    },
+                    agent=agent,
+                    tools_called=[],
                 )
             except Exception as _meter_err:
                 logger.debug(f"Stream meter failed: {_meter_err}")

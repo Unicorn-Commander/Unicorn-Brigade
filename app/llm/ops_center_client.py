@@ -299,6 +299,11 @@ class OpsCenterLLMClient:
                 "max_tokens": max_tokens,
                 "stream": stream
             }
+            # Pass the end-user id (OpenAI `user` field) so metered upstreams
+            # (UC gateway / LiteLLM / OpenRouter) attribute cost per user, not
+            # just to the gateway key. Ignored by servers that don't use it.
+            if user_id and user_id not in ("anonymous", "dev-bypass", ""):
+                payload["user"] = user_id
 
             if route_type == "local":
                 # Local LLM: no auth needed, direct OpenAI-compatible endpoint
@@ -476,6 +481,8 @@ class OpsCenterLLMClient:
                 # fall back to the estimate.
                 "stream_options": {"include_usage": True},
             }
+            if user_id and user_id not in ("anonymous", "dev-bypass", ""):
+                payload["user"] = user_id
 
             if route_type == "local":
                 headers = {"Content-Type": "application/json"}
@@ -599,6 +606,8 @@ class OpsCenterLLMClient:
                 "tools": tools_payload,
                 "tool_choice": tool_choice,
             }
+            if user_id and user_id not in ("anonymous", "dev-bypass", ""):
+                payload["user"] = user_id
 
             if route_type == "local":
                 headers = {"Content-Type": "application/json"}

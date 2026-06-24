@@ -39,6 +39,13 @@ class Agent(Base):
     temperature = Column(Float, default=0.7)
     max_tokens = Column(Integer, default=2000)
     tools = Column(JSON, default=list)
+    # Per-agent value-billing (additive; neutral defaults = no change to what's
+    # charged today). billing_tier feeds the rate_tier dimension on the
+    # agent_work event; rate_multiplier + base_price_per_call let a Lago plan
+    # price an agent's delivered work above raw LLM cost.
+    billing_tier = Column(String(50), default="standard")
+    rate_multiplier = Column(Float, default=1.0)
+    base_price_per_call = Column(Float, nullable=True)
     # RBAC access policy. Shape (all fields optional; OR semantics, admins always pass):
     #   {"public": true}                         -- anyone can access (default)
     #   {"users": ["alice@x.com", "bob@y.com"]}  -- allowlist by email
@@ -78,6 +85,9 @@ class Agent(Base):
             "temperature": self.temperature,
             "maxTokens": self.max_tokens,
             "tools": self.tools or [],
+            "billingTier": self.billing_tier,
+            "rateMultiplier": self.rate_multiplier,
+            "basePricePerCall": self.base_price_per_call,
             "accessPolicy": self.access_policy,
             "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() + "Z" if self.updated_at else None,

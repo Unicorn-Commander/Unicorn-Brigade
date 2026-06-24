@@ -57,6 +57,9 @@ class AgentRepository:
             temperature=data.get("temperature", 0.7),
             max_tokens=data.get("maxTokens", 2000),
             tools=data.get("tools", []),
+            billing_tier=data.get("billingTier", "standard"),
+            rate_multiplier=data.get("rateMultiplier", 1.0),
+            base_price_per_call=data.get("basePricePerCall"),
         )
         self.session.add(agent)
         await self.session.commit()
@@ -75,6 +78,8 @@ class AgentRepository:
             "displayName": "display_name", "systemPrompt": "system_prompt",
             "agentType": "agent_type", "maxTokens": "max_tokens",
             "accessPolicy": "access_policy",
+            "billingTier": "billing_tier", "rateMultiplier": "rate_multiplier",
+            "basePricePerCall": "base_price_per_call",
         }
         for key, value in updates.items():
             attr = field_map.get(key, key)
