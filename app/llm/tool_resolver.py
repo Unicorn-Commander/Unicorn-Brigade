@@ -162,10 +162,11 @@ if os.getenv("HOMEASSISTANT_TOKEN") or os.getenv("HOMEASSISTANT_URL"):
 else:
     logger.info("Home Assistant tools skipped (HOMEASSISTANT_TOKEN/URL not set)")
 
-# Glitter Mane medical MCP tools — only when the medical platform is configured.
+# Glitter Mane medical tools — only when the medical platform is configured.
 # The agent lives on the medical platform; Brigade registers its tools (glitter_*)
-# so a scoped agent can call them. Legacy SSE transport; see glittermane_mcp_tools.
-if os.getenv("GLITTERMANE_MCP_URL"):
+# so a scoped agent can call them via the platform's per-user REST API (per-user
+# token = RLS). See glittermane_mcp_tools.
+if os.getenv("GLITTERMANE_API_URL"):
     try:
         from app.llm.glittermane_mcp_tools import GLITTERMANE_MCP_TOOLS
         TOOL_REGISTRY.update(GLITTERMANE_MCP_TOOLS)
@@ -173,7 +174,7 @@ if os.getenv("GLITTERMANE_MCP_URL"):
     except ImportError as exc:
         logger.warning(f"Glitter Mane tools not available: {exc}")
 else:
-    logger.info("Glitter Mane tools skipped (GLITTERMANE_MCP_URL not set)")
+    logger.info("Glitter Mane tools skipped (GLITTERMANE_API_URL not set)")
 
 
 def get_tools_for_agent(agent: Dict[str, Any]) -> List[ToolDefinition]:

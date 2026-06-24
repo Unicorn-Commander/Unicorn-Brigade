@@ -1,33 +1,37 @@
-"""Glitter Mane MCP tools — proxy into the Dr. Glitter Mane medical MCP server.
+"""Glitter Mane tools — proxy into the Dr. Glitter Mane medical platform.
 
 Dr. Glitter Mane is a personal-medical-AI agent that LIVES on its own platform:
-the clinical reasoning, specialty routing, and the two-layer emergency/crisis +
-drug-interaction safety net all run *inside* its ``ask`` tool, not here. Brigade
-does not own or re-implement the agent — it registers the platform's tools so a
-Brigade agent scoped to the record's owner can use them. The agent stays remote;
-Brigade just grants access.
+the clinical reasoning, specialty routing, and the two-layer emergency/drug-
+interaction safety net all run *inside* the platform (its consult endpoint), not
+here. Brigade does not own or re-implement the agent — it registers the platform's
+capabilities as tools so a Brigade agent scoped to the record's owner can use them.
+The agent stays remote; Brigade just grants access.
 
 Any agent that lists these tools (``glitter_*``) in its ``tools`` field gets them
 as callable LLM functions.
 
-Transport — Glitter Mane runs the *legacy MCP SSE transport* (FastMCP ``sse``),
-not the Streamable-HTTP transport Project-Ops/Center-Deep use, so each call:
-  1. opens a GET event-stream to ``…/sse`` and reads the ``endpoint`` event to
-     learn the per-session POST URL (``/messages/?session_id=…``),
-  2. POSTs ``initialize`` + ``notifications/initialized`` (responses arrive back
-     on the stream), then
-  3. POSTs ``tools/call`` and reads the matching JSON-RPC response off the stream.
-A fresh session per call keeps the handler stateless and robust.
+Transport — Glitter's per-user auth + RLS live on its REST API (FastAPI,
+``HTTPBearer``), NOT on its MCP-over-SSE server (which is for other MCP clients
+like Claude Desktop and acts as a single fixed service user). So this module calls
+the REST API directly with a per-user token, which is what scopes every read/write
+to the right person.
 
-Auth — mirrors the Project-Ops precedence, plus a trusted-network no-auth default:
-  1. If ``caller_user_id`` is present AND ``GLITTERMANE_JWT_SECRET`` is set, mint a
-     short-lived ``sub=<user>`` / ``aud=glitter-mane`` JWT so the medical platform
-     can scope RLS to the real end user (per-user — the long-term target).
-  2. Else if ``GLITTERMANE_MCP_TOKEN`` is set, send it as a static service bearer.
-  3. Else send no Authorization header — works today over the trusted tailnet,
-     where the MCP acts as a single Glitter service user.
+  * Most tools are a single authenticated GET (reads) or POST (writes/ingest).
+  * ``ask`` is the consult: POST /api/consultations to open one, then POST a
+    message whose response is an SSE token stream we accumulate into the answer.
 
-The whole module is inert unless ``GLITTERMANE_MCP_URL`` is set (see tool_resolver).
+Auth — per the Glitter dev, shared-secret HS256 (option A):
+  * If ``caller_user_id`` is present AND ``GLITTERMANE_JWT_SECRET`` is set, mint a
+    short-lived ``sub=<caller>`` / ``aud=glitter-mane`` JWT. Glitter resolves the
+    user from ``sub`` and scopes all DB access via per-user RLS (auto-provisioning
+    a no-local-login account on first use).
+  * Else if ``GLITTERMANE_STATIC_TOKEN`` is set, use it (service scope).
+  * Else there is no usable auth and calls return an error (the REST API is
+    Bearer-protected). ``needs_caller_context=True`` threads the caller in.
+
+The whole module is inert unless ``GLITTERMANE_API_URL`` is set (see tool_resolver).
+Production path (later): swap the HS256 mint for uchub RS256 token-exchange
+(aud=glitter-mane); only ``_auth_header`` changes.
 """
 
 import asyncio
@@ -36,7 +40,6 @@ import logging
 import os
 import time
 from typing import Any, Dict, Optional
-from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from jose import jwt as jose_jwt
@@ -45,26 +48,38 @@ from app.llm.ops_center_client import ToolDefinition, ToolParameter
 
 logger = logging.getLogger(__name__)
 
-GLITTERMANE_MCP_URL = os.getenv("GLITTERMANE_MCP_URL", "")
-# Static service bearer — fallback when no per-user secret/caller is available.
-GLITTERMANE_MCP_TOKEN = os.getenv("GLITTERMANE_MCP_TOKEN", "")
-# When set, Brigade mints a short-lived per-user JWT (sub=caller, aud below) for
-# each call so the medical platform enforces per-user RLS. Until then we fall
-# back to the service bearer or (on the trusted tailnet) no auth.
+GLITTERMANE_API_URL = os.getenv("GLITTERMANE_API_URL", "")
+# Optional static service bearer (fallback when no per-user secret/caller).
+GLITTERMANE_STATIC_TOKEN = os.getenv("GLITTERMANE_STATIC_TOKEN", "")
+# Shared HS256 secret for minting per-user tokens. When set + a caller is
+# present, Brigade mints sub=<caller>/aud below so Glitter enforces per-user RLS.
 GLITTERMANE_JWT_SECRET = os.getenv("GLITTERMANE_JWT_SECRET", "")
 GLITTERMANE_JWT_AUD = os.getenv("GLITTERMANE_JWT_AUD", "glitter-mane")
 GLITTERMANE_USER_JWT_TTL = int(os.getenv("GLITTERMANE_USER_JWT_TTL", "300"))  # 5 min
 # Consults route to a real medical model — keep the ceiling generous.
-GLITTERMANE_MCP_TIMEOUT = float(os.getenv("GLITTERMANE_MCP_TIMEOUT", "150.0"))
+GLITTERMANE_TIMEOUT = float(os.getenv("GLITTERMANE_TIMEOUT", "150.0"))
 
-_PROTOCOL_VERSION = "2024-11-05"
-_CLIENT_INFO = {"name": "unicorn-brigade", "version": "1"}
-
-
-def _origin(url: str) -> str:
-    """Scheme+host of the SSE URL, for resolving the relative session endpoint."""
-    parts = urlsplit(url)
-    return urlunsplit((parts.scheme, parts.netloc, "", "", ""))
+# tool name -> REST path. ``ask`` is handled specially (consult + SSE stream).
+_GET_PATHS = {
+    "get_health_summary": "/api/dashboard",
+    "get_timeline": "/api/timeline",
+    "get_visit_summary": "/api/export/summary",
+    "list_conditions": "/api/conditions",
+    "list_medications": "/api/medications",
+    "list_allergies": "/api/allergies",
+    "list_labs": "/api/labs",
+    "list_vitals": "/api/vitals",
+    "list_models": "/api/models",
+}
+_POST_PATHS = {
+    "ingest_text": "/api/ingest/text",
+    "add_condition": "/api/conditions",
+    "add_medication": "/api/medications",
+    "add_allergy": "/api/allergies",
+    "add_vital": "/api/vitals",
+    "add_care_plan_item": "/api/care-plan",
+    "add_appointment": "/api/appointments",
+}
 
 
 def _mint_user_jwt(user_id: str) -> str:
@@ -78,127 +93,107 @@ def _mint_user_jwt(user_id: str) -> str:
     return jose_jwt.encode(payload, GLITTERMANE_JWT_SECRET, algorithm="HS256")
 
 
-def _auth_headers(caller_user_id: Optional[str]) -> Dict[str, str]:
+def _auth_header(caller_user_id: Optional[str]) -> Dict[str, str]:
     if caller_user_id and GLITTERMANE_JWT_SECRET:
         try:
             return {"Authorization": f"Bearer {_mint_user_jwt(caller_user_id)}"}
         except Exception as exc:  # noqa: BLE001
-            logger.warning(f"glittermane-mcp: per-user JWT mint failed for {caller_user_id}: {exc}")
-    if GLITTERMANE_MCP_TOKEN:
-        return {"Authorization": f"Bearer {GLITTERMANE_MCP_TOKEN}"}
+            logger.warning(f"glittermane: per-user JWT mint failed for {caller_user_id}: {exc}")
+    if GLITTERMANE_STATIC_TOKEN:
+        return {"Authorization": f"Bearer {GLITTERMANE_STATIC_TOKEN}"}
     return {}
 
 
-def _rpc(method: str, mid: int, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    body: Dict[str, Any] = {"jsonrpc": "2.0", "id": mid, "method": method}
-    if params is not None:
-        body["params"] = params
-    return body
+async def _consult(question: str, headers: Dict[str, str], base: str,
+                   timeout: httpx.Timeout) -> Dict[str, Any]:
+    """The ``ask`` flow: open a consultation, post the question, accumulate the
+    SSE token stream into the answer."""
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        c = await client.post(f"{base}/api/consultations", headers=headers,
+                              json={"title": (question or "Consult")[:80]})
+        if c.status_code >= 400:
+            return {"error": f"glittermane create-consult HTTP {c.status_code}: {c.text[:200]}"}
+        cid = (c.json() or {}).get("id")
+        if not cid:
+            return {"error": "glittermane: consultation id missing"}
+        tokens, specialties = [], []
+        async with client.stream(
+            "POST", f"{base}/api/consultations/{cid}/messages",
+            headers=headers, json={"content": question},
+        ) as r:
+            if r.status_code >= 400:
+                body = (await r.aread()).decode("utf-8", "ignore")
+                return {"error": f"glittermane consult HTTP {r.status_code}: {body[:200]}"}
+            async for raw in r.aiter_lines():
+                line = raw.strip()
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    ev = json.loads(line[5:].strip())
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                t = ev.get("type")
+                if t == "token":
+                    tokens.append(ev.get("content", ""))
+                elif t == "triage":
+                    specialties = ev.get("specialties", specialties)
+                elif t in ("final", "done", "complete"):
+                    if ev.get("answer"):
+                        tokens = [ev["answer"]]
+                    break
+                elif t == "error":
+                    return {"error": f"glittermane consult error: {str(ev)[:200]}"}
+    answer = "".join(tokens).strip()
+    if not answer:
+        return {"error": "glittermane consult returned no answer"}
+    return {"result": {"answer": answer, "specialties": specialties}}
 
 
-async def _read_endpoint(lines) -> str:
-    """Consume SSE lines until the FastMCP ``endpoint`` event; return its path."""
-    event = None
-    async for raw in lines:
-        line = raw.strip()
-        if line.startswith("event:"):
-            event = line.split(":", 1)[1].strip()
-        elif line.startswith("data:"):
-            data = line.split(":", 1)[1].strip()
-            if event == "endpoint":
-                return data
-            event = None
-    raise ValueError("glittermane-mcp: SSE stream closed before endpoint event")
-
-
-async def _read_response(lines, target_id: int) -> Dict[str, Any]:
-    """Consume SSE lines until a JSON-RPC message whose id == target_id."""
-    event = None
-    async for raw in lines:
-        line = raw.strip()
-        if line.startswith("event:"):
-            event = line.split(":", 1)[1].strip()
-        elif line.startswith("data:"):
-            data = line.split(":", 1)[1].strip()
-            event = None
-            try:
-                msg = json.loads(data)
-            except (json.JSONDecodeError, TypeError):
-                continue
-            if isinstance(msg, dict) and msg.get("id") == target_id:
-                return msg
-    raise ValueError(f"glittermane-mcp: SSE stream closed before response id={target_id}")
-
-
-async def _call_mcp(
-    tool_name: str,
-    arguments: Dict[str, Any],
-    caller_user_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    """One stateless legacy-SSE MCP session: open stream → initialize → call."""
-    if not GLITTERMANE_MCP_URL:
-        return {"error": "glittermane-mcp not configured (set GLITTERMANE_MCP_URL)"}
-    headers = _auth_headers(caller_user_id)
-    origin = _origin(GLITTERMANE_MCP_URL)
-    timeout = httpx.Timeout(GLITTERMANE_MCP_TIMEOUT, connect=10.0)
-
-    async def _do() -> Dict[str, Any]:
+async def _rest_call(tool_name: str, args: Dict[str, Any],
+                     caller_user_id: Optional[str] = None) -> Dict[str, Any]:
+    base = GLITTERMANE_API_URL.rstrip("/")
+    if not base:
+        return {"error": "glittermane not configured (set GLITTERMANE_API_URL)"}
+    headers = _auth_header(caller_user_id)
+    if "Authorization" not in headers:
+        return {"error": "glittermane auth unavailable (set GLITTERMANE_JWT_SECRET + caller, or GLITTERMANE_STATIC_TOKEN)"}
+    headers["Content-Type"] = "application/json"
+    timeout = httpx.Timeout(GLITTERMANE_TIMEOUT, connect=10.0)
+    try:
+        if tool_name == "ask":
+            return await asyncio.wait_for(
+                _consult(args.get("question", ""), headers, base, timeout),
+                timeout=GLITTERMANE_TIMEOUT + 15,
+            )
+        path = _GET_PATHS.get(tool_name) or _POST_PATHS.get(tool_name)
+        if not path:
+            return {"error": f"glittermane: unmapped tool {tool_name}"}
         async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream(
-                "GET", GLITTERMANE_MCP_URL,
-                headers={"Accept": "text/event-stream", **headers},
-            ) as resp:
-                if resp.status_code >= 400:
-                    return {"error": f"glittermane-mcp SSE HTTP {resp.status_code}"}
-                lines = resp.aiter_lines()
-                post_url = origin + await _read_endpoint(lines)
-                await client.post(post_url, headers=headers, json=_rpc(
-                    "initialize", 1,
-                    {"protocolVersion": _PROTOCOL_VERSION, "capabilities": {}, "clientInfo": _CLIENT_INFO},
-                ))
-                await _read_response(lines, 1)
-                await client.post(post_url, headers=headers,
-                                  json={"jsonrpc": "2.0", "method": "notifications/initialized"})
-                await client.post(post_url, headers=headers, json=_rpc(
-                    "tools/call", 2, {"name": tool_name, "arguments": arguments or {}},
-                ))
-                return await _read_response(lines, 2)
-
-    try:
-        msg = await asyncio.wait_for(_do(), timeout=GLITTERMANE_MCP_TIMEOUT + 15)
+            if tool_name in _GET_PATHS:
+                resp = await client.get(base + path, headers=headers)
+            else:
+                resp = await client.post(base + path, headers=headers, json=args or {})
+        if resp.status_code >= 400:
+            return {"error": f"glittermane HTTP {resp.status_code}: {resp.text[:200]}"}
+        try:
+            return {"result": resp.json()}
+        except (json.JSONDecodeError, ValueError):
+            return {"result": resp.text}
     except asyncio.TimeoutError:
-        return {"error": f"glittermane-mcp call timed out after {GLITTERMANE_MCP_TIMEOUT}s"}
+        return {"error": f"glittermane call timed out after {GLITTERMANE_TIMEOUT}s"}
     except httpx.TimeoutException:
-        return {"error": f"glittermane-mcp call timed out after {GLITTERMANE_MCP_TIMEOUT}s"}
+        return {"error": f"glittermane call timed out after {GLITTERMANE_TIMEOUT}s"}
     except Exception as exc:  # noqa: BLE001 - defensive boundary; never break a chat
-        logger.error(f"glittermane-mcp call failed for {tool_name}: {exc}")
-        return {"error": f"glittermane-mcp call failed: {exc}"}
-
-    # _do() returns either an early {"error": ...} dict or a JSON-RPC message.
-    if "error" in msg and "result" not in msg:
-        return {"error": str(msg["error"])[:300]}
-    result = msg.get("result", {}) or {}
-    if result.get("isError"):
-        content = result.get("content", [])
-        text = content[0].get("text", "") if content else "tool error"
-        return {"error": str(text)[:300]}
-    content = result.get("content", [])
-    if not content:
-        sc = result.get("structuredContent")
-        return {"result": sc if sc is not None else ""}
-    text = content[0].get("text", "")
-    try:
-        return {"result": json.loads(text)}
-    except (json.JSONDecodeError, TypeError):
-        return {"result": text}
+        logger.error(f"glittermane call failed for {tool_name}: {exc}")
+        return {"error": f"glittermane call failed: {exc}"}
 
 
 def _make_handler(tool_name: str):
     async def handler(caller_user_id: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         # caller_user_id is injected by the tool layer (needs_caller_context=True);
-        # never let it leak into the MCP arguments dict.
+        # never let it leak into the request body.
         args = {k: v for k, v in kwargs.items() if v is not None}
-        return await _call_mcp(tool_name, args, caller_user_id=caller_user_id)
+        return await _rest_call(tool_name, args, caller_user_id=caller_user_id)
     handler.__name__ = f"glitter_{tool_name}_handler"
     return handler
 
@@ -214,7 +209,7 @@ def _read_tool(bare: str, description: str) -> ToolDefinition:
     )
 
 
-# ── Tool definitions (mirror Glitter Mane's MCP tools/list, prefixed glitter_) ─
+# ── Tool definitions (one per Glitter capability, prefixed glitter_) ──────────
 
 ASK_TOOL = ToolDefinition(
     name="glitter_ask",
@@ -224,8 +219,7 @@ ASK_TOOL = ToolDefinition(
         "emergencies and drug interactions (built-in safety net), and returns a "
         "differential plus specific, guideline-cited guidance. USE THIS for ANY health, "
         "symptom, diagnosis, treatment, medication, or lab-interpretation question rather "
-        "than answering medically yourself; pass the user's question verbatim and relay "
-        "the result."
+        "than answering medically yourself; pass the user's question and relay the result."
     ),
     parameters=[
         ToolParameter(name="question", type="string",
@@ -333,11 +327,11 @@ GLITTERMANE_MCP_TOOLS: Dict[str, ToolDefinition] = {
     # The consult (headline) + ingest
     "glitter_ask": ASK_TOOL,
     "glitter_ingest_text": INGEST_TEXT_TOOL,
-    # Record reads (no args)
+    # Record reads
     "glitter_get_health_summary": _read_tool(
         "get_health_summary",
         "Snapshot of the user's health record — active conditions, current meds, recent "
-        "vitals, and counts. A good first call to ground a consult."),
+        "vitals/labs, and counts. A good first call to ground a consult."),
     "glitter_list_conditions": _read_tool("list_conditions", "List the user's medical conditions."),
     "glitter_list_medications": _read_tool("list_medications", "List the user's medications."),
     "glitter_list_allergies": _read_tool("list_allergies", "List the user's allergies."),
