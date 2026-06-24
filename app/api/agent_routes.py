@@ -350,6 +350,13 @@ def _enforce_billing_or_402(user: AuthUser, billing_state: dict) -> None:
         )
 
 
+def _chat_outcome(tool_calls_log) -> str:
+    """'partial' if any tool errored during the chat (the answer was still
+    delivered, just not cleanly), else 'success'. Feeds the value event's
+    outcome dimension."""
+    return "partial" if any(t.get("error") for t in (tool_calls_log or [])) else "success"
+
+
 async def _meter_chat_to_lago(
     user_email: Optional[str],
     model: Optional[str],
@@ -1049,6 +1056,7 @@ async def chat_with_agent(
             user_email_for_metering, model, result,
             agent=agent,
             tools_called=[t.get("name") for t in (tool_calls_log or [])],
+            outcome=_chat_outcome(tool_calls_log),
         )
 
         return result
@@ -1208,6 +1216,7 @@ async def _stream_chat(
                 },
                 agent=agent,
                 tools_called=[t.get("name") for t in (tool_calls_log or [])],
+                outcome=_chat_outcome(tool_calls_log),
             )
 
             yield "data: [DONE]\n\n"

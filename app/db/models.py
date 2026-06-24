@@ -43,8 +43,8 @@ class Agent(Base):
     # charged today). billing_tier feeds the rate_tier dimension on the
     # agent_work event; rate_multiplier + base_price_per_call let a Lago plan
     # price an agent's delivered work above raw LLM cost.
-    billing_tier = Column(String(50), default="standard")
-    rate_multiplier = Column(Float, default=1.0)
+    billing_tier = Column(String(50), nullable=False, server_default="standard", default="standard")
+    rate_multiplier = Column(Float, nullable=False, server_default="1.0", default=1.0)
     base_price_per_call = Column(Float, nullable=True)
     # RBAC access policy. Shape (all fields optional; OR semantics, admins always pass):
     #   {"public": true}                         -- anyone can access (default)

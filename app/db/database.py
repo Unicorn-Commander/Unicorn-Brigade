@@ -37,10 +37,17 @@ async def get_session() -> AsyncSession:
 
 
 async def init_db():
-    """Create all tables (skips existing ones)."""
+    """Create all tables (skips existing ones), then apply additive migrations.
+
+    ``create_all`` only creates missing TABLES; it never adds columns to an
+    existing table. ``run_additive_migrations`` closes that gap idempotently for
+    deployed DBs (and is a harmless no-op on a fresh install where create_all
+    already built the full table)."""
     async with engine.begin() as conn:
         # checkfirst=True prevents errors when indexes/tables already exist
         await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
+    from app.db.migrations import run_additive_migrations
+    await run_additive_migrations(engine)
     logger.info("Database tables created/verified")
 
 

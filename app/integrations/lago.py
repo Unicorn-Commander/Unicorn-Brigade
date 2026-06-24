@@ -96,15 +96,36 @@ def rag_used(tools_used) -> bool:
     return any(name in KNOWLEDGE_TOOLS for name in (tools_used or []))
 
 
+# Known value tiers a Lago plan can price. An agent billing_tier outside this set
+# would silently price at zero (revenue leak), so classify_rate_tier clamps
+# unknown tiers to 'standard'. Extend via BRIGADE_RATE_TIERS (comma-separated)
+# when you add a priced tier to the Lago plan.
+# 'standard' is always present so the clamp target is itself a valid tier even
+# if an operator overrides BRIGADE_RATE_TIERS without it.
+RATE_TIERS = {"standard"} | {
+    t.strip().lower()
+    for t in os.getenv("BRIGADE_RATE_TIERS", "standard,specialized,premium").split(",")
+    if t.strip()
+}
+
+
 def classify_rate_tier(agent: Optional[dict], used_rag: bool) -> str:
-    """The value tier for a chat. An explicit per-agent billing_tier wins;
-    otherwise specialized-knowledge use bumps the tier. Default 'standard'.
-    Dollar rates for each tier live in the Lago plan, not here."""
+    """The value tier for a chat. An explicit (known) per-agent billing_tier
+    wins; otherwise specialized-knowledge use bumps the tier. Default 'standard'.
+    Unknown tiers clamp to 'standard' so they never price at zero. Dollar rates
+    per tier live in the Lago plan, not here."""
     agent = agent or {}
     tier = (agent.get("billingTier") or agent.get("billing_tier") or "").strip().lower()
     if tier:
-        return tier
-    return "specialized" if used_rag else "standard"
+        if tier in RATE_TIERS:
+            return tier
+        logger.warning(
+            f"agent billing_tier '{tier}' not in RATE_TIERS {sorted(RATE_TIERS)}; clamping to 'standard'"
+        )
+        return "standard"
+    if used_rag and "specialized" in RATE_TIERS:
+        return "specialized"
+    return "standard"
 
 
 def _now_ts() -> int:
