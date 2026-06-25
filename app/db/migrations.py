@@ -36,6 +36,116 @@ MIGRATIONS = [
         ALTER TABLE agents ADD COLUMN IF NOT EXISTS base_price_per_call double precision;
         """,
     ),
+    (
+        "20260624_02_agent_affiliation",
+        "Agent affiliation classification (employee/contractor/third_party/frontier)",
+        # Nullable so an unset value is honest; backfill derives a best-guess from
+        # the agent's model (local/uc -> we own it = employee; frontier APIs ->
+        # frontier). The backfill only fills NULLs, so an operator's later manual
+        # reclassification (contractor/third_party, or flipping a specific agent)
+        # is never clobbered on re-deploy.
+        """
+        ALTER TABLE agents ADD COLUMN IF NOT EXISTS affiliation varchar(32);
+        UPDATE agents SET affiliation = CASE
+            WHEN model LIKE 'anthropic/%' OR model LIKE 'claude%'
+              OR model LIKE 'openai/%' OR model LIKE 'gpt%'
+              OR model LIKE 'google/%' OR model LIKE 'gemini%' THEN 'frontier'
+            ELSE 'employee'
+        END WHERE affiliation IS NULL;
+        """,
+    ),
+    (
+        "20260624_03_tool_catalog",
+        "Tool cost/permission catalog + best-guess seed (operator corrects in place)",
+        # cost_tier: free | paid | subscription. permission_level: 1 (basic util/
+        # read) .. 5 (privileged: shell, delegate). external: calls outside our
+        # infra. Seed is a BEST-GUESS starting point -- ON CONFLICT DO NOTHING so
+        # operator edits to the table survive every re-deploy.
+        """
+        CREATE TABLE IF NOT EXISTS tool_catalog (
+            name varchar(100) PRIMARY KEY,
+            display_name varchar(150),
+            description text,
+            cost_tier varchar(20) NOT NULL DEFAULT 'free',
+            permission_level integer NOT NULL DEFAULT 1,
+            provider varchar(50),
+            external boolean NOT NULL DEFAULT false,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        INSERT INTO tool_catalog (name, cost_tier, permission_level, provider, external) VALUES
+            ('add_task_comment','free',2,'project_ops',false),
+            ('agentic_rag','free',1,'knowledge',false),
+            ('analytics_sql','free',4,'internal',false),
+            ('calculator','free',1,'internal',false),
+            ('canvas_create','free',2,'canvas',false),
+            ('canvas_edit','free',2,'canvas',false),
+            ('canvas_rewrite','free',2,'canvas',false),
+            ('cdr_deep_research','paid',4,'center_deep',false),
+            ('cdr_quick_answer','paid',1,'center_deep',false),
+            ('cdr_search','paid',1,'center_deep',false),
+            ('create_project','free',3,'project_ops',false),
+            ('create_task','free',2,'project_ops',false),
+            ('database','free',4,'internal',false),
+            ('datetime','free',1,'internal',false),
+            ('delegate_to_agent','free',5,'orchestration',false),
+            ('doc_generate','free',2,'internal',false),
+            ('email','subscription',3,'mail',true),
+            ('file','free',2,'internal',false),
+            ('find_connections','free',1,'knowledge',false),
+            ('find_evidence_gaps','free',2,'legal',false),
+            ('generate_pdf','free',2,'internal',false),
+            ('get_case_summary','free',1,'legal',false),
+            ('get_document_content','free',1,'docs',false),
+            ('get_entity','free',1,'knowledge',false),
+            ('get_project','free',1,'project_ops',false),
+            ('get_recent_activity','free',1,'project_ops',false),
+            ('get_relationships','free',1,'knowledge',false),
+            ('get_strategy','free',1,'legal',false),
+            ('get_timeline','free',1,'knowledge',false),
+            ('glitter_add_allergy','free',4,'glitter',false),
+            ('glitter_add_appointment','free',4,'glitter',false),
+            ('glitter_add_care_plan_item','free',4,'glitter',false),
+            ('glitter_add_condition','free',4,'glitter',false),
+            ('glitter_add_medication','free',4,'glitter',false),
+            ('glitter_add_vital','free',4,'glitter',false),
+            ('glitter_ask','free',3,'glitter',false),
+            ('glitter_get_health_summary','free',3,'glitter',false),
+            ('glitter_get_timeline','free',3,'glitter',false),
+            ('glitter_get_visit_summary','free',3,'glitter',false),
+            ('glitter_ingest_text','free',4,'glitter',false),
+            ('glitter_list_allergies','free',3,'glitter',false),
+            ('glitter_list_conditions','free',3,'glitter',false),
+            ('glitter_list_labs','free',3,'glitter',false),
+            ('glitter_list_medications','free',3,'glitter',false),
+            ('glitter_list_models','free',1,'glitter',false),
+            ('glitter_list_vitals','free',3,'glitter',false),
+            ('http_request','free',4,'internal',true),
+            ('json','free',1,'internal',false),
+            ('kg_query','free',1,'knowledge',false),
+            ('knowledge_graph','free',1,'knowledge',false),
+            ('knowledge_query','free',1,'knowledge',false),
+            ('knowledge_store','free',3,'knowledge',false),
+            ('list_entities','free',1,'knowledge',false),
+            ('list_my_projects','free',1,'project_ops',false),
+            ('list_my_tasks','free',1,'project_ops',false),
+            ('list_project_documents','free',1,'docs',false),
+            ('memory','free',1,'internal',false),
+            ('notify','free',2,'internal',false),
+            ('pdf_extract','free',2,'internal',false),
+            ('search_entities','free',1,'knowledge',false),
+            ('search_evidence','free',1,'legal',false),
+            ('search_knowledge','free',1,'knowledge',false),
+            ('search_projects','free',1,'project_ops',false),
+            ('shell','free',5,'system',false),
+            ('update_billing_fields','free',4,'project_ops',false),
+            ('update_project_status','free',3,'project_ops',false),
+            ('update_task_status','free',2,'project_ops',false),
+            ('upload_document','free',2,'docs',false),
+            ('web_search','paid',1,'web',true)
+        ON CONFLICT (name) DO NOTHING;
+        """,
+    ),
 ]
 
 

@@ -46,6 +46,12 @@ class Agent(Base):
     billing_tier = Column(String(50), nullable=False, server_default="standard", default="standard")
     rate_multiplier = Column(Float, nullable=False, server_default="1.0", default=1.0)
     base_price_per_call = Column(Float, nullable=True)
+    # Workforce classification (additive; nullable = honestly unset). Surfaced to
+    # the roster so both Brigade and Stable can colour-code who is an employee
+    # (local model we own) vs frontier (metered API) vs contractor/third_party.
+    # Best-guessed from `model` on first migrate; operator corrects in place.
+    #   employee | contractor | third_party | frontier
+    affiliation = Column(String(32), nullable=True)
     # RBAC access policy. Shape (all fields optional; OR semantics, admins always pass):
     #   {"public": true}                         -- anyone can access (default)
     #   {"users": ["alice@x.com", "bob@y.com"]}  -- allowlist by email
@@ -88,9 +94,42 @@ class Agent(Base):
             "billingTier": self.billing_tier,
             "rateMultiplier": self.rate_multiplier,
             "basePricePerCall": self.base_price_per_call,
+            "affiliation": self.affiliation,
             "accessPolicy": self.access_policy,
             "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() + "Z" if self.updated_at else None,
+        }
+
+
+class ToolCatalog(Base):
+    """Cost/permission metadata for the tool names agents reference in `tools`.
+
+    Seeded with a best-guess catalog (see app/db/migrations.py) and meant to be
+    corrected in place by an operator. `cost_tier` flags tools that cost money
+    (paid / subscription); `permission_level` (1..5) gates a tool behind agent
+    rank/capability; `external` marks tools that reach outside our infra.
+    """
+    __tablename__ = "tool_catalog"
+
+    name = Column(String(100), primary_key=True)
+    display_name = Column(String(150))
+    description = Column(Text)
+    cost_tier = Column(String(20), nullable=False, server_default="free", default="free")
+    permission_level = Column(Integer, nullable=False, server_default="1", default=1)
+    provider = Column(String(50))
+    external = Column(Boolean, nullable=False, server_default="false", default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "displayName": self.display_name,
+            "description": self.description,
+            "costTier": self.cost_tier,
+            "permissionLevel": self.permission_level,
+            "provider": self.provider,
+            "external": self.external,
         }
 
 
