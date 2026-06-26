@@ -24,19 +24,19 @@ const WIZARD_STEPS = [
         <ul className="space-y-2 text-sm text-slate-400">
           <li className="flex items-start space-x-2">
             <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-white">17 Production Agents</strong> across 12 domains</span>
+            <span><strong className="text-white">Production-ready agents</strong> across multiple domains</span>
           </li>
           <li className="flex items-start space-x-2">
             <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-white">25 Hierarchical Workflows</strong> with real-time tracking</span>
+            <span><strong className="text-white">Hierarchical multi-agent workflows</strong> with real-time tracking</span>
           </li>
           <li className="flex items-start space-x-2">
             <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-white">46 MCP Servers</strong> with ~1,360 tools</span>
+            <span><strong className="text-white">MCP server integrations</strong> with a growing tool catalog</span>
           </li>
           <li className="flex items-start space-x-2">
             <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-white">23 Working Tools</strong> (search, email, memory, browser, etc.)</span>
+            <span><strong className="text-white">Built-in working tools</strong> (search, email, memory, browser, and more)</span>
           </li>
         </ul>
       </div>
@@ -46,7 +46,7 @@ const WIZARD_STEPS = [
   {
     title: 'Chat with an Agent',
     icon: MessageSquare,
-    description: 'Start a conversation with any of our 17 production agents.',
+    description: 'Start a conversation with any of your agents.',
     content: (
       <div className="space-y-4">
         <p className="text-slate-300">
