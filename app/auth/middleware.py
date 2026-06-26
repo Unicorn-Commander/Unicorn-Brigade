@@ -58,6 +58,14 @@ AUTH_BYPASS_ENABLED = AUTH_BYPASS_FLAG and os.getenv("ENVIRONMENT", "production"
 # Session cookie name set by the OIDC callback route.
 OIDC_SESSION_COOKIE = "brigade_session"
 
+EARLY_ACCESS_PATH_PREFIXES = (
+    "/api/v1/agents",
+    "/api/v1/chat",
+    "/api/v1/conversations",
+    "/api/v1/orchestration",
+    "/api/v1/openai",
+)
+
 
 @dataclass
 class AuthUser:
@@ -334,6 +342,41 @@ def _extract_bearer_token(request: Request, creds: Optional[HTTPAuthorizationCre
     return None
 
 
+def _allowed_early_access_emails() -> set[str]:
+    raw = os.getenv("BRIGADE_ALLOWED_EMAILS", "")
+    return {email.strip().lower() for email in raw.split(",") if email.strip()}
+
+
+def _requires_early_access(path: str) -> bool:
+    return any(path.startswith(prefix) for prefix in EARLY_ACCESS_PATH_PREFIXES)
+
+
+def _enforce_early_access(user: AuthUser, path: str) -> None:
+    allowed = _allowed_early_access_emails()
+    if not allowed or not _requires_early_access(path):
+        return
+
+    # Keep service/admin keys usable for bootstrap and federation operations.
+    if user.id == "admin" or user.role == UserRole.ADMIN and not user.email:
+        return
+
+    email = (user.email or "").lower()
+    if email in allowed:
+        return
+
+    logger.warning(
+        "Early access denied: user %s email=%s source=%s path=%s",
+        user.id,
+        email or "<none>",
+        user.auth_source,
+        path,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Brigade early access is not enabled for this account",
+    )
+
+
 async def _resolve_user(
     request: Request,
     api_key: Optional[str],
@@ -406,6 +449,8 @@ async def get_current_user(
             detail="Invalid or missing credentials (X-API-Key or Bearer token)",
             headers={"WWW-Authenticate": f"Bearer, ApiKey realm=\"{AUTH_HEADER}\""},
         )
+
+    _enforce_early_access(user, path)
 
     # Check role authorization
     required_role = get_minimum_role_for_method(path, method)

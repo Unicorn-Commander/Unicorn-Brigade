@@ -34,10 +34,13 @@ async def create_tables():
 
 async def seed_agents():
     """Seed agents from JSON file if table is empty."""
-    seed_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "data", "seed_agents.json"
-    )
+    seed_filename = os.getenv("BRIGADE_SEED_AGENTS_FILE", "seed_agents.json")
+    seed_path = seed_filename
+    if not os.path.isabs(seed_path):
+        seed_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data", seed_filename
+        )
 
     if not os.path.exists(seed_path):
         logger.warning(f"Seed file not found: {seed_path}")
@@ -76,6 +79,11 @@ async def seed_agents():
                 temperature=data.get("temperature", 0.7),
                 max_tokens=data.get("maxTokens", 2000),
                 tools=data.get("tools", []),
+                billing_tier=data.get("billingTier", "standard"),
+                rate_multiplier=data.get("rateMultiplier", 1.0),
+                base_price_per_call=data.get("basePricePerCall"),
+                affiliation=data.get("affiliation"),
+                access_policy=data.get("accessPolicy"),
             )
             session.add(agent)
 
