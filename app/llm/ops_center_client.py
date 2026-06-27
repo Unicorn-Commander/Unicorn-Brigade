@@ -404,7 +404,7 @@ class OpsCenterLLMClient:
                 )
             except Exception:
                 pass
-            logger.error(f"Ops-Center API error: {e.response.status_code} - {e.response.text}")
+            logger.error(f"Ops-Center API error: {e.response.status_code} - {str(e)}")  # str(e) carries the already-read upstream body; e.response.text would raise "streaming content without read()" on the streamed response
             raise
         except Exception as e:
             try:
