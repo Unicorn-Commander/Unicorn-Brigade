@@ -176,6 +176,34 @@ if os.getenv("GLITTERMANE_API_URL"):
 else:
     logger.info("Glitter Mane tools skipped (GLITTERMANE_API_URL not set)")
 
+# iLO / Redfish BMC tools — only when iLO targets are configured. Let an
+# out-of-band specialist (CWO Lights-Out) operate server BMCs directly over
+# Redfish (firmware / power / thermal). Reads run live; mutations (flash, power)
+# preview by default and stay dormant until a human arms ILO_ALLOW_MUTATE. See
+# ilo_redfish_tools.
+if os.getenv("ILO_TARGETS"):
+    try:
+        from app.llm.ilo_redfish_tools import ILO_REDFISH_TOOLS
+        TOOL_REGISTRY.update(ILO_REDFISH_TOOLS)
+        logger.info(f"iLO Redfish BMC tools registered ({len(ILO_REDFISH_TOOLS)} tools)")
+    except ImportError as exc:
+        logger.warning(f"iLO Redfish tools not available: {exc}")
+else:
+    logger.info("iLO Redfish tools skipped (ILO_TARGETS not set)")
+
+# Knowledge-Ops grounding tools — only when the internal KB is configured. Let any
+# agent ground answers in the fleet's internal SOPs/runbooks/hardware docs instead
+# of hallucinating company/infra facts. See knowledge_ops_tools.
+if os.getenv("KNOWLEDGE_OPS_URL"):
+    try:
+        from app.llm.knowledge_ops_tools import KNOWLEDGE_OPS_TOOLS
+        TOOL_REGISTRY.update(KNOWLEDGE_OPS_TOOLS)
+        logger.info(f"Knowledge-Ops tools registered ({len(KNOWLEDGE_OPS_TOOLS)} tools)")
+    except ImportError as exc:
+        logger.warning(f"Knowledge-Ops tools not available: {exc}")
+else:
+    logger.info("Knowledge-Ops tools skipped (KNOWLEDGE_OPS_URL not set)")
+
 
 def get_tools_for_agent(agent: Dict[str, Any]) -> List[ToolDefinition]:
     """

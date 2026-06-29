@@ -1,0 +1,103 @@
+"""Knowledge-Ops grounding tools — let a Brigade agent ground its answers in the
+fleet's INTERNAL knowledge base (SOPs, runbooks, hardware/installer docs, org
+memory) instead of hallucinating company/infra facts.
+
+Knowledge-Ops is the federation/dispatcher KB service (FastAPI, container
+``knowledge-ops`` on bigboy, internal ``:8765`` on the same ``unicorn-network``
+the Brigade runtime is on). It federates a wiki, file-index, Qdrant, FalkorDB
+org-memory, and Center Deep behind two routes:
+
+  * ``POST /kb.ground``  -> a grounded answer with cited sources
+  * ``POST /kb.search``  -> raw matching passages (for the model to cite itself)
+
+(The routes use a dot, not a slash — ``/kb.ground``, not ``/kb/ground``.)
+
+These tools are thin, defensive HTTP clients: any missing config, HTTP error,
+timeout, or non-JSON body returns gracefully and NEVER raises into the tool loop.
+Registered only when ``KNOWLEDGE_OPS_URL`` is set (see tool_resolver).
+"""
+
+import logging
+import os
+from typing import Any, Dict, Optional
+
+import httpx
+
+from app.llm.ops_center_client import ToolDefinition, ToolParameter
+
+logger = logging.getLogger(__name__)
+
+# In-cluster URL; on bigboy the Brigade runtime reaches the KB by DNS name.
+KNOWLEDGE_OPS_URL = os.getenv("KNOWLEDGE_OPS_URL", "http://knowledge-ops:8765")
+# Optional bearer (the internal route needs none; set if fronted by auth). Never logged.
+KNOWLEDGE_OPS_TOKEN = os.getenv("KNOWLEDGE_OPS_TOKEN", "")
+KNOWLEDGE_OPS_TIMEOUT = float(os.getenv("KNOWLEDGE_OPS_TIMEOUT", "30.0"))
+_DEFAULT_K = 5
+
+
+async def _post(route: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    """One defensive POST to a Knowledge-Ops route. Returns a dict; never raises."""
+    headers = {"Content-Type": "application/json"}
+    if KNOWLEDGE_OPS_TOKEN:
+        headers["Authorization"] = f"Bearer {KNOWLEDGE_OPS_TOKEN}"
+    url = f"{KNOWLEDGE_OPS_URL.rstrip('/')}/{route}"
+    try:
+        async with httpx.AsyncClient(timeout=KNOWLEDGE_OPS_TIMEOUT) as client:
+            resp = await client.post(url, headers=headers, json=body)
+        if resp.status_code >= 400:
+            logger.warning("knowledge-ops %s HTTP %s", route, resp.status_code)
+            return {"error": f"knowledge-ops {route} HTTP {resp.status_code}: {resp.text[:200]}"}
+        try:
+            return resp.json()
+        except Exception:  # noqa: BLE001 - unexpected non-JSON 2xx
+            return {"error": "knowledge-ops returned a non-JSON response"}
+    except httpx.TimeoutException:
+        return {"error": f"knowledge-ops {route} timed out after {KNOWLEDGE_OPS_TIMEOUT}s"}
+    except Exception as exc:  # noqa: BLE001 - defensive boundary
+        logger.error("knowledge-ops %s failed: %s", route, exc)
+        return {"error": f"knowledge-ops {route} failed: {exc}"}
+
+
+async def _ground_handler(query: str, k: int = _DEFAULT_K, **_) -> Dict[str, Any]:
+    return await _post("kb.ground", {"query": query, "k": k})
+
+
+async def _search_handler(query: str, k: int = _DEFAULT_K, **_) -> Dict[str, Any]:
+    return await _post("kb.search", {"query": query, "k": k})
+
+
+KNOWLEDGE_OPS_GROUND_TOOL = ToolDefinition(
+    name="knowledge_ops_ground",
+    description=(
+        "Ground a question in the fleet's INTERNAL Knowledge-Ops KB (SOPs, runbooks, "
+        "hardware/installer/gateway docs, org memory) and get back a grounded answer "
+        "with cited sources. Use this BEFORE answering anything about the company's own "
+        "infrastructure, hardware, procedures, or history — do not rely on memory for "
+        "internal facts."
+    ),
+    parameters=[
+        ToolParameter(name="query", type="string", description="The question to ground.", required=True),
+        ToolParameter(name="k", type="number", description="How many sources to pull (default 5).", required=False, default=_DEFAULT_K),
+    ],
+    handler=_ground_handler,
+)
+
+KNOWLEDGE_OPS_SEARCH_TOOL = ToolDefinition(
+    name="knowledge_ops_search",
+    description=(
+        "Search the internal Knowledge-Ops KB for raw matching passages (text + source "
+        "path + score) so you can read and cite them yourself. Use when you want the "
+        "underlying runbook/SOP excerpts rather than a synthesized answer."
+    ),
+    parameters=[
+        ToolParameter(name="query", type="string", description="What to look for in the internal docs.", required=True),
+        ToolParameter(name="k", type="number", description="Number of passages (default 5).", required=False, default=_DEFAULT_K),
+    ],
+    handler=_search_handler,
+)
+
+
+KNOWLEDGE_OPS_TOOLS: Dict[str, ToolDefinition] = {
+    "knowledge_ops_ground": KNOWLEDGE_OPS_GROUND_TOOL,
+    "knowledge_ops_search": KNOWLEDGE_OPS_SEARCH_TOOL,
+}
