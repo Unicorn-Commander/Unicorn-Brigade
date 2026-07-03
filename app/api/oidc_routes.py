@@ -156,6 +156,7 @@ class CheckPermissionRequest(BaseModel):
 
 @router.get("/auth/oidc/login", response_model=LoginResponse, tags=["auth"])
 async def oidc_login(
+    request: Request,
     redirect_after: Optional[str] = Query(
         None,
         description="Optional frontend path to return to after login (e.g. /dashboard)",
@@ -167,6 +168,10 @@ async def oidc_login(
     Returns a JSON payload with the Keycloak ``authUrl`` the frontend should
     redirect the browser to. Uses PKCE (S256) and a one-time ``state`` value
     to protect against CSRF.
+
+    When the browser NAVIGATES here directly (Accept: text/html — e.g. the
+    401 handler set window.location to this endpoint), respond with a 302
+    into Keycloak instead of showing the JSON payload.
     """
     if not keycloak_enabled():
         raise HTTPException(
@@ -195,6 +200,10 @@ async def oidc_login(
     }
     auth_url = f"{_auth_endpoint()}?{urlencode(params)}"
     logger.info("OIDC login initiated (state=%s)", state[:8])
+
+    if "text/html" in (request.headers.get("accept") or ""):
+        return RedirectResponse(auth_url, status_code=302)
+
     return LoginResponse(authUrl=auth_url, state=state)
 
 
