@@ -19,6 +19,30 @@ import { API_BASE } from './apiBase';
 const JWT_KEY = 'brigade_jwt';
 const JWT_EXPIRES_AT_KEY = 'brigade_jwt_expires_at';
 
+// Single-flight silent session refresh. The refresh token lives in an
+// HttpOnly cookie, so renewal is a cookie-authenticated POST the backend
+// answers by re-issuing the session cookies. Many parallel requests can 401
+// at the same instant when the access token lapses — they all await the one
+// refresh instead of stampeding Keycloak.
+let refreshInFlight = null;
+
+async function trySilentRefresh() {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(`${API_BASE}/auth/oidc/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
 function buildUrl(path, params) {
   const raw = /^https?:\/\//.test(path)
     ? path
@@ -50,13 +74,17 @@ export async function apiFetch(path, options = {}) {
 
   let response = await doFetch();
 
-  if (response.status === 401) {
+  if (response.status === 401 && !path.includes('/auth/')) {
+    // A stale cached JWT must never mask a valid session cookie.
     if (localStorage.getItem(JWT_KEY)) {
       localStorage.removeItem(JWT_KEY);
       localStorage.removeItem(JWT_EXPIRES_AT_KEY);
+    }
+    // Access token lapsed — renew the session cookie silently and retry.
+    if (await trySilentRefresh()) {
       response = await doFetch();
     }
-    if (response.status === 401 && redirectOn401 && !path.includes('/auth/')) {
+    if (response.status === 401 && redirectOn401) {
       handleUnauthorized();
     }
   }

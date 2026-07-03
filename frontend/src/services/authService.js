@@ -166,7 +166,17 @@ class AuthService {
       return data;
     } catch (error) {
       if (error?.response?.status === 401) {
-        return null;
+        // Access token lapsed but the HttpOnly refresh cookie may still be
+        // good — renew the session silently before declaring logged-out.
+        try {
+          await this.refreshToken();
+          const { data } = await axios.get(`${API_URL}/auth/me`, {
+            withCredentials: true
+          });
+          return data;
+        } catch {
+          return null;
+        }
       }
       throw error;
     }

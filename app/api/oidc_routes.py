@@ -145,7 +145,7 @@ class LoginResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: Optional[str] = None
 
 
 class CheckPermissionRequest(BaseModel):
@@ -319,6 +319,18 @@ async def oidc_callback(
     landing = f"{landing}{sep}login=success"
 
     response = RedirectResponse(url=landing, status_code=302)
+    _set_session_cookies(response, tokens)
+    logger.info("OIDC login completed, session cookie set")
+    return response
+
+
+def _set_session_cookies(response, tokens: Dict[str, Any]) -> None:
+    """Set the session (access-token) and refresh cookies from a Keycloak
+    token response. Shared by the login callback and the refresh endpoint so
+    both write identical cookie attributes."""
+    access_token = tokens.get("access_token")
+    refresh_token = tokens.get("refresh_token")
+    expires_in = int(tokens.get("expires_in", 3600) or 3600)
     response.set_cookie(
         key=OIDC_SESSION_COOKIE,
         value=access_token,
@@ -338,8 +350,6 @@ async def oidc_callback(
             samesite="lax",
             path="/",
         )
-    logger.info("OIDC login completed, session cookie set")
-    return response
 
 
 @router.post("/auth/oidc/logout", tags=["auth"])
@@ -388,14 +398,26 @@ async def oidc_logout_get(request: Request):
 
 
 @router.post("/auth/oidc/refresh", tags=["auth"])
-async def oidc_refresh(body: RefreshRequest):
-    """Exchange a refresh_token for a new access_token at Keycloak."""
+async def oidc_refresh(request: Request, body: Optional[RefreshRequest] = None):
+    """Exchange a refresh token for a new access token at Keycloak.
+
+    The refresh token comes from the request body (legacy/API callers) or,
+    when absent, from the HttpOnly refresh cookie — the SPA can't read that
+    cookie, so this is how the browser session silently renews. On success
+    the session + refresh cookies are re-issued.
+    """
     if not keycloak_enabled():
         raise HTTPException(status_code=503, detail="Keycloak SSO disabled")
 
+    refresh_token = (body.refresh_token if body else None) or request.cookies.get(
+        f"{OIDC_SESSION_COOKIE}_refresh"
+    )
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="no_refresh_token")
+
     data = {
         "grant_type": "refresh_token",
-        "refresh_token": body.refresh_token,
+        "refresh_token": refresh_token,
         "client_id": _client_id(),
     }
     secret = _client_secret()
@@ -414,9 +436,25 @@ async def oidc_refresh(body: RefreshRequest):
         raise HTTPException(status_code=502, detail="refresh_failed") from exc
 
     if resp.status_code != 200:
-        raise HTTPException(status_code=401, detail=resp.json())
+        # Refresh token expired/revoked — clear the dead cookies so the
+        # client falls through to a clean login instead of looping.
+        response = JSONResponse(
+            {"detail": "refresh_rejected"}, status_code=401
+        )
+        response.delete_cookie(OIDC_SESSION_COOKIE, path="/")
+        response.delete_cookie(f"{OIDC_SESSION_COOKIE}_refresh", path="/")
+        return response
 
-    return resp.json()
+    tokens = resp.json()
+    response = JSONResponse(
+        {
+            "refreshed": True,
+            "expires_in": int(tokens.get("expires_in", 3600) or 3600),
+        }
+    )
+    _set_session_cookies(response, tokens)
+    logger.info("OIDC session refreshed via cookie")
+    return response
 
 
 def _auth_user_to_dict(user: AuthUser) -> Dict[str, Any]:
