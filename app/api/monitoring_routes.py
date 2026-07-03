@@ -14,8 +14,17 @@ from fastapi import APIRouter, HTTPException, status, Query, Depends, Background
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import asyncio
 import logging
+import os
+import time
 
+import httpx
+from sqlalchemy import text
+
+from app.db.database import async_session
+from app.services.scheduler import get_scheduler
+from app.api.system_routes import local_llm_base_url, ops_center_base_url
 from app.agents.monitoring_agent import (
     MonitoringAgent,
     AlertSeverity,
@@ -300,6 +309,169 @@ class MonitoringStatusResponse(BaseModel):
     metrics: Dict[str, int]
 
 
+# ============== Built-in Platform Service Checks ==============
+#
+# Real async health probes for the services Brigade actually depends on.
+# Every check is short-timeout and never raises: failures come back as an
+# "unhealthy" entry with the error in `detail`.
+
+PROBE_TIMEOUT_SECONDS = 2.0
+
+
+def _elapsed_ms(start: float) -> float:
+    return round((time.monotonic() - start) * 1000, 1)
+
+
+def _err_detail(e: Exception) -> str:
+    return (str(e) or type(e).__name__)[:200]
+
+
+async def _check_database() -> Dict[str, Any]:
+    """PostgreSQL liveness: SELECT 1 on the app's async engine."""
+    start = time.monotonic()
+    try:
+        async with async_session() as session:
+            await asyncio.wait_for(
+                session.execute(text("SELECT 1")), timeout=PROBE_TIMEOUT_SECONDS
+            )
+        return {
+            "name": "database",
+            "status": "healthy",
+            "latency_ms": _elapsed_ms(start),
+            "detail": "PostgreSQL SELECT 1 ok",
+        }
+    except Exception as e:
+        return {
+            "name": "database",
+            "status": "unhealthy",
+            "latency_ms": _elapsed_ms(start),
+            "detail": _err_detail(e),
+        }
+
+
+async def _check_falkordb() -> Dict[str, Any]:
+    """FalkorDB liveness: RESP PING over a raw TCP connection."""
+    host = os.getenv("FALKORDB_HOST", "unicorn-falkordb")
+    port = int(os.getenv("FALKORDB_PORT", "6379"))
+    target = f"{host}:{port}"
+    start = time.monotonic()
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port), timeout=PROBE_TIMEOUT_SECONDS
+        )
+        try:
+            writer.write(b"PING\r\n")
+            await asyncio.wait_for(writer.drain(), timeout=PROBE_TIMEOUT_SECONDS)
+            reply = await asyncio.wait_for(
+                reader.read(32), timeout=PROBE_TIMEOUT_SECONDS
+            )
+        finally:
+            writer.close()
+        if reply.startswith(b"+PONG"):
+            status_str, detail = "healthy", f"{target} PING ok"
+        elif reply:
+            # e.g. -NOAUTH: the server answered, so it's up but not fully probeable
+            status_str = "degraded"
+            detail = f"{target} replied: {reply[:32].decode(errors='replace').strip()}"
+        else:
+            status_str, detail = "degraded", f"{target} connected, empty PING reply"
+        return {
+            "name": "falkordb",
+            "status": status_str,
+            "latency_ms": _elapsed_ms(start),
+            "detail": detail,
+        }
+    except Exception as e:
+        return {
+            "name": "falkordb",
+            "status": "unhealthy",
+            "latency_ms": _elapsed_ms(start),
+            "detail": f"{target} {_err_detail(e)}",
+        }
+
+
+async def _check_http_service(name: str, url: str) -> Dict[str, Any]:
+    """Generic HTTP GET liveness check (any response < 500 counts as up)."""
+    start = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=PROBE_TIMEOUT_SECONDS) as client:
+            resp = await client.get(url)
+        ok = resp.status_code < 500
+        return {
+            "name": name,
+            "status": "healthy" if ok else "unhealthy",
+            "latency_ms": _elapsed_ms(start),
+            "detail": f"{url} → HTTP {resp.status_code}",
+        }
+    except Exception as e:
+        return {
+            "name": name,
+            "status": "unhealthy",
+            "latency_ms": _elapsed_ms(start),
+            "detail": f"{url} → {_err_detail(e)}",
+        }
+
+
+async def _check_scheduler() -> Dict[str, Any]:
+    """Brigade scheduler state: APScheduler running + registered job count."""
+    start = time.monotonic()
+    try:
+        sched = get_scheduler()
+        engine = getattr(sched, "scheduler", None) if sched else None
+        if engine is not None and engine.running:
+            jobs = len(engine.get_jobs())
+            return {
+                "name": "scheduler",
+                "status": "healthy",
+                "latency_ms": _elapsed_ms(start),
+                "detail": f"APScheduler running, {jobs} scheduled job(s)",
+            }
+        return {
+            "name": "scheduler",
+            "status": "unhealthy",
+            "latency_ms": _elapsed_ms(start),
+            "detail": "Brigade scheduler not running",
+        }
+    except Exception as e:
+        return {
+            "name": "scheduler",
+            "status": "unhealthy",
+            "latency_ms": _elapsed_ms(start),
+            "detail": _err_detail(e),
+        }
+
+
+async def _platform_service_checks() -> List[Dict[str, Any]]:
+    """Run all built-in checks concurrently. Never raises."""
+    checks = [_check_database()]
+    if os.getenv("FALKORDB_ENABLED", "false").lower() == "true":
+        checks.append(_check_falkordb())
+    checks.append(
+        _check_http_service("qdrant", os.getenv("QDRANT_URL", "http://localhost:6333").rstrip("/"))
+    )
+    checks.append(_check_http_service("ops-center-llm", f"{ops_center_base_url()}/health"))
+    checks.append(_check_http_service("local-llm-router", f"{local_llm_base_url()}/v1/models"))
+    if os.getenv("LANGFUSE_ENABLED", "false").lower() == "true":
+        checks.append(
+            _check_http_service("langfuse", os.getenv("LANGFUSE_HOST", "http://localhost:3000").rstrip("/"))
+        )
+    checks.append(_check_scheduler())
+
+    results = await asyncio.gather(*checks, return_exceptions=True)
+    services: List[Dict[str, Any]] = []
+    for result in results:
+        if isinstance(result, Exception):
+            services.append({
+                "name": "unknown",
+                "status": "unhealthy",
+                "latency_ms": 0,
+                "detail": _err_detail(result),
+            })
+        else:
+            services.append(result)
+    return services
+
+
 # ============== Health Endpoints ==============
 
 @router.get("/health", response_model=HealthCheckResponse)
@@ -324,23 +496,35 @@ async def get_system_health(
 
 
 @router.get("/services", response_model=ServiceListResponse)
-async def get_services_status(
-    agent: MonitoringAgent = Depends(get_monitoring_agent),
-):
+async def get_services_status():
     """
-    Get status of all registered services.
+    Get real health status of the platform's core services.
 
-    Returns health check results for all configured services.
+    Runs live async checks (database, FalkorDB, Qdrant, Ops-Center LLM,
+    local LLM router, Langfuse, Brigade scheduler — each with a short
+    timeout) and merges in any checks registered on the MonitoringAgent.
+    Never raises: failures are reported per-service as "unhealthy".
     """
-    try:
-        result = await agent.check_all_services()
-        return ServiceListResponse(**result)
-    except Exception as e:
-        logger.error(f"Error getting services status: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+    services = await _platform_service_checks()
+
+    # Merge in user-registered MonitoringAgent checks, if the agent is up.
+    if monitoring_agent is not None:
+        try:
+            registered = await monitoring_agent.check_all_services()
+            services.extend(registered.get("services", []))
+        except Exception as e:
+            logger.warning(f"MonitoringAgent service checks failed: {e}")
+
+    summary = {"healthy": 0, "unhealthy": 0, "degraded": 0, "unknown": 0}
+    for svc in services:
+        status_str = svc.get("status", "unknown")
+        summary[status_str if status_str in summary else "unknown"] += 1
+
+    return ServiceListResponse(
+        timestamp=datetime.utcnow().isoformat(),
+        services=services,
+        summary=summary,
+    )
 
 
 @router.post("/check", response_model=TriggerCheckResponse)

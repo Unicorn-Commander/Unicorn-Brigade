@@ -60,8 +60,8 @@ const UserProfile = ({
 
   const handleProfileClick = () => {
     setIsOpen(false);
-    // Navigate to profile settings
-    window.location.href = '/settings/profile';
+    // Navigate to settings (profile lives on the Settings page)
+    window.location.href = '/settings';
   };
 
   const handleBillingClick = () => {

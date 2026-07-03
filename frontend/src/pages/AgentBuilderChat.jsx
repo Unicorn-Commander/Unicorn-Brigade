@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Sparkles, Bot, User, Loader, RefreshCw, BookOpen, ChevronRight, ChevronLeft, ChevronDown, Settings, RotateCcw, Rocket, X, CheckCircle, Cpu, Wrench, Shield } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
+import { apiJson } from '../services/http';
 import ReactMarkdown from 'react-markdown';
 import { useNavigate } from 'react-router-dom';
 import AgentPreview from '../components/AgentPreview';
@@ -9,8 +9,6 @@ import ModelSelector from '../components/ModelSelector';
 import ParameterSlider from '../components/ParameterSlider';
 import { GunnyAvatar } from '../components/UnicornBrigadeLogo';
 import useAuth from '../hooks/useAuth';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 const AgentBuilderChat = () => {
   const navigate = useNavigate();
@@ -88,8 +86,8 @@ What would you like to build?`
 
   const loadGunnyInfo = async () => {
     try {
-      const response = await axios.get(`${API_BASE}/agent-builder/info`);
-      setGunnyInfo(response.data);
+      const data = await apiJson('/agent-builder/info');
+      setGunnyInfo(data);
     } catch (error) {
       console.error('Failed to load Gunny info:', error);
     }
@@ -243,7 +241,10 @@ What would you like to build?`
         createdByAgent: 'the-general-001'
       };
 
-      const response = await axios.post(`${API_BASE}/agents`, deployPayload);
+      const created = await apiJson('/agents', {
+        method: 'POST',
+        body: JSON.stringify(deployPayload)
+      });
 
       toast.success('Agent deployed successfully!');
       setShowConfirmation(false);
@@ -252,11 +253,11 @@ What would you like to build?`
 
       // Navigate to agent detail page after a short delay
       setTimeout(() => {
-        navigate(`/agent/${response.data.id}`);
+        navigate(`/agent/${created.id}`);
       }, 1000);
     } catch (error) {
       console.error('Failed to deploy agent:', error);
-      const errorMsg = error.response?.data?.error || error.message || 'Unknown error';
+      const errorMsg = error.data?.error || error.message || 'Unknown error';
       toast.error(`Failed to deploy agent: ${errorMsg}`);
     } finally {
       setIsDeploying(false);
@@ -291,23 +292,26 @@ What would you like to build?`
         preferences: preferences.model === 'ai-choice' ? {} : preferences
       };
 
-      const response = await axios.post(`${API_BASE}/agent-builder/chat`, requestData);
+      const data = await apiJson('/agent-builder/chat', {
+        method: 'POST',
+        body: JSON.stringify(requestData)
+      });
 
       // Add assistant response
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: response.data.message,
-        usage: response.data.usage,
-        agentCreationIntent: response.data.agentCreationIntent
+        content: data.message,
+        usage: data.usage,
+        agentCreationIntent: data.agentCreationIntent
       }]);
 
       // Parse agent details from response and update preview
-      const updatedPreview = parseAgentDetails(response.data.message, agentPreview);
+      const updatedPreview = parseAgentDetails(data.message, agentPreview);
       setAgentPreview(updatedPreview);
 
       // Show confirmation flow when creation intent is detected
-      if (response.data.agentCreationIntent) {
-        const jsonConfig = parseJsonConfigFromMessage(response.data.message);
+      if (data.agentCreationIntent) {
+        const jsonConfig = parseJsonConfigFromMessage(data.message);
         if (jsonConfig) {
           setParsedAgentConfig(jsonConfig);
           setShowConfirmation(true);
@@ -395,18 +399,21 @@ What would you like to create today?`
   const handleCreateAgent = async () => {
     try {
       // Call backend to create agent with current preview
-      const response = await axios.post(`${API_BASE}/agents`, {
-        name: agentPreview.name,
-        displayName: agentPreview.displayName || agentPreview.name,
-        domain: agentPreview.domain,
-        model: agentPreview.model || 'gpt-4-turbo',
-        temperature: agentPreview.temperature,
-        maxTokens: agentPreview.maxTokens,
-        tools: agentPreview.tools,
-        capabilities: agentPreview.capabilities,
-        systemPrompt: agentPreview.systemPrompt,
-        createdBy: user?.id || 'guest-user',
-        createdByAgent: 'the-general-001'
+      const created = await apiJson('/agents', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: agentPreview.name,
+          displayName: agentPreview.displayName || agentPreview.name,
+          domain: agentPreview.domain,
+          model: agentPreview.model || 'gpt-4-turbo',
+          temperature: agentPreview.temperature,
+          maxTokens: agentPreview.maxTokens,
+          tools: agentPreview.tools,
+          capabilities: agentPreview.capabilities,
+          systemPrompt: agentPreview.systemPrompt,
+          createdBy: user?.id || 'guest-user',
+          createdByAgent: 'the-general-001'
+        })
       });
 
       toast.success('Agent created successfully!');
@@ -416,7 +423,7 @@ What would you like to create today?`
 
       // Navigate to agent detail page after a short delay
       setTimeout(() => {
-        navigate(`/agent/${response.data.id}`);
+        navigate(`/agent/${created.id}`);
       }, 1000);
     } catch (error) {
       console.error('Failed to create agent:', error);

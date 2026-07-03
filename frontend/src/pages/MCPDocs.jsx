@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Book,
   Code,
@@ -19,12 +19,27 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Breadcrumbs from '../components/Breadcrumbs';
+import { apiJson } from '../services/http';
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1').replace(/\/api\/v1$/, '').replace(/\/api$/, '');
 
 const MCPDocs = () => {
   const [expandedSection, setExpandedSection] = useState('what-is-mcp');
-  const [selectedPhase, setSelectedPhase] = useState('baseline');
+  // null = loading, [] = loaded empty / failed
+  const [servers, setServers] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiJson('/mcp/registry/servers')
+      .then((data) => {
+        if (!cancelled) setServers(data?.servers || []);
+      })
+      .catch((error) => {
+        console.error('Failed to load MCP registry:', error);
+        if (!cancelled) setServers([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
@@ -35,67 +50,15 @@ const MCPDocs = () => {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  // MCP Server phases data
-  const serverPhases = {
-    baseline: {
-      name: 'Baseline Servers',
-      count: 10,
-      servers: [
-        { name: 'GitHub', tools: 17, capabilities: 'Repository management, PRs, issues, code search' },
-        { name: 'Playwright', tools: 12, capabilities: 'Browser automation via accessibility tree' },
-        { name: 'Slack', tools: 6, capabilities: 'Channel/message management, search' },
-        { name: 'PostgreSQL', tools: 4, capabilities: 'Database queries, schema inspection' },
-        { name: 'Filesystem', tools: 6, capabilities: 'File operations, read/write/search' },
-        { name: 'Memory', tools: 4, capabilities: 'Persistent key-value storage' },
-        { name: 'HTTP Fetch', tools: 1, capabilities: 'External API calls (GET, POST, PUT, DELETE)' },
-        { name: 'Brave Search', tools: 2, capabilities: 'Web and local search' },
-        { name: 'Google Drive', tools: 4, capabilities: 'Document access and search' },
-        { name: 'Puppeteer', tools: 5, capabilities: 'Browser control (alternative to Playwright)' }
-      ]
-    },
-    phase1: {
-      name: 'Phase 1 - Business Operations',
-      count: 4,
-      servers: [
-        { name: 'Stripe', tools: 29, capabilities: 'Payments, subscriptions, customers, invoices, refunds' },
-        { name: 'Linear', tools: 24, capabilities: 'Issue tracking, projects, teams, workflows, sprints' },
-        { name: 'Git', tools: 20, capabilities: 'Local repository operations, commits, branches, history' },
-        { name: 'Notion', tools: 15, capabilities: 'Workspace, pages, databases, tasks, wiki' }
-      ]
-    },
-    phase2: {
-      name: 'Phase 2 - Cloud Infrastructure',
-      count: 4,
-      servers: [
-        { name: 'Airtable', tools: 16, capabilities: 'Flexible database/spreadsheet hybrid' },
-        { name: 'Vercel', tools: 22, capabilities: 'Deployment automation, serverless functions' },
-        { name: 'Cloudflare', tools: 25, capabilities: 'Edge computing, Workers, KV, R2, DNS' },
-        { name: 'Supabase', tools: 20, capabilities: 'PostgreSQL, auth, storage, real-time' }
-      ]
-    },
-    phase3: {
-      name: 'Phase 3 - Data & Communications',
-      count: 4,
-      servers: [
-        { name: 'MongoDB', tools: 18, capabilities: 'NoSQL database, document operations' },
-        { name: 'Twilio', tools: 21, capabilities: 'SMS, voice, WhatsApp, email, verification' },
-        { name: 'Sentry', tools: 14, capabilities: 'Error tracking, performance monitoring' },
-        { name: 'HubSpot', tools: 28, capabilities: 'CRM, marketing automation, sales pipeline' }
-      ]
-    }
-  };
-
-  // Calculate totals
-  const totalServers = Object.values(serverPhases).reduce((sum, phase) => sum + phase.count, 0);
-  const totalTools = Object.values(serverPhases).reduce((sum, phase) =>
-    sum + phase.servers.reduce((toolSum, server) => toolSum + server.tools, 0), 0
+  // Real counts from the registry. Tool counts are DECLARED capabilities —
+  // the authoritative tool list comes from each server at runtime.
+  const loadingServers = servers === null;
+  const serverList = servers || [];
+  const totalServers = serverList.length;
+  const totalDeclaredTools = serverList.reduce(
+    (sum, s) => sum + (s.capabilities?.length || 0), 0
   );
-
-  const categories = [
-    'Developer Tools', 'Data & Databases', 'Communication', 'Cloud Infrastructure',
-    'Payments & Commerce', 'Project Management', 'Monitoring & Observability',
-    'AI & ML Platforms', 'Enterprise & Productivity', 'Emerging & Specialized'
-  ];
+  const runningCount = serverList.filter(s => s.running).length;
 
   const apiEndpoints = [
     {
@@ -134,8 +97,8 @@ const MCPDocs = () => {
       description: 'Invoke a tool on an MCP server',
       params: [],
       body: {
-        server: { type: 'string', required: true, description: 'Server name' },
-        tool: { type: 'string', required: true, description: 'Tool name' },
+        server_name: { type: 'string', required: true, description: 'Server name' },
+        tool_name: { type: 'string', required: true, description: 'Tool name' },
         arguments: { type: 'object', required: false, description: 'Tool arguments' }
       }
     }
@@ -148,7 +111,7 @@ const MCPDocs = () => {
     },
     {
       question: "How do I know which MCP server to use?",
-      answer: "Browse the server phases above to see capabilities. For example, use Stripe for payments, Linear for project management, or GitHub for repository operations. Each server's description lists its primary use cases."
+      answer: "Browse the server list above. For example, use Stripe for payments, Notion for pages and databases, or GitHub for repository operations. Each server's description lists its primary use cases."
     },
     {
       question: "Can I run multiple servers at once?",
@@ -160,7 +123,7 @@ const MCPDocs = () => {
     },
     {
       question: "How do I update MCP servers?",
-      answer: "Servers are npm packages (e.g., @stripe/agent-toolkit). Update by restarting the server - npx automatically uses the latest version unless pinned."
+      answer: "Servers are npm packages (e.g., @modelcontextprotocol/server-github). Update by restarting the server - npx automatically uses the latest version unless pinned."
     },
     {
       question: "Can I create private MCP servers?",
@@ -182,30 +145,28 @@ const MCPDocs = () => {
               </h1>
             </div>
             <p className="text-xl text-slate-300 mb-2">
-              {totalServers} pre-configured servers, ~{totalTools} tools across {Object.keys(serverPhases).length} phases
+              {loadingServers
+                ? 'Loading server registry…'
+                : `${totalServers} pre-configured, credential-gated servers • ${totalDeclaredTools} declared tools`}
             </p>
             <p className="text-slate-400">
-              Model Context Protocol enables seamless agent tool integration
+              Model Context Protocol enables seamless agent tool integration — each server's real tool list is discovered at runtime when it starts
             </p>
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-6 bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-lg text-center">
-              <div className="text-3xl font-bold text-purple-400 mb-1">{totalServers}</div>
-              <div className="text-sm text-slate-400">Total Servers</div>
+              <div className="text-3xl font-bold text-purple-400 mb-1">{loadingServers ? '—' : totalServers}</div>
+              <div className="text-sm text-slate-400">Pre-configured Servers</div>
             </div>
             <div className="p-6 bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-lg text-center">
-              <div className="text-3xl font-bold text-blue-400 mb-1">~{totalTools}</div>
-              <div className="text-sm text-slate-400">Available Tools</div>
+              <div className="text-3xl font-bold text-blue-400 mb-1">{loadingServers ? '—' : totalDeclaredTools}</div>
+              <div className="text-sm text-slate-400">Declared Tools</div>
             </div>
             <div className="p-6 bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-lg text-center">
-              <div className="text-3xl font-bold text-emerald-400 mb-1">{categories.length}</div>
-              <div className="text-sm text-slate-400">Categories</div>
-            </div>
-            <div className="p-6 bg-gradient-to-br from-orange-500/20 to-orange-600/10 border border-orange-500/30 rounded-lg text-center">
-              <div className="text-3xl font-bold text-orange-400 mb-1">{Object.keys(serverPhases).length}</div>
-              <div className="text-sm text-slate-400">Integration Phases</div>
+              <div className="text-3xl font-bold text-emerald-400 mb-1">{loadingServers ? '—' : runningCount}</div>
+              <div className="text-sm text-slate-400">Running Now</div>
             </div>
           </div>
         </div>
@@ -282,45 +243,41 @@ const MCPDocs = () => {
             </a>
           </div>
 
-          {/* Phase Tabs */}
-          <div className="flex space-x-2 mb-6 overflow-x-auto">
-            {Object.entries(serverPhases).map(([key, phase]) => (
-              <button
-                key={key}
-                onClick={() => setSelectedPhase(key)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                  selectedPhase === key
-                    ? 'bg-purple-500 text-white'
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                }`}
-              >
-                {phase.name} ({phase.count})
-              </button>
-            ))}
-          </div>
-
-          {/* Server List */}
-          <div className="space-y-3">
-            {serverPhases[selectedPhase].servers.map((server, idx) => (
-              <div key={idx} className="p-4 bg-slate-800/50 rounded-lg hover:bg-slate-800 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-lg font-semibold text-white">{server.name}</h3>
-                      <span className="px-2 py-0.5 bg-purple-500/20 border border-purple-500/30 rounded text-xs text-purple-400">
-                        {server.tools} tools
-                      </span>
+          {/* Server List (live from the registry) */}
+          {loadingServers ? (
+            <p className="text-sm text-slate-400">Loading servers…</p>
+          ) : serverList.length === 0 ? (
+            <p className="text-sm text-slate-400">
+              Could not load the server registry. See the API reference below or the MCP Servers page.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {serverList.map((server) => (
+                <div key={server.name} className="p-4 bg-slate-800/50 rounded-lg hover:bg-slate-800 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <h3 className="text-lg font-semibold text-white">{server.display_name || server.name}</h3>
+                        <span className="px-2 py-0.5 bg-purple-500/20 border border-purple-500/30 rounded text-xs text-purple-400">
+                          {server.capabilities?.length || 0} declared tools
+                        </span>
+                        {server.running && (
+                          <span className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 rounded text-xs text-emerald-400">
+                            Running
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-400">{server.description}</p>
                     </div>
-                    <p className="text-sm text-slate-400">{server.capabilities}</p>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           <div className="mt-6 p-4 bg-slate-800/50 rounded-lg">
             <p className="text-sm text-slate-400">
-              <strong className="text-white">Total in this phase:</strong> {serverPhases[selectedPhase].count} servers, {serverPhases[selectedPhase].servers.reduce((sum, s) => sum + s.tools, 0)} tools
+              <strong className="text-white">Note:</strong> tool counts above are declared by the registry. The authoritative tool list is discovered from each server (via tools/list) once it is started, and most servers need credentials configured before they can start.
             </p>
           </div>
         </div>
@@ -368,26 +325,26 @@ const MCPDocs = () => {
               <p className="text-slate-400 mb-3">Add required API keys to your .env file:</p>
               <div className="bg-slate-900/50 rounded-lg p-4 font-mono text-sm relative">
                 <button
-                  onClick={() => copyToClipboard(`# Stripe (Phase 1)
+                  onClick={() => copyToClipboard(`# GitHub
+GITHUB_TOKEN=ghp_000000000000000000000000000000000000
+
+# Stripe
 STRIPE_API_KEY=sk_test_000000000000000000000000
 
-# Linear (Phase 1)
-LINEAR_API_KEY=lin_api_...
-
-# Notion (Phase 1)
+# Notion
 NOTION_API_KEY=secret_...`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
                 >
                   <Copy className="w-4 h-4 text-slate-400" />
                 </button>
                 <pre className="text-slate-300 overflow-x-auto pr-12">
-{`# Stripe (Phase 1)
+{`# GitHub
+GITHUB_TOKEN=ghp_000000000000000000000000000000000000
+
+# Stripe
 STRIPE_API_KEY=sk_test_000000000000000000000000
 
-# Linear (Phase 1)
-LINEAR_API_KEY=lin_api_...
-
-# Notion (Phase 1)
+# Notion
 NOTION_API_KEY=secret_...`}
                 </pre>
               </div>
@@ -431,9 +388,9 @@ NOTION_API_KEY=secret_...`}
                   onClick={() => copyToClipboard(`{
   "name": "payment-agent",
   "tools": [
-    "mcp:stripe:create_payment_intent",
     "mcp:stripe:create_customer",
-    "mcp:stripe:list_invoices"
+    "mcp:stripe:create_invoice",
+    "mcp:stripe:create_payment_link"
   ]
 }`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
@@ -444,9 +401,9 @@ NOTION_API_KEY=secret_...`}
 {`{
   "name": "payment-agent",
   "tools": [
-    "mcp:stripe:create_payment_intent",
     "mcp:stripe:create_customer",
-    "mcp:stripe:list_invoices"
+    "mcp:stripe:create_invoice",
+    "mcp:stripe:create_payment_link"
   ]
 }`}
                 </pre>
@@ -468,11 +425,10 @@ NOTION_API_KEY=secret_...`}
   -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "server": "stripe",
-    "tool": "create_payment_intent",
+    "server_name": "stripe",
+    "tool_name": "list_customers",
     "arguments": {
-      "amount": 2000,
-      "currency": "usd"
+      "limit": 3
     }
   }'`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
@@ -484,11 +440,10 @@ NOTION_API_KEY=secret_...`}
   -H "X-API-Key: YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "server": "stripe",
-    "tool": "create_payment_intent",
+    "server_name": "stripe",
+    "tool_name": "list_customers",
     "arguments": {
-      "amount": 2000,
-      "currency": "usd"
+      "limit": 3
     }
   }'`}
                 </pre>
@@ -872,7 +827,9 @@ npx my-custom-server`}
           >
             <Server className="w-8 h-8 text-purple-400 mb-3" />
             <h3 className="font-semibold text-white mb-2">Browse All Servers</h3>
-            <p className="text-sm text-slate-400">Explore all {totalServers} MCP servers</p>
+            <p className="text-sm text-slate-400">
+              {totalServers > 0 ? `Explore all ${totalServers} MCP servers` : 'Explore the MCP server registry'}
+            </p>
           </a>
 
           <a

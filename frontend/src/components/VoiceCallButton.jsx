@@ -12,8 +12,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Phone, PhoneCall, Loader2, PhoneOff } from 'lucide-react';
 import PropTypes from 'prop-types';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import { apiFetch } from '../services/http';
 
 const VoiceCallButton = ({
   onClick,
@@ -30,7 +29,9 @@ const VoiceCallButton = ({
   useEffect(() => {
     const checkAvailability = async () => {
       try {
-        const response = await fetch(`${API_BASE}/voice/health`);
+        // Passive availability probe — never redirect the page on 401, just
+        // report the service unavailable.
+        const response = await apiFetch('/voice/health', { redirectOn401: false });
         setVoiceAvailable(response.ok);
       } catch {
         setVoiceAvailable(false);

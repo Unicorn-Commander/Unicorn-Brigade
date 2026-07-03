@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { X, Key, Shield, Zap, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import { apiJson } from '../services/http';
 
 const GenerateApiKeyModal = ({ agentId, onSuccess, onClose }) => {
   const [form, setForm] = useState({
@@ -63,14 +61,17 @@ const GenerateApiKeyModal = ({ agentId, onSuccess, onClose }) => {
       }
 
       // POST /agents/:agentId/api-keys
-      const response = await axios.post(`${API_BASE}/agents/${agentId}/api-keys`, {
-        name: form.name,
-        permissions: form.permissions,
-        rateLimit: form.rateLimit,
-        expiresAt: expiresAt
+      const data = await apiJson(`/agents/${agentId}/api-keys`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: form.name,
+          permissions: form.permissions,
+          rateLimit: form.rateLimit,
+          expiresAt: expiresAt
+        })
       });
 
-      onSuccess(response.data);
+      onSuccess(data);
     } catch (error) {
       console.error('Failed to generate API key:', error);
       toast.error('Failed to generate API key');

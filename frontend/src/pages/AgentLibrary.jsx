@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Plus, Bot, ExternalLink, Eye, Edit, Trash2, Star, TrendingUp, MessageSquare, Shield, DollarSign, ArrowUpDown, Wrench, Zap, CheckCircle, AlertCircle, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { apiJson } from '../services/http';
 import AgentCard from '../components/AgentCard';
 import AgentEditModal from '../components/AgentEditModal';
 import AgentDeleteConfirmModal from '../components/AgentDeleteConfirmModal';
@@ -11,7 +11,15 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import CardSkeleton from '../components/skeletons/CardSkeleton';
 import ListSkeleton from '../components/skeletons/ListSkeleton';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+// Defensive: agents can arrive with non-array tools/capabilities (bad seed
+// data / JSON columns) — always hand callers a real array to slice/map.
+const agentToolList = (agent) => {
+  if (Array.isArray(agent?.tools)) return agent.tools;
+  if (Array.isArray(agent?.agentTools)) return agent.agentTools;
+  return [];
+};
+const agentCapabilityList = (agent) =>
+  Array.isArray(agent?.capabilities) ? agent.capabilities : [];
 
 // Domain Icons and Colors
 const domainConfig = {
@@ -57,7 +65,7 @@ const AgentLibrary = () => {
   const allTools = useMemo(() => {
     const toolSet = new Set();
     agents.forEach(agent => {
-      const tools = agent.tools || agent.agentTools || [];
+      const tools = agentToolList(agent);
       tools.forEach(tool => {
         const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name);
         if (toolName) toolSet.add(toolName);
@@ -70,7 +78,7 @@ const AgentLibrary = () => {
   const allCapabilities = useMemo(() => {
     const capSet = new Set();
     agents.forEach(agent => {
-      (agent.capabilities || []).forEach(cap => capSet.add(cap));
+      agentCapabilityList(agent).forEach(cap => capSet.add(cap));
     });
     return Array.from(capSet).sort();
   }, [agents]);
@@ -92,11 +100,11 @@ const AgentLibrary = () => {
   const loadAgents = async () => {
     setLoading(true);
     try {
-      const [response] = await Promise.all([
-        axios.get(`${API_BASE}/agents`),
+      const [data] = await Promise.all([
+        apiJson('/agents'),
         new Promise(resolve => setTimeout(resolve, 300)),
       ]);
-      setAgents(response.data.agents || []);
+      setAgents(data.agents || []);
     } catch (error) {
       console.error('Failed to load agents:', error);
       toast.error('Failed to load agents');
@@ -107,8 +115,8 @@ const AgentLibrary = () => {
 
   const loadDomains = async () => {
     try {
-      const response = await axios.get(`${API_BASE}/agents/domains`);
-      setDomains(response.data.domains || []);
+      const data = await apiJson('/agents/domains');
+      setDomains(data.domains || []);
     } catch (error) {
       console.error('Failed to load domains:', error);
     }
@@ -130,11 +138,11 @@ const AgentLibrary = () => {
           return true;
         }
         // Search in capabilities
-        if ((agent.capabilities || []).some(cap => cap.toLowerCase().includes(query))) {
+        if (agentCapabilityList(agent).some(cap => cap.toLowerCase().includes(query))) {
           return true;
         }
         // Search in tools
-        const tools = agent.tools || agent.agentTools || [];
+        const tools = agentToolList(agent);
         if (tools.some(tool => {
           const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name);
           return toolName?.toLowerCase().includes(query);
@@ -163,7 +171,7 @@ const AgentLibrary = () => {
     // Tool filter
     if (selectedTool) {
       filtered = filtered.filter(agent => {
-        const tools = agent.tools || agent.agentTools || [];
+        const tools = agentToolList(agent);
         return tools.some(tool => {
           const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name);
           return toolName === selectedTool;
@@ -180,9 +188,7 @@ const AgentLibrary = () => {
       } else if (sortBy === 'a-z') {
         return (a.displayName || a.name || '').localeCompare(b.displayName || b.name || '');
       } else if (sortBy === 'most-tools') {
-        const aTools = (a.tools?.length || a.agentTools?.length || 0);
-        const bTools = (b.tools?.length || b.agentTools?.length || 0);
-        return bTools - aTools;
+        return agentToolList(b).length - agentToolList(a).length;
       }
       return 0;
     });
@@ -576,7 +582,7 @@ const AgentLibrary = () => {
 // Agent List Item Component
 const AgentListItem = ({ agent, navigate, onEdit, onDelete }) => {
   const statusConfig = getStatusConfig(agent.status);
-  const tools = agent.tools || agent.agentTools || [];
+  const tools = agentToolList(agent);
   const toolCount = tools.length;
 
   const handleChatClick = (e) => {

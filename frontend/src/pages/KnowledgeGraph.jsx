@@ -30,6 +30,7 @@ import {
   Info
 } from 'lucide-react';
 import Breadcrumbs from '../components/Breadcrumbs';
+import { apiJson } from '../services/http';
 
 // Lazy load ForceGraph3D to gracefully handle WebGL failures
 const ForceGraph3D = lazy(() =>
@@ -80,21 +81,18 @@ const KnowledgeGraph = () => {
   const fgRef = useRef();
   const containerRef = useRef();
 
-  // API base URL
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-
   // Fetch graph data
   const fetchGraphData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (filterType !== 'all') params.append('entity_type', filterType);
-      if (searchQuery) params.append('name_pattern', searchQuery);
-      params.append('limit', '200');
-
-      const response = await fetch(`${apiUrl}/knowledge/graph?${params}`);
-      const data = await response.json();
+      const data = await apiJson('/knowledge/graph', {
+        params: {
+          entity_type: filterType !== 'all' ? filterType : undefined,
+          name_pattern: searchQuery || undefined,
+          limit: 200,
+        },
+      });
 
       if (data.success) {
         // Transform nodes with colors based on type
@@ -122,33 +120,31 @@ const KnowledgeGraph = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [apiUrl, filterType, searchQuery]);
+  }, [filterType, searchQuery]);
 
   // Fetch stats
   const fetchStats = useCallback(async () => {
     try {
-      const response = await fetch(`${apiUrl}/knowledge/stats`);
-      const data = await response.json();
+      const data = await apiJson('/knowledge/stats');
       if (data.success) {
         setStats(data);
       }
     } catch (err) {
       console.error('Failed to fetch stats:', err);
     }
-  }, [apiUrl]);
+  }, []);
 
   // Fetch entity details
   const fetchEntityDetails = useCallback(async (entityName) => {
     try {
-      const response = await fetch(`${apiUrl}/knowledge/entity/${encodeURIComponent(entityName)}`);
-      const data = await response.json();
+      const data = await apiJson(`/knowledge/entity/${encodeURIComponent(entityName)}`);
       if (data.success) {
         setNodeDetails(data);
       }
     } catch (err) {
       console.error('Failed to fetch entity details:', err);
     }
-  }, [apiUrl]);
+  }, []);
 
   // Initial load
   useEffect(() => {

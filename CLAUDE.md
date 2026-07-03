@@ -11,7 +11,7 @@
 - A2A and MCP protocol support for agent federation
 - 3D orchestration visualization with The General
 - Visual workflow builder with interactive diagrams
-- 46 MCP servers (10 baseline + 4×9 phases), ~1,360 total tools, 25 hierarchical workflows
+- 11 pre-configured MCP servers (real, npm-runnable, credential-gated; tools discovered at runtime), 25 hierarchical workflows
 
 ---
 
@@ -88,7 +88,7 @@ Unicorn-Brigade/
 │   │   └── templates.py          # 25 workflow templates (19 core + 6 expansion)
 │   ├── mcp/                      # MCP Server Registry (new)
 │   │   ├── __init__.py           # Module exports
-│   │   ├── registry.py           # 38 pre-configured MCP servers (10 baseline + 4×7 phases)
+│   │   ├── registry.py           # 11 pre-configured MCP servers (real npx-runnable packages)
 │   │   └── sandbox_executor.py   # Hybrid Docker/E2B code sandbox
 │   ├── auth/                     # Authentication & Authorization
 │   │   ├── __init__.py           # Module exports
@@ -571,86 +571,12 @@ PGPASSWORD=leads_password_dev psql -h localhost -p 5434 -U leads_user -d unicorn
 | **Google Drive** | `GOOGLE_APPLICATION_CREDENTIALS` | search_files, get_file, download_file |
 | **Puppeteer** | Built-in | navigate, screenshot, click, fill, evaluate |
 
-**Phase 1 Servers (4) - Added Jan 31, 2026**:
-
-| Server | Config | Capabilities | Tools |
-|--------|--------|--------------|-------|
-| **Stripe** | `STRIPE_API_KEY` | Payment processing, subscriptions, customers, invoices, refunds | 29 |
-| **Linear** | `LINEAR_API_KEY` | Issue tracking, projects, teams, workflows, sprints | 24 |
-| **Git** | Built-in | Local repository operations, commits, branches, history | 20 |
-| **Notion** | `NOTION_API_KEY` | Workspace, pages, databases, tasks, wiki, collaboration | 15 |
-
-**Phase 2 Servers (4) - Added Jan 31, 2026**:
-
-| Server | Config | Capabilities | Tools |
-|--------|--------|--------------|-------|
-| **Airtable** | `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID` | Database operations, flexible spreadsheet-database hybrid | 19 |
-| **Vercel** | `VERCEL_TOKEN`, `VERCEL_TEAM_ID` | Frontend hosting, serverless functions, edge network | 25 |
-| **Cloudflare** | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Workers, KV storage, R2, DNS, CDN | 30 |
-| **Supabase** | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | PostgreSQL, auth, storage, real-time, edge functions | 25 |
-
-**Phase 3 Servers (4) - Added Jan 31, 2026**:
-
-| Server | Config | Capabilities | Tools |
-|--------|--------|--------------|-------|
-| **MongoDB** | `MONGODB_URI`, `MONGODB_DATABASE` | NoSQL database, aggregation, indexing, transactions | 22 |
-| **Twilio** | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` | Multi-channel communications (SMS, voice, WhatsApp, email) | 25 |
-| **Sentry** | `SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Error tracking, performance monitoring, releases | 21 |
-| **HubSpot** | `HUBSPOT_API_KEY`, `HUBSPOT_PORTAL_ID` | CRM, contacts, deals, workflows, marketing automation | 35 |
-
-**Phase 4 Servers (4) - Added Jan 31, 2026**:
-
-| Server | Config | Capabilities | Tools |
-|--------|--------|--------------|-------|
-| **Shopify** | `SHOPIFY_SHOP_URL`, `SHOPIFY_ACCESS_TOKEN`, `SHOPIFY_API_VERSION` | E-commerce platform, products, orders, inventory, fulfillment | 37 |
-| **Salesforce** | `SALESFORCE_INSTANCE_URL`, `SALESFORCE_CLIENT_ID`, `SALESFORCE_CLIENT_SECRET`, `SALESFORCE_USERNAME`, `SALESFORCE_PASSWORD` | Enterprise CRM, leads, accounts, opportunities, campaigns | 43 |
-| **Jira** | `JIRA_HOST`, `JIRA_EMAIL`, `JIRA_API_TOKEN` | Project management, issues, sprints, boards, workflows | 34 |
-| **Zendesk** | `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN` | Customer support, tickets, macros, triggers, help center | 37 |
-
-**Phase 5 Servers (4) - Added Jan 31, 2026**:
-
-| Server | Config | Capabilities | Tools |
-|--------|--------|--------------|-------|
-| **Intercom** | `INTERCOM_ACCESS_TOKEN`, `INTERCOM_APP_ID` | Customer messaging, conversations, live chat, support tickets, help center | 35 |
-| **Asana** | `ASANA_ACCESS_TOKEN`, `ASANA_WORKSPACE_GID` | Work management, tasks, projects, portfolios, goals, team collaboration | 36 |
-| **Trello** | `TRELLO_API_KEY`, `TRELLO_API_TOKEN` | Visual project management, kanban boards, cards, lists, checklists | 35 |
-| **QuickBooks** | `QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`, `QUICKBOOKS_REALM_ID`, `QUICKBOOKS_REFRESH_TOKEN` | Accounting, invoices, payments, expenses, financial reports | 44 |
-
-**Phase 6 Servers (4) - Added Jan 31, 2026**:
-
-| Server | Config | Capabilities | Tools |
-|--------|--------|--------------|-------|
-| **Mailchimp** | `MAILCHIMP_API_KEY`, `MAILCHIMP_SERVER_PREFIX` | Email marketing automation, campaigns, newsletters, audience management, analytics | 38 |
-| **ActiveCampaign** | `ACTIVECAMPAIGN_URL`, `ACTIVECAMPAIGN_API_KEY` | Marketing automation, advanced email, CRM, lead scoring, sales automation, pipelines | 51 |
-| **Calendly** | `CALENDLY_API_KEY`, `CALENDLY_WEBHOOK_SIGNING_KEY` | Meeting scheduling automation, calendar sync, team scheduling, workflow integration | 30 |
-| **DocuSign** | `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`, `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_PRIVATE_KEY` | Electronic signatures, contract automation, document workflow, compliance | 40 |
-
-**Phase 7 Servers (4) - Added Jan 31, 2026**:
-
-| Server | Config | Capabilities | Tools |
-|--------|--------|--------------|-------|
-| **Ahrefs** | `AHREFS_API_KEY` | SEO and backlink analysis, keyword research, competitor analysis, site audits | 35 |
-| **SEMrush** | `SEMRUSH_API_KEY` | All-in-one marketing toolkit, SEO audits, keyword research, PPC analytics | 40 |
-| **Zapier** | `ZAPIER_API_KEY` | Workflow automation, connect 6,000+ apps, multi-step automation | 47 |
-| **Make** | `MAKE_API_KEY`, `MAKE_TEAM_ID` | Visual automation platform, advanced workflows, data transformation | 42 |
-
-**Phase 8 Servers (4) - Added Jan 31, 2026**:
-
-| Server | Config | Capabilities | Tools |
-|--------|--------|--------------|-------|
-| **Amplitude** | `AMPLITUDE_API_KEY`, `AMPLITUDE_SECRET_KEY`, `AMPLITUDE_PROJECT_ID` | Product analytics, user behavior tracking, funnel analysis, A/B testing | 44 |
-| **Mixpanel** | `MIXPANEL_PROJECT_TOKEN`, `MIXPANEL_API_SECRET`, `MIXPANEL_SERVICE_ACCOUNT` | Advanced product analytics, user journey analysis, predictive analytics | 54 |
-| **Segment** | `SEGMENT_WRITE_KEY`, `SEGMENT_ACCESS_TOKEN`, `SEGMENT_WORKSPACE_SLUG` | Customer data platform, unified data collection, 300+ integrations | 55 |
-| **PostHog** | `POSTHOG_API_KEY`, `POSTHOG_HOST`, `POSTHOG_PROJECT_ID` | Open-source analytics, session replay, feature flags, heatmaps | 60 |
-
-**Phase 9 Servers (4) - Added Jan 31, 2026**:
-
-| Server | Config | Capabilities | Tools |
-|--------|--------|--------------|-------|
-| **Heap** | `HEAP_APP_ID`, `HEAP_API_KEY`, `HEAP_ACCOUNT_ID` | Auto-capture analytics, retroactive analytics, event autocapture, session replay | 42 |
-| **Pendo** | `PENDO_API_KEY`, `PENDO_SUBDOMAIN`, `PENDO_INTEGRATION_KEY` | Product experience, in-app guidance, feature adoption tracking, user sentiment | 47 |
-| **FullStory** | `FULLSTORY_API_KEY`, `FULLSTORY_ORG_ID` | Digital experience intelligence, session replay, frustrated user detection | 41 |
-| **Hotjar** | `HOTJAR_API_KEY`, `HOTJAR_SITE_ID` | UX optimization, heatmaps, session recordings, surveys, feedback widgets | 33 |
+**MCP registry truth (rewritten 2026-07-02):** the former “Phase 1–9” tables listed 36
+fabricated servers with invented npm package names and hand-authored tool counts. The registry
+(`app/mcp/registry.py`) now holds **11 real, npx-runnable servers** — github, filesystem, postgres,
+playwright, slack, memory, brave-search, google-drive, puppeteer, stripe (`@stripe/mcp`), notion
+(`@notionhq/notion-mcp-server`). Capabilities in the registry are *declared*; actual tool lists are
+discovered at runtime when a server starts. Add new servers only with verified-published packages.
 
 ### Voice Providers (Self-Hosted - Jan 2026)
 
@@ -703,17 +629,7 @@ PGPASSWORD=leads_password_dev psql -h localhost -p 5434 -U leads_user -d unicorn
     - Agent discovery queries database for real agents
     - MCP resource reading supports file:// and http:// URIs
 23. **MCP Server Registry** (Jan 30-31, 2026):
-    - Central registry for 46 pre-configured MCP servers (10 baseline + 4×9 phases)
-    - Baseline: GitHub, Playwright, Slack, PostgreSQL, Filesystem, Memory, HTTP Fetch, Brave Search, Google Drive, Puppeteer
-    - Phase 1 (Jan 31): Stripe (29 tools), Linear (24 tools), Git (20 tools), Notion (15 tools)
-    - Phase 2 (Jan 31): Airtable (19 tools), Vercel (25 tools), Cloudflare (30 tools), Supabase (25 tools)
-    - Phase 3 (Jan 31): MongoDB (22 tools), Twilio (25 tools), Sentry (21 tools), HubSpot (35 tools)
-    - Phase 4 (Jan 31): Shopify (37 tools), Salesforce (43 tools), Jira (34 tools), Zendesk (37 tools)
-    - Phase 5 (Jan 31): Intercom (35 tools), Asana (36 tools), Trello (35 tools), QuickBooks (44 tools)
-    - Phase 6 (Jan 31): Mailchimp (38 tools), ActiveCampaign (51 tools), Calendly (30 tools), DocuSign (40 tools)
-    - Phase 7 (Jan 31): Ahrefs (35 tools), SEMrush (40 tools), Zapier (47 tools), Make (42 tools)
-    - Phase 8 (Jan 31): Amplitude (44 tools), Mixpanel (54 tools), Segment (55 tools), PostHog (60 tools)
-    - Phase 9 (Jan 31): Heap (42 tools), Pendo (47 tools), FullStory (41 tools), Hotjar (33 tools)
+    - Central registry of 11 real, npx-runnable MCP servers (fabricated phase-1..9 entries removed 2026-07-02)
     - Subprocess-based server lifecycle management (start/stop/restart)
     - JSON-RPC tool invocation for STDIO transport
     - HTTP/SSE transport support for remote servers
@@ -759,21 +675,9 @@ PGPASSWORD=leads_password_dev psql -h localhost -p 5434 -U leads_user -d unicorn
     - Reduced from 65 test agents to 17 production agents (cleaned to 11, then added 6)
     - Removed duplicate and test agents without proper prefixes
     - All remaining agents follow military naming convention
-30. **Phase 4 Platform Expansion** (Jan 31, 2026):
-    - **MCP Phase 4**: Added 4 enterprise servers (Shopify, Salesforce, Jira, Zendesk) - 133 new tools
-    - **Industry Coverage**: E-commerce, enterprise CRM, project management, customer support
-    - **Total Platform**: 26 MCP servers (10 baseline + 4 Phase 1 + 4 Phase 2 + 4 Phase 3 + 4 Phase 4), 501 total MCP tools
-31. **Phase 3 Platform Expansion** (Jan 31, 2026):
-    - **MCP Phase 3**: Added 4 new MCP servers (MongoDB, Twilio, Sentry, HubSpot) - 93 new tools
-    - **New Capabilities**: NoSQL databases, multi-channel communications, error monitoring, CRM automation
-    - **Total Platform**: 22 MCP servers, 17 agents, 25 workflows, 368 total MCP tools
-32. **Phase 2 Platform Expansion** (Jan 31, 2026):
-    - **MCP Phase 2**: Added 4 new MCP servers (Airtable, Vercel, Cloudflare, Supabase) - 99 new tools
-    - **High-ROI Agents**: Added 3 new agents (Sgt. Scribe - meeting notes, Maj. LeadGen - lead enrichment, Lt. DocAnalyst - document intelligence)
-    - **Workflow Templates**: Added 6 new workflow templates (API integration, contract analysis, meeting intelligence, literature review, content distribution, compliance audit)
-    - **Total Platform**: 18 MCP servers, 17 agents, 25 workflows, 187 total MCP tools
+30. **Phase 2-4 'platform expansion' entries removed** (2026-07-02): they described fabricated MCP servers.
 33. **Phase 1 Implementation Complete** (Jan 31, 2026):
-    - **MCP Server Registry**: 4 Phase 1 servers added (Stripe, Linear, Git, Notion) - 14 total servers
+    - **MCP Server Registry**: Stripe + Notion added (real packages; Linear/Git entries later removed as unrunnable)
     - **New Agents**: 3 production agents added (11 → 14):
       - sql-analyst: SQL query generation and database interaction
       - support-agent: Customer support and ticket triage
@@ -844,23 +748,14 @@ PGPASSWORD=leads_password_dev psql -h localhost -p 5434 -U leads_user -d unicorn
 - [x] Google Workspace email provider (app/integrations/google_email.py)
 - [x] Slack integration (app/api/slack_routes.py, app/llm/slack_tools.py)
 - [x] Guardrails integration research and planning (docs/guardrails-plan.md)
-- [x] MCP Server Registry (42 servers: 10 baseline + 4×8 phases)
-- [x] MCP Phase 1 Servers (Stripe, Linear, Git, Notion - Jan 31, 2026)
-- [x] MCP Phase 2 Servers (Airtable, Vercel, Cloudflare, Supabase - Jan 31, 2026)
-- [x] MCP Phase 3 Servers (MongoDB, Twilio, Sentry, HubSpot - Jan 31, 2026)
-- [x] MCP Phase 4 Servers (Shopify, Salesforce, Jira, Zendesk - Jan 31, 2026)
-- [x] MCP Phase 5 Servers (Intercom, Asana, Trello, QuickBooks - Jan 31, 2026)
-- [x] MCP Phase 6 Servers (Mailchimp, ActiveCampaign, Calendly, DocuSign - Jan 31, 2026)
-- [x] MCP Phase 7 Servers (Ahrefs, SEMrush, Zapier, Make - Jan 31, 2026)
-- [x] MCP Phase 8 Servers (Amplitude, Mixpanel, Segment, PostHog - Jan 31, 2026)
-- [x] MCP Phase 9 Servers (Heap, Pendo, FullStory, Hotjar - Jan 31, 2026)
+- [x] MCP Server Registry (pruned 2026-07-02 to 11 real npx-runnable servers)
 - [x] Hybrid Code Sandbox (Docker + E2B fallback)
 - [x] Protocol routes complete (A2A invoke, agent discovery, MCP resource reading)
 - [x] 3-Tier Hierarchical Workflows (Orchestrator → Team Leads → Workers)
 - [x] Ralph Self-Correction Engine (automatic workflow retry with error recovery - Jan 31, 2026)
 - [x] Agent Trace integration (code attribution tracking for AI-generated code - Jan 31, 2026)
 - [ ] Guardrails deployment on Ops-Center (Presidio, Llama Guard 3, Guardrails AI)
-- [ ] MCP Phase 2 Integration (additional high-value MCP servers)
+- [ ] Add further MCP servers only as verified-published packages (e.g. @hubspot/mcp-server now exists)
 
 ---
 
@@ -908,44 +803,7 @@ docker-compose -f docker-compose.yml -f docker-compose.guardrails.yml up -d
 
 ---
 
-**Last Updated**: January 31, 2026
-**Status**: Production-ready with **17 production agents**, 23 working tools (Built-in + Extended + Advanced), **25 workflow templates**, real-time orchestration, function calling, A2A (DB-backed discovery), MCP Server Registry (**46 servers**: 10 baseline + 4 Phase 1 [Stripe, Linear, Git, Notion] + 4 Phase 2 [Airtable, Vercel, Cloudflare, Supabase] + 4 Phase 3 [MongoDB, Twilio, Sentry, HubSpot] + 4 Phase 4 [Shopify, Salesforce, Jira, Zendesk] + 4 Phase 5 [Intercom, Asana, Trello, QuickBooks] + 4 Phase 6 [Mailchimp, ActiveCampaign, Calendly, DocuSign] + 4 Phase 7 [Ahrefs, SEMrush, Zapier, Make] + 4 Phase 8 [Amplitude, Mixpanel, Segment, PostHog] + 4 Phase 9 [Heap, Pendo, FullStory, Hotjar] + hybrid code sandbox), **~1,360 total MCP tools**, email (MS365 + Google), Slack integration, web search, self-hosted voice (Kokoro, Whisper, Chatterbox + LiveKit WebRTC UI), Langflow visual workflows, 3-tier hierarchical workflows (8 domains, 40 workers), **Ralph self-correction engine** (automatic retry, error recovery, mid-execution guidance), visual workflow gallery with discovery UI (@xyflow/react + WorkflowCard/Gallery/Filters), guardrails planning complete
+**Last Updated**: July 2, 2026 (menu audit: registry truth pass, unified auth client, live health)
+**Status**: Production-ready with **17 production agents**, 23 working tools (Built-in + Extended + Advanced), **25 workflow templates**, real-time orchestration, function calling, A2A (DB-backed discovery), MCP Server Registry (**11 real npx-runnable servers** + hybrid code sandbox), email (MS365 + Google), Slack integration, web search, self-hosted voice (Kokoro, Whisper, Chatterbox + LiveKit WebRTC UI), Langflow visual workflows, 3-tier hierarchical workflows (8 domains, 40 workers), **Ralph self-correction engine** (automatic retry, error recovery, mid-execution guidance), visual workflow gallery with discovery UI (@xyflow/react + WorkflowCard/Gallery/Filters), guardrails planning complete
 
 ---
-
-## Phase 2 Expansion Summary (January 31, 2026)
-
-### MCP Servers: 14 → 18 (+4)
-**Added Phase 2 Servers** (99 new tools):
-- **Airtable** (19 tools): CRM, flexible database, content calendars, product roadmaps
-- **Vercel** (25 tools): Frontend deployment, serverless functions, edge network, domains
-- **Cloudflare** (30 tools): Edge Workers, KV storage, R2, DNS, CDN, analytics
-- **Supabase** (25 tools): PostgreSQL, auth, storage, real-time, edge functions
-
-### Production Agents: 11 → 17 (+6, net +3 after Phase 1)
-**New High-ROI Agents**:
-- **Sgt. Scribe** (meeting notes): Meeting transcription, action item extraction, decision tracking (3-5 hrs/week savings)
-- **Maj. LeadGen** (lead enrichment): Sales intelligence, lead scoring, ICP qualification (30-50% conversion increase)
-- **Lt. DocAnalyst** (document intelligence): Contract analysis, Q&A, knowledge extraction (80-90% time savings)
-
-### Workflow Templates: 19 → 25 (+6)
-**New Workflow Templates**:
-- **API Integration Automation**: No-code API integration (80-90% build time reduction)
-- **Contract Analysis**: Contract risk extraction, compliance verification (60-90% time savings)
-- **Meeting Intelligence**: Transcript processing, action items, follow-ups (3-5 hrs/week savings)
-- **Research Literature Review**: Systematic literature review (10-20x faster)
-- **Multi-Channel Content Distribution**: Content repurposing across channels (10x output)
-- **Compliance Audit**: Automated compliance checking, violation detection (60-80% overhead reduction)
-
-### Platform Metrics
-- **Total MCP Servers**: 42 (10 baseline + 4×8 phases)
-- **Total MCP Tools**: 1,207 capabilities (+213 from Phase 8)
-- **Total Agents**: 17 production agents
-- **Total Workflows**: 25 templates
-- **Domain Coverage**: 21 domains (product analytics, customer data platforms, marketing automation, meeting scheduling, document management, customer messaging, team collaboration, visual PM, accounting, e-commerce, enterprise CRM, project management, customer support, SEO/marketing, workflow automation)
-
-### Business Impact
-- **Time Savings**: 60-90% across use cases
-- **Quality Improvement**: 30-50%
-- **Scale Factor**: 5-10x capacity increase
-- **Cost Reduction**: 40-85% depending on use case

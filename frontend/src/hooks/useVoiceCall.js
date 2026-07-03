@@ -7,8 +7,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Room, RoomEvent, ConnectionState, Track, LocalParticipant } from 'livekit-client';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import { apiFetch, apiJson } from '../services/http';
 
 // Connection states for the UI
 export const CallState = {
@@ -76,19 +75,10 @@ export function useVoiceCall({ agentId, agentName, onAgentSpeaking, onAgentListe
   // Create voice room on backend
   const createRoom = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/voice/rooms`, {
+      return await apiJson('/voice/rooms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agent_id: agentId })
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Failed to create room: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data;
     } catch (err) {
       console.error('Failed to create voice room:', err);
       throw err;
@@ -98,15 +88,7 @@ export function useVoiceCall({ agentId, agentName, onAgentSpeaking, onAgentListe
   // Fetch participant token
   const fetchToken = useCallback(async (roomId) => {
     try {
-      const response = await fetch(`${API_BASE}/voice/rooms/${roomId}/token`);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Failed to get token: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data;
+      return await apiJson(`/voice/rooms/${roomId}/token`);
     } catch (err) {
       console.error('Failed to fetch token:', err);
       throw err;
@@ -116,27 +98,17 @@ export function useVoiceCall({ agentId, agentName, onAgentSpeaking, onAgentListe
   // Request agent to join room
   const requestAgentJoin = useCallback(async (roomId) => {
     try {
-      const response = await fetch(`${API_BASE}/voice/rooms/${roomId}/agent/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Failed to request agent join: ${response.status}`);
-      }
-
-      return await response.json();
+      return await apiJson(`/voice/rooms/${roomId}/agent/join`, { method: 'POST' });
     } catch (err) {
       console.error('Failed to request agent join:', err);
       // Non-blocking - agent might join automatically
     }
   }, []);
 
-  // Close room on backend
+  // Close room on backend (best-effort: a non-2xx here is not actionable)
   const closeRoom = useCallback(async (roomId) => {
     try {
-      await fetch(`${API_BASE}/voice/rooms/${roomId}`, {
+      await apiFetch(`/voice/rooms/${roomId}`, {
         method: 'DELETE'
       });
     } catch (err) {
@@ -386,10 +358,10 @@ export function useVoiceCall({ agentId, agentName, onAgentSpeaking, onAgentListe
     }
   }, []);
 
-  // Check voice service availability
+  // Check voice service availability (passive probe — no 401 redirect)
   const checkVoiceAvailability = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/voice/health`);
+      const response = await apiFetch('/voice/health', { redirectOn401: false });
       return response.ok;
     } catch {
       return false;

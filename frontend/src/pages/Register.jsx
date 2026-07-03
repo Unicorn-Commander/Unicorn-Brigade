@@ -6,12 +6,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
-import { UserPlus, Shield, Sparkles, Zap, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
+import { UserPlus, Shield, Sparkles, Zap, Eye, EyeOff, CheckCircle, AlertCircle, LogIn } from 'lucide-react';
 import { BrigadeLogo } from '../components/UnicornBrigadeLogo';
+import { apiJson } from '../services/http';
 
 export default function Register() {
   const navigate = useNavigate();
-  const { register, isAuthenticated, isLoading, error, clearError } = useAuth();
+  const { register, login, isAuthenticated, isLoading, error, clearError } = useAuth();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -24,6 +25,9 @@ export default function Register() {
   const [validationErrors, setValidationErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  // Deployment auth flags — when native register is disabled (SSO-managed),
+  // the form is replaced with a pointer to SSO login. null until loaded.
+  const [authConfig, setAuthConfig] = useState(null);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -36,6 +40,32 @@ export default function Register() {
   useEffect(() => {
     clearError();
   }, [clearError]);
+
+  // Fetch public deployment auth flags (no auth required, never redirect)
+  useEffect(() => {
+    let cancelled = false;
+    apiJson('/auth/config', { redirectOn401: false })
+      .then((config) => {
+        if (!cancelled) setAuthConfig(config);
+      })
+      .catch(() => {
+        // Config unavailable — leave the form visible; the backend still
+        // enforces the register gate with a 403.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const registerDisabled = authConfig ? authConfig.native_register_enabled === false : false;
+
+  const handleSSOLogin = async () => {
+    try {
+      await login();
+    } catch (err) {
+      console.error('SSO login failed:', err);
+    }
+  };
 
   // Password validation
   const validatePassword = (password) => {
@@ -165,12 +195,45 @@ export default function Register() {
             </h1>
 
             <p className="text-slate-400 text-sm">
-              Create your account to get started
+              {registerDisabled
+                ? 'Sign in with your organization account'
+                : 'Create your account to get started'}
             </p>
           </div>
 
+          {/* SSO-managed deployments: no native signup */}
+          {registerDisabled && (
+            <div className="space-y-6">
+              <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <Shield className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-purple-300 text-sm font-medium">
+                      Account creation is managed by your organization's SSO
+                    </p>
+                    <p className="text-purple-300/70 text-xs mt-1">
+                      Sign in with your organization account and a Brigade profile
+                      will be provisioned for you automatically.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleSSOLogin}
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-4 px-6 rounded-lg transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-purple-500/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              >
+                <div className="flex items-center justify-center space-x-3">
+                  <LogIn className="w-5 h-5" />
+                  <span>Login with SSO</span>
+                </div>
+              </button>
+            </div>
+          )}
+
           {/* Success Message */}
-          {success && (
+          {!registerDisabled && success && (
             <div className="mb-6 bg-green-500/10 border border-green-500/30 rounded-lg p-4">
               <div className="flex items-center space-x-3">
                 <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
@@ -187,7 +250,7 @@ export default function Register() {
           )}
 
           {/* Error Message */}
-          {error && (
+          {!registerDisabled && error && (
             <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-lg p-4">
               <div className="flex items-start space-x-3">
                 <Shield className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
@@ -204,6 +267,7 @@ export default function Register() {
           )}
 
           {/* Registration Form */}
+          {!registerDisabled && (
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Name Input */}
             <div>
@@ -356,6 +420,7 @@ export default function Register() {
               </div>
             </button>
           </form>
+          )}
 
           {/* Login Link */}
           <div className="mt-6 text-center">

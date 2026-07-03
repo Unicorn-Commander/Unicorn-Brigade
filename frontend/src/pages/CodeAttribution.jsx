@@ -24,6 +24,10 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import TableSkeleton from '../components/skeletons/TableSkeleton';
 import ListSkeleton from '../components/skeletons/ListSkeleton';
 
+// Map the UI date-range picker to the trace API's `days` lookback param
+// (1-90). "All time" is capped at the API maximum of 90 days.
+const DATE_RANGE_DAYS = { '24h': 1, '7d': 7, '30d': 30, all: 90 };
+
 const CodeAttribution = () => {
   const [activeTab, setActiveTab] = useState('by-file');
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,10 +54,10 @@ const CodeAttribution = () => {
   // Auto-refresh for recent activity
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  // Load initial data
+  // Load initial data (agent filter is applied client-side, no refetch needed)
   useEffect(() => {
     loadData();
-  }, [dateRange, selectedAgent]);
+  }, [dateRange]);
 
   // Auto-refresh recent activity every 10 seconds
   useEffect(() => {
@@ -69,35 +73,14 @@ const CodeAttribution = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const filters = {};
+      // Date range filter — the trace API filters by a `days` lookback
+      const filters = { days: DATE_RANGE_DAYS[dateRange] || 7 };
 
-      // Date range filter
-      if (dateRange !== 'all') {
-        const now = new Date();
-        const start = new Date();
-
-        if (dateRange === '24h') {
-          start.setHours(now.getHours() - 24);
-        } else if (dateRange === '7d') {
-          start.setDate(now.getDate() - 7);
-        } else if (dateRange === '30d') {
-          start.setDate(now.getDate() - 30);
-        }
-
-        filters.startDate = start.toISOString();
-        filters.endDate = now.toISOString();
-      }
-
-      // Agent filter
-      if (selectedAgent) {
-        filters.agentId = selectedAgent;
-      }
-
-      // Load all data in parallel
+      // Load all data in parallel (stats endpoint takes no filters)
       const [attributionsData, fileTreeData, statsData] = await Promise.all([
         traceService.getAttributions(filters),
         traceService.getFileTree(),
-        traceService.getStatistics(filters),
+        traceService.getStatistics(),
         new Promise(resolve => setTimeout(resolve, 300)),
       ]);
 
@@ -105,11 +88,13 @@ const CodeAttribution = () => {
       setFileTree(fileTreeData || []);
       setStatistics(statsData || null);
 
-      // Extract unique agents from attributions
-      const agents = [...new Set(attributionsData.map(a => ({
-        id: a.agent_id,
-        name: a.agent_name || a.agent_id
-      })))];
+      // Extract unique agents from attributions (deduped by id)
+      const agents = [...new Map(
+        (attributionsData || []).map(a => [
+          a.agent_id,
+          { id: a.agent_id, name: a.agent_name || a.agent_id }
+        ])
+      ).values()].filter(a => a.id);
       setAgentList(agents);
 
     } catch (error) {
@@ -123,8 +108,8 @@ const CodeAttribution = () => {
   const loadRecentActivity = async () => {
     setRefreshing(true);
     try {
-      const hours = dateRange === '24h' ? 24 : dateRange === '7d' ? 168 : 720;
-      const data = await traceService.getRecentActivity(hours);
+      // getRecentActivity takes DAYS, not hours ("Last 7 days" → days=7)
+      const data = await traceService.getRecentActivity(DATE_RANGE_DAYS[dateRange] || 7);
       setRecentActivity(data || []);
     } catch (error) {
       console.error('Failed to load recent activity:', error);
@@ -141,7 +126,9 @@ const CodeAttribution = () => {
 
     setLoading(true);
     try {
-      const results = await traceService.searchAttributions(searchQuery);
+      const results = await traceService.searchAttributions(searchQuery, {
+        days: DATE_RANGE_DAYS[dateRange] || 7,
+      });
       setAttributions(results || []);
     } catch (error) {
       console.error('Search failed:', error);
@@ -149,7 +136,7 @@ const CodeAttribution = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, dateRange]);
 
   const handleExport = async () => {
     try {
@@ -220,8 +207,9 @@ const CodeAttribution = () => {
     setSelectedAgent(agentId === selectedAgent ? null : agentId);
   };
 
-  // Filter attributions based on search
+  // Filter attributions based on selected agent + search
   const filteredAttributions = attributions.filter(attr => {
+    if (selectedAgent && attr.agent_id !== selectedAgent) return false;
     if (!searchQuery.trim()) return true;
 
     const query = searchQuery.toLowerCase();

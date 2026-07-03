@@ -8,6 +8,7 @@ Provides endpoints for:
 - User API key management
 """
 
+import os
 import re
 import time
 import logging
@@ -22,11 +23,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_session
 from app.db.repositories import UserRepository, UserApiKeyRepository
 from app.db.models import User
+from app.auth.keycloak import keycloak_enabled
 from app.auth.middleware import get_current_user, AuthUser
 from app.auth.roles import UserRole
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def native_register_enabled() -> bool:
+    """Whether native email/password signup is allowed.
+
+    Mirrors GET /auth/config (oidc_routes.auth_config): explicit
+    BRIGADE_ALLOW_NATIVE_REGISTER wins; otherwise native register defaults
+    OFF whenever Keycloak SSO owns identity, so /users/register can't mint
+    shadow accounts that bypass SSO.
+    """
+    sso = keycloak_enabled()
+    return os.getenv(
+        "BRIGADE_ALLOW_NATIVE_REGISTER", "false" if sso else "true"
+    ).lower() == "true"
 
 # ---- Password Hashing with bcrypt directly ----
 # NOTE: Using bcrypt directly instead of passlib due to passlib+bcrypt>=4.1 incompatibility
@@ -197,7 +213,15 @@ async def register_user(
     - **name**: Display name (2-100 characters)
 
     Rate limited to 5 registrations per IP per hour.
+
+    Returns 403 when native registration is disabled (SSO-managed deployments).
     """
+    if not native_register_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account creation is managed by your organization's SSO",
+        )
+
     # Rate limit by IP
     client_ip = get_client_ip(request)
     if not registration_limiter.is_allowed(client_ip):

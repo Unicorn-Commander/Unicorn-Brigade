@@ -8,6 +8,12 @@ import {
   VideoTrack
 } from '@livekit/components-react';
 import { Room, RoomEvent, Track } from 'livekit-client';
+import { apiFetch } from '../services/http';
+
+// Legacy LiveKit endpoints live at /api/livekit (NOT under /api/v1), so pass
+// origin-absolute URLs to apiFetch to keep the exact paths while still
+// attaching auth headers + credentials.
+const livekitUrl = (path) => `${window.location.origin}${path}`;
 
 const LiveKitRoom = ({ isVideoEnabled, isAudioEnabled, agentName }) => {
   const [token, setToken] = useState('');
@@ -17,9 +23,9 @@ const LiveKitRoom = ({ isVideoEnabled, isAudioEnabled, agentName }) => {
     // Get LiveKit token from backend
     const fetchToken = async () => {
       try {
-        const response = await fetch('/api/livekit/token', {
+        const response = await apiFetch(livekitUrl('/api/livekit/token'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          redirectOn401: false,
           body: JSON.stringify({
             roomName: `agent-${agentName}`,
             participantName: 'user',
@@ -132,8 +138,8 @@ const LiveKitWrapper = (props) => {
   const [hasLiveKit, setHasLiveKit] = useState(true);
 
   useEffect(() => {
-    // Check if LiveKit server is available
-    fetch('/api/livekit/health')
+    // Check if LiveKit server is available (passive probe — no 401 redirect)
+    apiFetch(livekitUrl('/api/livekit/health'), { redirectOn401: false })
       .then(res => setHasLiveKit(res.ok))
       .catch(() => setHasLiveKit(false));
   }, []);

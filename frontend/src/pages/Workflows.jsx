@@ -38,8 +38,7 @@ import WorkflowExecutionPanel from '../components/WorkflowExecutionPanel';
 import Breadcrumbs from '../components/Breadcrumbs';
 import CardSkeleton from '../components/skeletons/CardSkeleton';
 import TableSkeleton from '../components/skeletons/TableSkeleton';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import { apiJson, ApiError } from '../services/http';
 
 // Tag colors
 const tagColors = {
@@ -141,28 +140,26 @@ const Workflows = () => {
     if (pollingExecution) {
       interval = setInterval(async () => {
         try {
-          const response = await fetch(`${API_BASE}/hierarchical/executions/${pollingExecution}`);
-          if (response.ok) {
-            const data = await response.json();
-            const execution = data.execution;
+          const data = await apiJson(`/hierarchical/executions/${pollingExecution}`);
+          const execution = data.execution;
 
-            // Update execution in list
-            setExecutions(prev => prev.map(e =>
-              e.id === pollingExecution ? execution : e
-            ));
+          // Update execution in list
+          setExecutions(prev => prev.map(e =>
+            e.id === pollingExecution ? execution : e
+          ));
 
-            // Update selected execution if viewing it
-            if (selectedExecution?.id === pollingExecution) {
-              setSelectedExecution(execution);
-            }
+          // Update selected execution if viewing it
+          if (selectedExecution?.id === pollingExecution) {
+            setSelectedExecution(execution);
+          }
 
-            // Stop polling if completed or failed
-            if (['completed', 'failed', 'cancelled'].includes(execution.state)) {
-              setPollingExecution(null);
-              toast.success(`Workflow ${execution.state}`);
-            }
+          // Stop polling if completed or failed
+          if (['completed', 'failed', 'cancelled'].includes(execution.state)) {
+            setPollingExecution(null);
+            toast.success(`Workflow ${execution.state}`);
           }
         } catch (error) {
+          // Keep polling on transient errors — next tick retries.
           console.error('Polling error:', error);
         }
       }, 2000);
@@ -172,13 +169,8 @@ const Workflows = () => {
 
   const checkHealth = async () => {
     try {
-      const response = await fetch(`${API_BASE}/hierarchical/health`);
-      if (response.ok) {
-        const data = await response.json();
-        setHealthStatus(data.status === 'healthy' ? 'connected' : 'error');
-      } else {
-        setHealthStatus('error');
-      }
+      const data = await apiJson('/hierarchical/health');
+      setHealthStatus(data.status === 'healthy' ? 'connected' : 'error');
     } catch (error) {
       console.error('Health check failed:', error);
       setHealthStatus('error');
@@ -188,19 +180,16 @@ const Workflows = () => {
   const loadTemplates = async () => {
     setLoading(true);
     try {
-      const [response] = await Promise.all([
-        fetch(`${API_BASE}/hierarchical/templates`),
+      const [data] = await Promise.all([
+        apiJson('/hierarchical/templates'),
         new Promise(resolve => setTimeout(resolve, 300)),
       ]);
-      if (response.ok) {
-        const data = await response.json();
-        setTemplates(data.workflows || []);
-      } else {
-        toast.error('Failed to load workflow templates');
-      }
+      setTemplates(data.workflows || []);
     } catch (error) {
       console.error('Failed to load templates:', error);
-      toast.error('Failed to connect to workflow service');
+      toast.error(error instanceof ApiError
+        ? 'Failed to load workflow templates'
+        : 'Failed to connect to workflow service');
     } finally {
       setLoading(false);
     }
@@ -208,14 +197,9 @@ const Workflows = () => {
 
   const loadTemplateDetail = async (templateId) => {
     try {
-      const response = await fetch(`${API_BASE}/hierarchical/templates/${templateId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setTemplateDetail(data.workflow);
-        return data.workflow;
-      } else {
-        toast.error('Failed to load workflow details');
-      }
+      const data = await apiJson(`/hierarchical/templates/${templateId}`);
+      setTemplateDetail(data.workflow);
+      return data.workflow;
     } catch (error) {
       console.error('Failed to load template detail:', error);
       toast.error('Failed to load workflow details');
@@ -226,11 +210,8 @@ const Workflows = () => {
   const loadExecutions = async () => {
     setExecutionsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/hierarchical/executions`);
-      if (response.ok) {
-        const data = await response.json();
-        setExecutions(data.executions || []);
-      }
+      const data = await apiJson('/hierarchical/executions');
+      setExecutions(data.executions || []);
     } catch (error) {
       console.error('Failed to load executions:', error);
     } finally {
@@ -328,18 +309,13 @@ const Workflows = () => {
 
   const handleViewExecution = async (execution) => {
     try {
-      const response = await fetch(`${API_BASE}/hierarchical/executions/${execution.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedExecution(data.execution);
-        setShowExecutionModal(true);
+      const data = await apiJson(`/hierarchical/executions/${execution.id}`);
+      setSelectedExecution(data.execution);
+      setShowExecutionModal(true);
 
-        // Start polling if running
-        if (['running', 'waiting'].includes(data.execution.state)) {
-          setPollingExecution(execution.id);
-        }
-      } else {
-        toast.error('Failed to load execution details');
+      // Start polling if running
+      if (['running', 'waiting'].includes(data.execution.state)) {
+        setPollingExecution(execution.id);
       }
     } catch (error) {
       console.error('Failed to load execution:', error);
@@ -349,16 +325,12 @@ const Workflows = () => {
 
   const handleCancelExecution = async (executionId) => {
     try {
-      const response = await fetch(`${API_BASE}/hierarchical/executions/${executionId}/cancel`, {
+      await apiJson(`/hierarchical/executions/${executionId}/cancel`, {
         method: 'POST',
       });
-      if (response.ok) {
-        toast.success('Execution cancelled');
-        setPollingExecution(null);
-        await loadExecutions();
-      } else {
-        toast.error('Failed to cancel execution');
-      }
+      toast.success('Execution cancelled');
+      setPollingExecution(null);
+      await loadExecutions();
     } catch (error) {
       console.error('Failed to cancel:', error);
       toast.error('Failed to cancel execution');

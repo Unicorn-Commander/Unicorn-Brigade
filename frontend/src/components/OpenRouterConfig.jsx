@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Key, CheckCircle, AlertCircle, Send, Loader2 } from 'lucide-react';
+import { apiJson, ApiError } from '../services/http';
 
 const OpenRouterConfig = () => {
   const [apiKey, setApiKey] = useState('');
@@ -37,19 +38,13 @@ const OpenRouterConfig = () => {
     setTestResult(null);
 
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-      const response = await fetch(`${API_BASE}/medical-test/test-openrouter`, {
+      const data = await apiJson('/medical-test/test-openrouter', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           apiKey: apiKey.trim(),
           message: testMessage
         }),
       });
-
-      const data = await response.json();
 
       if (data.success) {
         setTestResult(data);
@@ -58,7 +53,11 @@ const OpenRouterConfig = () => {
         setError(data.error || 'Test failed');
       }
     } catch (err) {
-      setError('Failed to connect to server: ' + err.message);
+      if (err instanceof ApiError) {
+        setError(err.data?.error || err.message || 'Test failed');
+      } else {
+        setError('Failed to connect to server: ' + err.message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -75,19 +74,13 @@ const OpenRouterConfig = () => {
     setTestResult(null);
 
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-      const response = await fetch(`${API_BASE}/medical-test/test-consultation`, {
+      const data = await apiJson('/medical-test/test-consultation', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           apiKey: apiKey.trim(),
           symptoms: testMessage
         }),
       });
-
-      const data = await response.json();
 
       if (data.success) {
         setTestResult(data);
@@ -95,7 +88,11 @@ const OpenRouterConfig = () => {
         setError(data.error || 'Consultation test failed');
       }
     } catch (err) {
-      setError('Failed to connect to server: ' + err.message);
+      if (err instanceof ApiError) {
+        setError(err.data?.error || err.message || 'Consultation test failed');
+      } else {
+        setError('Failed to connect to server: ' + err.message);
+      }
     } finally {
       setIsLoading(false);
     }

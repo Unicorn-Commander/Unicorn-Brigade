@@ -20,7 +20,6 @@ const MCPServers = () => {
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedPhase, setSelectedPhase] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [viewMode, setViewMode] = useState('grid'); // grid or list
 
@@ -58,7 +57,7 @@ const MCPServers = () => {
 
   useEffect(() => {
     applyFilters();
-  }, [servers, searchQuery, selectedCategory, selectedPhase, selectedStatus, serverStates]);
+  }, [servers, searchQuery, selectedCategory, selectedStatus, serverStates]);
 
   const loadServers = async () => {
     setLoading(true);
@@ -107,11 +106,6 @@ const MCPServers = () => {
       filtered = filtered.filter(server => server.category === selectedCategory);
     }
 
-    // Phase filter
-    if (selectedPhase) {
-      filtered = filtered.filter(server => server.phase === selectedPhase);
-    }
-
     // Status filter
     if (selectedStatus) {
       filtered = filtered.filter(server => {
@@ -155,24 +149,18 @@ const MCPServers = () => {
     }
   };
 
-  // Extract unique categories and phases
+  // Extract unique categories (registry entries may not have one)
   const categories = useMemo(() => {
     const cats = new Set();
     servers.forEach(s => s.category && cats.add(s.category));
     return Array.from(cats).sort();
   }, [servers]);
 
-  const phases = useMemo(() => {
-    const p = new Set();
-    servers.forEach(s => s.phase && p.add(s.phase));
-    return Array.from(p).sort();
-  }, [servers]);
-
-  // Group servers by category
+  // Group servers by category (only used when the registry provides categories)
   const groupedServers = useMemo(() => {
     const grouped = {};
     filteredServers.forEach(server => {
-      const category = server.category || 'Other';
+      const category = server.category || 'Uncategorized';
       if (!grouped[category]) {
         grouped[category] = [];
       }
@@ -181,14 +169,14 @@ const MCPServers = () => {
     return grouped;
   }, [filteredServers]);
 
-  // Stats
+  // Stats — tool counts are declared capabilities, not runtime-discovered tools
   const stats = useMemo(() => {
     const running = servers.filter(
       s => (serverStates[s.name] || (s.running ? 'running' : 'stopped')) === 'running'
     ).length;
     const total = servers.length;
-    const totalTools = servers.reduce((sum, s) => sum + (s.tool_count || s.capabilities?.length || 0), 0);
-    return { running, total, totalTools };
+    const declaredTools = servers.reduce((sum, s) => sum + (s.capabilities?.length || 0), 0);
+    return { running, total, declaredTools };
   }, [servers, serverStates]);
 
   return (
@@ -200,7 +188,7 @@ const MCPServers = () => {
           <div>
             <h1 className="text-3xl font-bold text-gradient">MCP Servers</h1>
             <p className="text-slate-400 mt-1">
-              {stats.running} running • {stats.total} total servers • {stats.totalTools} tools
+              {stats.running} running • {stats.total} total servers • {stats.declaredTools} declared tools
             </p>
           </div>
 
@@ -239,8 +227,8 @@ const MCPServers = () => {
           <div className="card border-cyan-500/20 bg-cyan-500/5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-400">Available Tools</p>
-                <p className="text-2xl font-bold text-cyan-400">{stats.totalTools}</p>
+                <p className="text-sm text-slate-400">Declared Tools</p>
+                <p className="text-2xl font-bold text-cyan-400">{stats.declaredTools}</p>
               </div>
               <Package className="w-8 h-8 text-cyan-400" />
             </div>
@@ -249,7 +237,7 @@ const MCPServers = () => {
 
         {/* Filters */}
         <div className="card">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className={`grid grid-cols-1 gap-4 ${categories.length > 0 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
             {/* Search */}
             <div className="relative md:col-span-1">
               <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
@@ -262,29 +250,19 @@ const MCPServers = () => {
               />
             </div>
 
-            {/* Category Filter */}
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white"
-            >
-              <option value="">All Categories</option>
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-
-            {/* Phase Filter */}
-            <select
-              value={selectedPhase}
-              onChange={(e) => setSelectedPhase(e.target.value)}
-              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white"
-            >
-              <option value="">All Phases</option>
-              {phases.map(phase => (
-                <option key={phase} value={phase}>Phase {phase}</option>
-              ))}
-            </select>
+            {/* Category Filter (only when the registry provides categories) */}
+            {categories.length > 0 && (
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white"
+              >
+                <option value="">All Categories</option>
+                {categories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            )}
 
             {/* Status Filter */}
             <select
@@ -299,7 +277,7 @@ const MCPServers = () => {
           </div>
 
           {/* Active Filters Display */}
-          {(searchQuery || selectedCategory || selectedPhase || selectedStatus) && (
+          {(searchQuery || selectedCategory || selectedStatus) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="text-xs text-slate-500">Active filters:</span>
               {searchQuery && (
@@ -318,14 +296,6 @@ const MCPServers = () => {
                   </button>
                 </span>
               )}
-              {selectedPhase && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-cyan-500/20 text-cyan-400 text-xs">
-                  Phase: {selectedPhase}
-                  <button onClick={() => setSelectedPhase('')} className="hover:text-white">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
               {selectedStatus && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
                   Status: {selectedStatus}
@@ -338,7 +308,6 @@ const MCPServers = () => {
                 onClick={() => {
                   setSearchQuery('');
                   setSelectedCategory('');
-                  setSelectedPhase('');
                   setSelectedStatus('');
                 }}
                 className="text-xs text-slate-400 hover:text-white underline"
@@ -365,8 +334,8 @@ const MCPServers = () => {
           </div>
         )}
 
-        {/* Servers Grouped by Category */}
-        {!loading && Object.keys(groupedServers).map(category => {
+        {/* Servers — grouped by category when the registry provides one, flat grid otherwise */}
+        {!loading && categories.length > 0 && Object.keys(groupedServers).map(category => {
           const categoryServers = groupedServers[category];
 
           return (
@@ -397,6 +366,23 @@ const MCPServers = () => {
             </div>
           );
         })}
+
+        {!loading && categories.length === 0 && filteredServers.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredServers.map(server => (
+              <MCPServerCard
+                key={server.name}
+                server={server}
+                onStart={handleStartServer}
+                onStop={handleStopServer}
+                onViewTools={handleViewTools}
+                onManage={() => setControlServer(server)}
+                isLoading={loading}
+                statusOverride={serverStates[server.name]}
+              />
+            ))}
+          </div>
+        )}
 
         {/* Tool List Modal */}
         {selectedServer && (

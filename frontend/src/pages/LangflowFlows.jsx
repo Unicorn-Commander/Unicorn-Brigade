@@ -20,8 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Breadcrumbs from '../components/Breadcrumbs';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import { apiJson, ApiError } from '../services/http';
 
 const LangflowFlows = () => {
   const [flows, setFlows] = useState([]);
@@ -50,14 +49,9 @@ const LangflowFlows = () => {
 
   const checkHealth = async () => {
     try {
-      const response = await fetch(`${API_BASE}/langflow/health`);
-      if (response.ok) {
-        const data = await response.json();
-        // Check for 'healthy' status, anything else is an error (unreachable, disabled, etc.)
-        setHealthStatus(data.status === 'healthy' ? 'connected' : 'error');
-      } else {
-        setHealthStatus('error');
-      }
+      const data = await apiJson('/langflow/health');
+      // Check for 'healthy' status, anything else is an error (unreachable, disabled, etc.)
+      setHealthStatus(data.status === 'healthy' ? 'connected' : 'error');
     } catch (error) {
       console.error('Health check failed:', error);
       setHealthStatus('error');
@@ -67,24 +61,14 @@ const LangflowFlows = () => {
   const loadFlows = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/langflow/flows`);
-      if (response.ok) {
-        const data = await response.json();
-        setFlows(data.flows || []);
-      } else {
-        // Try to parse error message
-        try {
-          const errorData = await response.json();
-          const errorMsg = errorData?.detail?.message || errorData?.message || 'Failed to load flows';
-          toast.error(errorMsg);
-        } catch {
-          toast.error('Failed to load flows');
-        }
-        setFlows([]);
-      }
+      const data = await apiJson('/langflow/flows');
+      setFlows(data.flows || []);
     } catch (error) {
       console.error('Failed to load flows:', error);
-      toast.error('Failed to connect to Langflow service');
+      // ApiError = backend answered with an error payload; anything else = unreachable.
+      toast.error(error instanceof ApiError
+        ? (error.message || 'Failed to load flows')
+        : 'Failed to connect to Langflow service');
       setFlows([]);
     } finally {
       setLoading(false);
@@ -109,16 +93,11 @@ const LangflowFlows = () => {
 
   const handleFlowClick = async (flow) => {
     try {
-      const response = await fetch(`${API_BASE}/langflow/flows/${flow.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedFlow(data);
-        setRunInputs({});
-        setRunOutput(null);
-        setShowRunModal(true);
-      } else {
-        toast.error('Failed to load flow details');
-      }
+      const data = await apiJson(`/langflow/flows/${flow.id}`);
+      setSelectedFlow(data);
+      setRunInputs({});
+      setRunOutput(null);
+      setShowRunModal(true);
     } catch (error) {
       console.error('Failed to load flow details:', error);
       toast.error('Failed to load flow details');
@@ -132,27 +111,22 @@ const LangflowFlows = () => {
     setRunOutput(null);
 
     try {
-      const response = await fetch(`${API_BASE}/langflow/flows/${selectedFlow.id}/run`, {
+      const data = await apiJson(`/langflow/flows/${selectedFlow.id}/run`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ inputs: runInputs }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setRunOutput(data);
-        toast.success('Flow executed successfully');
-      } else {
-        const error = await response.json();
-        toast.error(error.detail || 'Failed to run flow');
-        setRunOutput({ error: error.detail || 'Execution failed' });
-      }
+      setRunOutput(data);
+      toast.success('Flow executed successfully');
     } catch (error) {
       console.error('Failed to run flow:', error);
-      toast.error('Failed to run flow');
-      setRunOutput({ error: error.message });
+      if (error instanceof ApiError) {
+        toast.error(error.message || 'Failed to run flow');
+        setRunOutput({ error: error.message || 'Execution failed' });
+      } else {
+        toast.error('Failed to run flow');
+        setRunOutput({ error: error.message });
+      }
     } finally {
       setIsRunning(false);
     }
@@ -163,22 +137,17 @@ const LangflowFlows = () => {
     setIsExporting(true);
 
     try {
-      const response = await fetch(`${API_BASE}/langflow/flows/${flow.id}/export`);
-      if (response.ok) {
-        const data = await response.json();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${flow.name || 'flow'}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        toast.success('Flow exported successfully');
-      } else {
-        toast.error('Failed to export flow');
-      }
+      const data = await apiJson(`/langflow/flows/${flow.id}/export`);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${flow.name || 'flow'}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Flow exported successfully');
     } catch (error) {
       console.error('Failed to export flow:', error);
       toast.error('Failed to export flow');
@@ -195,24 +164,19 @@ const LangflowFlows = () => {
       const text = await file.text();
       const flowData = JSON.parse(text);
 
-      const response = await fetch(`${API_BASE}/langflow/flows/import`, {
+      await apiJson('/langflow/flows/import', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(flowData),
       });
 
-      if (response.ok) {
-        toast.success('Flow imported successfully');
-        loadFlows();
-      } else {
-        const error = await response.json();
-        toast.error(error.detail || 'Failed to import flow');
-      }
+      toast.success('Flow imported successfully');
+      loadFlows();
     } catch (error) {
       console.error('Failed to import flow:', error);
-      toast.error('Invalid JSON file');
+      // ApiError = backend rejected the flow; anything else = bad local file.
+      toast.error(error instanceof ApiError
+        ? (error.message || 'Failed to import flow')
+        : 'Invalid JSON file');
     }
 
     // Reset file input
@@ -225,18 +189,14 @@ const LangflowFlows = () => {
     if (!flowToDelete) return;
 
     try {
-      const response = await fetch(`${API_BASE}/langflow/flows/${flowToDelete.id}`, {
+      await apiJson(`/langflow/flows/${flowToDelete.id}`, {
         method: 'DELETE',
       });
 
-      if (response.ok) {
-        toast.success('Flow deleted successfully');
-        setFlows(flows.filter(f => f.id !== flowToDelete.id));
-        setShowDeleteModal(false);
-        setFlowToDelete(null);
-      } else {
-        toast.error('Failed to delete flow');
-      }
+      toast.success('Flow deleted successfully');
+      setFlows(flows.filter(f => f.id !== flowToDelete.id));
+      setShowDeleteModal(false);
+      setFlowToDelete(null);
     } catch (error) {
       console.error('Failed to delete flow:', error);
       toast.error('Failed to delete flow');

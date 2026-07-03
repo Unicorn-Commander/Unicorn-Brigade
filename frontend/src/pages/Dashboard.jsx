@@ -4,12 +4,12 @@ import {
   Bot,
   Sparkles,
   BookOpen,
-  Wrench,
   Activity,
   TrendingUp,
   Shield,
   Zap,
   MessageSquare,
+  MessagesSquare,
   Database,
   Server,
   ArrowRight,
@@ -28,13 +28,11 @@ import {
   ChevronRight,
   Plus
 } from 'lucide-react';
-import axios from 'axios';
 import { toast } from 'react-hot-toast';
+import { apiJson } from '../services/http';
 import { GeneralAvatar, GunnyAvatar } from '../components/UnicornBrigadeLogo';
 import CardSkeleton from '../components/skeletons/CardSkeleton';
 import StatsSkeleton from '../components/skeletons/StatsSkeleton';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -55,8 +53,7 @@ const Dashboard = () => {
   });
   const [usageStats, setUsageStats] = useState({
     messagesTotal: 0,
-    toolCallsTotal: 0,
-    conversationsToday: 0
+    conversationsTotal: 0
   });
   const [refreshing, setRefreshing] = useState(false);
 
@@ -69,67 +66,59 @@ const Dashboard = () => {
     setLoading(true);
     try {
       const minDelay = new Promise(resolve => setTimeout(resolve, 300));
-      const [agentsResponse, domainsResponse] = await Promise.all([
-        axios.get(`${API_BASE}/agents`),
-        axios.get(`${API_BASE}/agents/domains`),
+      const [agentsData, domainsData, statsData] = await Promise.all([
+        apiJson('/agents'),
+        apiJson('/agents/domains'),
+        apiJson('/stats'),
         minDelay,
       ]);
 
-      const agents = agentsResponse.data.agents || [];
-      const domains = domainsResponse.data.domains || [];
+      const agents = agentsData.agents || [];
+      const domains = domainsData.domains || [];
 
       try {
-        const conversationsResponse = await axios.get(`${API_BASE}/conversations?limit=5`);
-        setRecentConversations(conversationsResponse.data.conversations || []);
+        const conversationsData = await apiJson('/conversations', { params: { limit: 5 } });
+        setRecentConversations(conversationsData.conversations || []);
       } catch (err) {
         console.log('Conversations endpoint not available');
         setRecentConversations([]);
       }
 
-      // Calculate stats
-      const activeAgents = agents.filter(a => a.status === 'active').length;
-
-      // Calculate usage stats from agents
-      let totalMessages = 0;
-      agents.forEach(agent => {
-        totalMessages += agent._count?.messages || 0;
-      });
-
       setStats({
-        totalAgents: agents.length,
-        activeAgents: activeAgents,
+        totalAgents: statsData.totalAgents ?? agents.length,
+        activeAgents: statsData.activeAgents ?? agents.filter(a => a.status === 'active').length,
         domains: domains,
         recentActivity: agents.slice(0, 5) // Last 5 agents as activity
       });
 
+      // Real usage counts from /stats — no client-side estimates.
       setUsageStats({
-        messagesTotal: totalMessages,
-        toolCallsTotal: Math.floor(totalMessages * 0.3), // Estimate
-        conversationsToday: recentConversations.length
+        messagesTotal: statsData.totalMessages ?? 0,
+        conversationsTotal: statsData.totalConversations ?? 0
       });
-
-      setSystemStatus('online');
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
       toast.error('Failed to load dashboard data');
-      setSystemStatus('degraded');
     } finally {
       setLoading(false);
     }
   };
 
   const checkSystemHealth = async () => {
-    // Check API health
+    // API health + overall system status straight from /health
     try {
-      await axios.get(`${API_BASE}/health`);
-      setSystemHealth(prev => ({ ...prev, api: 'healthy' }));
+      const health = await apiJson('/health');
+      const apiHealthy = health?.status === 'healthy';
+      setSystemHealth(prev => ({ ...prev, api: apiHealthy ? 'healthy' : 'error' }));
+      setSystemStatus(apiHealthy ? 'online' : 'degraded');
     } catch {
       setSystemHealth(prev => ({ ...prev, api: 'error' }));
+      setSystemStatus('degraded');
     }
 
     // Check database via stats endpoint
     try {
-      await axios.get(`${API_BASE}/stats`);
+      await apiJson('/stats');
       setSystemHealth(prev => ({ ...prev, database: 'healthy' }));
     } catch {
       setSystemHealth(prev => ({ ...prev, database: 'error' }));
@@ -137,8 +126,8 @@ const Dashboard = () => {
 
     // Check LLM providers via models endpoint
     try {
-      const res = await axios.get(`${API_BASE}/chat/models`);
-      if (res.data.models?.length > 0) {
+      const res = await apiJson('/chat/models');
+      if (res.models?.length > 0) {
         setSystemHealth(prev => ({ ...prev, llm: 'healthy' }));
       } else {
         setSystemHealth(prev => ({ ...prev, llm: 'warning' }));
@@ -207,10 +196,10 @@ const Dashboard = () => {
       trend: 'up'
     },
     {
-      icon: Wrench,
-      label: 'Tool Calls',
-      value: usageStats.toolCallsTotal.toLocaleString(),
-      change: 'Estimated',
+      icon: MessagesSquare,
+      label: 'Conversations',
+      value: usageStats.conversationsTotal.toLocaleString(),
+      change: 'All time',
       trend: 'up'
     },
     {

@@ -278,7 +278,7 @@ class AuthService {
     try {
       const { data } = await axios.post(`${API_URL}/users/register`, {
         email, password, name
-      });
+      }, { withCredentials: true });
       if (data.apiKey) localStorage.setItem(LEGACY_API_KEY, data.apiKey);
       return data;
     } catch (error) {
@@ -290,7 +290,11 @@ class AuthService {
 
   async loginWithPassword(email, password) {
     try {
-      const { data } = await axios.post(`${API_URL}/users/login`, { email, password });
+      const { data } = await axios.post(
+        `${API_URL}/users/login`,
+        { email, password },
+        { withCredentials: true }
+      );
       if (data.apiKey) localStorage.setItem(LEGACY_API_KEY, data.apiKey);
       return data;
     } catch (error) {
@@ -304,7 +308,7 @@ class AuthService {
     const apiKey = localStorage.getItem(LEGACY_API_KEY);
     if (!apiKey) return null;
     try {
-      const { data } = await axios.get(`${API_URL}/users/me`);
+      const { data } = await axios.get(`${API_URL}/users/me`, { withCredentials: true });
       return data;
     } catch (error) {
       if (error.response?.status === 401) {
