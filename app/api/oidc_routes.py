@@ -422,6 +422,27 @@ def _auth_user_to_dict(user: AuthUser) -> Dict[str, Any]:
     }
 
 
+@router.get("/auth/config", tags=["auth"])
+async def auth_config():
+    """Public deployment flags the frontend uses to gate nav items and auth UI.
+
+    Safe to expose unauthenticated: booleans and a version string only.
+    """
+    sso = keycloak_enabled()
+    return {
+        "sso_enabled": sso,
+        # Native email/password signup defaults OFF when SSO owns identity so
+        # register can't mint shadow accounts that bypass Keycloak.
+        "native_register_enabled": os.getenv(
+            "BRIGADE_ALLOW_NATIVE_REGISTER", "false" if sso else "true"
+        ).lower() == "true",
+        "langflow_enabled": os.getenv("LANGFLOW_ENABLED", "false").lower() == "true",
+        "falkordb_enabled": os.getenv("FALKORDB_ENABLED", "false").lower() == "true",
+        "version": os.getenv("API_VERSION", "1.17.0"),
+        "environment": os.getenv("ENVIRONMENT", "development"),
+    }
+
+
 @router.get("/auth/me", tags=["auth"])
 async def auth_me(
     user: Optional[AuthUser] = Depends(get_current_user_optional),

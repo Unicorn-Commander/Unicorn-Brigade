@@ -70,6 +70,18 @@ class Agent(Base):
         Index("ix_agents_status", "status"),
     )
 
+    @staticmethod
+    def _as_str_list(value):
+        """JSON columns written by different clients hold lists, dicts
+        ({"cap": true}) or bare strings; the API contract is List[str]."""
+        if not value:
+            return []
+        if isinstance(value, list):
+            return [str(v) for v in value]
+        if isinstance(value, dict):
+            return [str(k) for k, v in value.items() if v]
+        return [str(value)]
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -86,11 +98,11 @@ class Agent(Base):
             "status": self.status,
             "type": self.type,
             "agentType": self.agent_type,
-            "capabilities": self.capabilities or [],
+            "capabilities": self._as_str_list(self.capabilities),
             "model": self.model,
             "temperature": self.temperature,
             "maxTokens": self.max_tokens,
-            "tools": self.tools or [],
+            "tools": self._as_str_list(self.tools),
             "billingTier": self.billing_tier,
             "rateMultiplier": self.rate_multiplier,
             "basePricePerCall": self.base_price_per_call,
