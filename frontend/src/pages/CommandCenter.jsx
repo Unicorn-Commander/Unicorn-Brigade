@@ -46,7 +46,18 @@ export default function CommandCenter() {
   const [view, setView] = useState('chart');
   const { statuses, connected, invocations, events } = useOrchestrationStream();
 
-  const tree = useMemo(() => buildOrgTree(agents), [agents]);
+  // Defensive: `capabilities` can arrive as a non-array (bad seed data / JSON
+  // column) and downstream renderers slice/map it (org nodes, activity, 3D).
+  // Normalize once here so every consumer gets a real array.
+  const safeAgents = useMemo(
+    () =>
+      (Array.isArray(agents) ? agents : []).map((a) =>
+        Array.isArray(a?.capabilities) ? a : { ...a, capabilities: [] }
+      ),
+    [agents]
+  );
+
+  const tree = useMemo(() => buildOrgTree(safeAgents), [safeAgents]);
 
   const rawNodes = useMemo(
     () =>
@@ -273,10 +284,10 @@ export default function CommandCenter() {
         ) : view === 'activity' ? (
           <div className="flex h-full min-h-0 flex-col lg:flex-row">
             <div className="min-h-0 flex-1 overflow-hidden">
-              <ActivityGrid agents={agents} statuses={statuses} onOpen={openWindow} />
+              <ActivityGrid agents={safeAgents} statuses={statuses} onOpen={openWindow} />
             </div>
             <div className="min-h-0 shrink-0 border-t border-slate-800 bg-slate-950/40 lg:w-80 lg:border-l lg:border-t-0">
-              <ActivityFeed events={events} agents={agents} onOpen={openWindow} />
+              <ActivityFeed events={events} agents={safeAgents} onOpen={openWindow} />
             </div>
           </div>
         ) : view === 'graph3d' ? (
@@ -288,7 +299,7 @@ export default function CommandCenter() {
             }
           >
             <WorkflowVisualization3D
-              agents={agents}
+              agents={safeAgents}
               activeAgents={activeAgents}
               realtimeEvents={events}
               onAgentClick={(node) => {

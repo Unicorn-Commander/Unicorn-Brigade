@@ -48,9 +48,13 @@ server {
     }
 
     # ── SPA Routing ─────────────────────────────────────────────────────────
-    # React Router: serve index.html for all non-file routes
+    # React Router: serve index.html for all non-file routes.
+    # index.html must never be cached: without an explicit Cache-Control,
+    # Cloudflare applies a 4h browser TTL and users keep running stale
+    # bundles (with stale asset hashes) after every deploy.
     location / {
         try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache, must-revalidate" always;
     }
 
     # ── Health Check ────────────────────────────────────────────────────────

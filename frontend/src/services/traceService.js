@@ -1,46 +1,83 @@
 // Agent Trace API Service
-// Handles all API calls for code attribution tracking
-import { buildAuthHeaders, handleUnauthorized } from './authHeaders';
+// Handles all API calls for code attribution tracking.
+// All HTTP goes through the unified apiFetch/apiJson client so auth headers
+// and 401 recovery behave exactly like the rest of the app.
+import { apiFetch, apiJson, ApiError } from './http';
+
+/**
+ * Normalize an attribution record to the snake_case shape the attribution UI
+ * consumes (CodeAttribution page, CodeAttributionCard, AttributionTimeline).
+ *
+ * The trace API returns camelCase (filePath, agentName, startLine, …) while
+ * the UI renders file_path / agent_name / lines_count / timestamp. Mapping
+ * once at the service boundary keeps every consumer on one shape.
+ */
+function normalizeAttribution(attr) {
+  if (!attr || typeof attr !== 'object') return attr;
+
+  const startLine = attr.startLine ?? attr.start_line ?? null;
+  const endLine = attr.endLine ?? attr.end_line ?? null;
+  const createdAt = attr.createdAt ?? attr.created_at ?? null;
+
+  return {
+    ...attr,
+    file_path: attr.filePath ?? attr.file_path ?? '',
+    agent_id: attr.agentId ?? attr.agent_id ?? null,
+    agent_name: attr.agentName ?? attr.agent_name ?? '',
+    session_id: attr.sessionId ?? attr.session_id ?? null,
+    change_type: attr.changeType ?? attr.change_type ?? null,
+    code_hash: attr.codeHash ?? attr.code_hash ?? null,
+    generated_code: attr.generatedCode ?? attr.generated_code ?? '',
+    start_line: startLine,
+    end_line: endLine,
+    lines_count:
+      startLine != null && endLine != null
+        ? endLine - startLine + 1
+        : attr.lines_count ?? 0,
+    created_at: createdAt,
+    timestamp: createdAt ?? attr.timestamp ?? null,
+  };
+}
+
+function normalizeList(data) {
+  return Array.isArray(data) ? data.map(normalizeAttribution) : [];
+}
+
+/**
+ * Normalize /trace/stats (totalLines, uniqueAgents, topAgents[], …) to the
+ * shape AttributionStats renders (total_lines, agents{}, files{}, …).
+ */
+function normalizeStats(stats) {
+  if (!stats || typeof stats !== 'object') return stats;
+
+  const agents = {};
+  (stats.topAgents || []).forEach((a) => {
+    if (a?.agentName) agents[a.agentName] = a.totalLines ?? a.attributionCount ?? 0;
+  });
+
+  const files = {};
+  (stats.topFiles || []).forEach((f) => {
+    if (f?.filePath) files[f.filePath] = f.attributionCount ?? 0;
+  });
+
+  return {
+    ...stats,
+    total_lines: stats.totalLines ?? 0,
+    total_attributions: stats.totalAttributions ?? 0,
+    total_agents: stats.uniqueAgents ?? 0,
+    total_files: stats.uniqueFiles ?? 0,
+    agents,
+    files,
+  };
+}
+
+/** The trace endpoints 404 an empty window — treat that as "no data". */
+function emptyOn404(error) {
+  if (error instanceof ApiError && error.status === 404) return [];
+  throw error;
+}
 
 class TraceService {
-  constructor() {
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-  }
-
-  async request(endpoint, options = {}) {
-    try {
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
-        ...options,
-        credentials: 'include',
-        headers: buildAuthHeaders({
-          'Content-Type': 'application/json',
-          ...options.headers,
-        }),
-      });
-
-      const contentType = response.headers.get('content-type');
-      let data;
-
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        data = await response.text();
-      }
-
-      if (!response.ok) {
-        if (response.status === 401 && !endpoint.includes('/auth/')) {
-          handleUnauthorized();
-        }
-        throw new Error(data.error || data.message || `API Error: ${response.statusText}`);
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Trace API Request failed:', error);
-      throw error;
-    }
-  }
-
   // ========== Code Attributions ==========
 
   /**
@@ -49,14 +86,35 @@ class TraceService {
    * @returns {Promise<Array>} List of attributions
    */
   async getAttributions(filters = {}) {
-    const params = new URLSearchParams();
+    return apiJson('/trace/recent', {
+      params: {
+        days: filters.days ?? 7,
+        limit: filters.limit,
+        offset: filters.offset,
+      },
+    })
+      .then(normalizeList)
+      .catch(emptyOn404);
+  }
 
-    if (filters.days) params.append('days', filters.days);
-    if (filters.limit) params.append('limit', filters.limit);
-    if (filters.offset) params.append('offset', filters.offset);
+  /**
+   * Search attributions by substring match on file path, agent, model, or
+   * prompt. The trace API has no server-side search endpoint, so this filters
+   * the recent-attributions window client-side.
+   * @param {string} query - Search text
+   * @param {Object} filters - Optional filters forwarded to getAttributions (days, limit, offset)
+   * @returns {Promise<Array>} Matching attributions
+   */
+  async searchAttributions(query, filters = {}) {
+    const attributions = await this.getAttributions(filters);
+    const q = (query || '').trim().toLowerCase();
+    if (!q) return attributions;
 
-    const queryString = params.toString();
-    return this.request(`/trace/recent${queryString ? `?${queryString}` : '?days=7'}`);
+    return attributions.filter((attr) =>
+      [attr.file_path, attr.agent_name, attr.agent_id, attr.model, attr.prompt].some(
+        (field) => (field || '').toLowerCase().includes(q)
+      )
+    );
   }
 
   /**
@@ -65,16 +123,22 @@ class TraceService {
    * @returns {Promise<Object>} File attribution details with line-by-line data
    */
   async getFileAttributions(filePath) {
-    return this.request(`/trace/files/${encodeURIComponent(filePath)}`);
+    const data = await apiJson(`/trace/files/${encodeURIComponent(filePath)}`);
+    if (data && Array.isArray(data.attributions)) {
+      return { ...data, attributions: normalizeList(data.attributions) };
+    }
+    return data;
   }
 
   /**
    * Get attributions by agent
    * @param {string} agentId - Agent ID
-   * @returns {Promise<Object>} Agent attribution summary and details
+   * @returns {Promise<Array>} Agent attributions
    */
   async getAgentAttributions(agentId) {
-    return this.request(`/trace/agents/${agentId}`);
+    return apiJson(`/trace/agents/${encodeURIComponent(agentId)}`)
+      .then(normalizeList)
+      .catch(emptyOn404);
   }
 
   /**
@@ -83,15 +147,17 @@ class TraceService {
    * @returns {Promise<Array>} Recent attributions
    */
   async getRecentActivity(days = 1) {
-    return this.request(`/trace/recent?days=${days}`);
+    return this.getAttributions({ days });
   }
 
   /**
-   * Get attribution statistics
+   * Get attribution statistics.
+   * NOTE: /trace/stats accepts no filters — always global.
    * @returns {Promise<Object>} Statistics summary
    */
   async getStatistics() {
-    return this.request('/trace/stats');
+    const stats = await apiJson('/trace/stats');
+    return normalizeStats(stats);
   }
 
   /**
@@ -100,7 +166,9 @@ class TraceService {
    * @returns {Promise<Array>} Attributions for this session
    */
   async getSessionAttributions(sessionId) {
-    return this.request(`/trace/sessions/${sessionId}`);
+    return apiJson(`/trace/sessions/${encodeURIComponent(sessionId)}`)
+      .then(normalizeList)
+      .catch(emptyOn404);
   }
 
   /**
@@ -114,7 +182,8 @@ class TraceService {
     const fileMap = new Map();
 
     attributions.forEach(attr => {
-      const path = attr.filePath;
+      const path = attr.file_path;
+      if (!path) return;
       if (!fileMap.has(path)) {
         fileMap.set(path, {
           path,
@@ -126,8 +195,8 @@ class TraceService {
 
       const file = fileMap.get(path);
       file.attributionCount++;
-      file.totalLines += (attr.endLine - attr.startLine + 1);
-      file.agents.add(attr.agentName);
+      file.totalLines += attr.lines_count || 0;
+      file.agents.add(attr.agent_name);
     });
 
     return Array.from(fileMap.values()).map(f => ({
@@ -152,21 +221,13 @@ class TraceService {
       format: format
     };
 
-    const response = await fetch(`${this.baseURL}/trace/report`, {
+    const response = await apiFetch('/trace/report', {
       method: 'POST',
-      credentials: 'include',
-      headers: buildAuthHeaders({
-        'Content-Type': 'application/json',
-      }),
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
 
-    if (response.status === 401) {
-      handleUnauthorized();
-    }
-
     if (!response.ok) {
-      throw new Error(`Export failed: ${response.statusText}`);
+      throw new ApiError(response.status, null, `Export failed: ${response.statusText}`);
     }
 
     return response.blob();
@@ -177,7 +238,7 @@ class TraceService {
    * @returns {Promise<Object>} Health status
    */
   async healthCheck() {
-    return this.request('/trace/health');
+    return apiJson('/trace/health');
   }
 }
 

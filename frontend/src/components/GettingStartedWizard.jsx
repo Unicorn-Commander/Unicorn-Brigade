@@ -90,7 +90,7 @@ const WIZARD_STEPS = [
           </li>
           <li className="flex items-start space-x-2">
             <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-purple-400">2.</div>
-            <span>Select from 23 available tools</span>
+            <span>Select tools from the Tool Library</span>
           </li>
           <li className="flex items-start space-x-2">
             <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-purple-400">3.</div>
@@ -117,7 +117,7 @@ const WIZARD_STEPS = [
     content: (
       <div className="space-y-4">
         <p className="text-slate-300">
-          Choose from 25 pre-built workflow templates:
+          Choose from a library of ready-made workflow templates:
         </p>
         <div className="space-y-2 text-sm">
           <div className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-3">

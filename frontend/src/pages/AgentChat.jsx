@@ -30,8 +30,8 @@ import ToolCallCard, { getToolIcon } from '../components/ToolCallCard';
 import VoiceCallButton from '../components/VoiceCallButton';
 import VoiceCallModal from '../components/VoiceCallModal';
 import ListSkeleton from '../components/skeletons/ListSkeleton';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import { apiJson } from '../services/http';
+import api from '../services/api';
 
 const AgentChat = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -94,8 +94,7 @@ const AgentChat = () => {
   const loadAgents = async () => {
     try {
       setAgentsLoading(true);
-      const res = await fetch(`${API_BASE}/agents`);
-      const data = await res.json();
+      const data = await apiJson('/agents');
       setAgents(data.agents || []);
       // Pick the agent from ?agent=<id> if present, else the first active one —
       // but only when not loading a specific conversation. (Fixes click-to-chat
@@ -121,9 +120,7 @@ const AgentChat = () => {
   const loadConversation = async (convId) => {
     setLoadingConversation(true);
     try {
-      const res = await fetch(`${API_BASE}/conversations/${convId}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await apiJson(`/conversations/${convId}`);
 
       setConversationId(data.id);
       setConversationTitle(data.title);
@@ -170,17 +167,15 @@ const AgentChat = () => {
 
   const createConversation = async (agentId, model) => {
     try {
-      const res = await fetch(`${API_BASE}/conversations`, {
+      // No hardcoded user_id: the backend infers it from the authenticated
+      // user (and defaults to "anonymous" otherwise).
+      const data = await apiJson('/conversations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agent_id: agentId,
-          user_id: 'anonymous',
           model: model
         })
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
       setConversationId(data.id);
       // Update URL without full navigation
       setSearchParams({ conversation: data.id });
@@ -195,9 +190,8 @@ const AgentChat = () => {
   const saveMessage = async (convId, role, content, model, tokensUsed) => {
     if (!convId) return;
     try {
-      await fetch(`${API_BASE}/conversations/${convId}/messages`, {
+      await apiJson(`/conversations/${convId}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           role,
           content,
@@ -274,16 +268,12 @@ const AgentChat = () => {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/agents/${selectedAgent.id}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMsg.content,
-          stream: true,
-          history,
-          model: selectedAgent.model,
-          temperature: selectedAgent.temperature
-        })
+      const res = await api.streamAgentChat(selectedAgent.id, {
+        message: userMsg.content,
+        stream: true,
+        history,
+        model: selectedAgent.model,
+        temperature: selectedAgent.temperature
       });
 
       if (!res.ok) {
@@ -545,16 +535,12 @@ const AgentChat = () => {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/agents/${selectedAgent.id}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMsg.content,
-          stream: true,
-          history,
-          model: selectedAgent.model,
-          temperature: selectedAgent.temperature
-        })
+      const res = await api.streamAgentChat(selectedAgent.id, {
+        message: userMsg.content,
+        stream: true,
+        history,
+        model: selectedAgent.model,
+        temperature: selectedAgent.temperature
       });
 
       if (!res.ok) {

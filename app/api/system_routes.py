@@ -3,12 +3,19 @@ System-level routes: stats, model catalog, providers.
 """
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 import logging
+import os
 import time
 
+import httpx
+
 from app.db.database import get_session
+from app.db.models import Conversation, Message
 from app.db.repositories import AgentRepository
+from app.llm.tool_resolver import TOOL_REGISTRY
 from app.stores.model_catalog import ModelCatalog
 from app.llm.ops_center_client import OpsCenterLLMClient
 
@@ -20,11 +27,54 @@ model_catalog: ModelCatalog = None
 llm_client: OpsCenterLLMClient = None
 _start_time = time.time()
 
+API_VERSION = os.getenv("API_VERSION", "1.17.0")
+
+# Short timeout for provider/service reachability probes: these run inline
+# in request handlers, so a dead upstream must fail fast, not hang the page.
+PROBE_TIMEOUT_SECONDS = 2.0
+
 
 def init_system_routes(catalog: ModelCatalog, client: OpsCenterLLMClient):
     global model_catalog, llm_client
     model_catalog = catalog
     llm_client = client
+
+
+def ops_center_base_url() -> str:
+    """The Ops-Center gateway base URL actually used for LLM routing."""
+    if llm_client is not None and llm_client.ops_center_url:
+        return llm_client.ops_center_url.rstrip("/")
+    return os.getenv("OPS_CENTER_URL", "https://unicorncommander.ai").rstrip("/")
+
+
+def local_llm_base_url() -> str:
+    """The local OpenAI-compatible LLM router (llama.cpp router)."""
+    return os.getenv("LOCAL_LLM_URL", "http://unicorn-llama-router:8080").rstrip("/")
+
+
+async def probe_http(url: str, timeout: float = PROBE_TIMEOUT_SECONDS) -> dict:
+    """
+    GET a URL and report reachability. Never raises.
+
+    Any HTTP response below 500 (even a 404) proves the service is up and
+    answering; only transport-level failures (connection refused, DNS,
+    timeout) or 5xx count as unreachable.
+    """
+    start = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url)
+        return {
+            "ok": resp.status_code < 500,
+            "latency_ms": round((time.monotonic() - start) * 1000, 1),
+            "detail": f"HTTP {resp.status_code}",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "latency_ms": round((time.monotonic() - start) * 1000, 1),
+            "detail": (str(e) or type(e).__name__)[:200],
+        }
 
 
 @router.get("/stats")
@@ -35,6 +85,19 @@ async def get_stats(session: AsyncSession = Depends(get_session)):
     repo = AgentRepository(session)
     total_agents = await repo.count()
     active_agents = await repo.count_active()
+
+    # Real usage counts straight from the database (never estimated).
+    total_conversations = 0
+    total_messages = 0
+    try:
+        total_conversations = (
+            await session.execute(select(func.count(Conversation.id)))
+        ).scalar() or 0
+        total_messages = (
+            await session.execute(select(func.count(Message.id)))
+        ).scalar() or 0
+    except Exception as e:
+        logger.warning(f"Failed to count conversations/messages: {e}")
 
     # Try to get system resources
     resources = {}
@@ -59,10 +122,13 @@ async def get_stats(session: AsyncSession = Depends(get_session)):
         "totalAgents": total_agents,
         "activeAgents": active_agents,
         "totalModels": model_catalog.count() if model_catalog else 0,
-        "totalTools": 7,
+        # The real tool registry, not a hardcoded count.
+        "totalTools": len(TOOL_REGISTRY),
+        "totalConversations": total_conversations,
+        "totalMessages": total_messages,
         "uptime_seconds": round(uptime, 1),
         "status": "operational",
-        "version": "1.0.0",
+        "version": API_VERSION,
         "resources": resources,
     }
 
@@ -92,30 +158,46 @@ async def list_models():
 
 @router.get("/providers")
 async def list_providers():
-    """List LLM providers (Ops-Center handles routing)."""
-    return {
-        "providers": [
-            {
-                "id": "ops-center",
-                "name": "Ops-Center (UC-Cloud)",
-                "type": "gateway",
-                "endpoint": "https://unicorncommander.ai",
-                "status": "active",
-                "isDefault": True,
-                "description": "UC-Cloud inference gateway routing to 70+ models via vLLM, OpenRouter, and BYOK keys.",
-                "supported_providers": ["openai", "anthropic", "google", "meta", "mistral", "deepseek"],
-                "icon": "🦄",
-            },
-            {
-                "id": "local-vllm",
-                "name": "Local vLLM",
-                "type": "local",
-                "endpoint": "http://ops-center-direct:8084",
-                "status": "active",
-                "isDefault": False,
-                "description": "Local GPU inference via vLLM. Zero cost, full privacy.",
-                "icon": "🖥️",
-            },
-        ],
-        "count": 2,
-    }
+    """
+    List LLM providers with live connectivity status.
+
+    Each provider is probed with a short-timeout HTTP GET; status is
+    "connected"/"disconnected" plus latency_ms. Never raises — probe
+    failures simply report the provider as disconnected.
+    """
+    ops_base = ops_center_base_url()
+    local_base = local_llm_base_url()
+
+    ops_probe, local_probe = await asyncio.gather(
+        probe_http(f"{ops_base}/health"),
+        probe_http(f"{local_base}/v1/models"),
+    )
+
+    providers = [
+        {
+            "id": "ops-center",
+            "name": "Ops-Center (UC-Cloud)",
+            "type": "gateway",
+            "endpoint": ops_base,
+            "status": "connected" if ops_probe["ok"] else "disconnected",
+            "latency_ms": ops_probe["latency_ms"],
+            "detail": ops_probe["detail"],
+            "isDefault": True,
+            "description": "UC-Cloud inference gateway routing to 70+ models via vLLM, OpenRouter, and BYOK keys.",
+            "supported_providers": ["openai", "anthropic", "google", "meta", "mistral", "deepseek"],
+            "icon": "🦄",
+        },
+        {
+            "id": "local-vllm",
+            "name": "Local LLM Router",
+            "type": "local",
+            "endpoint": local_base,
+            "status": "connected" if local_probe["ok"] else "disconnected",
+            "latency_ms": local_probe["latency_ms"],
+            "detail": local_probe["detail"],
+            "isDefault": False,
+            "description": "Local GPU inference via the llama.cpp router. Zero cost, full privacy.",
+            "icon": "🖥️",
+        },
+    ]
+    return {"providers": providers, "count": len(providers)}

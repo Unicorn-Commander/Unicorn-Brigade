@@ -12,17 +12,26 @@ import {
   Palette,
   Bell,
   Shield,
+  Key,
   Info
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Breadcrumbs from '../components/Breadcrumbs';
-import api from '../services/api';
+import ApiKeyCard from '../components/ApiKeyCard';
+import KeyRevealModal from '../components/KeyRevealModal';
+import { apiJson } from '../services/http';
 
 const Settings = () => {
   const [providers, setProviders] = useState([]);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [health, setHealth] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [apiKeys, setApiKeys] = useState([]);
+  const [keysLoading, setKeysLoading] = useState(true);
+  const [keysError, setKeysError] = useState(null);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [revealedKey, setRevealedKey] = useState(null);
   const [preferences, setPreferences] = useState(() => {
     const saved = localStorage.getItem('brigade-preferences');
     return saved ? JSON.parse(saved) : {
@@ -36,6 +45,7 @@ const Settings = () => {
 
   useEffect(() => {
     loadSettings();
+    loadApiKeys();
   }, []);
 
   useEffect(() => {
@@ -46,20 +56,68 @@ const Settings = () => {
     setLoading(true);
     try {
       const results = await Promise.allSettled([
-        api.get('/providers'),
-        api.get('/chat/models'),
-        api.get('/health'),
+        apiJson('/providers'),
+        apiJson('/chat/models'),
+        apiJson('/stats'),
       ]);
       const providersData = results[0].status === 'fulfilled' ? results[0].value : {};
       const modelsData = results[1].status === 'fulfilled' ? results[1].value : {};
-      const healthData = results[2].status === 'fulfilled' ? results[2].value : null;
+      const statsData = results[2].status === 'fulfilled' ? results[2].value : null;
       setProviders(providersData.providers || []);
       setModels(modelsData.models || []);
-      setHealth(healthData);
+      setStats(statsData);
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadApiKeys = async () => {
+    setKeysLoading(true);
+    try {
+      const data = await apiJson('/users/me/api-keys', { redirectOn401: false });
+      setApiKeys(data.keys || []);
+      setKeysError(null);
+    } catch (error) {
+      setApiKeys([]);
+      setKeysError(
+        error.status === 401
+          ? 'Sign in to manage your API keys'
+          : error.message || 'Failed to load API keys'
+      );
+    } finally {
+      setKeysLoading(false);
+    }
+  };
+
+  const handleCreateKey = async () => {
+    const name = newKeyName.trim();
+    if (!name || creatingKey) return;
+    setCreatingKey(true);
+    try {
+      const created = await apiJson('/users/me/api-keys', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+      setRevealedKey(created); // full key value is only returned once
+      setNewKeyName('');
+      toast.success('API key created');
+      await loadApiKeys();
+    } catch (error) {
+      toast.error(error.message || 'Failed to create API key');
+    } finally {
+      setCreatingKey(false);
+    }
+  };
+
+  const handleRevokeKey = async (key) => {
+    try {
+      await apiJson(`/users/me/api-keys/${key.id}`, { method: 'DELETE' });
+      toast.success('API key revoked');
+      setApiKeys(prev => prev.filter(k => k.id !== key.id));
+    } catch (error) {
+      toast.error(error.message || 'Failed to revoke API key');
     }
   };
 
@@ -111,7 +169,7 @@ const Settings = () => {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  {provider.status === 'connected' || provider.modelsAvailable > 0 ? (
+                  {provider.status === 'connected' ? (
                     <span className="flex items-center space-x-1 text-emerald-400 text-sm">
                       <CheckCircle className="w-4 h-4" />
                       <span>Connected</span>
@@ -122,9 +180,9 @@ const Settings = () => {
                       <span>Disconnected</span>
                     </span>
                   )}
-                  {provider.modelsAvailable > 0 && (
+                  {typeof provider.latency_ms === 'number' && (
                     <span className="text-xs text-slate-500 ml-2">
-                      {provider.modelsAvailable} models
+                      {provider.latency_ms} ms
                     </span>
                   )}
                 </div>
@@ -134,6 +192,52 @@ const Settings = () => {
               <p className="text-slate-500 text-center py-4">No providers configured</p>
             )}
           </div>
+        </div>
+
+        {/* API Keys */}
+        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-white mb-1 flex items-center space-x-2">
+            <Key className="w-5 h-5 text-cyan-400" />
+            <span>API Keys</span>
+          </h2>
+          <p className="text-sm text-slate-400 mb-4">
+            Personal keys for the Brigade API — send them as an <code className="text-slate-300">X-API-Key</code> header.
+            The full key value is shown only once, at creation.
+          </p>
+          {keysError ? (
+            <p className="text-slate-500 text-center py-4">{keysError}</p>
+          ) : (
+            <>
+              <div className="flex items-center space-x-2 mb-4">
+                <input
+                  type="text"
+                  value={newKeyName}
+                  onChange={(e) => setNewKeyName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreateKey(); }}
+                  placeholder="Key name (e.g. CLI, n8n, staging)"
+                  className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                />
+                <button
+                  onClick={handleCreateKey}
+                  disabled={creatingKey || !newKeyName.trim()}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creatingKey ? 'Creating…' : 'Create Key'}
+                </button>
+              </div>
+              {keysLoading ? (
+                <p className="text-slate-500 text-center py-4">Loading keys…</p>
+              ) : apiKeys.length > 0 ? (
+                <div className="space-y-3">
+                  {apiKeys.map((key) => (
+                    <ApiKeyCard key={key.id} apiKey={key} onRevoke={handleRevokeKey} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-500 text-center py-4">No API keys yet — create one above.</p>
+              )}
+            </>
+          )}
         </div>
 
         {/* Available Models */}
@@ -283,7 +387,7 @@ const Settings = () => {
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
               <p className="text-xs text-slate-400">Version</p>
-              <p className="text-white font-semibold">{health?.version || 'v1.0.0'}</p>
+              <p className="text-white font-semibold">{stats?.version ? `v${stats.version}` : '—'}</p>
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
               <p className="text-xs text-slate-400">Backend</p>
@@ -291,7 +395,7 @@ const Settings = () => {
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
               <p className="text-xs text-slate-400">Agents</p>
-              <p className="text-white font-semibold">{health?.agents_count || providers.length || '—'}</p>
+              <p className="text-white font-semibold">{stats?.totalAgents ?? '—'}</p>
             </div>
           </div>
         </div>
@@ -319,6 +423,11 @@ const Settings = () => {
           </div>
         </div>
       </div>
+
+      {/* One-time reveal of a freshly created key */}
+      {revealedKey && (
+        <KeyRevealModal apiKey={revealedKey} onClose={() => setRevealedKey(null)} />
+      )}
     </div>
   );
 };

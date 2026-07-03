@@ -1,0 +1,95 @@
+/**
+ * Unified HTTP client for every Brigade API call.
+ *
+ * Why this exists: pages historically mixed raw fetch/axios (no auth headers)
+ * with the auth-aware api.js. Under enforced auth the header-less calls 401
+ * and pages silently render empty ("Failed to load…", empty agent dropdown).
+ * Every call site now goes through apiFetch/apiJson so auth is attached
+ * uniformly and 401s recover consistently:
+ *
+ *   1. attach Bearer JWT / X-API-Key (buildAuthHeaders) + session cookie
+ *   2. on 401: drop a stale local JWT and retry once (a bad cached token must
+ *      never mask a valid session cookie / API key)
+ *   3. still 401: hand off to handleUnauthorized() → OIDC login redirect
+ */
+
+import { buildAuthHeaders, handleUnauthorized } from './authHeaders';
+import { API_BASE } from './apiBase';
+
+const JWT_KEY = 'brigade_jwt';
+const JWT_EXPIRES_AT_KEY = 'brigade_jwt_expires_at';
+
+function buildUrl(path, params) {
+  const raw = /^https?:\/\//.test(path)
+    ? path
+    : `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
+  const url = new URL(raw, window.location.origin);
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.append(key, String(value));
+      }
+    });
+  }
+  return url.toString();
+}
+
+export async function apiFetch(path, options = {}) {
+  const { params, redirectOn401 = true, ...fetchOptions } = options;
+  const url = buildUrl(path, params);
+
+  const isForm = typeof FormData !== 'undefined' && fetchOptions.body instanceof FormData;
+  const baseHeaders = fetchOptions.body && !isForm ? { 'Content-Type': 'application/json' } : {};
+
+  const doFetch = () =>
+    fetch(url, {
+      ...fetchOptions,
+      credentials: 'include',
+      headers: buildAuthHeaders({ ...baseHeaders, ...fetchOptions.headers }),
+    });
+
+  let response = await doFetch();
+
+  if (response.status === 401) {
+    if (localStorage.getItem(JWT_KEY)) {
+      localStorage.removeItem(JWT_KEY);
+      localStorage.removeItem(JWT_EXPIRES_AT_KEY);
+      response = await doFetch();
+    }
+    if (response.status === 401 && redirectOn401 && !path.includes('/auth/')) {
+      handleUnauthorized();
+    }
+  }
+
+  return response;
+}
+
+export class ApiError extends Error {
+  constructor(status, data, message) {
+    super(message || `Request failed with status ${status}`);
+    this.status = status;
+    this.data = data;
+  }
+}
+
+export async function apiJson(path, options = {}) {
+  const response = await apiFetch(path, options);
+  const contentType = response.headers.get('content-type') || '';
+  const parse = async () => {
+    if (contentType.includes('application/json')) return response.json();
+    return response.text();
+  };
+  const data = await parse().catch(() => null);
+  if (!response.ok) {
+    const detail = data?.detail;
+    const message =
+      (typeof detail === 'string' ? detail : detail?.message) ||
+      data?.message ||
+      data?.error ||
+      `Request failed with status ${response.status}`;
+    throw new ApiError(response.status, data, message);
+  }
+  return data;
+}
+
+export { API_BASE };

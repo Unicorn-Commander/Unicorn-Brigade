@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Edit, Save, X, MessageSquare, Play, Code, Key, BarChart, Settings, Network, Clock, Wrench, Plus } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
+import { apiJson } from '../services/http';
 import ReactMarkdown from 'react-markdown';
 import AgentArchitectureDiagram from '../components/AgentArchitectureDiagram';
 import AgentTimeline from '../components/AgentTimeline';
@@ -11,8 +11,6 @@ import ApiKeyCard from '../components/ApiKeyCard';
 import GenerateApiKeyModal from '../components/GenerateApiKeyModal';
 import KeyRevealModal from '../components/KeyRevealModal';
 import AgentConfigurationTab from '../components/AgentConfigurationTab';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 const AgentDetail = () => {
   const { id } = useParams();
@@ -34,13 +32,13 @@ const AgentDetail = () => {
   const loadAgent = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE}/agents/${id}`);
-      setAgent(response.data);
-      setEditedAgent(response.data);
+      const data = await apiJson(`/agents/${id}`);
+      setAgent(data);
+      setEditedAgent(data);
 
       // Try to load build session if sessionId exists
-      if (response.data.sessionId) {
-        loadBuildSession(response.data.sessionId);
+      if (data.sessionId) {
+        loadBuildSession(data.sessionId);
       }
     } catch (error) {
       console.error('Failed to load agent:', error);
@@ -54,8 +52,8 @@ const AgentDetail = () => {
   const loadBuildSession = async (sessionId) => {
     setLoadingSession(true);
     try {
-      const response = await axios.get(`${API_BASE}/agent-builder/session/${sessionId}`);
-      setBuildSession(response.data);
+      const data = await apiJson(`/agent-builder/session/${sessionId}`);
+      setBuildSession(data);
     } catch (error) {
       console.error('Failed to load build session:', error);
       // Don't show error toast - it's okay if session doesn't exist
@@ -67,7 +65,10 @@ const AgentDetail = () => {
 
   const saveChanges = async () => {
     try {
-      await axios.put(`${API_BASE}/agents/${id}`, editedAgent);
+      await apiJson(`/agents/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(editedAgent)
+      });
       toast.success('Agent updated successfully');
       setAgent(editedAgent);
       setEditMode(false);
@@ -90,7 +91,7 @@ const AgentDetail = () => {
 
   const handleRevokeKey = async (apiKey) => {
     try {
-      await axios.delete(`${API_BASE}/agents/${id}/api-keys/${apiKey.id}`);
+      await apiJson(`/agents/${id}/api-keys/${apiKey.id}`, { method: 'DELETE' });
       toast.success('API key revoked');
       loadAgent(); // Reload agent to update API keys list
     } catch (error) {

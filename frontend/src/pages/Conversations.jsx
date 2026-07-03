@@ -13,9 +13,7 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import { apiJson } from '../services/http';
 
 const Conversations = () => {
   const navigate = useNavigate();
@@ -39,10 +37,10 @@ const Conversations = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(`${API_BASE}/conversations`, {
-        params: { user_id: 'anonymous' }
-      });
-      setConversations(response.data.conversations || []);
+      // No hardcoded user_id: the backend scopes the list to the authenticated
+      // user (and defaults to "anonymous" otherwise).
+      const data = await apiJson('/conversations');
+      setConversations(data.conversations || []);
     } catch (err) {
       console.error('Failed to load conversations:', err);
       setError('Failed to load conversations. The backend may not be available yet.');
@@ -91,7 +89,7 @@ const Conversations = () => {
 
     setDeletingId(conversationId);
     try {
-      await axios.delete(`${API_BASE}/conversations/${conversationId}`);
+      await apiJson(`/conversations/${conversationId}`, { method: 'DELETE' });
       setConversations(prev => prev.filter(c => c.id !== conversationId));
       toast.success('Conversation deleted');
     } catch (err) {

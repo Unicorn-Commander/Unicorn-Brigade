@@ -8,6 +8,7 @@ Provides endpoints for:
 - User API key management
 """
 
+import os
 import re
 import time
 import logging
@@ -22,11 +23,68 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_session
 from app.db.repositories import UserRepository, UserApiKeyRepository
 from app.db.models import User
+from app.auth.keycloak import keycloak_enabled
 from app.auth.middleware import get_current_user, AuthUser
 from app.auth.roles import UserRole
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def native_register_enabled() -> bool:
+    """Whether native email/password signup is allowed.
+
+    Mirrors GET /auth/config (oidc_routes.auth_config): explicit
+    BRIGADE_ALLOW_NATIVE_REGISTER wins; otherwise native register defaults
+    OFF whenever Keycloak SSO owns identity, so /users/register can't mint
+    shadow accounts that bypass SSO.
+    """
+    sso = keycloak_enabled()
+    return os.getenv(
+        "BRIGADE_ALLOW_NATIVE_REGISTER", "false" if sso else "true"
+    ).lower() == "true"
+
+
+async def _resolve_db_user_id(session: AsyncSession, current_user: AuthUser) -> Optional[str]:
+    """Map an AuthUser onto its ``users`` row id, or None if it has none.
+
+    Personal API keys FK onto users.id, but AuthUser.id is only that id for
+    native logins. Keycloak principals carry the *Keycloak sub* (a different
+    UUID from the auto-provisioned users row, which is keyed by email), and
+    the master admin key is the literal string "admin" — both would otherwise
+    500 as an invalid UUID / FK violation.
+    """
+    from uuid import UUID as _UUID
+    from sqlalchemy import select
+
+    candidate = str(current_user.id or "")
+    try:
+        _UUID(candidate)
+        row = await session.execute(select(User.id).where(User.id == candidate))
+        if row.scalar_one_or_none():
+            return candidate
+    except ValueError:
+        pass
+
+    if current_user.email:
+        row = await session.execute(
+            select(User.id).where(User.email == current_user.email.lower())
+        )
+        found = row.scalar_one_or_none()
+        if found:
+            return str(found)
+
+    return None
+
+
+def _no_db_user_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=(
+            "Personal API keys require a user account. Sign in via SSO "
+            "(service and master-admin keys have no personal key store)."
+        ),
+    )
 
 # ---- Password Hashing with bcrypt directly ----
 # NOTE: Using bcrypt directly instead of passlib due to passlib+bcrypt>=4.1 incompatibility
@@ -197,7 +255,15 @@ async def register_user(
     - **name**: Display name (2-100 characters)
 
     Rate limited to 5 registrations per IP per hour.
+
+    Returns 403 when native registration is disabled (SSO-managed deployments).
     """
+    if not native_register_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account creation is managed by your organization's SSO",
+        )
+
     # Rate limit by IP
     client_ip = get_client_ip(request)
     if not registration_limiter.is_allowed(client_ip):
@@ -442,10 +508,14 @@ async def create_user_api_key(
             detail="Authentication required",
         )
 
-    repo = UserApiKeyRepository(session)
-    result = await repo.generate(current_user.id, body.model_dump())
+    db_user_id = await _resolve_db_user_id(session, current_user)
+    if not db_user_id:
+        raise _no_db_user_error()
 
-    logger.info(f"User {current_user.id} created API key: {result['keyPrefix']}...")
+    repo = UserApiKeyRepository(session)
+    result = await repo.generate(db_user_id, body.model_dump())
+
+    logger.info(f"User {db_user_id} created API key: {result['keyPrefix']}...")
 
     return result
 
@@ -466,8 +536,12 @@ async def list_user_api_keys(
             detail="Authentication required",
         )
 
+    db_user_id = await _resolve_db_user_id(session, current_user)
+    if not db_user_id:
+        raise _no_db_user_error()
+
     repo = UserApiKeyRepository(session)
-    keys = await repo.list_for_user(current_user.id)
+    keys = await repo.list_for_user(db_user_id)
 
     return {"keys": keys}
 
@@ -487,8 +561,12 @@ async def revoke_user_api_key(
             detail="Authentication required",
         )
 
+    db_user_id = await _resolve_db_user_id(session, current_user)
+    if not db_user_id:
+        raise _no_db_user_error()
+
     repo = UserApiKeyRepository(session)
-    success = await repo.revoke(current_user.id, key_id)
+    success = await repo.revoke(db_user_id, key_id)
 
     if not success:
         raise HTTPException(

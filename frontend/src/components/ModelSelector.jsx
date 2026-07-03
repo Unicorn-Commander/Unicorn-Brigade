@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Cpu, AlertCircle } from 'lucide-react';
-import axios from 'axios';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import { apiJson } from '../services/http';
 
 // Fallback hardcoded models if API fails
 const FALLBACK_MODELS = [
@@ -56,8 +54,8 @@ const ModelSelector = ({
   const loadModels = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE}/agent-builder/info`);
-      const availableModels = response.data?.capabilities?.availableModels;
+      const data = await apiJson('/agent-builder/info');
+      const availableModels = data?.capabilities?.availableModels;
       if (availableModels && Array.isArray(availableModels) && availableModels.length > 0) {
         const grouped = groupModelsByProvider(availableModels);
         if (grouped.length > 0) {

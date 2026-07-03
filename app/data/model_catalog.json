@@ -10,7 +10,11 @@
     "context_window": 128000,
     "supports_tools": true,
     "supports_vision": true,
-    "recommended_for": ["complex-reasoning", "code-generation", "multi-step-analysis"],
+    "recommended_for": [
+      "complex-reasoning",
+      "code-generation",
+      "multi-step-analysis"
+    ],
     "description": "OpenAI's flagship multimodal model. Best for complex tasks requiring deep reasoning."
   },
   {
@@ -24,7 +28,12 @@
     "context_window": 128000,
     "supports_tools": true,
     "supports_vision": true,
-    "recommended_for": ["quick-tasks", "chat", "summarization", "classification"],
+    "recommended_for": [
+      "quick-tasks",
+      "chat",
+      "summarization",
+      "classification"
+    ],
     "description": "Fast and affordable for everyday tasks. Great default for most agents."
   },
   {
@@ -38,7 +47,12 @@
     "context_window": 200000,
     "supports_tools": true,
     "supports_vision": true,
-    "recommended_for": ["code-generation", "analysis", "writing", "long-context"],
+    "recommended_for": [
+      "code-generation",
+      "analysis",
+      "writing",
+      "long-context"
+    ],
     "description": "Anthropic's best balance of speed and intelligence. Excellent at code and analysis."
   },
   {
@@ -52,7 +66,12 @@
     "context_window": 200000,
     "supports_tools": true,
     "supports_vision": true,
-    "recommended_for": ["quick-tasks", "classification", "extraction", "routing"],
+    "recommended_for": [
+      "quick-tasks",
+      "classification",
+      "extraction",
+      "routing"
+    ],
     "description": "Fastest Claude model. Ideal for simple, high-throughput tasks."
   },
   {
@@ -66,7 +85,11 @@
     "context_window": 200000,
     "supports_tools": true,
     "supports_vision": true,
-    "recommended_for": ["complex-reasoning", "research", "nuanced-analysis"],
+    "recommended_for": [
+      "complex-reasoning",
+      "research",
+      "nuanced-analysis"
+    ],
     "description": "Most capable Claude model. Use for the hardest problems where quality matters most."
   },
   {
@@ -80,7 +103,11 @@
     "context_window": 1000000,
     "supports_tools": true,
     "supports_vision": true,
-    "recommended_for": ["long-context", "multimodal", "document-analysis"],
+    "recommended_for": [
+      "long-context",
+      "multimodal",
+      "document-analysis"
+    ],
     "description": "Google's flagship model with massive 1M token context. Great for large documents."
   },
   {
@@ -94,36 +121,12 @@
     "context_window": 1000000,
     "supports_tools": true,
     "supports_vision": true,
-    "recommended_for": ["quick-tasks", "high-throughput", "cost-sensitive"],
+    "recommended_for": [
+      "quick-tasks",
+      "high-throughput",
+      "cost-sensitive"
+    ],
     "description": "Fastest Gemini model. Extremely cost-effective with large context window."
-  },
-  {
-    "id": "meta-llama/llama-3.1-8b-instruct",
-    "name": "Llama 3.1 8B",
-    "provider": "meta",
-    "category": "local",
-    "speed": 5,
-    "quality": 2,
-    "cost_per_million_tokens": 0.0,
-    "context_window": 8192,
-    "supports_tools": false,
-    "supports_vision": false,
-    "recommended_for": ["basic-chat", "simple-tasks", "zero-cost", "privacy"],
-    "description": "Open-source local inference via vLLM. Zero cost, full privacy."
-  },
-  {
-    "id": "meta-llama/llama-3.1-70b-instruct",
-    "name": "Llama 3.1 70B",
-    "provider": "meta",
-    "category": "local",
-    "speed": 3,
-    "quality": 4,
-    "cost_per_million_tokens": 0.0,
-    "context_window": 8192,
-    "supports_tools": false,
-    "supports_vision": false,
-    "recommended_for": ["complex-local", "privacy-sensitive", "research"],
-    "description": "Powerful open-source model for local GPU inference. Great quality at zero cost."
   },
   {
     "id": "mistralai/mistral-large",
@@ -136,7 +139,11 @@
     "context_window": 128000,
     "supports_tools": true,
     "supports_vision": false,
-    "recommended_for": ["reasoning", "code", "multilingual"],
+    "recommended_for": [
+      "reasoning",
+      "code",
+      "multilingual"
+    ],
     "description": "Mistral's flagship. Strong at reasoning, code, and multilingual tasks."
   },
   {
@@ -150,7 +157,11 @@
     "context_window": 128000,
     "supports_tools": true,
     "supports_vision": false,
-    "recommended_for": ["quick-tasks", "cost-effective", "routing"],
+    "recommended_for": [
+      "quick-tasks",
+      "cost-effective",
+      "routing"
+    ],
     "description": "Fast Mistral model for everyday tasks. Good balance of speed and capability."
   },
   {
@@ -164,7 +175,68 @@
     "context_window": 64000,
     "supports_tools": false,
     "supports_vision": false,
-    "recommended_for": ["reasoning", "math", "code", "complex-analysis"],
+    "recommended_for": [
+      "reasoning",
+      "math",
+      "code",
+      "complex-analysis"
+    ],
     "description": "State-of-the-art reasoning model. Excels at math, code, and step-by-step analysis."
+  },
+  {
+    "id": "local/Qwen_Qwen3.6-35B-A3B-Q4_K_M",
+    "name": "Qwen3.6 35B A3B (Local)",
+    "provider": "qwen",
+    "category": "local",
+    "speed": 4,
+    "quality": 4,
+    "cost_per_million_tokens": 0.0,
+    "context_window": 131072,
+    "supports_tools": true,
+    "supports_vision": false,
+    "recommended_for": [
+      "agents",
+      "tool-calling",
+      "scheduled-runs",
+      "privacy",
+      "zero-cost"
+    ],
+    "description": "House workhorse on the local llama.cpp router. Reliable tool-caller at 131K context. Zero cost, fully private."
+  },
+  {
+    "id": "local/llama-3.3-70b-instruct-q4_k_m",
+    "name": "Llama 3.3 70B (Local)",
+    "provider": "meta",
+    "category": "local",
+    "speed": 2,
+    "quality": 4,
+    "cost_per_million_tokens": 0.0,
+    "context_window": 0,
+    "supports_tools": true,
+    "supports_vision": false,
+    "recommended_for": [
+      "complex-local",
+      "privacy-sensitive",
+      "research"
+    ],
+    "description": "Large open-weights model on the local llama.cpp router. Strong quality at zero cost, fully private."
+  },
+  {
+    "id": "local/Qwen3-VL-8B-Instruct-Q4_K_M",
+    "name": "Qwen3 VL 8B (Local Vision)",
+    "provider": "qwen",
+    "category": "local",
+    "speed": 4,
+    "quality": 3,
+    "cost_per_million_tokens": 0.0,
+    "context_window": 32768,
+    "supports_tools": false,
+    "supports_vision": true,
+    "recommended_for": [
+      "image-understanding",
+      "privacy",
+      "zero-cost"
+    ],
+    "description": "Local vision-language model for image understanding. Zero cost, fully private."
   }
 ]

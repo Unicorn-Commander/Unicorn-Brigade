@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
+import { apiJson } from '../services/http';
 import ToolCard from './ToolCard';
 import ToolConfigModal from './ToolConfigModal';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
 
 // Mock data for when API isn't ready
 const mockTools = [
@@ -111,8 +109,8 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
     setLoading(true);
     try {
       // Try to fetch from API, fall back to mock data
-      const response = await axios.get(`${API_BASE}/tools`);
-      const tools = Array.isArray(response.data) ? response.data : (response.data.tools || response.data);
+      const data = await apiJson('/tools');
+      const tools = Array.isArray(data) ? data : (data.tools || data);
       setAvailableTools(Array.isArray(tools) ? tools : mockTools);
     } catch (error) {
       console.log('API not ready, using mock data');
@@ -125,8 +123,9 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
   const handleAdd = async (tool) => {
     try {
       // POST /agents/:agentId/tools
-      await axios.post(`${API_BASE}/agents/${agentId}/tools`, {
-        toolId: tool.id
+      await apiJson(`/agents/${agentId}/tools`, {
+        method: 'POST',
+        body: JSON.stringify({ toolId: tool.id })
       });
 
       setAssigned([...assigned, tool]);
@@ -141,7 +140,7 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
   const handleRemove = async (tool) => {
     try {
       // DELETE /agents/:agentId/tools/:toolId
-      await axios.delete(`${API_BASE}/agents/${agentId}/tools/${tool.id}`);
+      await apiJson(`/agents/${agentId}/tools/${tool.id}`, { method: 'DELETE' });
 
       setAssigned(assigned.filter(t => t.id !== tool.id));
       toast.success(`Removed ${tool.name}`);
@@ -162,8 +161,9 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
   const handleSaveConfig = async (config) => {
     try {
       // PATCH /agents/:agentId/tools/:toolId
-      await axios.patch(`${API_BASE}/agents/${agentId}/tools/${configTool.id}`, {
-        config
+      await apiJson(`/agents/${agentId}/tools/${configTool.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ config })
       });
 
       // Update local state

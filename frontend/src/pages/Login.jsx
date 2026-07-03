@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import useAuth from '../hooks/useAuth';
 import { LogIn, Mail, Sparkles, Shield, Zap, Eye, EyeOff, Users } from 'lucide-react';
 import { BrigadeLogo } from '../components/UnicornBrigadeLogo';
+import { apiJson } from '../services/http';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -21,6 +22,11 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Deployment auth flags — when native register is disabled (SSO-managed),
+  // the email/password tab and register links are hidden in favor of SSO.
+  const [authConfig, setAuthConfig] = useState(null);
+
+  const nativeAuthHidden = authConfig ? authConfig.native_register_enabled === false : false;
 
   const handleSSOLogin = async () => {
     try {
@@ -36,6 +42,28 @@ export default function Login() {
       navigate('/dashboard');
     }
   }, [isAuthenticated, isLoading, navigate]);
+
+  // Fetch public deployment auth flags (no auth required, never redirect)
+  useEffect(() => {
+    let cancelled = false;
+    apiJson('/auth/config', { redirectOn401: false })
+      .then((config) => {
+        if (!cancelled) setAuthConfig(config);
+      })
+      .catch(() => {
+        // Config unavailable — keep both login tabs visible
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // If the email tab is active when native auth turns out to be hidden, snap back to SSO
+  useEffect(() => {
+    if (nativeAuthHidden && activeTab === 'email') {
+      setActiveTab('sso');
+    }
+  }, [nativeAuthHidden, activeTab]);
 
   // Clear errors when switching tabs
   useEffect(() => {
@@ -120,7 +148,8 @@ export default function Login() {
             </p>
           </div>
 
-          {/* Tab Navigation */}
+          {/* Tab Navigation (hidden when identity is SSO-managed) */}
+          {!nativeAuthHidden && (
           <div className="flex bg-slate-800/50 rounded-lg p-1 mb-6">
             <button
               onClick={() => setActiveTab('sso')}
@@ -145,6 +174,7 @@ export default function Login() {
               <span>Email Login</span>
             </button>
           </div>
+          )}
 
           {/* Error Message */}
           {(urlError || error || formError) && (
@@ -206,23 +236,25 @@ export default function Login() {
                 </div>
               </div>
 
-              {/* Register Link for SSO */}
-              <div className="mt-6 text-center">
-                <p className="text-slate-400 text-sm">
-                  Don't have an account?{' '}
-                  <Link
-                    to="/register"
-                    className="text-purple-400 hover:text-purple-300 font-medium transition"
-                  >
-                    Register
-                  </Link>
-                </p>
-              </div>
+              {/* Register Link for SSO (native signup only) */}
+              {!nativeAuthHidden && (
+                <div className="mt-6 text-center">
+                  <p className="text-slate-400 text-sm">
+                    Don't have an account?{' '}
+                    <Link
+                      to="/register"
+                      className="text-purple-400 hover:text-purple-300 font-medium transition"
+                    >
+                      Register
+                    </Link>
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
           {/* Email Login Tab */}
-          {activeTab === 'email' && (
+          {activeTab === 'email' && !nativeAuthHidden && (
             <div>
               <form onSubmit={handleEmailLogin} className="space-y-4">
                 {/* Email Input */}

@@ -1,6 +1,7 @@
 // API Service for Unicorn Command & Control
 import { toast } from 'react-hot-toast';
-import { buildAuthHeaders, handleUnauthorized } from './authHeaders';
+import { buildAuthHeaders } from './authHeaders';
+import { apiFetch } from './http';
 import { API_BASE } from './apiBase';
 
 class APIService {
@@ -30,24 +31,15 @@ class APIService {
   async request(endpoint, options = {}) {
     const { params, suppressToast, ...fetchOptions } = options;
     try {
-      // Pass an explicit base so a relative API_BASE (e.g. "/api/v1" behind a
-      // dev proxy or same-origin prod) is valid; an absolute base still wins.
-      const url = new URL(`${this.baseURL}${endpoint}`, window.location.origin);
-      if (params) {
-        Object.entries(params).forEach(([key, value]) => {
-          if (value !== undefined && value !== null) {
-            url.searchParams.append(key, String(value));
-          }
-        });
-      }
-
-      const response = await fetch(url.toString(), {
+      // Unified client: attaches auth headers uniformly, retries once after
+      // clearing a stale local JWT, and redirects to login on a final 401.
+      const response = await apiFetch(endpoint, {
         ...fetchOptions,
-        credentials: 'include',
-        headers: buildAuthHeaders({
+        params,
+        headers: {
           'Content-Type': 'application/json',
           ...fetchOptions.headers,
-        }),
+        },
       });
 
       // Handle non-JSON responses
@@ -66,10 +58,6 @@ class APIService {
         const apiError = new Error(errorMessage);
         apiError.status = response.status;
         apiError.data = data;
-
-        if (response.status === 401 && !endpoint.includes('/auth/')) {
-          handleUnauthorized();
-        }
 
         if (!suppressToast && response.status !== 401) {
           toast.error(friendlyMessage, {

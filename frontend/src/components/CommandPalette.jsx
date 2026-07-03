@@ -13,8 +13,7 @@ import {
   ArrowRight,
   Command
 } from 'lucide-react';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+import { apiJson } from '../services/http';
 
 const PAGES = [
   { id: 'dashboard', name: 'Dashboard', icon: Home, path: '/dashboard', type: 'page' },
@@ -33,12 +32,14 @@ export default function CommandPalette() {
   const inputRef = useRef(null);
   const navigate = useNavigate();
 
-  // Load agents once
+  // Load agents once. The palette stays usable (pages still searchable) if the
+  // roster fails to load — but don't swallow the failure silently.
   useEffect(() => {
-    fetch(`${API_BASE}/agents`)
-      .then(res => res.json())
-      .then(data => setAgents(data.agents || []))
-      .catch(() => {});
+    apiJson('/agents')
+      .then(data => setAgents(data?.agents || []))
+      .catch(err => {
+        console.warn('CommandPalette: failed to load agents', err);
+      });
   }, []);
 
   // Keyboard shortcut

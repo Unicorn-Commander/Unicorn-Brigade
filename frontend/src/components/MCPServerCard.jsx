@@ -114,12 +114,11 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
 
       {/* Category Tags */}
       <div className="flex flex-wrap gap-2 mb-4">
-        <span className="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs">
-          {server.category}
-        </span>
-        <span className="px-2 py-1 rounded bg-blue-500/20 text-blue-400 text-xs">
-          Phase {server.phase}
-        </span>
+        {server.category && (
+          <span className="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs">
+            {server.category}
+          </span>
+        )}
         {server.transport && (
           <span className="px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 text-xs">
             {server.transport.toUpperCase()}
@@ -127,10 +126,10 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
         )}
       </div>
 
-      {/* Tool Count */}
+      {/* Declared tool count (from the registry; discovered live once started) */}
       <div className="flex items-center space-x-2 mb-4 text-slate-500 text-sm">
         <Package className="w-4 h-4" />
-        <span>{server.tool_count || server.capabilities?.length || 0} tools available</span>
+        <span>{server.capabilities?.length || 0} declared tools</span>
       </div>
 
       {/* Config Requirements */}

@@ -52,25 +52,26 @@ Your job is to help users create new AI agents through conversation. Guide them 
 
 ## MCP Server Ecosystem
 
-Unicorn Brigade has 46 pre-configured MCP (Model Context Protocol) servers providing ~1,360 tools:
+Unicorn Brigade has 11 pre-configured MCP (Model Context Protocol) servers. Each one runs on demand as a real npm package, most are credential-gated (they need an API key/token configured before they can start), and the actual tool list is discovered from the server at runtime — the registry only declares expected capabilities:
 
-**Baseline Servers (10)**:
-- GitHub, Playwright, Slack, PostgreSQL, Filesystem, Memory, HTTP Fetch, Brave Search, Google Drive, Puppeteer
+- **GitHub** (needs GITHUB_TOKEN) - repos, issues, PRs, code search
+- **Filesystem** - read/write/search files in the workspace
+- **PostgreSQL** (needs DATABASE_URL) - schema inspection, read-only queries
+- **Playwright** - headless browser automation
+- **Slack** (needs SLACK_BOT_TOKEN) - channels, messages, threads, reactions
+- **Memory** - persistent knowledge-graph memory
+- **Brave Search** (needs BRAVE_API_KEY) - web and local search
+- **Google Drive** (needs Google credentials) - file search and access
+- **Puppeteer** - browser control (alternative to Playwright)
+- **Stripe** (needs STRIPE_API_KEY) - customers, invoices, subscriptions, refunds
+- **Notion** (needs NOTION_API_KEY) - pages, databases, search, comments
 
-**Phase 1 (4)**: Stripe, Linear, Git, Notion - Payments & Productivity
-**Phase 2 (4)**: Airtable, Vercel, Cloudflare, Supabase - Cloud Infrastructure
-**Phase 3 (4)**: MongoDB, Twilio, Sentry, HubSpot - Database & Communications
-**Phase 4 (4)**: Shopify, Salesforce, Jira, Zendesk - E-commerce & CRM
-**Phase 5 (4)**: Intercom, Asana, Trello, QuickBooks - Support & Work Management
-**Phase 6 (4)**: Mailchimp, ActiveCampaign, Calendly, DocuSign - Marketing Automation
-**Phase 7 (4)**: Ahrefs, SEMrush, Zapier, Make - SEO & Workflow Automation
-**Phase 8 (4)**: Amplitude, Mixpanel, Segment, PostHog - Product Analytics
-**Phase 9 (4)**: Heap, Pendo, FullStory, Hotjar - UX & Product Analytics
+For plain HTTP calls, use the built-in http_request tool - no MCP server required.
 
 ### Discovering MCP Servers
 
 Use these API endpoints to explore available servers:
-- `GET /api/v1/mcp/registry/servers` - List all 46 servers with details
+- `GET /api/v1/mcp/registry/servers` - List all registered servers with details
 - `GET /api/v1/mcp/registry/servers/{name}` - Get server details and tool list
 - `GET /api/v1/mcp/registry/servers/running` - See currently running servers
 

@@ -6,18 +6,49 @@ import {
   Zap,
   AlertCircle,
   CheckCircle,
+  Clock,
   Cpu,
   HardDrive,
   Network,
   BarChart3,
-  AlertTriangle,
-  RefreshCw,
-  TrendingUp
+  RefreshCw
 } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { apiJson } from '../services/http';
 import Breadcrumbs from '../components/Breadcrumbs';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
+// Icons + display names for the backend's /monitoring/services entries.
+const SERVICE_ICONS = {
+  database: Database,
+  falkordb: Network,
+  qdrant: Database,
+  'ops-center-llm': Zap,
+  'local-llm-router': Cpu,
+  langfuse: Activity,
+  scheduler: Clock,
+};
+
+const SERVICE_LABELS = {
+  database: 'PostgreSQL',
+  falkordb: 'FalkorDB Graph',
+  qdrant: 'Qdrant Vectors',
+  'ops-center-llm': 'Ops-Center LLM',
+  'local-llm-router': 'Local LLM Router',
+  langfuse: 'Langfuse Tracing',
+  scheduler: 'Scheduler (APScheduler)',
+};
+
+const statusColors = (status) => {
+  if (status === 'healthy') return { text: 'text-emerald-400', dot: 'bg-emerald-400' };
+  if (status === 'unhealthy') return { text: 'text-red-400', dot: 'bg-red-400' };
+  return { text: 'text-orange-400', dot: 'bg-orange-400' };
+};
+
+const runStatusBadge = (status) => {
+  if (status === 'success') return 'bg-emerald-500/20 text-emerald-400';
+  if (status === 'error' || status === 'timeout') return 'bg-red-500/20 text-red-400';
+  if (status === 'running') return 'bg-blue-500/20 text-blue-400';
+  return 'bg-slate-500/20 text-slate-400';
+};
 
 const Monitoring = () => {
   const [systemHealth, setSystemHealth] = useState({
@@ -38,7 +69,9 @@ const Monitoring = () => {
     memory_total_gb: 0,
     disk_percent: 0
   });
-  const [recentErrors, setRecentErrors] = useState([]);
+  const [serviceChecks, setServiceChecks] = useState([]);
+  const [scheduledRuns, setScheduledRuns] = useState([]);
+  const [runsError, setRunsError] = useState(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -57,68 +90,76 @@ const Monitoring = () => {
   const loadMonitoringData = async () => {
     setLoading(true);
     try {
-      const [statsRes, healthRes] = await Promise.all([
-        fetch(`${API_BASE}/stats`),
-        fetch(`${API_BASE}/health`)
+      const [statsRes, servicesRes, runsRes] = await Promise.allSettled([
+        apiJson('/stats'),
+        apiJson('/monitoring/services'),
+        apiJson('/scheduled-runs', { redirectOn401: false }),
       ]);
 
-      const stats = await statsRes.json();
-      const health = await healthRes.json();
-
-      setSystemHealth({
-        status: stats.status === 'operational' ? 'healthy' : 'degraded',
-        uptime: formatUptime(stats.uptime_seconds || 0),
-        lastCheck: new Date().toISOString(),
-        version: stats.version
-      });
-
-      setMetrics({
-        totalAgents: stats.totalAgents || 0,
-        activeAgents: stats.activeAgents || 0,
-        totalModels: stats.totalModels || 0,
-        totalTools: stats.totalTools || 0
-      });
-
-      if (stats.resources) {
-        setResources(stats.resources);
+      if (statsRes.status === 'fulfilled') {
+        const stats = statsRes.value;
+        setSystemHealth({
+          status: stats.status === 'operational' ? 'healthy' : 'degraded',
+          uptime: formatUptime(stats.uptime_seconds || 0),
+          lastCheck: new Date().toISOString(),
+          version: stats.version
+        });
+        setMetrics({
+          totalAgents: stats.totalAgents || 0,
+          activeAgents: stats.activeAgents || 0,
+          totalModels: stats.totalModels || 0,
+          totalTools: stats.totalTools || 0
+        });
+        if (stats.resources) {
+          setResources(stats.resources);
+        }
+      } else {
+        console.error('Failed to load monitoring data:', statsRes.reason);
+        setSystemHealth(prev => ({ ...prev, status: 'degraded' }));
       }
-    } catch (error) {
-      console.error('Failed to load monitoring data:', error);
-      setSystemHealth(prev => ({ ...prev, status: 'degraded' }));
+
+      if (servicesRes.status === 'fulfilled') {
+        setServiceChecks(servicesRes.value.services || []);
+      } else {
+        console.error('Failed to load service checks:', servicesRes.reason);
+        setServiceChecks([]);
+      }
+
+      if (runsRes.status === 'fulfilled') {
+        setScheduledRuns(runsRes.value.items || []);
+        setRunsError(null);
+      } else {
+        setScheduledRuns([]);
+        const status = runsRes.reason?.status;
+        setRunsError(
+          status === 401 || status === 403
+            ? 'Sign in with an operator account to view scheduled runs'
+            : 'Failed to load scheduled runs'
+        );
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  // API Server card comes from /stats reachability; the rest are the
+  // backend's real per-service checks.
   const services = [
     {
       name: 'API Server',
       status: systemHealth.status === 'healthy' ? 'healthy' : 'degraded',
       detail: `Uptime: ${systemHealth.uptime}`,
-      icon: Server,
-      color: systemHealth.status === 'healthy' ? 'emerald' : 'orange'
+      icon: Server
     },
-    {
-      name: 'Memory (mem0 + Qdrant)',
-      status: 'healthy',
-      detail: 'Vector memory operational',
-      icon: Database,
-      color: 'emerald'
-    },
-    {
-      name: 'Ops-Center LLM',
-      status: 'healthy',
-      detail: `${metrics.totalModels} models available`,
-      icon: Zap,
-      color: 'emerald'
-    },
-    {
-      name: 'LangGraph Workflows',
-      status: 'healthy',
-      detail: 'Orchestration ready',
-      icon: Network,
-      color: 'emerald'
-    }
+    ...serviceChecks.map((svc) => ({
+      name: SERVICE_LABELS[svc.name] || svc.name,
+      status: svc.status || 'unknown',
+      detail: [
+        typeof svc.latency_ms === 'number' ? `${svc.latency_ms}ms` : null,
+        svc.detail || null,
+      ].filter(Boolean).join(' · '),
+      icon: SERVICE_ICONS[svc.name] || Server
+    }))
   ];
 
   const performanceMetrics = [
@@ -141,7 +182,7 @@ const Monitoring = () => {
       color: 'orange'
     },
     {
-      label: 'Built-in Tools',
+      label: 'Tools Registered',
       value: metrics.totalTools,
       icon: BarChart3,
       color: 'blue'
@@ -216,51 +257,57 @@ const Monitoring = () => {
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <h2 className="text-xl font-bold text-white mb-4">Service Health</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {services.map((service, idx) => (
-              <div key={idx} className="p-4 bg-slate-800/50 rounded-lg">
-                <div className="flex items-center justify-between mb-3">
-                  <service.icon className={`w-6 h-6 text-${service.color}-400`} />
-                  <div className={`flex items-center space-x-1 ${
-                    service.status === 'healthy' ? 'text-emerald-400' : 'text-orange-400'
-                  }`}>
-                    <div className={`w-2 h-2 rounded-full ${
-                      service.status === 'healthy' ? 'bg-emerald-400' : 'bg-orange-400'
-                    } animate-pulse`}></div>
-                    <span className="text-xs font-medium capitalize">{service.status}</span>
+            {services.map((service, idx) => {
+              const colors = statusColors(service.status);
+              return (
+                <div key={idx} className="p-4 bg-slate-800/50 rounded-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <service.icon className={`w-6 h-6 ${colors.text}`} />
+                    <div className={`flex items-center space-x-1 ${colors.text}`}>
+                      <div className={`w-2 h-2 rounded-full ${colors.dot} animate-pulse`}></div>
+                      <span className="text-xs font-medium capitalize">{service.status}</span>
+                    </div>
                   </div>
+                  <h3 className="font-semibold text-white mb-2">{service.name}</h3>
+                  <p className="text-xs text-slate-400 break-words">{service.detail}</p>
                 </div>
-                <h3 className="font-semibold text-white mb-2">{service.name}</h3>
-                <p className="text-xs text-slate-400">{service.detail}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* Charts Placeholder */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* API Usage Chart */}
-          <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-            <h2 className="text-xl font-bold text-white mb-4">API Usage (Last 24 Hours)</h2>
-            <div className="h-64 flex items-center justify-center bg-slate-800/50 rounded-lg">
-              <div className="text-center">
-                <BarChart3 className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                <p className="text-slate-400 text-sm">Chart visualization coming soon</p>
-                <p className="text-slate-500 text-xs mt-1">Integrate with charting library</p>
-              </div>
+        {/* Scheduled Runs */}
+        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-white mb-4">Scheduled Runs (recent)</h2>
+          {runsError ? (
+            <p className="text-slate-400 text-center py-6">{runsError}</p>
+          ) : scheduledRuns.length === 0 ? (
+            <div className="text-center py-6">
+              <Clock className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+              <p className="text-slate-400">No scheduled runs configured</p>
             </div>
-          </div>
-
-          {/* Response Time Chart */}
-          <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-            <h2 className="text-xl font-bold text-white mb-4">Response Time Trend</h2>
-            <div className="h-64 flex items-center justify-center bg-slate-800/50 rounded-lg">
-              <div className="text-center">
-                <TrendingUp className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                <p className="text-slate-400 text-sm">Chart visualization coming soon</p>
-                <p className="text-slate-500 text-xs mt-1">Integrate with charting library</p>
-              </div>
+          ) : (
+            <div className="space-y-3">
+              {scheduledRuns.slice(0, 8).map((run) => (
+                <div key={run.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
+                  <div className="min-w-0">
+                    <p className="font-medium text-white truncate">{run.name}</p>
+                    <p className="text-xs text-slate-400 truncate">
+                      {run.cron} • {run.enabled ? 'enabled' : 'disabled'}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-4">
+                    <span className={`px-2 py-0.5 rounded-full text-xs ${runStatusBadge(run.lastStatus)}`}>
+                      {run.lastStatus || 'never run'}
+                    </span>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {run.lastRunAt ? new Date(run.lastRunAt).toLocaleString() : '—'}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
+          )}
         </div>
 
         {/* Resource Usage */}
@@ -317,65 +364,21 @@ const Monitoring = () => {
           </div>
         </div>
 
-        {/* Recent Errors & Warnings */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4">Recent Errors & Warnings</h2>
-          {recentErrors.length > 0 ? (
-            <div className="space-y-3">
-              {recentErrors.map((error, idx) => (
-                <div
-                  key={idx}
-                  className={`p-4 rounded-lg border ${
-                    error.level === 'error'
-                      ? 'bg-red-500/10 border-red-500/30'
-                      : 'bg-orange-500/10 border-orange-500/30'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-3">
-                      {error.level === 'error' ? (
-                        <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
-                      ) : (
-                        <AlertTriangle className="w-5 h-5 text-orange-400 mt-0.5" />
-                      )}
-                      <div>
-                        <p className={`font-medium ${
-                          error.level === 'error' ? 'text-red-400' : 'text-orange-400'
-                        }`}>
-                          {error.message}
-                        </p>
-                        <p className="text-sm text-slate-400 mt-1">
-                          {error.service} • {new Date(error.timestamp).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-              <p className="text-slate-400">No recent errors or warnings</p>
-            </div>
-          )}
-        </div>
-
         {/* System Info */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <h2 className="text-xl font-bold text-white mb-4">System Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-3 bg-slate-800/50 rounded-lg">
               <p className="text-sm text-slate-400 mb-1">Version</p>
-              <p className="text-white font-semibold">v{systemHealth.version || '1.0.0'}</p>
+              <p className="text-white font-semibold">v{systemHealth.version || '—'}</p>
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-sm text-slate-400 mb-1">Environment</p>
-              <p className="text-white font-semibold">Development</p>
+              <p className="text-sm text-slate-400 mb-1">Workflow Engine</p>
+              <p className="text-white font-semibold">APScheduler + Brigade</p>
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
               <p className="text-sm text-slate-400 mb-1">Backend</p>
-              <p className="text-white font-semibold">FastAPI + LangGraph</p>
+              <p className="text-white font-semibold">FastAPI + SQLAlchemy</p>
             </div>
             <div className="p-3 bg-slate-800/50 rounded-lg">
               <p className="text-sm text-slate-400 mb-1">LLM Gateway</p>

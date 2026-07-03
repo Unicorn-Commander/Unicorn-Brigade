@@ -18,6 +18,7 @@ import {
   FileText,
   Zap,
   FileCode,
+  CalendarClock,
   ChevronDown,
   Bot,
   Menu,
@@ -27,6 +28,9 @@ import {
 import { Tooltip } from 'react-tooltip';
 import UserProfile from './auth/UserProfile';
 import { BrigadeLogo } from './UnicornBrigadeLogo';
+import { apiJson } from '../services/http';
+
+const HEALTH_POLL_MS = 30000;
 
 const Navigation = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -34,6 +38,9 @@ const Navigation = () => {
     const saved = localStorage.getItem('nav-collapsed-sections');
     return saved ? JSON.parse(saved) : {};
   });
+  // 'online' | 'degraded' | 'offline' | 'checking' — drives the footer card.
+  const [platformStatus, setPlatformStatus] = useState('checking');
+  const [deployConfig, setDeployConfig] = useState(null);
   const location = useLocation();
 
   useEffect(() => {
@@ -43,6 +50,38 @@ const Navigation = () => {
   useEffect(() => {
     localStorage.setItem('nav-collapsed-sections', JSON.stringify(collapsedSections));
   }, [collapsedSections]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const health = await apiJson('/health', { redirectOn401: false });
+        if (cancelled) return;
+        const status = (health?.status || '').toLowerCase();
+        setPlatformStatus(status === 'healthy' || status === 'operational' ? 'online' : 'degraded');
+      } catch {
+        if (!cancelled) setPlatformStatus('offline');
+      }
+    };
+    check();
+    const interval = setInterval(check, HEALTH_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiJson('/auth/config', { redirectOn401: false })
+      .then((cfg) => {
+        if (!cancelled) setDeployConfig(cfg);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggleSection = (section) => {
     setCollapsedSections((prev) => ({
@@ -57,9 +96,8 @@ const Navigation = () => {
     '/conversations': 'Browse and manage all conversation history',
     '/command': "The General's War Room — the whole Brigade as a clickable org chart",
     '/orchestration': 'Real-time agent orchestration and command center',
-    '/orchestration/demo': 'Hollywood-style demo with 1000+ agents and automated workflows',
     '/workflows': 'Execute and monitor hierarchical workflow templates',
-    '/ralph-monitor': 'Monitor self-correcting workflow executions',
+    '/ralph-monitor': 'Self-correcting workflow executions with automatic retry',
     '/knowledge': 'Explore the AI-native knowledge graph (FalkorDB)',
     '/library': 'Manage and configure all production agents',
     '/tools': 'Browse available tools and their capabilities',
@@ -221,16 +259,6 @@ const Navigation = () => {
               <span className="text-sm font-medium">Orchestration</span>
             </NavLink>
             <NavLink
-              to="/orchestration/demo"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/orchestration/demo']}
-              data-tooltip-place="right"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span className="text-sm font-medium">Demo Mode</span>
-            </NavLink>
-            <NavLink
               to="/workflows"
               className={navLinkClass}
               data-tooltip-id="nav-tooltip"
@@ -248,7 +276,7 @@ const Navigation = () => {
               data-tooltip-place="right"
             >
               <Zap className="w-4 h-4" />
-              <span className="text-sm font-medium">Ralph Monitor</span>
+              <span className="text-sm font-medium">Self-Correction</span>
             </NavLink>
             <NavLink
               to="/knowledge"
@@ -326,16 +354,18 @@ const Navigation = () => {
               <FileText className="w-4 h-4" />
               <span className="text-sm font-medium">MCP Docs</span>
             </NavLink>
-            <NavLink
-              to="/langflow"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/langflow']}
-              data-tooltip-place="right"
-            >
-              <Workflow className="w-4 h-4" />
-              <span className="text-sm font-medium">Langflow Flows</span>
-            </NavLink>
+            {deployConfig?.langflow_enabled && (
+              <NavLink
+                to="/langflow"
+                className={navLinkClass}
+                data-tooltip-id="nav-tooltip"
+                data-tooltip-content={TOOLTIP_CONTENT['/langflow']}
+                data-tooltip-place="right"
+              >
+                <Workflow className="w-4 h-4" />
+                <span className="text-sm font-medium">Langflow Flows</span>
+              </NavLink>
+            )}
             <NavLink
               to="/docs"
               className={navLinkClass}
@@ -381,7 +411,7 @@ const Navigation = () => {
               data-tooltip-content={TOOLTIP_CONTENT['/scheduled-runs']}
               data-tooltip-place="right"
             >
-              <Activity className="w-4 h-4" />
+              <CalendarClock className="w-4 h-4" />
               <span className="text-sm font-medium">Scheduled Runs</span>
             </NavLink>
             <NavLink
@@ -414,17 +444,52 @@ const Navigation = () => {
           </button>
         </div>
 
-        {/* Status */}
+        {/* Status — live, polled from /api/v1/health every 30s */}
         <div className="px-4 pb-4">
-          <div className="card bg-emerald-500/10 border-emerald-500/30">
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-              <div>
-                <p className="text-sm font-medium text-emerald-400">Platform Online</p>
-                <p className="text-xs text-slate-500">All systems operational</p>
+          {(() => {
+            const statusStyles = {
+              online: {
+                card: 'bg-emerald-500/10 border-emerald-500/30',
+                dot: 'bg-emerald-500 animate-pulse',
+                text: 'text-emerald-400',
+                label: 'Platform Online',
+                detail: 'All systems operational',
+              },
+              degraded: {
+                card: 'bg-amber-500/10 border-amber-500/30',
+                dot: 'bg-amber-500 animate-pulse',
+                text: 'text-amber-400',
+                label: 'Degraded',
+                detail: 'Some services unhealthy',
+              },
+              offline: {
+                card: 'bg-red-500/10 border-red-500/30',
+                dot: 'bg-red-500',
+                text: 'text-red-400',
+                label: 'API Unreachable',
+                detail: 'Backend is not responding',
+              },
+              checking: {
+                card: 'bg-slate-500/10 border-slate-600/30',
+                dot: 'bg-slate-400 animate-pulse',
+                text: 'text-slate-300',
+                label: 'Checking…',
+                detail: 'Contacting platform',
+              },
+            };
+            const s = statusStyles[platformStatus] || statusStyles.checking;
+            return (
+              <div className={`card ${s.card}`}>
+                <div className="flex items-center space-x-3">
+                  <div className={`w-2 h-2 rounded-full ${s.dot}`}></div>
+                  <div>
+                    <p className={`text-sm font-medium ${s.text}`}>{s.label}</p>
+                    <p className="text-xs text-slate-500">{s.detail}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
         </div>
 
         <Tooltip
