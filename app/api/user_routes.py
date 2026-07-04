@@ -460,6 +460,13 @@ async def update_current_user_profile(
 
     # Update email if provided
     if body.email is not None and body.email.lower() != db_user.email:
+        # SSO-provisioned accounts are keyed to their IdP email (it's the join
+        # between the Keycloak login and this row) — pin it, same as password.
+        if (db_user.password_hash or "").startswith("NOLOGIN-SSO"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email is managed by your SSO provider",
+            )
         # Check if new email is taken
         if await repo.email_exists(body.email):
             raise HTTPException(
