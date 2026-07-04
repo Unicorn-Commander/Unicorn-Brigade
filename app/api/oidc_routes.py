@@ -115,6 +115,50 @@ def _cookie_secure() -> bool:
     return (_env("COOKIE_SECURE", "true") or "true").lower() == "true"
 
 
+def _safe_landing_path(redirect_after: Optional[str]) -> str:
+    """Return a safe in-app relative path for the post-login redirect.
+
+    Open-redirect guard: only same-app absolute *paths* are honored. Anything
+    carrying a scheme (``http:``, ``javascript:`` …), a protocol-relative
+    ``//host`` prefix, or a backslash is discarded in favor of the default
+    landing route, so a crafted ``?redirect_after=`` can never bounce the user
+    to an attacker-controlled origin after a real login.
+    """
+    default = "/auth/callback"
+    if not redirect_after:
+        return default
+    p = redirect_after.strip().replace("\\", "/")
+    # Reject absolute URLs and protocol-relative targets.
+    if "://" in p or p.startswith("//"):
+        return default
+    # Reject a scheme in the first segment (e.g. "javascript:alert(1)").
+    if ":" in p.split("/", 1)[0]:
+        return default
+    if not p.startswith("/"):
+        p = "/" + p
+    # Collapse any lingering leading double-slash after normalization.
+    while p.startswith("//"):
+        p = "/" + p.lstrip("/")
+    return p
+
+
+def _allowed_origins() -> set[str]:
+    """Origins accepted for cookie-authenticated state-changing requests."""
+    from urllib.parse import urlparse
+
+    origins: set[str] = set()
+    fe = _frontend_base_url()
+    if fe:
+        u = urlparse(fe)
+        if u.scheme and u.netloc:
+            origins.add(f"{u.scheme}://{u.netloc}")
+    for extra in (_env("BRIGADE_ALLOWED_ORIGINS", "") or "").split(","):
+        extra = extra.strip().rstrip("/")
+        if extra:
+            origins.add(extra)
+    return origins
+
+
 # --- In-memory PKCE + state store (single-process acceptable for Brigade) ---
 # For multi-replica setups, move this to Redis. Each entry is (code_verifier,
 # redirect_after, created_at).
@@ -185,7 +229,7 @@ async def oidc_login(
     verifier, challenge = _generate_pkce_pair()
     _pkce_store[state] = {
         "code_verifier": verifier,
-        "redirect_after": redirect_after or "/auth/callback",
+        "redirect_after": _safe_landing_path(redirect_after),
         "created_at": time.time(),
     }
 
@@ -308,11 +352,10 @@ async def oidc_callback(
             status_code=302,
         )
 
-    # Normalize redirect target to frontend path
-    if redirect_after.startswith("http"):
-        landing = redirect_after
-    else:
-        landing = f"{frontend}{redirect_after if redirect_after.startswith('/') else '/' + redirect_after}"
+    # Normalize redirect target to a safe in-app path. Open-redirect guard:
+    # never honor an attacker-supplied absolute URL (redirect_after was already
+    # sanitized at login time; re-assert here as defense in depth).
+    landing = f"{frontend}{_safe_landing_path(redirect_after)}"
 
     # Append login=success for AuthCallback.jsx to pick up
     sep = "&" if "?" in landing else "?"
@@ -408,6 +451,16 @@ async def oidc_refresh(request: Request, body: Optional[RefreshRequest] = None):
     """
     if not keycloak_enabled():
         raise HTTPException(status_code=503, detail="Keycloak SSO disabled")
+
+    # Defense-in-depth CSRF guard on this cookie-authenticated state change.
+    # SameSite=Lax already blocks cross-site POSTs; additionally reject a
+    # request whose Origin doesn't match the deployment frontend.
+    origin = request.headers.get("origin")
+    if origin:
+        allowed = _allowed_origins()
+        if allowed and origin.rstrip("/") not in allowed:
+            logger.warning("Refresh rejected: cross-origin request from %s", origin)
+            raise HTTPException(status_code=403, detail="bad_origin")
 
     refresh_token = (body.refresh_token if body else None) or request.cookies.get(
         f"{OIDC_SESSION_COOKIE}_refresh"

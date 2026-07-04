@@ -25,7 +25,6 @@ export default function AuthCallback() {
     const error = searchParams.get('error');
     const queryToken = searchParams.get('access_token');
     const queryExpires = searchParams.get('expires_in');
-    const queryRefresh = searchParams.get('refresh_token');
 
     // Parse URL fragment (#access_token=... etc)
     const hashParams = new URLSearchParams(
@@ -33,15 +32,14 @@ export default function AuthCallback() {
     );
     const hashToken = hashParams.get('access_token');
     const hashExpires = hashParams.get('expires_in');
-    const hashRefresh = hashParams.get('refresh_token');
 
     const token = queryToken || hashToken;
     const expiresIn = queryExpires || hashExpires;
-    const refreshToken = queryRefresh || hashRefresh;
 
     if (token) {
       authService.setJwt(token, expiresIn);
-      if (refreshToken) authService.setRefreshToken(refreshToken);
+      // Refresh tokens live only in the backend HttpOnly cookie — never
+      // persisted to JS-readable storage.
       // Clear token from the URL so it does not leak into history / referrers.
       window.history.replaceState({}, document.title, '/auth/callback?login=success');
       useAuth.getState().loadUser();

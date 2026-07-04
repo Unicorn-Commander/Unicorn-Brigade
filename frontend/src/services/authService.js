@@ -107,10 +107,6 @@ class AuthService {
     }
   }
 
-  setRefreshToken(token) {
-    if (token) localStorage.setItem(REFRESH_TOKEN_KEY, token);
-  }
-
   clearJwt() {
     localStorage.removeItem(JWT_KEY);
     localStorage.removeItem(JWT_EXPIRES_AT_KEY);
@@ -194,18 +190,17 @@ class AuthService {
    * if available; the backend may also support cookie-based refresh.
    */
   async refreshToken() {
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    // The refresh token lives only in the backend HttpOnly cookie — never in
+    // JS-readable storage — so we send an empty body and let the cookie
+    // authenticate the renewal.
     try {
       const { data } = await axios.post(
         `${API_URL}/auth/oidc/refresh`,
-        refreshToken ? { refresh_token: refreshToken } : {},
+        {},
         { withCredentials: true }
       );
       if (data?.access_token) {
         this.setJwt(data.access_token, data.expires_in);
-      }
-      if (data?.refresh_token) {
-        this.setRefreshToken(data.refresh_token);
       }
       return data;
     } catch (error) {
