@@ -13,11 +13,13 @@ const STATE_SUFFIX = {
 /**
  * Single source of truth for rendering an agent's face.
  *
- * Prefers the real portrait at /avatars/<id>.webp (all 17 seed agents have one).
- * When `status` is an active state and an expression variant exists
- * (/avatars/<id>-<state>.webp), shows that so the face reacts live; it falls
- * back variant -> primary -> seed emoji -> unicorn. seed_agents.json stores an
- * EMOJI in `avatar`, not the webp path.
+ * Precedence: an explicit `agent.avatarUrl` (image URL set via the API) wins
+ * and shows the same single image for every state. Otherwise prefers the real
+ * portrait at /avatars/<id>.webp (all 17 seed agents have one); when `status`
+ * is an active state and an expression variant exists
+ * (/avatars/<id>-<state>.webp), shows that so the face reacts live. Broken
+ * images fall through the chain: avatarUrl -> variant -> primary -> seed
+ * emoji -> unicorn. seed_agents.json stores an EMOJI in `avatar`, not a path.
  *
  * `size` accepts a number (px) or a Tailwind size class string (e.g. "w-16 h-16").
  */
@@ -28,18 +30,28 @@ export default function AgentAvatar({
   status = 'idle',
   className = '',
 }) {
-  // stage 0 = try expression variant, 1 = primary, 2 = emoji
+  // stage = index into the ordered image-source chain; past the end = emoji
   const [stage, setStage] = useState(0);
 
   const id = agent?.id;
+  const avatarUrl =
+    (typeof agent?.avatarUrl === 'string' && agent.avatarUrl.trim()) || null;
   const suffix = STATE_SUFFIX[status] || '';
   const primary = id ? `/avatars/${id}.webp` : null;
-  const variant = id && suffix ? `/avatars/${id}${suffix}.webp` : primary;
+  const variant = id && suffix ? `/avatars/${id}${suffix}.webp` : null;
 
-  // Re-try the (possibly new) variant whenever the target src changes.
+  // Ordered image sources: explicit URL first, then the convention chain.
+  const sources = [];
+  if (avatarUrl) sources.push(avatarUrl);
+  if (variant) sources.push(variant);
+  if (primary) sources.push(primary);
+
+  const chainKey = sources.join('|');
+
+  // Re-try from the top whenever the source chain changes (new agent/state).
   useEffect(() => {
     setStage(0);
-  }, [variant]);
+  }, [chainKey]);
 
   const emoji = (typeof agent?.avatar === 'string' && agent.avatar.trim()) || '🦄';
   const label = agent?.displayName || agent?.name || 'agent';
@@ -48,15 +60,13 @@ export default function AgentAvatar({
   const dim = numeric ? { width: size, height: size } : undefined;
   const sizeClass = numeric ? '' : size;
 
-  const src = stage === 0 ? variant : primary;
-
-  if (primary && stage < 2) {
+  if (stage < sources.length) {
     return (
       <img
-        src={src}
+        src={sources[stage]}
         alt={label}
         title={label}
-        onError={() => setStage((s) => (s === 0 && suffix ? 1 : 2))}
+        onError={() => setStage((s) => s + 1)}
         style={dim}
         draggable={false}
         className={`${sizeClass} ${rounded} object-cover bg-slate-900 shrink-0 transition-opacity ${className}`}

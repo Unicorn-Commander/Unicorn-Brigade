@@ -44,6 +44,7 @@ class AgentRepository:
             title=data.get("title"),
             rank=data.get("rank"),
             avatar=data.get("avatar", "🦄"),
+            avatar_url=data.get("avatarUrl"),
             bio=data.get("bio"),
             persona=data.get("persona"),
             system_prompt=data.get("systemPrompt"),
@@ -76,6 +77,7 @@ class AgentRepository:
 
         field_map = {
             "displayName": "display_name", "systemPrompt": "system_prompt",
+            "avatarUrl": "avatar_url",
             "agentType": "agent_type", "maxTokens": "max_tokens",
             "accessPolicy": "access_policy",
             "billingTier": "billing_tier", "rateMultiplier": "rate_multiplier",
