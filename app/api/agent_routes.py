@@ -448,6 +448,7 @@ class AgentCreateRequest(BaseModel):
     title: Optional[str] = None
     rank: Optional[str] = None
     avatar: Optional[str] = "🦄"
+    avatarUrl: Optional[str] = None
     bio: Optional[str] = None
     persona: Optional[str] = None
     systemPrompt: Optional[str] = None
@@ -471,6 +472,7 @@ class AgentUpdateRequest(BaseModel):
     title: Optional[str] = None
     rank: Optional[str] = None
     avatar: Optional[str] = None
+    avatarUrl: Optional[str] = None
     bio: Optional[str] = None
     persona: Optional[str] = None
     systemPrompt: Optional[str] = None

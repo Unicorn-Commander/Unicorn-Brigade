@@ -146,6 +146,13 @@ MIGRATIONS = [
         ON CONFLICT (name) DO NOTHING;
         """,
     ),
+    (
+        "20260705_01_agent_avatar_url",
+        "agents.avatar_url for image avatars (emoji `avatar` stays the fallback)",
+        """
+        ALTER TABLE agents ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+        """,
+    ),
 ]
 
 

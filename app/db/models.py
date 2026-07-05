@@ -26,6 +26,9 @@ class Agent(Base):
     title = Column(String(255))
     rank = Column(String(50))
     avatar = Column(String(50), default="🦄")
+    # Optional image avatar (absolute or site-relative URL). When set, UIs
+    # prefer it over the /avatars/<id>.webp convention and the emoji fallback.
+    avatar_url = Column(Text, nullable=True)
     bio = Column(Text)
     persona = Column(Text)
     system_prompt = Column(Text)
@@ -90,6 +93,7 @@ class Agent(Base):
             "title": self.title,
             "rank": self.rank,
             "avatar": self.avatar,
+            "avatarUrl": self.avatar_url,
             "bio": self.bio,
             "persona": self.persona,
             "systemPrompt": self.system_prompt,
