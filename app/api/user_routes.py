@@ -387,7 +387,10 @@ async def get_current_user_profile(
         )
 
     repo = UserRepository(session)
-    user = await repo.get_by_id(current_user.id)
+    # SSO principals carry the Keycloak sub, not the email-keyed users.id, so
+    # resolve to the real row id the same way the API-key endpoints do.
+    db_user_id = await _resolve_db_user_id(session, current_user)
+    user = await repo.get_by_id(db_user_id) if db_user_id else None
 
     if not user:
         raise HTTPException(
@@ -422,8 +425,13 @@ async def update_current_user_profile(
 
     repo = UserRepository(session)
 
+    # Resolve the real users-row id (SSO principals carry the Keycloak sub,
+    # which isn't the email-keyed users.id — same resolution the API-key
+    # endpoints use).
+    db_user_id = await _resolve_db_user_id(session, current_user)
+
     # Get current user from DB (need ORM object for password verification)
-    user_dict = await repo.get_by_id(current_user.id)
+    user_dict = await repo.get_by_id(db_user_id) if db_user_id else None
     if not user_dict:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -452,6 +460,13 @@ async def update_current_user_profile(
 
     # Update email if provided
     if body.email is not None and body.email.lower() != db_user.email:
+        # SSO-provisioned accounts are keyed to their IdP email (it's the join
+        # between the Keycloak login and this row) — pin it, same as password.
+        if (db_user.password_hash or "").startswith("NOLOGIN-SSO"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email is managed by your SSO provider",
+            )
         # Check if new email is taken
         if await repo.email_exists(body.email):
             raise HTTPException(
@@ -462,6 +477,12 @@ async def update_current_user_profile(
 
     # Update password if provided
     if body.new_password is not None:
+        # SSO-provisioned accounts have no local password to change.
+        if (db_user.password_hash or "").startswith("NOLOGIN-SSO"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password is managed by your SSO provider",
+            )
         if body.current_password is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -480,8 +501,8 @@ async def update_current_user_profile(
             detail="No updates provided",
         )
 
-    updated_user = await repo.update(current_user.id, updates)
-    logger.info(f"User profile updated: {current_user.id}")
+    updated_user = await repo.update(db_user_id, updates)
+    logger.info(f"User profile updated: {db_user_id}")
 
     return UserResponse(**updated_user)
 

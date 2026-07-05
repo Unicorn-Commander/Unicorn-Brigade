@@ -12,6 +12,7 @@ Both auth sources return a unified ``AuthUser`` object.
 
 import os
 import hashlib
+import hmac
 import logging
 from typing import Optional, Annotated
 from dataclasses import dataclass
@@ -109,8 +110,10 @@ async def validate_api_key(
     if not api_key:
         return None
 
-    # Check master admin key first (for bootstrap/development)
-    if MASTER_ADMIN_KEY and api_key == MASTER_ADMIN_KEY:
+    # Check master admin key first (for bootstrap/development).
+    # Constant-time compare (bytes) to avoid a timing side-channel that could
+    # leak the master key, and to sidestep str-compare_digest's ASCII rule.
+    if MASTER_ADMIN_KEY and hmac.compare_digest(api_key.encode(), MASTER_ADMIN_KEY.encode()):
         logger.debug("Authenticated via master admin key")
         return AuthUser(
             id="admin",
