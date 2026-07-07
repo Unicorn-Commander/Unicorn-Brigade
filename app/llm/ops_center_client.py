@@ -235,7 +235,17 @@ class OpsCenterLLMClient:
             # Metered UC gateway: keep the full 'uc/<model>' name the gateway expects.
             return UC_GATEWAY_URL, model, "gateway"
         if OPENROUTER_API_KEY:
-            return OPENROUTER_URL, model, "openrouter"
+            # OpenRouter native API expects bare/namespaced slugs (e.g.
+            # "anthropic/claude-sonnet-4.6"), NOT the litellm-style
+            # "openrouter/" provider prefix. Strip a leading "openrouter/"
+            # so switcher/council ids resolve instead of 400 "not a valid
+            # model ID".
+            or_model = (
+                model[len("openrouter/"):]
+                if model.startswith("openrouter/")
+                else model
+            )
+            return OPENROUTER_URL, or_model, "openrouter"
         if OPS_CENTER_LLM_ENDPOINT:
             # Direct hit on an OpenAI-compatible endpoint (e.g. llama.cpp router)
             return OPS_CENTER_LLM_ENDPOINT, model, "direct"
