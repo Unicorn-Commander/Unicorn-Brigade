@@ -1,14 +1,16 @@
 """Knowledge-Ops grounding tools — let a Brigade agent ground its answers in the
 fleet's INTERNAL knowledge base (SOPs, runbooks, hardware/installer docs, org
-memory) instead of hallucinating company/infra facts.
+memory) instead of hallucinating company/infra facts, AND durably SAVE new
+learnings back into that KB.
 
 Knowledge-Ops is the federation/dispatcher KB service (FastAPI, container
 ``knowledge-ops`` on bigboy, internal ``:8765`` on the same ``unicorn-network``
 the Brigade runtime is on). It federates a wiki, file-index, Qdrant, FalkorDB
-org-memory, and Center Deep behind two routes:
+org-memory, and Center Deep behind:
 
-  * ``POST /kb.ground``  -> a grounded answer with cited sources
-  * ``POST /kb.search``  -> raw matching passages (for the model to cite itself)
+  * ``POST /kb.ground``      -> a grounded answer with cited sources
+  * ``POST /kb.search``      -> raw matching passages (for the model to cite itself)
+  * ``POST /kb.upsert_doc``  -> create/update a versioned wiki doc (the WRITE path)
 
 (The routes use a dot, not a slash — ``/kb.ground``, not ``/kb/ground``.)
 
@@ -19,6 +21,7 @@ Registered only when ``KNOWLEDGE_OPS_URL`` is set (see tool_resolver).
 
 import logging
 import os
+import re
 from typing import Any, Dict, Optional
 
 import httpx
@@ -33,6 +36,11 @@ KNOWLEDGE_OPS_URL = os.getenv("KNOWLEDGE_OPS_URL", "http://knowledge-ops:8765")
 KNOWLEDGE_OPS_TOKEN = os.getenv("KNOWLEDGE_OPS_TOKEN", "")
 KNOWLEDGE_OPS_TIMEOUT = float(os.getenv("KNOWLEDGE_OPS_TIMEOUT", "30.0"))
 _DEFAULT_K = 5
+# Defaults for agent-authored docs. Scope is Knowledge-Ops' free-form RLS filter
+# ("global" = fleet-wide readable); owner is a denormalized attribution label.
+_WRITE_SCOPE = os.getenv("KNOWLEDGE_OPS_WRITE_SCOPE", "global")
+_WRITE_OWNER = os.getenv("KNOWLEDGE_OPS_WRITE_OWNER", "brigade-agent")
+_WRITE_CATEGORY = os.getenv("KNOWLEDGE_OPS_WRITE_CATEGORY", "learnings")
 
 
 async def _post(route: str, body: Dict[str, Any]) -> Dict[str, Any]:
@@ -58,12 +66,52 @@ async def _post(route: str, body: Dict[str, Any]) -> Dict[str, Any]:
         return {"error": f"knowledge-ops {route} failed: {exc}"}
 
 
+def _slug(s: str) -> str:
+    """Filesystem/URL-safe slug for a wiki path segment (mirrors Knowledge-Ops)."""
+    s = re.sub(r"[^a-z0-9]+", "-", (s or "").strip().lower()).strip("-")
+    return s[:80] or "note"
+
+
 async def _ground_handler(query: str, k: int = _DEFAULT_K, **_) -> Dict[str, Any]:
     return await _post("kb.ground", {"query": query, "k": k})
 
 
 async def _search_handler(query: str, k: int = _DEFAULT_K, **_) -> Dict[str, Any]:
     return await _post("kb.search", {"query": query, "k": k})
+
+
+async def _save_handler(
+    title: str,
+    content: str,
+    category: Optional[str] = None,
+    scope: Optional[str] = None,
+    **_,
+) -> Dict[str, Any]:
+    """Create/update a wiki doc in Knowledge-Ops. Idempotent on (category,title)."""
+    if not title or not title.strip():
+        return {"error": "a non-empty 'title' is required"}
+    if not content or not content.strip():
+        return {"error": "non-empty 'content' (Markdown body) is required"}
+    cat = _slug(category or _WRITE_CATEGORY)
+    path = f"{cat}/{_slug(title)}.md"
+    body = content.strip()
+    # Knowledge-Ops derives the doc title from the first '# ' heading — make sure
+    # there is one so the saved doc is titled correctly.
+    if not body.lstrip().startswith("#"):
+        body = f"# {title.strip()}\n\n{body}"
+    result = await _post(
+        "kb.upsert_doc",
+        {"path": path, "md": body, "scope": scope or _WRITE_SCOPE, "owner": _WRITE_OWNER},
+    )
+    if isinstance(result, dict) and result.get("id"):
+        return {
+            "ok": True,
+            "id": result["id"],
+            "path": path,
+            "scope": scope or _WRITE_SCOPE,
+            "note": "Saved to the internal Knowledge-Ops KB; retrievable via knowledge_ops_search / knowledge_ops_ground.",
+        }
+    return result
 
 
 KNOWLEDGE_OPS_GROUND_TOOL = ToolDefinition(
@@ -96,8 +144,29 @@ KNOWLEDGE_OPS_SEARCH_TOOL = ToolDefinition(
     handler=_search_handler,
 )
 
+KNOWLEDGE_OPS_SAVE_TOOL = ToolDefinition(
+    name="knowledge_ops_save",
+    description=(
+        "Save a learning, finding, SOP, decision, or summary to the fleet's INTERNAL "
+        "Knowledge-Ops KB so you and other agents can retrieve it later (via "
+        "knowledge_ops_search / knowledge_ops_ground). Use this to durably record "
+        "something worth remembering across conversations — a resolved procedure, a fact "
+        "about the company's infrastructure, a decision and its rationale, or a distilled "
+        "summary. Saving with the same title UPDATES that doc (versioned). Do NOT save "
+        "secrets, credentials, API keys, or private personal data."
+    ),
+    parameters=[
+        ToolParameter(name="title", type="string", description="Short title/subject — also the key: the same title updates the same doc.", required=True),
+        ToolParameter(name="content", type="string", description="The note body in Markdown.", required=True),
+        ToolParameter(name="category", type="string", description="Folder to file it under, e.g. 'learnings', 'runbooks', 'infrastructure' (default 'learnings').", required=False, default=_WRITE_CATEGORY),
+        ToolParameter(name="scope", type="string", description="Visibility scope; 'global' = fleet-wide (default).", required=False, default=_WRITE_SCOPE),
+    ],
+    handler=_save_handler,
+)
+
 
 KNOWLEDGE_OPS_TOOLS: Dict[str, ToolDefinition] = {
     "knowledge_ops_ground": KNOWLEDGE_OPS_GROUND_TOOL,
     "knowledge_ops_search": KNOWLEDGE_OPS_SEARCH_TOOL,
+    "knowledge_ops_save": KNOWLEDGE_OPS_SAVE_TOOL,
 }
