@@ -57,11 +57,35 @@ class OpsWorker(BaseWorker):
         enable_shell: bool = True,
         enable_api: bool = True,
         sandbox_mode: bool = True,
+        allow_host_shell: Optional[bool] = None,
     ):
         super().__init__(llm_client, timeout)
         self.enable_shell = enable_shell
         self.enable_api = enable_api
         self.sandbox_mode = sandbox_mode
+
+        # SECURITY (BR-0.5): Shell commands are executed in an isolated Docker
+        # sandbox (app/mcp/sandbox_executor), NOT on the host — the same path
+        # the builtin SHELL_TOOL uses. The former host-shell path
+        # (asyncio.create_subprocess_shell) was RCE-by-design: its 6-entry
+        # denylist is trivially bypassable (e.g. `r''m`, `${IFS}`, base64|sh,
+        # absolute paths, symlinks) so it must never be the only control.
+        #
+        # The host path is now OPT-IN and OFF by default. It can only be enabled
+        # by an operator who explicitly sets allow_host_shell=True *and* the
+        # BRIGADE_ALLOW_HOST_SHELL=true environment flag. Even then every command
+        # still passes the denylist pre-filter and HITL escalation. With the
+        # default configuration the host shell is unreachable.
+        if allow_host_shell is None:
+            allow_host_shell = os.getenv(
+                "BRIGADE_ALLOW_HOST_SHELL", "false"
+            ).strip().lower() in ("1", "true", "yes", "on")
+        # Require BOTH the constructor flag and the env flag to unlock the host
+        # path. A caller passing allow_host_shell=True in code alone is not
+        # enough — the deployment must also opt in via the environment.
+        self.allow_host_shell = bool(allow_host_shell) and os.getenv(
+            "BRIGADE_ALLOW_HOST_SHELL", "false"
+        ).strip().lower() in ("1", "true", "yes", "on")
 
     async def _execute_impl(
         self,
@@ -172,7 +196,68 @@ class OpsWorker(BaseWorker):
             )
 
     async def _run_command(self, command: str) -> Dict[str, Any]:
-        """Run shell command with subprocess"""
+        """
+        Run a shell command.
+
+        SECURITY (BR-0.5): By default this executes inside an isolated Docker
+        sandbox (network=none, cap-drop=ALL, no-new-privileges, memory/cpu
+        capped) via app/mcp/sandbox_executor — exactly like the builtin
+        SHELL_TOOL. It does NOT touch the host. If Docker is unavailable we
+        FAIL CLOSED (raise) rather than silently falling back to the host.
+
+        The legacy host-shell path (asyncio.create_subprocess_shell) only runs
+        when the operator has explicitly opted in via allow_host_shell=True +
+        BRIGADE_ALLOW_HOST_SHELL=true. It is unreachable in the default config.
+        """
+        if not self.allow_host_shell:
+            return await self._run_command_sandboxed(command)
+        return await self._run_command_host(command)
+
+    async def _run_command_sandboxed(self, command: str) -> Dict[str, Any]:
+        """Execute the command in the Docker sandbox (default, safe path)."""
+        try:
+            from app.mcp.sandbox_executor import sandbox_executor
+        except ImportError as e:
+            raise RuntimeError(
+                "Shell execution disabled: sandbox executor unavailable "
+                f"({e}). Host-shell fallback is not permitted."
+            )
+
+        # Fail closed: no Docker => no execution (never run on the host).
+        docker_available = await sandbox_executor.check_docker()
+        if not docker_available:
+            raise RuntimeError(
+                "Shell execution disabled: Docker sandbox not available. "
+                "Refusing to execute on the host. Enable Docker (or the code "
+                "sandbox API) to run shell commands."
+            )
+
+        result = await sandbox_executor.execute(
+            code=command,
+            language="bash",
+            timeout=min(self.timeout, 60),  # Cap for safety
+        )
+
+        return {
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "exit_code": result.exit_code,
+            "sandbox": "docker",
+        }
+
+    async def _run_command_host(self, command: str) -> Dict[str, Any]:
+        """
+        Execute the command directly on the HOST.
+
+        DANGER: host RCE. Only reachable when allow_host_shell was explicitly
+        enabled (constructor flag AND BRIGADE_ALLOW_HOST_SHELL=true). Commands
+        have already passed the denylist pre-filter and HITL escalation gate.
+        """
+        logger.warning(
+            "OpsWorker executing shell command ON THE HOST (allow_host_shell "
+            "opt-in is active): %s",
+            command[:200],
+        )
         process = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
