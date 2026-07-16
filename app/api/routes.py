@@ -1,8 +1,8 @@
 """API routes"""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import StreamingResponse
-from typing import Dict, Any
+from typing import Dict, Any, Annotated
 import uuid
 import logging
 import json
@@ -11,6 +11,7 @@ from datetime import datetime
 import time
 
 from app.api.models import TaskRequest, TaskResponse, SystemStatus, AgentStatus, MemoryQuery, MemoryResponse
+from app.auth.middleware import require_operator, AuthUser
 from app.graph.workflow import WorkflowManager
 from app.memory.manager import MemoryManager
 from app.graph.state import AgentState
@@ -68,8 +69,11 @@ async def system_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/agents/execute", response_model=TaskResponse)
-async def execute_task(request: TaskRequest):
-    """Execute agent task immediately"""
+async def execute_task(
+    request: TaskRequest,
+    user: Annotated[AuthUser, Depends(require_operator)],
+):
+    """Execute agent task immediately (requires operator auth)"""
     try:
         if not workflow_manager:
             raise HTTPException(status_code=503, detail="Workflow manager not initialized")
@@ -121,8 +125,11 @@ async def execute_task(request: TaskRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/agents/execute/stream")
-async def execute_task_stream(request: TaskRequest):
-    """Execute task with streaming response"""
+async def execute_task_stream(
+    request: TaskRequest,
+    user: Annotated[AuthUser, Depends(require_operator)],
+):
+    """Execute task with streaming response (requires operator auth)"""
 
     async def generate():
         try:
@@ -181,8 +188,11 @@ async def execute_task_stream(request: TaskRequest):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 @router.post("/memory/query", response_model=MemoryResponse)
-async def query_memory(query: MemoryQuery):
-    """Query memory"""
+async def query_memory(
+    query: MemoryQuery,
+    user: Annotated[AuthUser, Depends(require_operator)],
+):
+    """Query memory (requires operator auth - reads cross-user memory)"""
     try:
         if not memory_manager:
             raise HTTPException(status_code=503, detail="Memory manager not initialized")
@@ -204,8 +214,12 @@ async def query_memory(query: MemoryQuery):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/memory/user/{user_id}")
-async def get_user_memories(user_id: str, agent_id: str = None):
-    """Get all memories for user"""
+async def get_user_memories(
+    user_id: str,
+    user: Annotated[AuthUser, Depends(require_operator)],
+    agent_id: str = None,
+):
+    """Get all memories for user (requires operator auth - reads cross-user memory)"""
     try:
         if not memory_manager:
             raise HTTPException(status_code=503, detail="Memory manager not initialized")
@@ -227,8 +241,11 @@ async def get_user_memories(user_id: str, agent_id: str = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/memory/{memory_id}")
-async def delete_memory(memory_id: str):
-    """Delete specific memory"""
+async def delete_memory(
+    memory_id: str,
+    user: Annotated[AuthUser, Depends(require_operator)],
+):
+    """Delete specific memory (requires operator auth - destructive)"""
     try:
         if not memory_manager:
             raise HTTPException(status_code=503, detail="Memory manager not initialized")

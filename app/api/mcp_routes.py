@@ -14,10 +14,12 @@ Endpoints:
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import os
+
+from app.auth.middleware import require_admin, AuthUser
 
 _PUBLIC_BASE_URL = os.environ.get("BRIGADE_URL") or os.environ.get("BRIGADE_PUBLIC_URL") or "http://localhost:8100"
 
@@ -152,8 +154,11 @@ async def list_mcp_tools_anthropic_format():
 
 
 @router.post("/mcp/tools/call")
-async def call_mcp_tool(request: MCPToolCallRequest):
-    """Invoke an MCP tool by name with arguments."""
+async def call_mcp_tool(
+    request: MCPToolCallRequest,
+    admin: Annotated[AuthUser, Depends(require_admin)],
+):
+    """Invoke an MCP tool by name with arguments (ADMIN ONLY - RCE risk via shell/filesystem tools)."""
     _ensure_tools_registered()
 
     if request.name not in mcp_server.tools:
@@ -188,9 +193,12 @@ async def list_mcp_resources():
 
 
 @router.post("/mcp/request")
-async def handle_mcp_request(request: MCPProtocolRequest):
+async def handle_mcp_request(
+    request: MCPProtocolRequest,
+    admin: Annotated[AuthUser, Depends(require_admin)],
+):
     """
-    Handle a raw MCP protocol request.
+    Handle a raw MCP protocol request (ADMIN ONLY - dispatches tools/call, RCE risk).
 
     This is the main MCP protocol endpoint for external clients.
     Supports methods: tools/list, tools/call, resources/list, resources/read

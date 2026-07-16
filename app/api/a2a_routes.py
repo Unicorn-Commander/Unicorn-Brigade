@@ -16,9 +16,11 @@ Endpoints:
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
+
+from app.auth.middleware import require_operator, AuthUser
 import uuid
 import time
 import json
@@ -217,10 +219,11 @@ async def get_agent_card(
 async def invoke_agent(
     agent_id: str,
     request: A2AInvokeBody,
+    user: Annotated[AuthUser, Depends(require_operator)],
     session: AsyncSession = Depends(get_session),
 ):
     """
-    Invoke an agent via A2A protocol.
+    Invoke an agent via A2A protocol (requires operator auth - executes agents/tools).
 
     This is the main entry point for agent-to-agent communication.
     """
