@@ -48,6 +48,35 @@ _SAFE_UNARYOPS = {
     ast.USub: _operator.neg,
 }
 
+# Guard against CPU/memory DoS via absurd exponents (e.g. 9**9**9).
+_MAX_POW_EXPONENT = 1000
+# Cap the estimated bit-length of an integer power result so nested exponentiation
+# (e.g. ((9**1000)**1000)**1000) and pow(10, 100000000) can't blow up memory/CPU.
+_MAX_RESULT_BITS = 10000
+
+
+def _check_pow_magnitude(base, exp) -> None:
+    """Reject integer exponentiation whose result would be enormous. Applies to both
+    the ** operator and the whitelisted pow() call. Float exponents hit C's O(1) pow
+    (no unbounded int growth), so they only need the exponent cap."""
+    if isinstance(exp, bool) or not isinstance(exp, int):
+        return
+    if abs(exp) > _MAX_POW_EXPONENT:
+        raise ValueError("exponent too large")
+    if isinstance(base, int) and not isinstance(base, bool):
+        if abs(exp) * max(1, base.bit_length()) > _MAX_RESULT_BITS:
+            raise ValueError("result magnitude too large")
+
+
+def _safe_pow(base, exp, mod=None):
+    """pow() wrapper: 2-arg integer power is magnitude-checked; 3-arg modular pow
+    is intrinsically fast and bounded, so it's allowed through."""
+    if mod is None:
+        _check_pow_magnitude(base, exp)
+        return base ** exp
+    return pow(base, exp, mod)
+
+
 # Fixed whitelist of callable math names. No attribute access, no other names.
 _SAFE_FUNCTIONS = {
     "abs": abs,
@@ -55,7 +84,7 @@ _SAFE_FUNCTIONS = {
     "min": min,
     "max": max,
     "sum": sum,
-    "pow": pow,
+    "pow": _safe_pow,
     "len": len,
     "sqrt": math.sqrt,
     "sin": math.sin,
@@ -71,9 +100,6 @@ _SAFE_NAMES = {
     "pi": math.pi,
     "e": math.e,
 }
-
-# Guard against CPU/memory DoS via absurd exponents (e.g. 9**9**9).
-_MAX_POW_EXPONENT = 1000
 
 
 def _safe_eval_node(node: ast.AST):
@@ -93,8 +119,8 @@ def _safe_eval_node(node: ast.AST):
             raise ValueError(f"operator {op_type.__name__} is not allowed")
         left = _safe_eval_node(node.left)
         right = _safe_eval_node(node.right)
-        if op_type is ast.Pow and isinstance(right, (int, float)) and abs(right) > _MAX_POW_EXPONENT:
-            raise ValueError("exponent too large")
+        if op_type is ast.Pow:
+            _check_pow_magnitude(left, right)
         return _SAFE_BINOPS[op_type](left, right)
 
     if isinstance(node, ast.UnaryOp):

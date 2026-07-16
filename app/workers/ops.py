@@ -71,18 +71,18 @@ class OpsWorker(BaseWorker):
         # denylist is trivially bypassable (e.g. `r''m`, `${IFS}`, base64|sh,
         # absolute paths, symlinks) so it must never be the only control.
         #
-        # The host path is now OPT-IN and OFF by default. It can only be enabled
-        # by an operator who explicitly sets allow_host_shell=True *and* the
-        # BRIGADE_ALLOW_HOST_SHELL=true environment flag. Even then every command
-        # still passes the denylist pre-filter and HITL escalation. With the
-        # default configuration the host shell is unreachable.
+        # The host path is OPT-IN and OFF by default. BRIGADE_ALLOW_HOST_SHELL=true
+        # is the REQUIRED control: without it the host shell is unreachable and
+        # every command runs in the Docker sandbox. For a default OpsWorker() the
+        # env flag alone enables it (the constructor flag is derived from the env
+        # below); an explicit allow_host_shell=False can additionally force it OFF
+        # even when the env flag is set, but code alone can never enable it.
         if allow_host_shell is None:
             allow_host_shell = os.getenv(
                 "BRIGADE_ALLOW_HOST_SHELL", "false"
             ).strip().lower() in ("1", "true", "yes", "on")
-        # Require BOTH the constructor flag and the env flag to unlock the host
-        # path. A caller passing allow_host_shell=True in code alone is not
-        # enough — the deployment must also opt in via the environment.
+        # Env flag is required (and, for default callers, sufficient); an explicit
+        # allow_host_shell=False force-disables regardless of the environment.
         self.allow_host_shell = bool(allow_host_shell) and os.getenv(
             "BRIGADE_ALLOW_HOST_SHELL", "false"
         ).strip().lower() in ("1", "true", "yes", "on")

@@ -458,6 +458,20 @@ async def screenshot_handler(
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page(viewport={"width": width, "height": height})
 
+            # Per-hop SSRF guard: validating only the entry URL leaves a redirect
+            # bypass (a public URL 302-ing to 169.254.169.254 / localhost). Abort
+            # every request whose host fails egress validation, so redirect
+            # navigations and subresource fetches to internal hosts never complete.
+            async def _egress_route(route):
+                ok, _ = validate_url_egress(route.request.url)
+                if ok:
+                    await route.continue_()
+                else:
+                    logger.warning(f"screenshot egress-blocked: {route.request.url}")
+                    await route.abort()
+
+            await page.route("**/*", _egress_route)
+
             await page.goto(url, wait_until="networkidle")
 
             screenshot_bytes = await page.screenshot(full_page=full_page)
@@ -1428,6 +1442,18 @@ async def url_preview_handler(
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page(viewport={"width": width, "height": height})
+
+                # Per-hop SSRF guard (see screenshot_handler): abort any request
+                # whose host fails egress validation, closing the redirect bypass.
+                async def _egress_route(route):
+                    ok, _ = validate_url_egress(route.request.url)
+                    if ok:
+                        await route.continue_()
+                    else:
+                        logger.warning(f"url_preview egress-blocked: {route.request.url}")
+                        await route.abort()
+
+                await page.route("**/*", _egress_route)
 
                 await page.goto(url, wait_until="networkidle", timeout=30000)
 
