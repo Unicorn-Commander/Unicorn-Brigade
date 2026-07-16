@@ -20,6 +20,7 @@ from pathlib import Path
 import httpx
 
 from app.llm.ops_center_client import ToolDefinition, ToolParameter
+from app.llm.builtin_tools import validate_url_egress
 
 logger = logging.getLogger(__name__)
 
@@ -438,6 +439,15 @@ async def screenshot_handler(
     if not BROWSER_USE_ENABLED:
         return {
             "error": "Browser features disabled. Set BROWSER_USE_ENABLED=true",
+            "success": False,
+        }
+
+    # BR-0.4: SSRF egress guard on the entry URL before navigating.
+    allowed, block_reason = validate_url_egress(url)
+    if not allowed:
+        logger.warning(f"screenshot blocked by SSRF guard: {url} ({block_reason})")
+        return {
+            "error": f"Screenshot blocked by SSRF guard: {block_reason}",
             "success": False,
         }
 
@@ -1400,6 +1410,16 @@ async def url_preview_handler(
         "screenshot": None,
     }
 
+    # BR-0.4: SSRF egress guard on the entry URL (covers both the Playwright
+    # and HTTP-fallback paths). Redirect hops in the HTTP path are re-guarded
+    # individually below.
+    allowed, block_reason = validate_url_egress(url)
+    if not allowed:
+        logger.warning(f"url_preview blocked by SSRF guard: {url} ({block_reason})")
+        result["success"] = False
+        result["error"] = f"URL preview blocked by SSRF guard: {block_reason}"
+        return result
+
     # Try screenshot first if enabled and browser features available
     if capture_screenshot and BROWSER_USE_ENABLED:
         try:
@@ -1442,10 +1462,36 @@ async def url_preview_handler(
 
     # Fallback: Extract metadata via HTTP
     try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            response = await client.get(url, headers={
-                "User-Agent": "Mozilla/5.0 (compatible; UnicornBrigade/1.0)"
-            })
+        # Manually follow redirects so the SSRF guard runs on EVERY hop
+        # (an allowed public URL must not be able to redirect us to an
+        # internal/metadata host).
+        max_redirects = 5
+        current_url = url
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+            response = None
+            for _ in range(max_redirects + 1):
+                allowed, block_reason = validate_url_egress(current_url)
+                if not allowed:
+                    logger.warning(
+                        f"url_preview redirect blocked by SSRF guard: {current_url} ({block_reason})"
+                    )
+                    result["success"] = False
+                    result["error"] = f"URL preview blocked by SSRF guard: {block_reason}"
+                    return result
+
+                response = await client.get(current_url, headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; UnicornBrigade/1.0)"
+                })
+
+                if response.is_redirect and response.headers.get("location"):
+                    current_url = str(response.url.join(response.headers["location"]))
+                    continue
+                break
+            else:
+                result["success"] = False
+                result["error"] = "Too many redirects"
+                return result
+
             response.raise_for_status()
 
             html = response.text

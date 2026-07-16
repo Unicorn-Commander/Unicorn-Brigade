@@ -5,16 +5,203 @@ Provides a standard set of tools that agents can use for common operations.
 """
 
 import asyncio
+import ast
+import ipaddress
 import json
 import logging
+import math
+import operator as _operator
 import os
+import socket
 import httpx
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
+from urllib.parse import urlparse
 
 from app.llm.ops_center_client import ToolDefinition, ToolParameter
 
 logger = logging.getLogger(__name__)
+
+
+# ============== BR-0.3: Safe Expression Evaluator (calculator RCE fix) ==============
+#
+# The calculator tool previously used eval(), which is a Remote Code Execution
+# sink even with an emptied __builtins__ (e.g.
+# "(1).__class__.__bases__[0].__subclasses__()" reaches arbitrary classes).
+# We replace eval() with an AST whitelist walker that evaluates ONLY numeric
+# arithmetic plus a fixed set of safe math functions/constants.
+
+# Binary operators explicitly permitted.
+_SAFE_BINOPS = {
+    ast.Add: _operator.add,
+    ast.Sub: _operator.sub,
+    ast.Mult: _operator.mul,
+    ast.Div: _operator.truediv,
+    ast.FloorDiv: _operator.floordiv,
+    ast.Mod: _operator.mod,
+    ast.Pow: _operator.pow,
+}
+
+# Unary operators explicitly permitted (+x / -x).
+_SAFE_UNARYOPS = {
+    ast.UAdd: _operator.pos,
+    ast.USub: _operator.neg,
+}
+
+# Fixed whitelist of callable math names. No attribute access, no other names.
+_SAFE_FUNCTIONS = {
+    "abs": abs,
+    "round": round,
+    "min": min,
+    "max": max,
+    "sum": sum,
+    "pow": pow,
+    "len": len,
+    "sqrt": math.sqrt,
+    "sin": math.sin,
+    "cos": math.cos,
+    "tan": math.tan,
+    "log": math.log,
+    "log10": math.log10,
+    "exp": math.exp,
+}
+
+# Fixed whitelist of constant names.
+_SAFE_NAMES = {
+    "pi": math.pi,
+    "e": math.e,
+}
+
+# Guard against CPU/memory DoS via absurd exponents (e.g. 9**9**9).
+_MAX_POW_EXPONENT = 1000
+
+
+def _safe_eval_node(node: ast.AST):
+    """Recursively evaluate a whitelisted AST node. Raises ValueError on anything else."""
+    if isinstance(node, ast.Expression):
+        return _safe_eval_node(node.body)
+
+    if isinstance(node, ast.Constant):
+        # Reject bool (subclass of int) and anything non-numeric (str, bytes, ...).
+        if isinstance(node.value, bool) or not isinstance(node.value, (int, float, complex)):
+            raise ValueError("only numeric constants are allowed")
+        return node.value
+
+    if isinstance(node, ast.BinOp):
+        op_type = type(node.op)
+        if op_type not in _SAFE_BINOPS:
+            raise ValueError(f"operator {op_type.__name__} is not allowed")
+        left = _safe_eval_node(node.left)
+        right = _safe_eval_node(node.right)
+        if op_type is ast.Pow and isinstance(right, (int, float)) and abs(right) > _MAX_POW_EXPONENT:
+            raise ValueError("exponent too large")
+        return _SAFE_BINOPS[op_type](left, right)
+
+    if isinstance(node, ast.UnaryOp):
+        op_type = type(node.op)
+        if op_type not in _SAFE_UNARYOPS:
+            raise ValueError(f"unary operator {op_type.__name__} is not allowed")
+        return _SAFE_UNARYOPS[op_type](_safe_eval_node(node.operand))
+
+    if isinstance(node, ast.Call):
+        if node.keywords:
+            raise ValueError("keyword arguments are not allowed")
+        if not isinstance(node.func, ast.Name):
+            raise ValueError("only direct calls to whitelisted functions are allowed")
+        fname = node.func.id
+        if fname not in _SAFE_FUNCTIONS:
+            raise ValueError(f"function '{fname}' is not allowed")
+        # ast.Starred args (f(*x)) fall through _safe_eval_node and are rejected.
+        args = [_safe_eval_node(arg) for arg in node.args]
+        return _SAFE_FUNCTIONS[fname](*args)
+
+    if isinstance(node, ast.Name):
+        if node.id not in _SAFE_NAMES:
+            raise ValueError(f"name '{node.id}' is not allowed")
+        return _SAFE_NAMES[node.id]
+
+    raise ValueError(f"disallowed expression element: {type(node).__name__}")
+
+
+def safe_eval_expression(expression: str):
+    """Safely evaluate an arithmetic expression. Raises ValueError on unsafe input."""
+    tree = ast.parse(expression, mode="eval")
+    return _safe_eval_node(tree)
+
+
+# ============== BR-0.4: SSRF Egress Guard ==============
+#
+# Tools that fetch a caller-supplied URL (http_request, url_preview, screenshot)
+# can be abused for Server-Side Request Forgery: reaching localhost, RFC1918
+# hosts, or the cloud metadata endpoint (169.254.169.254). validate_url_egress()
+# resolves the target hostname and blocks any address that is not a genuine
+# public unicast address.
+
+
+def _ip_is_blocked(ip_str: str) -> bool:
+    """True if an IP is loopback / private / link-local / reserved / unspecified / multicast."""
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        # Unparseable address -> block (fail closed).
+        return True
+    return (
+        ip.is_loopback
+        or ip.is_private          # RFC1918 (IPv4) + ULA fc00::/7 (IPv6)
+        or ip.is_link_local       # 169.254.0.0/16 incl. cloud metadata + fe80::/10
+        or ip.is_reserved
+        or ip.is_unspecified      # 0.0.0.0 / ::
+        or ip.is_multicast
+    )
+
+
+def validate_url_egress(url: str) -> Tuple[bool, Optional[str]]:
+    """
+    SSRF guard. Returns (allowed, error_message).
+
+    Rejects non-http(s) schemes and any URL whose host resolves to a
+    loopback / private / link-local (169.254/16 metadata) / reserved /
+    unspecified address. Callers should return a clean tool error (not raise)
+    when allowed is False.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False, "invalid URL"
+
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in ("http", "https"):
+        return False, f"blocked URL scheme '{scheme or 'none'}' (only http/https allowed)"
+
+    hostname = parsed.hostname
+    if not hostname:
+        return False, "URL has no host"
+
+    # If the host is already an IP literal, check it directly (no DNS).
+    try:
+        ipaddress.ip_address(hostname)
+        if _ip_is_blocked(hostname):
+            return False, f"blocked: {hostname} is a private/reserved address"
+        return True, None
+    except ValueError:
+        pass
+
+    # Resolve the hostname to every address it maps to and block if ANY is internal.
+    port = parsed.port or (443 if scheme == "https" else 80)
+    try:
+        infos = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as exc:
+        return False, f"DNS resolution failed for {hostname}: {exc}"
+
+    if not infos:
+        return False, f"no addresses resolved for {hostname}"
+
+    for info in infos:
+        ip_str = info[4][0]
+        if _ip_is_blocked(ip_str):
+            return False, f"blocked: {hostname} resolves to non-public address {ip_str}"
+
+    return True, None
 
 
 # ============== Web Search Configuration ==============
@@ -216,8 +403,19 @@ async def http_request_handler(
     """Make an HTTP request"""
     logger.info(f"HTTP {method} request to: {url}")
 
+    # BR-0.4: SSRF egress guard. Block internal/metadata targets before any connect.
+    allowed, block_reason = validate_url_egress(url)
+    if not allowed:
+        logger.warning(f"http_request blocked by SSRF guard: {url} ({block_reason})")
+        return {
+            "error": f"Request blocked by SSRF guard: {block_reason}",
+            "success": False,
+        }
+
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        # follow_redirects=False so a redirect cannot bounce us to an internal
+        # host that the guard never validated (redirect-based SSRF bypass).
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             response = await client.request(
                 method=method.upper(),
                 url=url,
@@ -287,26 +485,14 @@ async def calculator_handler(expression: str) -> Dict[str, Any]:
     """Evaluate a mathematical expression safely"""
     logger.info(f"Calculator: {expression}")
 
-    # Safe math evaluation
-    allowed_names = {
-        "abs": abs, "round": round, "min": min, "max": max,
-        "sum": sum, "pow": pow, "len": len,
-    }
-
-    # Additional safe math functions
-    import math
-    allowed_names.update({
-        "sqrt": math.sqrt, "sin": math.sin, "cos": math.cos, "tan": math.tan,
-        "log": math.log, "log10": math.log10, "exp": math.exp,
-        "pi": math.pi, "e": math.e,
-    })
-
     try:
-        # Clean expression
+        # Allow caret as an exponent operator, as before.
         clean_expr = expression.replace("^", "**")
 
-        # Evaluate safely
-        result = eval(clean_expr, {"__builtins__": {}}, allowed_names)
+        # BR-0.3: AST whitelist evaluation instead of eval(). Only numeric
+        # arithmetic and a fixed set of math functions/constants are permitted;
+        # attribute access, arbitrary names, and arbitrary calls are rejected.
+        result = safe_eval_expression(clean_expr)
 
         return {
             "expression": expression,
@@ -314,6 +500,12 @@ async def calculator_handler(expression: str) -> Dict[str, Any]:
             "success": True,
         }
 
+    except SyntaxError as e:
+        return {
+            "expression": expression,
+            "error": f"Invalid expression: {e}",
+            "success": False,
+        }
     except Exception as e:
         return {
             "expression": expression,
