@@ -177,8 +177,10 @@ MIDBOY1_LLM_URL = os.getenv("MIDBOY1_LLM_URL", "http://192.168.10.68:8087")
 UC_GATEWAY_URL = os.getenv("UC_GATEWAY_URL", "")
 UC_GATEWAY_KEY = os.getenv("UC_GATEWAY_KEY", "")
 
-# Brigade service key for authentication
-BRIGADE_SERVICE_KEY = os.getenv("BRIGADE_SERVICE_KEY", "sk-brigade-service-key-2025")
+# Brigade service key for authentication.
+# No hardcoded fallback: an unset key must fail auth upstream rather than
+# silently ship a known-public default secret.
+BRIGADE_SERVICE_KEY = os.getenv("BRIGADE_SERVICE_KEY", "")
 
 # Default model to use when "default" is specified.
 # Routes via the UC litellm gateway (uc/ prefix) to qwen 3.6 35B A3B on bigboy,

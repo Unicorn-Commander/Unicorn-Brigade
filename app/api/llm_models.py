@@ -130,7 +130,7 @@ def _enrich_model(model: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _fetch_ops_center_models() -> Any:
-    service_key = os.getenv("BRIGADE_SERVICE_KEY", "sk-brigade-service-key-2025")
+    service_key = os.getenv("BRIGADE_SERVICE_KEY", "")
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(
             OPS_CENTER_MODELS_URL,

@@ -29,6 +29,9 @@ ENV/
 .env
 .env.local
 .env.*.local
+.env.production
+# Keep the sanitized template committed
+!.env.production.example
 
 # IDE
 .vscode/

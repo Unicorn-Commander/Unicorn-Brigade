@@ -14,6 +14,7 @@ Distinct from:
 - app/api/apikey_routes.py -- agent-bound keys
 """
 
+import hmac
 import logging
 import os
 from datetime import datetime
@@ -36,21 +37,35 @@ _SERVICE_KEY_ENV = "BRIGADE_SERVICE_KEY"
 _NON_LOGIN_PASSWORD_HASH = "NOLOGIN-SSO-ONLY"  # fails every bcrypt.checkpw
 _VALID_ROLES = {"admin", "operator", "viewer"}
 
+# Known-bad default that shipped in the codebase/committed .env. Treated as
+# "unconfigured" so a deploy that forgot to set a real secret fails closed
+# instead of accepting the public literal.
+_KNOWN_BAD_SERVICE_KEY = "sk-brigade-service-key-2025"
+
 
 # ── Auth dependency ─────────────────────────────────────────────
 
 def require_service_key(
     x_api_key: Annotated[Optional[str], Header(alias="X-API-Key")] = None,
 ) -> str:
-    """Verify the X-API-Key header matches the configured service key."""
-    expected = os.getenv(_SERVICE_KEY_ENV, "")
-    if not expected:
-        logger.error("BRIGADE_SERVICE_KEY is not configured")
+    """Verify the X-API-Key header matches the configured service key.
+
+    Fails closed: if BRIGADE_SERVICE_KEY is unset (or still set to the known
+    public default), service delegation is refused with 503 rather than
+    authenticating callers against a guessable secret. The header comparison
+    uses hmac.compare_digest for constant-time matching.
+    """
+    expected = os.getenv(_SERVICE_KEY_ENV, "") or ""
+    if not expected or hmac.compare_digest(expected, _KNOWN_BAD_SERVICE_KEY):
+        logger.error(
+            "BRIGADE_SERVICE_KEY is not configured (unset or set to the known "
+            "default); refusing service-delegation requests"
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Service delegation is not configured on this Brigade instance",
         )
-    if not x_api_key or x_api_key != expected:
+    if not x_api_key or not hmac.compare_digest(x_api_key, expected):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Service key required",
