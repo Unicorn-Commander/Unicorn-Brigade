@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AlertTriangle, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
+import Modal from './ui/Modal';
 
 export default function AgentDeleteConfirmModal({ agent, onClose, onDelete }) {
   const [loading, setLoading] = useState(false);
@@ -30,8 +31,12 @@ export default function AgentDeleteConfirmModal({ agent, onClose, onDelete }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800/90 backdrop-blur-xl border border-red-500/50 rounded-xl shadow-2xl max-w-md w-full">
+    <Modal
+      onClose={loading ? () => {} : onClose}
+      ariaLabel="Delete agent confirmation"
+      showClose={false}
+      panelClassName="bg-slate-800/90 backdrop-blur-xl border border-red-500/50 rounded-xl shadow-2xl max-w-md w-full"
+    >
         <div className="p-6 border-b border-slate-700/50">
           <div className="flex items-center space-x-3">
             <div className="p-3 bg-red-500/20 rounded-lg">
@@ -104,7 +109,6 @@ export default function AgentDeleteConfirmModal({ agent, onClose, onDelete }) {
             )}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

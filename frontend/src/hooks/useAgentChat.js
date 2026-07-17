@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import api from '../services/api';
+import { getPreferences } from '../utils/preferences';
 
 /**
  * Headless per-agent streaming chat. One instance owns one conversation with one
@@ -32,6 +33,13 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
       if (!content || !agent || isStreaming || sendingRef.current) return;
       sendingRef.current = true;
 
+      // User preferences feed the request: an explicit per-window `model`
+      // override wins, else the saved Default Model, else the agent's model.
+      // `streamResponses` controls whether tokens render live or all-at-once.
+      const prefs = getPreferences();
+      const resolvedModel = model || prefs.defaultModel || agent.model;
+      const streamLive = prefs.streamResponses !== false;
+
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
       const userMsg = { id: nextId(), role: 'user', content };
       const assistantId = nextId();
@@ -40,7 +48,7 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
         role: 'assistant',
         content: '',
         toolCalls: [],
-        model: model || agent.model,
+        model: resolvedModel,
         isStreaming: true,
       };
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
@@ -60,7 +68,7 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
             message: content,
             stream: true,
             history,
-            model: model || agent.model,
+            model: resolvedModel,
             temperature: agent.temperature,
           },
           { signal: controller.signal }
@@ -121,12 +129,17 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
                 })
               );
             } else if (ev.type === 'token') {
-              if (!gotToken) {
-                gotToken = true;
-                setIsThinking(false);
-              }
               acc += ev.content || '';
-              setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: acc } : m)));
+              // When live streaming is off, buffer silently and let the
+              // `complete` event (or the post-loop flush) reveal the full
+              // reply at once — the thinking indicator stays up meanwhile.
+              if (streamLive) {
+                if (!gotToken) {
+                  gotToken = true;
+                  setIsThinking(false);
+                }
+                setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: acc } : m)));
+              }
             } else if (ev.type === 'complete') {
               const finalContent = ev.content || acc;
               setMessages((prev) =>
@@ -147,7 +160,11 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
             }
           }
         }
-        setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, isStreaming: false } : m)));
+        // Flush any buffered content (stream-off path where no `complete`
+        // event arrived) and clear the streaming flag.
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: m.content || acc, isStreaming: false } : m))
+        );
       } catch (err) {
         const aborted = controller.signal.aborted;
         setMessages((prev) =>

@@ -1,13 +1,13 @@
-import React from 'react';
+import React, { useId } from 'react';
 import PropTypes from 'prop-types';
-import { Tooltip } from '@radix-ui/react-tooltip';
-import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+import { Tooltip } from 'react-tooltip';
 import { Crown, Zap, Sparkles, Building2, Star } from 'lucide-react';
 
 /**
  * TierBadge Component
  *
  * Displays a color-coded badge for subscription tiers with tooltip.
+ * Uses react-tooltip (the app's single tooltip lib) for rich hover content.
  *
  * @component
  * @example
@@ -16,6 +16,14 @@ import { Crown, Zap, Sparkles, Building2, Star } from 'lucide-react';
  * @example
  * <TierBadge tier="enterprise" size="large" showIcon />
  */
+const TOOLTIP_STYLE = {
+  backgroundColor: 'rgba(17, 24, 39, 0.98)',
+  color: '#ffffff',
+  borderRadius: '0.5rem',
+  padding: '0.5rem 0.75rem',
+  border: '1px solid rgba(100, 116, 139, 0.3)',
+};
+
 const TierBadge = ({
   tier,
   size = 'medium',
@@ -82,6 +90,7 @@ const TierBadge = ({
 
   const config = tierConfig[tier?.toLowerCase()] || tierConfig.trial;
   const Icon = config.icon;
+  const tooltipId = useId();
 
   const sizeClasses = {
     small: 'text-xs px-2 py-0.5',
@@ -96,43 +105,34 @@ const TierBadge = ({
   };
 
   return (
-    <TooltipPrimitive.Provider delayDuration={200}>
-      <TooltipPrimitive.Root>
-        <TooltipPrimitive.Trigger asChild>
-          <span
-            className={`
-              inline-flex items-center gap-1.5 rounded-full font-medium border
-              ${config.color}
-              ${sizeClasses[size]}
-              ${className}
-              transition-all duration-200 hover:scale-105 cursor-help
-            `}
-          >
-            {showIcon && <Icon size={iconSizes[size]} />}
-            {config.label}
-          </span>
-        </TooltipPrimitive.Trigger>
-        <TooltipPrimitive.Portal>
-          <TooltipPrimitive.Content
-            className="bg-gray-900 text-white px-3 py-2 rounded-lg text-sm max-w-xs z-50"
-            sideOffset={5}
-          >
-            <div className="space-y-1">
-              <p className="font-semibold">{config.label} Plan</p>
-              <ul className="text-xs space-y-0.5">
-                {config.benefits.map((benefit, idx) => (
-                  <li key={idx} className="flex items-start gap-1">
-                    <span className="text-green-400">✓</span>
-                    <span>{benefit}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <TooltipPrimitive.Arrow className="fill-gray-900" />
-          </TooltipPrimitive.Content>
-        </TooltipPrimitive.Portal>
-      </TooltipPrimitive.Root>
-    </TooltipPrimitive.Provider>
+    <>
+      <span
+        data-tooltip-id={tooltipId}
+        className={`
+          inline-flex items-center gap-1.5 rounded-full font-medium border
+          ${config.color}
+          ${sizeClasses[size]}
+          ${className}
+          transition-all duration-200 hover:scale-105 cursor-help
+        `}
+      >
+        {showIcon && <Icon size={iconSizes[size]} />}
+        {config.label}
+      </span>
+      <Tooltip id={tooltipId} place="top" className="z-50 max-w-xs" style={TOOLTIP_STYLE}>
+        <div className="space-y-1">
+          <p className="font-semibold">{config.label} Plan</p>
+          <ul className="text-xs space-y-0.5">
+            {config.benefits.map((benefit, idx) => (
+              <li key={idx} className="flex items-start gap-1">
+                <span className="text-green-400">✓</span>
+                <span>{benefit}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Tooltip>
+    </>
   );
 };
 

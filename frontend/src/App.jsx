@@ -51,7 +51,7 @@ const queryClient = new QueryClient();
 const LazyFallback = () => (
   <div className="min-h-screen flex items-center justify-center bg-slate-900">
     <div className="text-center">
-      <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
+      <Loader2 className="w-12 h-12 text-unicorn-400 animate-spin mx-auto mb-4" />
       <p className="text-slate-400">Loading...</p>
     </div>
   </div>
@@ -68,7 +68,7 @@ function ProtectedRoute({ children }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 text-unicorn-400 animate-spin mx-auto mb-4" />
           <p className="text-slate-400">Loading Brigade...</p>
         </div>
       </div>
@@ -99,17 +99,20 @@ function AppLayout({ children }) {
 
 function App() {
   const [showWizard, setShowWizard] = useState(false);
+  // Gate onboarding on auth so the wizard never fires over /login or /register.
+  const { isAuthenticated } = useAuth();
 
   // AuthProvider (in main.jsx) handles the initial session check via loadUser().
 
   useEffect(() => {
+    if (!isAuthenticated) return undefined;
     const hasCompletedWizard = localStorage.getItem('wizard-completed');
     if (!hasCompletedWizard) {
       const timer = setTimeout(() => setShowWizard(true), 500);
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const handleOffline = () => {
@@ -329,7 +332,7 @@ function App() {
           </Routes>
         </ErrorBoundary>
 
-        {showWizard && (
+        {isAuthenticated && showWizard && (
           <GettingStartedWizard onClose={() => setShowWizard(false)} />
         )}
 

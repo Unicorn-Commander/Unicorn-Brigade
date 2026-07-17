@@ -19,6 +19,9 @@ import { toast } from 'react-hot-toast';
 import Breadcrumbs from '../components/Breadcrumbs';
 import ApiKeyCard from '../components/ApiKeyCard';
 import KeyRevealModal from '../components/KeyRevealModal';
+import Toggle from '../components/ui/Toggle';
+import notify from '../utils/notify';
+import { getPreferences, savePreferences } from '../utils/preferences';
 import { apiJson } from '../services/http';
 
 const Settings = () => {
@@ -32,16 +35,13 @@ const Settings = () => {
   const [newKeyName, setNewKeyName] = useState('');
   const [creatingKey, setCreatingKey] = useState(false);
   const [revealedKey, setRevealedKey] = useState(null);
-  const [preferences, setPreferences] = useState(() => {
-    const saved = localStorage.getItem('brigade-preferences');
-    return saved ? JSON.parse(saved) : {
-      theme: 'dark',
-      defaultModel: '',
-      notifications: true,
-      compactMode: false,
-      streamResponses: true,
-    };
-  });
+  // Real, consumed preferences only (see src/utils/preferences.js). defaultModel
+  // + streamResponses feed the chat request path (useAgentChat); notifications
+  // gates toast output (src/utils/notify.js). Dropped the placebo theme/
+  // compactMode toggles that nothing read.
+  const [preferences, setPreferences] = useState(getPreferences);
+
+  const updatePref = (key, value) => setPreferences((prev) => ({ ...prev, [key]: value }));
 
   useEffect(() => {
     loadSettings();
@@ -49,7 +49,7 @@ const Settings = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('brigade-preferences', JSON.stringify(preferences));
+    savePreferences(preferences);
   }, [preferences]);
 
   const loadSettings = async () => {
@@ -102,7 +102,7 @@ const Settings = () => {
       });
       setRevealedKey(created); // full key value is only returned once
       setNewKeyName('');
-      toast.success('API key created');
+      notify.success('API key created');
       await loadApiKeys();
     } catch (error) {
       toast.error(error.message || 'Failed to create API key');
@@ -114,7 +114,7 @@ const Settings = () => {
   const handleRevokeKey = async (key) => {
     try {
       await apiJson(`/users/me/api-keys/${key.id}`, { method: 'DELETE' });
-      toast.success('API key revoked');
+      notify.success('API key revoked');
       setApiKeys(prev => prev.filter(k => k.id !== key.id));
     } catch (error) {
       toast.error(error.message || 'Failed to revoke API key');
@@ -129,13 +129,13 @@ const Settings = () => {
   }, {});
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen p-4 md:p-6 lg:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
         <Breadcrumbs />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold text-gradient">
               Settings
             </h1>
             <p className="text-slate-400 mt-1">Platform configuration and preferences</p>
@@ -153,15 +153,15 @@ const Settings = () => {
         {/* LLM Provider */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
-            <Zap className="w-5 h-5 text-purple-400" />
+            <Zap className="w-5 h-5 text-unicorn-400" />
             <span>LLM Provider</span>
           </h2>
           <div className="space-y-4">
             {providers.map((provider, idx) => (
               <div key={idx} className="p-4 bg-slate-800/50 rounded-lg flex items-center justify-between">
                 <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                    <Globe className="w-5 h-5 text-purple-400" />
+                  <div className="w-10 h-10 rounded-lg bg-unicorn-500/20 flex items-center justify-center">
+                    <Globe className="w-5 h-5 text-unicorn-400" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-white">{provider.name}</h3>
@@ -215,12 +215,12 @@ const Settings = () => {
                   onChange={(e) => setNewKeyName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleCreateKey(); }}
                   placeholder="Key name (e.g. CLI, n8n, staging)"
-                  className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                  className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-unicorn-500 focus:border-transparent outline-none"
                 />
                 <button
                   onClick={handleCreateKey}
                   disabled={creatingKey || !newKeyName.trim()}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-unicorn-600 hover:bg-unicorn-500 text-white rounded-lg transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {creatingKey ? 'Creating…' : 'Create Key'}
                 </button>
@@ -287,21 +287,22 @@ const Settings = () => {
         {/* User Preferences */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
-            <Palette className="w-5 h-5 text-pink-400" />
+            <Palette className="w-5 h-5 text-unicorn-400" />
             <span>Preferences</span>
           </h2>
           <div className="space-y-4">
-            {/* Default Model */}
+            {/* Default Model — used by new chats via useAgentChat when no per-window override is set */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-white">Default Model</p>
+                <label htmlFor="pref-default-model" className="text-sm font-medium text-white">Default Model</label>
                 <p className="text-xs text-slate-400">Model used for new conversations</p>
               </div>
               <select
+                id="pref-default-model"
                 value={preferences.defaultModel}
                 onChange={(e) => {
-                  setPreferences({ ...preferences, defaultModel: e.target.value });
-                  toast.success('Default model updated');
+                  updatePref('defaultModel', e.target.value);
+                  notify.success('Default model updated');
                 }}
                 className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white max-w-xs"
               >
@@ -318,58 +319,30 @@ const Settings = () => {
               </select>
             </div>
 
-            {/* Stream Responses */}
+            {/* Stream Responses — read by useAgentChat to render tokens live vs. all-at-once */}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-white">Stream Responses</p>
                 <p className="text-xs text-slate-400">Show text as it's generated</p>
               </div>
-              <button
-                onClick={() => setPreferences({ ...preferences, streamResponses: !preferences.streamResponses })}
-                className={`relative w-11 h-6 rounded-full transition-colors ${
-                  preferences.streamResponses ? 'bg-purple-500' : 'bg-slate-700'
-                }`}
-              >
-                <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                  preferences.streamResponses ? 'translate-x-5' : 'translate-x-0'
-                }`} />
-              </button>
+              <Toggle
+                checked={preferences.streamResponses}
+                onChange={(v) => updatePref('streamResponses', v)}
+                label="Stream responses"
+              />
             </div>
 
-            {/* Notifications */}
+            {/* Notifications — read by notify.js to gate non-error toasts */}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-white">Notifications</p>
-                <p className="text-xs text-slate-400">Show toast notifications</p>
+                <p className="text-xs text-slate-400">Show non-error toast notifications</p>
               </div>
-              <button
-                onClick={() => setPreferences({ ...preferences, notifications: !preferences.notifications })}
-                className={`relative w-11 h-6 rounded-full transition-colors ${
-                  preferences.notifications ? 'bg-purple-500' : 'bg-slate-700'
-                }`}
-              >
-                <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                  preferences.notifications ? 'translate-x-5' : 'translate-x-0'
-                }`} />
-              </button>
-            </div>
-
-            {/* Compact Mode */}
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-white">Compact Mode</p>
-                <p className="text-xs text-slate-400">Reduce spacing in UI</p>
-              </div>
-              <button
-                onClick={() => setPreferences({ ...preferences, compactMode: !preferences.compactMode })}
-                className={`relative w-11 h-6 rounded-full transition-colors ${
-                  preferences.compactMode ? 'bg-purple-500' : 'bg-slate-700'
-                }`}
-              >
-                <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                  preferences.compactMode ? 'translate-x-5' : 'translate-x-0'
-                }`} />
-              </button>
+              <Toggle
+                checked={preferences.notifications}
+                onChange={(v) => updatePref('notifications', v)}
+                label="Notifications"
+              />
             </div>
           </div>
         </div>

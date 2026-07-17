@@ -114,7 +114,7 @@ const Navigation = () => {
   const navLinkClass = ({ isActive }) =>
     `flex items-center space-x-3 px-4 py-3 min-h-[44px] rounded-lg transition-all duration-200 ${
       isActive
-        ? 'bg-purple-500/20 text-purple-400 border-l-2 border-purple-500'
+        ? 'bg-unicorn-500/20 text-unicorn-400 border-l-2 border-unicorn-500'
         : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
     }`;
 
@@ -179,7 +179,7 @@ const Navigation = () => {
           <div className="flex items-center space-x-3">
             <BrigadeLogo size={44} />
             <div>
-              <h1 className="text-lg font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              <h1 className="text-lg font-bold text-gradient">
                 Unicorn Brigade
               </h1>
               <p className="text-xs text-slate-500">Agent Infrastructure</p>
