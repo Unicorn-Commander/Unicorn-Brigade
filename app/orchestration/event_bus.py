@@ -137,6 +137,12 @@ class ActiveMission:
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
+    # S4 tenancy: the org that owns this mission, auto-stamped from the bound
+    # request/job context at creation (mirrors how publish() stamps events). The
+    # snapshot/list endpoints filter on it with event_visible_to_org so one tenant
+    # never sees another's mission name/description/task.
+    org_id: Optional[str] = field(default_factory=lambda: current_org_id_var.get())
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -149,6 +155,7 @@ class ActiveMission:
             "createdAt": self.created_at.isoformat(),
             "updatedAt": self.updated_at.isoformat(),
             "completedAt": self.completed_at.isoformat() if self.completed_at else None,
+            "orgId": self.org_id,
         }
 
 
@@ -161,6 +168,9 @@ class AgentState:
     current_task: Optional[str] = None
     current_mission: Optional[str] = None
     last_activity: datetime = field(default_factory=datetime.utcnow)
+    # S4 tenancy: owning org, auto-stamped from the bound context at creation so
+    # the active-agents snapshot can be scoped to the caller's org.
+    org_id: Optional[str] = field(default_factory=lambda: current_org_id_var.get())
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -170,6 +180,7 @@ class AgentState:
             "currentTask": self.current_task,
             "currentMission": self.current_mission,
             "lastActivity": self.last_activity.isoformat(),
+            "orgId": self.org_id,
         }
 
 
@@ -380,14 +391,32 @@ class OrchestrationEventBus:
 
     # State snapshot for initial load
 
-    def get_state_snapshot(self) -> Dict[str, Any]:
-        """Get current state for initial page load"""
+    def get_state_snapshot(self, viewer_org_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get current state for initial page load.
+
+        S4 tenancy: when ``viewer_org_id`` is provided, missions / agent states /
+        events / counts are all filtered to what that org may see (same rule as the
+        SSE stream — ``event_visible_to_org``), so the snapshot cannot leak another
+        tenant's activity. ``None`` (unset) returns the unfiltered global view for
+        trusted/internal callers only.
+        """
+        missions = list(self._missions.values())
+        agents = list(self._agent_states.values())
+        active_missions = self.get_active_missions()
+        active_agents = self.get_active_agents()
+        recent = self._recent_events[-20:]
+        if viewer_org_id is not None:
+            missions = [m for m in missions if event_visible_to_org(m.org_id, viewer_org_id)]
+            agents = [s for s in agents if event_visible_to_org(s.org_id, viewer_org_id)]
+            active_missions = [m for m in active_missions if event_visible_to_org(m.org_id, viewer_org_id)]
+            active_agents = [s for s in active_agents if event_visible_to_org(s.org_id, viewer_org_id)]
+            recent = [e for e in recent if event_visible_to_org(getattr(e, "org_id", None), viewer_org_id)]
         return {
-            "missions": [m.to_dict() for m in self._missions.values()],
-            "agentStates": [s.to_dict() for s in self._agent_states.values()],
-            "recentEvents": [e.to_dict() for e in self._recent_events[-20:]],
-            "activeAgentCount": len(self.get_active_agents()),
-            "activeMissionCount": len(self.get_active_missions()),
+            "missions": [m.to_dict() for m in missions],
+            "agentStates": [s.to_dict() for s in agents],
+            "recentEvents": [e.to_dict() for e in recent],
+            "activeAgentCount": len(active_agents),
+            "activeMissionCount": len(active_missions),
         }
 
 
