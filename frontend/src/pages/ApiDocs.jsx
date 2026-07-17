@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Code, Copy, CheckCircle, Book, Key, Server, Zap, Shield, MessageSquare, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { bareHost } from '../services/apiBase';
 
@@ -13,7 +14,7 @@ const ApiDocs = () => {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
+    notify.success('Copied to clipboard');
   };
 
   const endpoints = [
@@ -679,7 +680,7 @@ print(response.json())`
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
               API Documentation
             </h1>
             <p className="text-slate-400 mt-1">
@@ -689,7 +690,7 @@ print(response.json())`
           <div className="flex items-center space-x-3">
             <div className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg">
               <span className="text-sm text-slate-400">Base URL: </span>
-              <span className="text-sm text-purple-400 font-mono">{API_HOST}/api/v1</span>
+              <span className="text-sm text-unicorn-400 font-mono">{API_HOST}/api/v1</span>
             </div>
           </div>
         </div>
@@ -697,7 +698,7 @@ print(response.json())`
         {/* Quick Start Guide */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center space-x-3 mb-4">
-            <Book className="w-6 h-6 text-purple-400" />
+            <Book className="w-6 h-6 text-unicorn-400" />
             <h2 className="text-xl font-bold text-white">Quick Start</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -734,7 +735,7 @@ print(response.json())`
         {/* Authentication */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center space-x-3 mb-4">
-            <Shield className="w-6 h-6 text-purple-400" />
+            <Shield className="w-6 h-6 text-unicorn-400" />
             <h2 className="text-xl font-bold text-white">Authentication</h2>
           </div>
           <p className="text-slate-400 mb-4">
@@ -748,7 +749,7 @@ print(response.json())`
               <Copy className="w-4 h-4 text-slate-400" />
             </button>
             <code className="text-slate-300">
-              <span className="text-purple-400">X-API-Key:</span> YOUR_API_KEY
+              <span className="text-unicorn-400">X-API-Key:</span> YOUR_API_KEY
             </code>
           </div>
         </div>
@@ -766,7 +767,7 @@ print(response.json())`
                     onClick={() => setSelectedEndpoint(endpoint)}
                     className={`w-full text-left p-3 rounded-lg transition-all ${
                       selectedEndpoint?.id === endpoint.id
-                        ? 'bg-purple-500/20 border border-purple-500/30'
+                        ? 'bg-unicorn-500/20 border border-unicorn-500/30'
                         : 'bg-slate-800/50 hover:bg-slate-800'
                     }`}
                   >
@@ -799,7 +800,7 @@ print(response.json())`
                     }`}>
                       {selectedEndpoint.method}
                     </span>
-                    <code className="text-purple-400 font-mono">{selectedEndpoint.path}</code>
+                    <code className="text-unicorn-400 font-mono">{selectedEndpoint.path}</code>
                   </div>
                   <h2 className="text-2xl font-bold text-white mb-2">{selectedEndpoint.title}</h2>
                   <p className="text-slate-400">{selectedEndpoint.description}</p>
@@ -813,8 +814,8 @@ print(response.json())`
                       {selectedEndpoint.params.map((param, idx) => (
                         <div key={idx} className="p-3 bg-slate-800/50 rounded-lg">
                           <div className="flex items-center space-x-2 mb-1">
-                            <code className="text-purple-400">{param.name}</code>
-                            <span className="text-xs text-slate-500">{param.type}</span>
+                            <code className="text-unicorn-400">{param.name}</code>
+                            <span className="text-xs text-slate-400">{param.type}</span>
                             {param.required && (
                               <span className="text-xs text-red-400">required</span>
                             )}
@@ -834,8 +835,8 @@ print(response.json())`
                       {selectedEndpoint.queryParams.map((param, idx) => (
                         <div key={idx} className="p-3 bg-slate-800/50 rounded-lg">
                           <div className="flex items-center space-x-2 mb-1">
-                            <code className="text-purple-400">{param.name}</code>
-                            <span className="text-xs text-slate-500">{param.type}</span>
+                            <code className="text-unicorn-400">{param.name}</code>
+                            <span className="text-xs text-slate-400">{param.type}</span>
                             {param.required && (
                               <span className="text-xs text-red-400">required</span>
                             )}
@@ -855,8 +856,8 @@ print(response.json())`
                       {Object.entries(selectedEndpoint.body).map(([key, value]) => (
                         <div key={key} className="p-3 bg-slate-800/50 rounded-lg">
                           <div className="flex items-center space-x-2 mb-1">
-                            <code className="text-purple-400">{key}</code>
-                            <span className="text-xs text-slate-500">{value.type}</span>
+                            <code className="text-unicorn-400">{key}</code>
+                            <span className="text-xs text-slate-400">{value.type}</span>
                             {value.required && (
                               <span className="text-xs text-red-400">required</span>
                             )}
@@ -888,7 +889,7 @@ print(response.json())`
                         onClick={() => setSelectedLanguage(lang)}
                         className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                           selectedLanguage === lang
-                            ? 'bg-purple-500 text-white'
+                            ? 'bg-unicorn-500 text-white'
                             : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                         }`}
                       >
@@ -922,28 +923,28 @@ print(response.json())`
         {/* A2A Protocol Section */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center space-x-3 mb-4">
-            <MessageSquare className="w-6 h-6 text-purple-400" />
+            <MessageSquare className="w-6 h-6 text-unicorn-400" />
             <h2 className="text-xl font-bold text-white">Agent-to-Agent (A2A) Protocol</h2>
           </div>
           <p className="text-slate-400 mb-4">
             Unicorn Brigade supports the A2A protocol for agent discovery and communication.
-            All A2A endpoints live under <code className="text-purple-400">/api/v1/a2a</code> —
-            server info at <code className="text-purple-400">/api/v1/a2a/info</code>, capability search
-            at <code className="text-purple-400">POST /api/v1/a2a/discover</code>.
+            All A2A endpoints live under <code className="text-unicorn-400">/api/v1/a2a</code> —
+            server info at <code className="text-unicorn-400">/api/v1/a2a/info</code>, capability search
+            at <code className="text-unicorn-400">POST /api/v1/a2a/discover</code>.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <h3 className="font-semibold text-white mb-2">Agent Discovery</h3>
               <p className="text-sm text-slate-400">
-                List cards via <code className="text-purple-400">GET /api/v1/a2a/agents</code> or fetch one
-                agent’s capabilities via <code className="text-purple-400">GET /api/v1/a2a/agents/{'{id}'}/card</code>
+                List cards via <code className="text-unicorn-400">GET /api/v1/a2a/agents</code> or fetch one
+                agent’s capabilities via <code className="text-unicorn-400">GET /api/v1/a2a/agents/{'{id}'}/card</code>
               </p>
             </div>
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <h3 className="font-semibold text-white mb-2">Agent Invocation</h3>
               <p className="text-sm text-slate-400">
-                Send tasks via <code className="text-purple-400">POST /api/v1/a2a/agents/{'{id}'}/invoke</code> and
-                poll async tasks at <code className="text-purple-400">GET /api/v1/a2a/tasks/{'{task_id}'}/status</code>
+                Send tasks via <code className="text-unicorn-400">POST /api/v1/a2a/agents/{'{id}'}/invoke</code> and
+                poll async tasks at <code className="text-unicorn-400">GET /api/v1/a2a/tasks/{'{task_id}'}/status</code>
               </p>
             </div>
           </div>
@@ -952,35 +953,35 @@ print(response.json())`
         {/* Scheduled Runs Section */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center space-x-3 mb-4">
-            <Clock className="w-6 h-6 text-purple-400" />
+            <Clock className="w-6 h-6 text-unicorn-400" />
             <h2 className="text-xl font-bold text-white">Scheduled Runs</h2>
           </div>
           <p className="text-slate-400 mb-4">
             Run any agent on a recurring cron schedule — register a watcher, a daily report, or a
             monitoring sweep once and Brigade executes it for you. All endpoints live under{' '}
-            <code className="text-purple-400">/api/v1/scheduled-runs</code> and are owner-scoped:
+            <code className="text-unicorn-400">/api/v1/scheduled-runs</code> and are owner-scoped:
             non-admin callers only see and manage their own runs.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <h3 className="font-semibold text-white mb-2">Create &amp; Manage</h3>
               <p className="text-sm text-slate-400">
-                <code className="text-purple-400">POST /api/v1/scheduled-runs</code> with a name, agentId,
-                prompt, and cron expression. Update with <code className="text-purple-400">PUT /{'{id}'}</code>,
-                remove with <code className="text-purple-400">DELETE /{'{id}'}</code>
+                <code className="text-unicorn-400">POST /api/v1/scheduled-runs</code> with a name, agentId,
+                prompt, and cron expression. Update with <code className="text-unicorn-400">PUT /{'{id}'}</code>,
+                remove with <code className="text-unicorn-400">DELETE /{'{id}'}</code>
               </p>
             </div>
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <h3 className="font-semibold text-white mb-2">Trigger On Demand</h3>
               <p className="text-sm text-slate-400">
-                <code className="text-purple-400">POST /api/v1/scheduled-runs/{'{id}'}/run-now</code> executes
+                <code className="text-unicorn-400">POST /api/v1/scheduled-runs/{'{id}'}/run-now</code> executes
                 immediately without waiting for the next cron tick
               </p>
             </div>
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <h3 className="font-semibold text-white mb-2">Inspect History</h3>
               <p className="text-sm text-slate-400">
-                <code className="text-purple-400">GET /api/v1/scheduled-runs/{'{id}'}/history</code> returns
+                <code className="text-unicorn-400">GET /api/v1/scheduled-runs/{'{id}'}/history</code> returns
                 past executions with status and output
               </p>
             </div>

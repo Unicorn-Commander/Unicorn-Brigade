@@ -7,6 +7,16 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  // Categorical stat-tile colors are built dynamically (`bg-${color}-500/20`,
+  // `text-${color}-400`) from bare color names in domain/relationship maps, so
+  // Tailwind can't see them by scanning. Safelisted here so the purple→unicorn
+  // accent codemod (which removes the literal purple/pink classes) can't strip
+  // these data-viz categorical colors out of the build.
+  safelist: [
+    'bg-purple-500/20', 'text-purple-400',
+    'bg-pink-500/20', 'text-pink-400',
+    'bg-indigo-500/20', 'text-indigo-400',
+  ],
   theme: {
     extend: {
       colors: {

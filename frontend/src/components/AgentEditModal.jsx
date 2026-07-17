@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Save, Loader2, ChevronDown, Search } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
+import Modal from './ui/Modal';
 
 const FALLBACK_TOOL_IDS = [
   'web_search',
@@ -163,7 +165,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
     const rollback = onSave?.(optimisticAgent, { optimistic: true });
     try {
       const updated = await api.updateAgent(agent.id, formData);
-      toast.success(`${updated.displayName || formData.displayName} updated successfully`);
+      notify.success(`${updated.displayName || formData.displayName} updated successfully`);
       onSave?.(updated, { optimistic: false });
       onClose();
     } catch (error) {
@@ -189,8 +191,15 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
     .map((tool) => tool.name);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <Modal
+      isOpen
+      onClose={onClose}
+      ariaLabel="Edit Agent"
+      showClose={false}
+      closeOnBackdrop={false}
+      size="3xl"
+      panelClassName="bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col focus:outline-none"
+    >
         <div className="flex justify-between items-center p-6 border-b border-slate-700/50">
           <div>
             <h2 className="text-2xl font-bold text-white">Edit Agent</h2>
@@ -198,6 +207,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-3 min-h-[44px] min-w-[44px] hover:bg-slate-700/50 rounded-lg transition-colors"
             disabled={loading}
           >
@@ -207,7 +217,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-purple-400">Basic Information</h3>
+            <h3 className="text-lg font-semibold text-unicorn-400">Basic Information</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -218,7 +228,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className={`w-full bg-slate-700/50 border ${errors.name ? 'border-red-500' : 'border-slate-600'} rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                  className={`w-full bg-slate-700/50 border ${errors.name ? 'border-red-500' : 'border-slate-600'} rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-unicorn-500`}
                   placeholder="agent-id"
                   required
                   disabled={loading}
@@ -234,7 +244,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                   type="text"
                   value={formData.displayName}
                   onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
-                  className={`w-full bg-slate-700/50 border ${errors.displayName ? 'border-red-500' : 'border-slate-600'} rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                  className={`w-full bg-slate-700/50 border ${errors.displayName ? 'border-red-500' : 'border-slate-600'} rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-unicorn-500`}
                   placeholder="Col. Sterling"
                   required
                   disabled={loading}
@@ -250,7 +260,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-unicorn-500"
                   placeholder="Financial Analyst & Strategist"
                   disabled={loading}
                 />
@@ -263,7 +273,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                 <select
                   value={formData.rank}
                   onChange={(e) => setFormData({ ...formData, rank: e.target.value })}
-                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500"
                   disabled={loading}
                 >
                   <option value="">Select Rank</option>
@@ -288,7 +298,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
               <textarea
                 value={formData.bio}
                 onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[80px]"
+                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-unicorn-500 min-h-[80px]"
                 placeholder="Brief description of the agent's expertise..."
                 disabled={loading}
               />
@@ -301,7 +311,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
               <select
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500"
                 disabled={loading}
               >
                 <option value="active">Active</option>
@@ -312,7 +322,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-purple-400">Personality & Behavior</h3>
+            <h3 className="text-lg font-semibold text-unicorn-400">Personality & Behavior</h3>
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -321,7 +331,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
               <textarea
                 value={formData.persona}
                 onChange={(e) => setFormData({ ...formData, persona: e.target.value })}
-                className={`w-full bg-slate-700/50 border ${errors.persona ? 'border-red-500' : 'border-slate-600'} rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]`}
+                className={`w-full bg-slate-700/50 border ${errors.persona ? 'border-red-500' : 'border-slate-600'} rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-unicorn-500 min-h-[100px]`}
                 placeholder="You are a senior financial analyst. You think in terms of ROI..."
                 required
                 disabled={loading}
@@ -336,7 +346,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
               <textarea
                 value={formData.systemPrompt}
                 onChange={(e) => setFormData({ ...formData, systemPrompt: e.target.value })}
-                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[120px]"
+                className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-unicorn-500 min-h-[120px]"
                 placeholder="Detailed instructions for the agent's behavior..."
                 disabled={loading}
               />
@@ -344,7 +354,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-purple-400">Model Configuration</h3>
+            <h3 className="text-lg font-semibold text-unicorn-400">Model Configuration</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -354,7 +364,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                 <select
                   value={formData.model}
                   onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500"
                   disabled={loading}
                 >
                   <option value="openai/gpt-4o">GPT-4o</option>
@@ -391,7 +401,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                   type="number"
                   value={formData.maxTokens}
                   onChange={(e) => setFormData({ ...formData, maxTokens: parseInt(e.target.value, 10) || 0 })}
-                  className={`w-full bg-slate-700/50 border ${errors.maxTokens ? 'border-red-500' : 'border-slate-600'} rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                  className={`w-full bg-slate-700/50 border ${errors.maxTokens ? 'border-red-500' : 'border-slate-600'} rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500`}
                   min="100"
                   max="32000"
                   disabled={loading}
@@ -402,7 +412,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-purple-400">Available Tools</h3>
+            <h3 className="text-lg font-semibold text-unicorn-400">Available Tools</h3>
 
             <div className="relative">
               <button
@@ -429,7 +439,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                         value={toolQuery}
                         onChange={(e) => setToolQuery(e.target.value)}
                         placeholder="Search tools..."
-                        className="w-full pl-8 pr-3 py-2 bg-slate-700/60 border border-slate-600 rounded-md text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="w-full pl-8 pr-3 py-2 bg-slate-700/60 border border-slate-600 rounded-md text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-unicorn-500"
                       />
                     </div>
                   </div>
@@ -443,7 +453,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                           type="checkbox"
                           checked={formData.tools.includes(tool.id)}
                           onChange={() => toggleTool(tool.id)}
-                          className="rounded text-purple-600 focus:ring-purple-500"
+                          className="rounded text-unicorn-600 focus:ring-unicorn-500"
                         />
                         <span className="text-sm text-slate-300">{tool.name}</span>
                       </label>
@@ -461,7 +471,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                 {selectedToolLabels.map((toolName) => (
                   <span
                     key={toolName}
-                    className="px-2 py-1 rounded-full bg-purple-500/20 text-purple-300 text-xs"
+                    className="px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-300 text-xs"
                   >
                     {toolName}
                   </span>
@@ -483,7 +493,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+            className="px-6 py-2.5 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
           >
             {loading ? (
               <>
@@ -498,7 +508,6 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
             )}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

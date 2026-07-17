@@ -85,14 +85,14 @@ const FeatureLock = ({
               damping: 15,
               delay: 0.1
             }}
-            className="inline-flex p-4 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 mb-4 relative"
+            className="inline-flex p-4 rounded-full bg-gradient-to-br from-unicorn-100 to-unicorn-100 mb-4 relative"
           >
-            <Lock className="h-8 w-8 text-purple-600" />
+            <Lock className="h-8 w-8 text-unicorn-600" />
 
             {/* Animated glow */}
             {showAnimation && (
               <motion.div
-                className="absolute inset-0 rounded-full bg-purple-400/30"
+                className="absolute inset-0 rounded-full bg-unicorn-400/30"
                 animate={{
                   scale: [1, 1.3, 1],
                   opacity: [0.5, 0, 0.5]
@@ -124,7 +124,7 @@ const FeatureLock = ({
           {/* Upgrade button */}
           <button
             onClick={() => setShowUpgradeModal(true)}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white font-medium rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
           >
             <Sparkles size={16} />
             Upgrade Now

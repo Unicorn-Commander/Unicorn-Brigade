@@ -31,6 +31,7 @@ import {
   Grid3x3
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import WorkflowDiagram from '../components/WorkflowDiagram';
 import WorkflowGallery from '../components/WorkflowGallery';
 import WorkflowFilters from '../components/WorkflowFilters';
@@ -45,8 +46,8 @@ const tagColors = {
   finance: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   research: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   sales: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  devops: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  content: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  devops: 'bg-unicorn-500/20 text-unicorn-400 border-unicorn-500/30',
+  content: 'bg-unicorn-500/20 text-unicorn-400 border-unicorn-500/30',
   legal: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
   medical: 'bg-red-500/20 text-red-400 border-red-500/30',
   investment: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
@@ -56,7 +57,7 @@ const tagColors = {
   monitoring: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
   analysis: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
   documents: 'bg-lime-500/20 text-lime-400 border-lime-500/30',
-  compliance: 'bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/30',
+  compliance: 'bg-unicorn-500/20 text-unicorn-400 border-unicorn-500/30',
   outreach: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
   documentation: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
 };
@@ -156,7 +157,7 @@ const Workflows = () => {
           // Stop polling if completed or failed
           if (['completed', 'failed', 'cancelled'].includes(execution.state)) {
             setPollingExecution(null);
-            toast.success(`Workflow ${execution.state}`);
+            notify.success(`Workflow ${execution.state}`);
           }
         } catch (error) {
           // Keep polling on transient errors — next tick retries.
@@ -328,7 +329,7 @@ const Workflows = () => {
       await apiJson(`/hierarchical/executions/${executionId}/cancel`, {
         method: 'POST',
       });
-      toast.success('Execution cancelled');
+      notify.success('Execution cancelled');
       setPollingExecution(null);
       await loadExecutions();
     } catch (error) {
@@ -367,7 +368,7 @@ const Workflows = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
               Hierarchical Workflows
             </h1>
             <p className="text-slate-400 mt-1">
@@ -413,7 +414,7 @@ const Workflows = () => {
             onClick={() => setActiveTab('templates')}
             className={`px-4 py-2 font-medium transition-colors border-b-2 -mb-px ${
               activeTab === 'templates'
-                ? 'text-purple-400 border-purple-400'
+                ? 'text-unicorn-400 border-unicorn-400'
                 : 'text-slate-400 border-transparent hover:text-slate-200'
             }`}
           >
@@ -429,7 +430,7 @@ const Workflows = () => {
             onClick={() => setActiveTab('executions')}
             className={`px-4 py-2 font-medium transition-colors border-b-2 -mb-px ${
               activeTab === 'executions'
-                ? 'text-purple-400 border-purple-400'
+                ? 'text-unicorn-400 border-unicorn-400'
                 : 'text-slate-400 border-transparent hover:text-slate-200'
             }`}
           >
@@ -535,7 +536,7 @@ const Workflows = () => {
                 <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-400">Total Executions</span>
-                    <Activity className="w-4 h-4 text-purple-400" />
+                    <Activity className="w-4 h-4 text-unicorn-400" />
                   </div>
                   <p className="text-2xl font-bold text-white mt-1">{executions.length}</p>
                 </div>
@@ -601,7 +602,7 @@ const Workflows = () => {
                             <td className="px-6 py-4">
                               <div>
                                 <p className="font-medium text-white">{execution.workflow_name || execution.workflow_id}</p>
-                                <p className="text-xs text-slate-500 font-mono">{execution.id.slice(0, 8)}...</p>
+                                <p className="text-xs text-slate-400 font-mono">{execution.id.slice(0, 8)}...</p>
                               </div>
                             </td>
                             <td className="px-6 py-4">
@@ -618,7 +619,7 @@ const Workflows = () => {
                               <div>
                                 <p>{formatDate(execution.started_at)}</p>
                                 {execution.completed_at && (
-                                  <p className="text-xs text-slate-500">
+                                  <p className="text-xs text-slate-400">
                                     Completed: {formatDate(execution.completed_at)}
                                   </p>
                                 )}
@@ -668,10 +669,10 @@ const Workflows = () => {
                                       const template = templates.find(t => t.id === execution.workflow_id);
                                       if (template) handleExecuteClick(template);
                                     }}
-                                    className="p-2 hover:bg-purple-500/20 rounded-lg transition-colors"
+                                    className="p-2 hover:bg-unicorn-500/20 rounded-lg transition-colors"
                                     title="Run Again"
                                   >
-                                    <RefreshCw className="w-4 h-4 text-purple-400" />
+                                    <RefreshCw className="w-4 h-4 text-unicorn-400" />
                                   </button>
                                 )}
                               </div>
@@ -700,7 +701,7 @@ const Workflows = () => {
                             <p className="font-medium text-white">
                               {execution.workflow_name || execution.workflow_id}
                             </p>
-                            <p className="text-xs text-slate-500 font-mono">{execution.id.slice(0, 8)}...</p>
+                            <p className="text-xs text-slate-400 font-mono">{execution.id.slice(0, 8)}...</p>
                           </div>
                           <span className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg ${status.bg}`}>
                             {isActive ? (
@@ -747,7 +748,7 @@ const Workflows = () => {
                                 const template = templates.find(t => t.id === execution.workflow_id);
                                 if (template) handleExecuteClick(template);
                               }}
-                              className="px-3 py-2 min-h-[44px] bg-purple-500/20 text-purple-300 rounded-lg hover:bg-purple-500/30 transition-colors"
+                              className="px-3 py-2 min-h-[44px] bg-unicorn-500/20 text-unicorn-300 rounded-lg hover:bg-unicorn-500/30 transition-colors"
                             >
                               Run Again
                             </button>
@@ -765,7 +766,7 @@ const Workflows = () => {
                 <p className="text-slate-400 mb-6">Run a workflow to see its execution history here</p>
                 <button
                   onClick={() => setActiveTab('templates')}
-                  className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors"
+                  className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors"
                 >
                   Browse Workflows
                 </button>
@@ -789,7 +790,7 @@ const Workflows = () => {
           >
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
                   <GitBranch className="w-6 h-6 text-white" />
                 </div>
                 <div>
@@ -843,14 +844,14 @@ const Workflows = () => {
                       className="p-4 bg-slate-800/50 rounded-lg border border-slate-700"
                     >
                       <div className="flex items-center space-x-3">
-                        <Users className="w-5 h-5 text-purple-400" />
+                        <Users className="w-5 h-5 text-unicorn-400" />
                         <div>
                           <p className="font-medium text-white">{lead.name}</p>
                           <p className="text-xs text-slate-400">{lead.domain} domain</p>
                         </div>
                       </div>
                       {lead.workers && lead.workers.length > 0 && (
-                        <p className="text-xs text-slate-500 mt-2">
+                        <p className="text-xs text-slate-400 mt-2">
                           {lead.workers.length} workers available
                         </p>
                       )}
@@ -869,7 +870,7 @@ const Workflows = () => {
                     onClick={() => setDetailViewMode('diagram')}
                     className={`px-3 py-1.5 rounded-md flex items-center space-x-2 transition-colors ${
                       detailViewMode === 'diagram'
-                        ? 'bg-purple-500 text-white'
+                        ? 'bg-unicorn-500 text-white'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
@@ -880,7 +881,7 @@ const Workflows = () => {
                     onClick={() => setDetailViewMode('list')}
                     className={`px-3 py-1.5 rounded-md flex items-center space-x-2 transition-colors ${
                       detailViewMode === 'list'
-                        ? 'bg-purple-500 text-white'
+                        ? 'bg-unicorn-500 text-white'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
@@ -899,13 +900,13 @@ const Workflows = () => {
                       key={step.id}
                       className="flex items-start space-x-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700"
                     >
-                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 font-semibold text-sm flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-unicorn-500/20 flex items-center justify-center text-unicorn-400 font-semibold text-sm flex-shrink-0">
                         {idx + 1}
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <h4 className="font-medium text-white">{step.name}</h4>
-                          <span className="text-xs text-slate-500 font-mono">{step.executor}</span>
+                          <span className="text-xs text-slate-400 font-mono">{step.executor}</span>
                         </div>
                         <p className="text-sm text-slate-400 mt-1">{step.description}</p>
                         {step.outputs && step.outputs.length > 0 && (
@@ -970,7 +971,7 @@ const Workflows = () => {
             <div className="flex space-x-3 pt-4 border-t border-slate-700">
               <button
                 onClick={() => { setShowDetailModal(false); handleExecuteClick(selectedTemplate); }}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center justify-center space-x-2"
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center justify-center space-x-2"
               >
                 <Play className="w-5 h-5" />
                 <span>Execute Workflow</span>
@@ -1067,7 +1068,7 @@ const Workflows = () => {
                           <span className="font-medium text-white">{stepId}</span>
                         </div>
                         {result.model_used && (
-                          <span className="text-xs text-slate-500 font-mono">{result.model_used}</span>
+                          <span className="text-xs text-slate-400 font-mono">{result.model_used}</span>
                         )}
                       </div>
                       <div className="bg-slate-900 rounded p-3 overflow-x-auto">

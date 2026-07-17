@@ -25,7 +25,15 @@ import {
   Wifi,
   WifiOff,
   ChevronRight,
-  Plus
+  Plus,
+  DollarSign,
+  Scale,
+  Stethoscope,
+  Code2,
+  Search,
+  Target,
+  Award,
+  Eye
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
@@ -34,6 +42,19 @@ import { GeneralAvatar, GunnyAvatar } from '../components/UnicornBrigadeLogo';
 import CardSkeleton from '../components/skeletons/CardSkeleton';
 import StatsSkeleton from '../components/skeletons/StatsSkeleton';
 import StatCard from '../components/ui/StatCard';
+import BarList from '../components/ui/BarList';
+
+// Domain → lucide mark (replaces the decorative emoji icons).
+const DOMAIN_ICONS = {
+  financial: DollarSign,
+  legal: Scale,
+  medical: Stethoscope,
+  technology: Code2,
+  investigation: Search,
+  orchestration: Target,
+  meta: Award,
+  intelligence: Eye,
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -228,6 +249,7 @@ const Dashboard = () => {
               onClick={handleRefresh}
               disabled={refreshing}
               className="p-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+              aria-label="Refresh dashboard"
               title="Refresh dashboard"
             >
               <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -300,44 +322,22 @@ const Dashboard = () => {
                 <div className="space-y-4">
                   <CardSkeleton count={3} />
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {stats.domains.map((domain, idx) => {
-                    const domainIcons = {
-                      financial: '💰',
-                      legal: '⚖️',
-                      medical: '🏥',
-                      technology: '💻',
-                      investigation: '🔍',
-                      orchestration: '🎯',
-                      meta: '🎖️',
-                      intelligence: '🕵️'
+              ) : stats.domains.length > 0 ? (
+                <BarList
+                  items={stats.domains.map((domain) => {
+                    const Icon = DOMAIN_ICONS[domain.name] || Bot;
+                    return {
+                      key: domain.name,
+                      label: domain.name,
+                      value: domain.count,
+                      icon: <Icon className="w-4 h-4" />,
+                      onClick: () => navigate(`/library?domain=${encodeURIComponent(domain.name)}`),
                     };
-                    const icon = domainIcons[domain.name] || '🤖';
-                    const percentage = ((domain.count / stats.totalAgents) * 100).toFixed(0);
-
-                    return (
-                      <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors">
-                        <div className="flex items-center space-x-3">
-                          <span className="text-2xl">{icon}</span>
-                          <div>
-                            <p className="font-medium text-white capitalize">{domain.name}</p>
-                            <p className="text-sm text-slate-400">{domain.count} agents</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-unicorn-500 to-unicorn-400"
-                              style={{ width: `${percentage}%` }}
-                            ></div>
-                          </div>
-                          <span className="text-sm font-medium text-slate-300">{percentage}%</span>
-                        </div>
-                      </div>
-                    );
                   })}
-                </div>
+                  renderValue={(item) => `${item.value} agents`}
+                />
+              ) : (
+                <p className="text-center text-slate-400 py-8">No domains available</p>
               )}
             </div>
           </div>
@@ -393,6 +393,7 @@ const Dashboard = () => {
                 <button
                   onClick={checkSystemHealth}
                   className="p-1 rounded hover:bg-slate-700/50 text-slate-400 hover:text-white transition-colors"
+                  aria-label="Refresh health status"
                   title="Refresh health status"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
@@ -526,10 +527,10 @@ const Dashboard = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-slate-400">
                         {conv.updated_at ? new Date(conv.updated_at).toLocaleDateString() : ''}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-unicorn-400 transition-colors" />
+                      <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-unicorn-400 transition-colors" />
                     </div>
                   </div>
                 ))}
@@ -596,6 +597,7 @@ const Dashboard = () => {
                           navigate(`/chat?agent=${agent.id}`);
                         }}
                         className="p-1.5 rounded bg-unicorn-500/20 text-unicorn-400 hover:bg-unicorn-500/30 opacity-0 group-hover:opacity-100 transition-all"
+                        aria-label="Chat with agent"
                         title="Chat with agent"
                       >
                         <MessageSquare className="w-3.5 h-3.5" />

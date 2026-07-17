@@ -64,7 +64,7 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3" role="log" aria-live="polite" aria-atomic="false">
         {messages.length === 0 && (
-          <p className="mt-4 px-2 text-center text-xs text-slate-500">
+          <p className="mt-4 px-2 text-center text-xs text-slate-400">
             {agent?.bio || `Start chatting with ${agent?.displayName || 'this agent'}.`}
           </p>
         )}

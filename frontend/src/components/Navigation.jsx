@@ -23,7 +23,9 @@ import {
   Bot,
   Menu,
   X as CloseIcon,
-  Sparkles
+  Sparkles,
+  GraduationCap,
+  AlertTriangle
 } from 'lucide-react';
 import { Tooltip } from 'react-tooltip';
 import UserProfile from './auth/UserProfile';
@@ -182,12 +184,13 @@ const Navigation = () => {
               <h1 className="text-lg font-bold text-gradient">
                 Unicorn Brigade
               </h1>
-              <p className="text-xs text-slate-500">Agent Infrastructure</p>
+              <p className="text-xs text-slate-400">Agent Infrastructure</p>
             </div>
           </div>
           {import.meta.env.DEV && (
-            <div className="mt-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg px-3 py-2 text-xs text-yellow-200">
-              ⚠️ Development Mode: Authentication Bypassed
+            <div className="mt-4 flex items-center gap-2 bg-yellow-500/20 border border-yellow-500/50 rounded-lg px-3 py-2 text-xs text-yellow-200">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>Development Mode: Authentication Bypassed</span>
             </div>
           )}
         </div>
@@ -438,9 +441,10 @@ const Navigation = () => {
               localStorage.removeItem('wizard-completed');
               window.location.reload();
             }}
-            className="w-full px-3 py-2 text-sm text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-800/50"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-800/50"
           >
-            🎓 Getting Started Guide
+            <GraduationCap className="w-4 h-4" />
+            <span>Getting Started Guide</span>
           </button>
         </div>
 
@@ -484,7 +488,7 @@ const Navigation = () => {
                   <div className={`w-2 h-2 rounded-full ${s.dot}`}></div>
                   <div>
                     <p className={`text-sm font-medium ${s.text}`}>{s.label}</p>
-                    <p className="text-xs text-slate-500">{s.detail}</p>
+                    <p className="text-xs text-slate-400">{s.detail}</p>
                   </div>
                 </div>
               </div>

@@ -19,6 +19,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { apiJson, ApiError } from '../services/http';
 
@@ -117,7 +118,7 @@ const LangflowFlows = () => {
       });
 
       setRunOutput(data);
-      toast.success('Flow executed successfully');
+      notify.success('Flow executed successfully');
     } catch (error) {
       console.error('Failed to run flow:', error);
       if (error instanceof ApiError) {
@@ -147,7 +148,7 @@ const LangflowFlows = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success('Flow exported successfully');
+      notify.success('Flow exported successfully');
     } catch (error) {
       console.error('Failed to export flow:', error);
       toast.error('Failed to export flow');
@@ -169,7 +170,7 @@ const LangflowFlows = () => {
         body: JSON.stringify(flowData),
       });
 
-      toast.success('Flow imported successfully');
+      notify.success('Flow imported successfully');
       loadFlows();
     } catch (error) {
       console.error('Failed to import flow:', error);
@@ -193,7 +194,7 @@ const LangflowFlows = () => {
         method: 'DELETE',
       });
 
-      toast.success('Flow deleted successfully');
+      notify.success('Flow deleted successfully');
       setFlows(flows.filter(f => f.id !== flowToDelete.id));
       setShowDeleteModal(false);
       setFlowToDelete(null);
@@ -211,7 +212,7 @@ const LangflowFlows = () => {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
+    notify.success('Copied to clipboard');
   };
 
   const formatDate = (dateString) => {
@@ -232,7 +233,7 @@ const LangflowFlows = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
               Langflow Flows
             </h1>
             <p className="text-slate-400 mt-1">
@@ -291,7 +292,7 @@ const LangflowFlows = () => {
               href="http://localhost:7860"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center space-x-2"
+              className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center space-x-2"
             >
               <ExternalLink className="w-5 h-5" />
               <span>Open Langflow</span>
@@ -308,7 +309,7 @@ const LangflowFlows = () => {
               placeholder="Search flows..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent"
             />
           </div>
         </div>
@@ -316,7 +317,7 @@ const LangflowFlows = () => {
         {/* Loading State */}
         {loading && (
           <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-unicorn-500"></div>
             <p className="text-slate-400 mt-4">Loading flows...</p>
           </div>
         )}
@@ -327,16 +328,16 @@ const LangflowFlows = () => {
             {filteredFlows.map(flow => (
               <div
                 key={flow.id}
-                className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 hover:border-purple-500/50 transition-all cursor-pointer group"
+                className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 hover:border-unicorn-500/50 transition-all cursor-pointer group"
                 onClick={() => handleFlowClick(flow)}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
                       <Workflow className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-white group-hover:text-purple-400 transition-colors">
+                      <h3 className="font-semibold text-white group-hover:text-unicorn-400 transition-colors">
                         {flow.name || 'Untitled Flow'}
                       </h3>
                       <p className="text-xs text-slate-400 flex items-center space-x-1">
@@ -355,7 +356,7 @@ const LangflowFlows = () => {
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={(e) => { e.stopPropagation(); handleFlowClick(flow); }}
-                      className="p-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-colors"
+                      className="p-2 bg-unicorn-500/20 hover:bg-unicorn-500/30 text-unicorn-400 rounded-lg transition-colors"
                       title="Run Flow"
                     >
                       <Play className="w-4 h-4" />
@@ -376,7 +377,7 @@ const LangflowFlows = () => {
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <ChevronRight className="w-4 h-4 text-unicorn-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
               </div>
             ))}
@@ -407,7 +408,7 @@ const LangflowFlows = () => {
                 href="http://localhost:7860"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center space-x-2"
+                className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center space-x-2"
               >
                 <Plus className="w-5 h-5" />
                 <span>Create in Langflow</span>
@@ -429,7 +430,7 @@ const LangflowFlows = () => {
           >
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
                   <Workflow className="w-6 h-6 text-white" />
                 </div>
                 <div>
@@ -481,7 +482,7 @@ const LangflowFlows = () => {
                   value={runInputs.input_value || ''}
                   onChange={(e) => setRunInputs({ ...runInputs, input_value: e.target.value })}
                   placeholder="Enter your input message..."
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none h-24"
+                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent resize-none h-24"
                 />
               </div>
 
@@ -489,7 +490,7 @@ const LangflowFlows = () => {
               <button
                 onClick={handleRunFlow}
                 disabled={isRunning}
-                className="w-full px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-3 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isRunning ? (
                   <>

@@ -158,7 +158,7 @@ const OpenRouterConfig = () => {
             <button
               onClick={handleTestOpenRouter}
               disabled={isLoading || !apiKey.trim()}
-              className="flex items-center space-x-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center space-x-2 px-6 py-3 bg-unicorn-600 text-white rounded-lg hover:bg-unicorn-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />

@@ -57,7 +57,7 @@ const WorkflowFilters = ({
             placeholder="Search workflows by name, description, or tags..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-10 py-2.5 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-200 placeholder:text-slate-500"
+            className="w-full pl-10 pr-10 py-2.5 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-slate-200 placeholder:text-slate-400"
           />
           {searchQuery && (
             <button
@@ -76,7 +76,7 @@ const WorkflowFilters = ({
             onClick={() => setViewMode('grid')}
             className={`p-2 rounded transition-colors ${
               viewMode === 'grid'
-                ? 'bg-purple-500 text-white'
+                ? 'bg-unicorn-500 text-white'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
             title="Grid View"
@@ -87,7 +87,7 @@ const WorkflowFilters = ({
             onClick={() => setViewMode('list')}
             className={`p-2 rounded transition-colors ${
               viewMode === 'list'
-                ? 'bg-purple-500 text-white'
+                ? 'bg-unicorn-500 text-white'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
             title="List View"
@@ -106,7 +106,7 @@ const WorkflowFilters = ({
             <select
               value={selectedTag}
               onChange={(e) => setSelectedTag(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-200 appearance-none cursor-pointer"
+              className="w-full pl-9 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-slate-200 appearance-none cursor-pointer"
             >
               <option value="">All Tags</option>
               <optgroup label="Domains">
@@ -134,7 +134,7 @@ const WorkflowFilters = ({
             <select
               value={selectedComplexity}
               onChange={(e) => setSelectedComplexity(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-200 appearance-none cursor-pointer"
+              className="w-full pl-9 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-slate-200 appearance-none cursor-pointer"
             >
               <option value="">All Complexity</option>
               <option value="simple">Simple (≤3 steps)</option>
@@ -151,7 +151,7 @@ const WorkflowFilters = ({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-slate-200 appearance-none cursor-pointer"
+              className="w-full pl-9 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-slate-200 appearance-none cursor-pointer"
             >
               <option value="newest">Newest First</option>
               <option value="name-asc">Name (A-Z)</option>
@@ -179,7 +179,7 @@ const WorkflowFilters = ({
       {/* Results Count */}
       <div className="flex items-center justify-between pt-2 border-t border-slate-700/50">
         <div className="flex items-center gap-2 text-sm">
-          <Sparkles className="w-4 h-4 text-purple-400" />
+          <Sparkles className="w-4 h-4 text-unicorn-400" />
           <span className="text-slate-400">
             Showing <span className="font-medium text-white">{resultCount}</span> of{' '}
             <span className="font-medium text-white">{totalCount}</span> workflows
@@ -188,8 +188,8 @@ const WorkflowFilters = ({
 
         {hasActiveFilters && (
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-purple-400" />
-            <span className="text-sm text-purple-400 font-medium">Filters Active</span>
+            <Filter className="w-4 h-4 text-unicorn-400" />
+            <span className="text-sm text-unicorn-400 font-medium">Filters Active</span>
           </div>
         )}
       </div>

@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import { connectOrchestrationStream } from '../services/orchestrationStream';
 import {
   Globe,
@@ -39,7 +40,7 @@ const WorkflowVisualization3D = lazy(() =>
         <div className="text-center p-8">
           <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
           <p className="text-slate-300 font-medium">3D visualization unavailable</p>
-          <p className="text-sm text-slate-500 mt-1">WebGL is required for the 3D command view</p>
+          <p className="text-sm text-slate-400 mt-1">WebGL is required for the 3D command view</p>
         </div>
       </div>
     ),
@@ -332,7 +333,7 @@ const Orchestration = () => {
         // The SSE mission_created event merges by id, so seeding here won't duplicate
         setMissions(prev => [data.mission, ...prev.filter(m => m.id !== data.mission.id)]);
       }
-      toast.success(data?.message || `Mission "${name}" created`);
+      notify.success(data?.message || `Mission "${name}" created`);
       setShowMissionForm(false);
       setMissionForm({ name: '', task: '' });
     } catch (error) {
@@ -347,7 +348,7 @@ const Orchestration = () => {
     return (
       <div className="min-h-screen p-8 flex items-center justify-center">
         <div className="text-center">
-          <Network className="w-16 h-16 text-purple-500 animate-pulse mx-auto mb-4" />
+          <Network className="w-16 h-16 text-unicorn-500 animate-pulse mx-auto mb-4" />
           <p className="text-slate-400">Initializing Command View...</p>
         </div>
       </div>
@@ -367,11 +368,11 @@ const Orchestration = () => {
             <Breadcrumbs />
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30">
-                  <Globe className="w-8 h-8 text-purple-400" />
+                <div className="p-3 rounded-xl bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 border border-unicorn-500/30">
+                  <Globe className="w-8 h-8 text-unicorn-400" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-400 via-unicorn-400 to-unicorn-400 bg-clip-text text-transparent">
                     Orchestration Command
                   </h1>
                   <p className="text-slate-400">
@@ -435,7 +436,7 @@ const Orchestration = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-white">{stat.value}</p>
-                    <p className="text-xs text-slate-500">{stat.label}</p>
+                    <p className="text-xs text-slate-400">{stat.label}</p>
                   </div>
                 </div>
               </div>
@@ -450,22 +451,22 @@ const Orchestration = () => {
             className="flex items-center space-x-4 mb-6"
           >
             <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search agents..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                className="w-full pl-10 pr-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-unicorn-500"
               />
             </div>
 
             <div className="flex items-center space-x-2">
-              <Filter className="w-4 h-4 text-slate-500" />
+              <Filter className="w-4 h-4 text-slate-400" />
               <select
                 value={filterDomain}
                 onChange={(e) => setFilterDomain(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 focus:outline-none focus:border-purple-500"
+                className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 focus:outline-none focus:border-unicorn-500"
               >
                 {domains.map((domain) => (
                   <option key={domain} value={domain}>
@@ -487,7 +488,7 @@ const Orchestration = () => {
           transition={{ delay: 0.3 }}
           className={isFullscreen ? 'fixed inset-0 z-50' : 'col-span-3'}
         >
-          <Suspense fallback={<div className="h-[600px] flex items-center justify-center"><Network className="w-8 h-8 text-purple-400 animate-pulse" /></div>}>
+          <Suspense fallback={<div className="h-[600px] flex items-center justify-center"><Network className="w-8 h-8 text-unicorn-400 animate-pulse" /></div>}>
             <WorkflowVisualization3D
               agents={filteredAgents}
               connections={filteredConnections}
@@ -520,7 +521,7 @@ const Orchestration = () => {
 
               <div className="space-y-3">
                 {missions.length === 0 && (
-                  <p className="text-xs text-slate-500 text-center py-4">
+                  <p className="text-xs text-slate-400 text-center py-4">
                     No active missions. Start one from Quick Actions below.
                   </p>
                 )}
@@ -534,7 +535,7 @@ const Orchestration = () => {
                         <p className="text-sm font-medium text-white truncate">
                           {mission.name}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-slate-400">
                           {mission.createdAt ? new Date(mission.createdAt).toLocaleString() : ''}
                         </p>
                       </div>
@@ -550,12 +551,12 @@ const Orchestration = () => {
                     {mission.status === 'active' && (
                       <div className="mb-2">
                         <div className="flex items-center justify-between text-xs mb-1">
-                          <span className="text-slate-500">Progress</span>
-                          <span className="text-purple-400">{mission.progress}%</span>
+                          <span className="text-slate-400">Progress</span>
+                          <span className="text-unicorn-400">{mission.progress}%</span>
                         </div>
                         <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
                           <motion.div
-                            className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
+                            className="h-full bg-gradient-to-r from-unicorn-600 to-unicorn-500"
                             initial={{ width: 0 }}
                             animate={{ width: `${mission.progress}%` }}
                             transition={{ duration: 0.5 }}
@@ -565,8 +566,8 @@ const Orchestration = () => {
                     )}
 
                     <div className="flex items-center space-x-1">
-                      <Users className="w-3 h-3 text-slate-500" />
-                      <span className="text-[10px] text-slate-500">
+                      <Users className="w-3 h-3 text-slate-400" />
+                      <span className="text-[10px] text-slate-400">
                         {mission.agents?.length || 0} agents
                       </span>
                     </div>
@@ -578,20 +579,20 @@ const Orchestration = () => {
             {/* Quick Actions */}
             <div className="card glass">
               <h3 className="flex items-center space-x-2 text-sm font-semibold text-white mb-4">
-                <Zap className="w-4 h-4 text-purple-400" />
+                <Zap className="w-4 h-4 text-unicorn-400" />
                 <span>Quick Actions</span>
               </h3>
 
               <div className="space-y-2">
                 <button
                   onClick={() => setShowMissionForm(true)}
-                  className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:border-purple-500/50 hover:bg-purple-500/10 transition-all text-left"
+                  className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:border-unicorn-500/50 hover:bg-unicorn-500/10 transition-all text-left"
                 >
                   <div className="flex items-center space-x-2">
                     <Play className="w-4 h-4 text-green-400" />
                     <span className="text-sm text-slate-300">Start New Mission</span>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-slate-500" />
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
                 </button>
               </div>
             </div>
@@ -610,7 +611,7 @@ const Orchestration = () => {
 
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {events.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-4">
+                  <p className="text-xs text-slate-400 text-center py-4">
                     No activity yet. Start chatting with an agent to see real-time events.
                   </p>
                 ) : (
@@ -647,12 +648,12 @@ const Orchestration = () => {
                           event.type === 'agent_started' ? 'bg-green-400' :
                           event.type === 'tool_call' ? 'bg-yellow-400' :
                           event.type === 'tool_result' ? 'bg-blue-400' :
-                          event.type === 'agent_completed' ? 'bg-purple-400' :
+                          event.type === 'agent_completed' ? 'bg-unicorn-400' :
                           'bg-slate-400'
                         }`} />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs text-slate-300 truncate">
-                            <span className="text-slate-500">{event.agentName || event.agentId}:</span>{' '}
+                            <span className="text-slate-400">{event.agentName || event.agentId}:</span>{' '}
                             {event.message || event.type.replace(/_/g, ' ')}
                           </p>
                           <p className="text-[10px] text-slate-600">
@@ -703,7 +704,7 @@ const Orchestration = () => {
 
               <form onSubmit={handleCreateMission} className="space-y-4">
                 <div>
-                  <label htmlFor="mission-name" className="block text-xs text-slate-500 uppercase tracking-wider mb-1">
+                  <label htmlFor="mission-name" className="block text-xs text-slate-400 uppercase tracking-wider mb-1">
                     Mission Name
                   </label>
                   <input
@@ -714,12 +715,12 @@ const Orchestration = () => {
                     placeholder="e.g. Market Research"
                     disabled={creatingMission}
                     autoFocus
-                    className="w-full px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    className="w-full px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-unicorn-500"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="mission-task" className="block text-xs text-slate-500 uppercase tracking-wider mb-1">
+                  <label htmlFor="mission-task" className="block text-xs text-slate-400 uppercase tracking-wider mb-1">
                     Task
                   </label>
                   <textarea
@@ -729,11 +730,11 @@ const Orchestration = () => {
                     placeholder="Describe what this mission should accomplish..."
                     rows={4}
                     disabled={creatingMission}
-                    className="w-full px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500 resize-none"
+                    className="w-full px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-unicorn-500 resize-none"
                   />
                 </div>
 
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-400">
                   The General will automatically assign the best agents for this task.
                 </p>
 
@@ -749,7 +750,7 @@ const Orchestration = () => {
                   <button
                     type="submit"
                     disabled={creatingMission || !missionForm.name.trim() || !missionForm.task.trim()}
-                    className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {creatingMission ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
@@ -788,7 +789,7 @@ const Orchestration = () => {
                   <h2 className="text-xl font-bold text-white">
                     {selectedAgent.displayName || selectedAgent.name}
                   </h2>
-                  <p className="text-sm text-purple-400 capitalize">{selectedAgent.domain}</p>
+                  <p className="text-sm text-unicorn-400 capitalize">{selectedAgent.domain}</p>
                   <p className="text-sm text-slate-400 mt-2">
                     {selectedAgent.bio || selectedAgent.title}
                   </p>
@@ -797,12 +798,12 @@ const Orchestration = () => {
 
               {selectedAgent.capabilities && (
                 <div className="mt-4">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Capabilities</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Capabilities</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedAgent.capabilities.map((cap) => (
                       <span
                         key={cap}
-                        className="px-2 py-1 text-xs rounded-full bg-purple-500/20 text-purple-300"
+                        className="px-2 py-1 text-xs rounded-full bg-unicorn-500/20 text-unicorn-300"
                       >
                         {cap}
                       </span>
@@ -813,7 +814,7 @@ const Orchestration = () => {
 
               {selectedAgent.tools && selectedAgent.tools.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Tools</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Tools</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedAgent.tools.map((tool) => (
                       <span
@@ -836,7 +837,7 @@ const Orchestration = () => {
                 </button>
                 <button
                   onClick={() => navigate(`/chat?agent=${encodeURIComponent(selectedAgent.id)}`)}
-                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90 transition-all"
+                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white hover:opacity-90 transition-all"
                 >
                   Chat with Agent
                 </button>

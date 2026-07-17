@@ -2,28 +2,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster, toast } from 'react-hot-toast';
 import { useEffect, useState, lazy, Suspense } from 'react';
-import Dashboard from './pages/Dashboard';
-import AgentChat from './pages/AgentChat';
-import AgentBuilderChat from './pages/AgentBuilderChat';
-import AgentLibrary from './pages/AgentLibrary';
-import AgentDetail from './pages/AgentDetail';
-import Conversations from './pages/Conversations';
-import ToolLibrary from './pages/ToolLibrary';
-import MCPServers from './pages/MCPServers';
-import LangflowFlows from './pages/LangflowFlows';
-import Workflows from './pages/Workflows';
-import ApiDocs from './pages/ApiDocs';
-import MCPDocs from './pages/MCPDocs';
-import CodeAttribution from './pages/CodeAttribution';
-import Monitoring from './pages/Monitoring';
-import RalphMonitor from './pages/RalphMonitor';
-import ScheduledRuns from './pages/ScheduledRuns';
-import Settings from './pages/Settings';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import AuthCallback from './pages/AuthCallback';
-import NotFound from './pages/NotFound';
-import ServerError from './pages/ServerError';
+// Shell stays eager (rendered on every authenticated view); everything routable
+// is lazy so the initial bundle is just the app frame, not all ~25 pages.
 import Navigation from './components/Navigation';
 import CommandPalette from './components/CommandPalette';
 import useAuth from './hooks/useAuth';
@@ -31,16 +11,40 @@ import { Loader2 } from 'lucide-react';
 import GettingStartedWizard from './components/GettingStartedWizard';
 import ErrorBoundary from './components/ErrorBoundary';
 
-// Lazy-load pages that use Three.js/WebGL (react-force-graph-3d)
-// .catch() provides fallback if WebGL module evaluation crashes
+// .catch() provides a fallback if WebGL module evaluation crashes.
 const WebGLFallbackPage = () => (
   <div className="min-h-screen flex items-center justify-center bg-slate-900">
     <div className="text-center p-8">
       <p className="text-xl text-slate-300 font-medium mb-2">3D Visualization Unavailable</p>
-      <p className="text-slate-500">This page requires WebGL support in your browser.</p>
+      <p className="text-slate-400">This page requires WebGL support in your browser.</p>
     </div>
   </div>
 );
+
+// Route-level code splitting — each page is its own chunk, fetched on demand.
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AgentChat = lazy(() => import('./pages/AgentChat'));
+const AgentBuilderChat = lazy(() => import('./pages/AgentBuilderChat'));
+const AgentLibrary = lazy(() => import('./pages/AgentLibrary'));
+const AgentDetail = lazy(() => import('./pages/AgentDetail'));
+const Conversations = lazy(() => import('./pages/Conversations'));
+const ToolLibrary = lazy(() => import('./pages/ToolLibrary'));
+const MCPServers = lazy(() => import('./pages/MCPServers'));
+const LangflowFlows = lazy(() => import('./pages/LangflowFlows'));
+const Workflows = lazy(() => import('./pages/Workflows'));
+const ApiDocs = lazy(() => import('./pages/ApiDocs'));
+const MCPDocs = lazy(() => import('./pages/MCPDocs'));
+const CodeAttribution = lazy(() => import('./pages/CodeAttribution'));
+const Monitoring = lazy(() => import('./pages/Monitoring'));
+const RalphMonitor = lazy(() => import('./pages/RalphMonitor'));
+const ScheduledRuns = lazy(() => import('./pages/ScheduledRuns'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const ServerError = lazy(() => import('./pages/ServerError'));
+// WebGL / Three.js-heavy pages (extra crash fallback).
 const Orchestration = lazy(() => import('./pages/Orchestration').catch(() => ({ default: WebGLFallbackPage })));
 const OrchestrationDemo = lazy(() => import('./pages/OrchestrationDemo').catch(() => ({ default: WebGLFallbackPage })));
 const KnowledgeGraph = lazy(() => import('./pages/KnowledgeGraph').catch(() => ({ default: WebGLFallbackPage })));
@@ -140,6 +144,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <ErrorBoundary>
+          <Suspense fallback={<LazyFallback />}>
           <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />
@@ -330,6 +335,7 @@ function App() {
             <Route path="/500" element={<ServerError />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </ErrorBoundary>
 
         {isAuthenticated && showWizard && (

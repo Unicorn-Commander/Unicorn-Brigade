@@ -12,6 +12,7 @@ import {
   Code
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
 
 export default function MCPServerControlPanel({ server, onClose, onServerUpdated }) {
@@ -33,13 +34,13 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
     try {
       if (action === 'start') {
         await api.startMCPServer(server.name);
-        toast.success(`${server.display_name || server.name} started successfully`);
+        notify.success(`${server.display_name || server.name} started successfully`);
       } else if (action === 'stop') {
         await api.stopMCPServer(server.name);
-        toast.success(`${server.display_name || server.name} stopped successfully`);
+        notify.success(`${server.display_name || server.name} stopped successfully`);
       } else if (action === 'restart') {
         await api.restartMCPServer(server.name);
-        toast.success(`${server.display_name || server.name} restarted successfully`);
+        notify.success(`${server.display_name || server.name} restarted successfully`);
       }
 
       await refreshDetails();
@@ -61,7 +62,7 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
         success: true,
         data: result,
       });
-      toast.success('Tool executed successfully');
+      notify.success('Tool executed successfully');
     } catch (error) {
       const message = error?.message || 'Tool execution failed';
       setTestResult({
@@ -96,8 +97,8 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
       <div className="bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-start p-6 border-b border-slate-700/50">
           <div className="flex items-start space-x-4">
-            <div className="p-3 bg-purple-500/20 rounded-lg">
-              <Server className="w-8 h-8 text-purple-400" />
+            <div className="p-3 bg-unicorn-500/20 rounded-lg">
+              <Server className="w-8 h-8 text-unicorn-400" />
             </div>
             <div>
               <div className="flex items-center space-x-3">
@@ -113,7 +114,7 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
                 <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">
                   {(serverDetails.transport || 'STDIO').toUpperCase()}
                 </span>
-                <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-full">
+                <span className="px-2 py-1 bg-unicorn-500/20 text-unicorn-400 text-xs rounded-full">
                   {serverDetails.capabilities?.length || 0} tools
                 </span>
               </div>
@@ -233,7 +234,7 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center space-x-2">
-                            <Code className="w-4 h-4 text-purple-400" />
+                            <Code className="w-4 h-4 text-unicorn-400" />
                             <span className="font-medium text-white text-sm">{tool}</span>
                           </div>
                         </div>
@@ -244,7 +245,7 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
                             setTestResult(null);
                           }}
                           disabled={!serverDetails.running}
-                          className="px-3 py-1 bg-purple-600/20 text-purple-400 text-xs rounded-lg hover:bg-purple-600/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3 py-1 bg-unicorn-600/20 text-unicorn-400 text-xs rounded-lg hover:bg-unicorn-600/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Test
                         </button>
@@ -281,7 +282,7 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
                   <textarea
                     value={testArgsText}
                     onChange={(e) => setTestArgsText(e.target.value)}
-                    className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"
+                    className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-unicorn-500 min-h-[100px]"
                     placeholder='{"param": "value"}'
                   />
                 </div>
@@ -289,7 +290,7 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
                 <button
                   onClick={() => handleTestTool(testingTool)}
                   disabled={testLoading}
-                  className="w-full px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+                  className="w-full px-4 py-2.5 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
                 >
                   {testLoading ? (
                     <>

@@ -64,7 +64,7 @@ const StepNode = ({ data }) => {
 
     switch (data.type) {
       case 'orchestrator':
-        return `${baseClasses} bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-purple-500/50`;
+        return `${baseClasses} bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 border-unicorn-500/50`;
       case 'team-lead':
         return `${baseClasses} bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border-blue-500/50`;
       case 'worker':
@@ -79,9 +79,9 @@ const StepNode = ({ data }) => {
   const isActive = data.state === 'running' || data.state === 'completed';
 
   return (
-    <div className={`${getNodeStyle()} ${isActive ? 'ring-2 ring-purple-400/50' : ''}`}>
+    <div className={`${getNodeStyle()} ${isActive ? 'ring-2 ring-unicorn-400/50' : ''}`}>
       <div className="flex items-center gap-2 mb-1">
-        <div className={`${data.type === 'checkpoint' ? 'text-amber-400' : 'text-purple-400'}`}>
+        <div className={`${data.type === 'checkpoint' ? 'text-amber-400' : 'text-unicorn-400'}`}>
           {getIcon()}
         </div>
         <div className="font-semibold text-white text-sm flex-1">{data.label}</div>
@@ -91,7 +91,7 @@ const StepNode = ({ data }) => {
         <div className="text-xs text-slate-400 mb-2">{data.description}</div>
       )}
       {data.executor && (
-        <div className="text-xs text-slate-500 font-mono">{data.executor}</div>
+        <div className="text-xs text-slate-400 font-mono">{data.executor}</div>
       )}
       {data.outputs && data.outputs.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">

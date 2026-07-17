@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Server, RefreshCw, CheckCircle, X, Package } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
 import MCPServerCard from '../components/MCPServerCard';
 import MCPToolList from '../components/MCPToolList';
@@ -79,7 +80,7 @@ const MCPServers = () => {
     setRefreshing(true);
     try {
       await loadServers();
-      toast.success('Servers refreshed');
+      notify.success('Servers refreshed');
     } catch (error) {
       toast.error('Failed to refresh servers');
     } finally {
@@ -214,13 +215,13 @@ const MCPServers = () => {
             </div>
           </div>
 
-          <div className="card border-purple-500/20 bg-purple-500/5">
+          <div className="card border-unicorn-500/20 bg-unicorn-500/5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-400">Total Servers</p>
-                <p className="text-2xl font-bold text-purple-400">{stats.total}</p>
+                <p className="text-2xl font-bold text-unicorn-400">{stats.total}</p>
               </div>
-              <Server className="w-8 h-8 text-purple-400" />
+              <Server className="w-8 h-8 text-unicorn-400" />
             </div>
           </div>
 
@@ -246,7 +247,7 @@ const MCPServers = () => {
                 placeholder="Search servers..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-slate-500"
+                className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white placeholder-slate-500"
               />
             </div>
 
@@ -255,7 +256,7 @@ const MCPServers = () => {
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white"
+                className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white"
               >
                 <option value="">All Categories</option>
                 {categories.map(cat => (
@@ -268,7 +269,7 @@ const MCPServers = () => {
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white"
+              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white"
             >
               <option value="">All Status</option>
               <option value="running">Running</option>
@@ -279,9 +280,9 @@ const MCPServers = () => {
           {/* Active Filters Display */}
           {(searchQuery || selectedCategory || selectedStatus) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-500">Active filters:</span>
+              <span className="text-xs text-slate-400">Active filters:</span>
               {searchQuery && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-purple-500/20 text-purple-400 text-xs">
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
                   Search: {searchQuery}
                   <button onClick={() => setSearchQuery('')} className="hover:text-white">
                     <X className="w-3 h-3" />

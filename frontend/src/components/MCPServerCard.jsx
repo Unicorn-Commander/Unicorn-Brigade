@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Play, Square, Eye, Package, CheckCircle, XCircle, Loader2, AlertCircle, Settings } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 
 // Server Icons (matching category)
 const serverIcons = {
@@ -58,7 +59,7 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
     setActionLoading(true);
     try {
       await onStart(server.name);
-      toast.success(`${server.display_name} started`);
+      notify.success(`${server.display_name} started`);
     } catch (error) {
       toast.error(`Failed to start server: ${error.message}`);
     } finally {
@@ -70,7 +71,7 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
     setActionLoading(true);
     try {
       await onStop(server.name);
-      toast.success(`${server.display_name} stopped`);
+      notify.success(`${server.display_name} stopped`);
     } catch (error) {
       toast.error(`Failed to stop server: ${error.message}`);
     } finally {
@@ -79,15 +80,15 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
   };
 
   return (
-    <div className="card hover:shadow-lg hover:shadow-purple-500/10 transition-all group">
+    <div className="card hover:shadow-lg hover:shadow-unicorn-500/10 transition-all group">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3">
           <div className="text-3xl">{icon}</div>
           <div>
-            <h3 className="font-semibold text-white group-hover:text-purple-400 transition-colors">
+            <h3 className="font-semibold text-white group-hover:text-unicorn-400 transition-colors">
               {server.display_name}
             </h3>
-            <p className="text-xs text-slate-500">{server.name}</p>
+            <p className="text-xs text-slate-400">{server.name}</p>
           </div>
         </div>
 
@@ -115,7 +116,7 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
       {/* Category Tags */}
       <div className="flex flex-wrap gap-2 mb-4">
         {server.category && (
-          <span className="px-2 py-1 rounded bg-purple-500/20 text-purple-400 text-xs">
+          <span className="px-2 py-1 rounded bg-unicorn-500/20 text-unicorn-400 text-xs">
             {server.category}
           </span>
         )}
@@ -127,7 +128,7 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
       </div>
 
       {/* Declared tool count (from the registry; discovered live once started) */}
-      <div className="flex items-center space-x-2 mb-4 text-slate-500 text-sm">
+      <div className="flex items-center space-x-2 mb-4 text-slate-400 text-sm">
         <Package className="w-4 h-4" />
         <span>{server.capabilities?.length || 0} declared tools</span>
       </div>
@@ -141,12 +142,12 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
           </div>
           <div className="flex flex-wrap gap-1">
             {server.env_vars.slice(0, 3).map((env, idx) => (
-              <span key={idx} className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-500 text-xs font-mono">
+              <span key={idx} className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-400 text-xs font-mono">
                 {env}
               </span>
             ))}
             {server.env_vars.length > 3 && (
-              <span className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-500 text-xs">
+              <span className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-400 text-xs">
                 +{server.env_vars.length - 3}
               </span>
             )}
@@ -186,7 +187,7 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
 
         <button
           onClick={() => onViewTools(server)}
-          className="px-3 py-2 bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 rounded-lg transition-colors flex items-center justify-center space-x-2"
+          className="px-3 py-2 bg-unicorn-500/20 text-unicorn-400 hover:bg-unicorn-500/30 rounded-lg transition-colors flex items-center justify-center space-x-2"
         >
           <Eye className="w-4 h-4" />
           <span>Tools</span>

@@ -34,8 +34,8 @@ const WorkflowGallery = ({
   if (!workflows || workflows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30 flex items-center justify-center mb-4">
-          <GitBranch className="w-10 h-10 text-purple-400" />
+        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 border border-unicorn-500/30 flex items-center justify-center mb-4">
+          <GitBranch className="w-10 h-10 text-unicorn-400" />
         </div>
         <h3 className="text-xl font-semibold text-slate-300 mb-2">
           No workflows found
@@ -71,7 +71,7 @@ const WorkflowGallery = ({
       {workflows.map((workflow) => (
         <div
           key={workflow.id}
-          className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl overflow-hidden hover:border-purple-500/50 transition-all"
+          className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl overflow-hidden hover:border-unicorn-500/50 transition-all"
         >
           <div className="flex items-stretch">
             {/* Diagram Preview (smaller in list view) */}
@@ -90,7 +90,7 @@ const WorkflowGallery = ({
               <div>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="text-xl font-semibold text-white group-hover:text-purple-400 transition-colors">
+                    <h3 className="text-xl font-semibold text-white group-hover:text-unicorn-400 transition-colors">
                       {workflow.name}
                     </h3>
                     <p className="text-sm text-slate-400 mt-1">
@@ -127,7 +127,7 @@ const WorkflowGallery = ({
                 </button>
                 <button
                   onClick={() => onExecute(workflow)}
-                  className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center gap-2 text-sm font-medium"
+                  className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center gap-2 text-sm font-medium"
                 >
                   <span>Execute Workflow</span>
                 </button>

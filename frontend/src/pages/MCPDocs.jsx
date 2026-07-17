@@ -18,6 +18,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { apiJson } from '../services/http';
 
@@ -43,7 +44,7 @@ const MCPDocs = () => {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
+    notify.success('Copied to clipboard');
   };
 
   const toggleSection = (section) => {
@@ -139,8 +140,8 @@ const MCPDocs = () => {
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-8">
           <div className="text-center mb-8">
             <div className="flex items-center justify-center space-x-3 mb-4">
-              <Server className="w-12 h-12 text-purple-400" />
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              <Server className="w-12 h-12 text-unicorn-400" />
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
                 MCP Server Ecosystem
               </h1>
             </div>
@@ -156,8 +157,8 @@ const MCPDocs = () => {
 
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-6 bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-lg text-center">
-              <div className="text-3xl font-bold text-purple-400 mb-1">{loadingServers ? '—' : totalServers}</div>
+            <div className="p-6 bg-gradient-to-br from-unicorn-500/20 to-unicorn-600/10 border border-unicorn-500/30 rounded-lg text-center">
+              <div className="text-3xl font-bold text-unicorn-400 mb-1">{loadingServers ? '—' : totalServers}</div>
               <div className="text-sm text-slate-400">Pre-configured Servers</div>
             </div>
             <div className="p-6 bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-lg text-center">
@@ -178,7 +179,7 @@ const MCPDocs = () => {
             className="w-full flex items-center justify-between mb-4"
           >
             <div className="flex items-center space-x-3">
-              <Book className="w-6 h-6 text-purple-400" />
+              <Book className="w-6 h-6 text-unicorn-400" />
               <h2 className="text-2xl font-bold text-white">What is MCP?</h2>
             </div>
             {expandedSection === 'what-is-mcp' ? (
@@ -191,7 +192,7 @@ const MCPDocs = () => {
           {expandedSection === 'what-is-mcp' && (
             <div className="space-y-4 text-slate-300">
               <p className="leading-relaxed">
-                <strong className="text-purple-400">Model Context Protocol (MCP)</strong> is an open standard that enables AI agents to securely connect with external tools and data sources. Think of it as a universal plug-and-play system for AI capabilities.
+                <strong className="text-unicorn-400">Model Context Protocol (MCP)</strong> is an open standard that enables AI agents to securely connect with external tools and data sources. Think of it as a universal plug-and-play system for AI capabilities.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
@@ -210,7 +211,7 @@ const MCPDocs = () => {
                   </p>
                 </div>
                 <div className="p-4 bg-slate-800/50 rounded-lg">
-                  <Layers className="w-8 h-8 text-purple-400 mb-3" />
+                  <Layers className="w-8 h-8 text-unicorn-400 mb-3" />
                   <h3 className="font-semibold text-white mb-2">Community Ecosystem</h3>
                   <p className="text-sm text-slate-400">
                     600+ community servers available. Build custom servers with the SDK.
@@ -231,12 +232,12 @@ const MCPDocs = () => {
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
-              <Server className="w-6 h-6 text-purple-400" />
+              <Server className="w-6 h-6 text-unicorn-400" />
               <h2 className="text-2xl font-bold text-white">Available Servers</h2>
             </div>
             <a
               href="/mcp-servers"
-              className="flex items-center space-x-2 px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-white text-sm font-medium transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 bg-unicorn-500 hover:bg-unicorn-600 rounded-lg text-white text-sm font-medium transition-colors"
             >
               <span>Browse All Servers</span>
               <ExternalLink className="w-4 h-4" />
@@ -258,7 +259,7 @@ const MCPDocs = () => {
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-2">
                         <h3 className="text-lg font-semibold text-white">{server.display_name || server.name}</h3>
-                        <span className="px-2 py-0.5 bg-purple-500/20 border border-purple-500/30 rounded text-xs text-purple-400">
+                        <span className="px-2 py-0.5 bg-unicorn-500/20 border border-unicorn-500/30 rounded text-xs text-unicorn-400">
                           {server.capabilities?.length || 0} declared tools
                         </span>
                         {server.running && (
@@ -285,7 +286,7 @@ const MCPDocs = () => {
         {/* How to Use MCP Servers */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center space-x-3 mb-6">
-            <Terminal className="w-6 h-6 text-purple-400" />
+            <Terminal className="w-6 h-6 text-unicorn-400" />
             <h2 className="text-2xl font-bold text-white">How to Use MCP Servers</h2>
           </div>
 
@@ -293,8 +294,8 @@ const MCPDocs = () => {
             {/* Step 1 */}
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <div className="flex items-center space-x-3 mb-3">
-                <div className="flex items-center justify-center w-8 h-8 bg-purple-500/20 border border-purple-500/30 rounded-full">
-                  <span className="text-sm font-bold text-purple-400">1</span>
+                <div className="flex items-center justify-center w-8 h-8 bg-unicorn-500/20 border border-unicorn-500/30 rounded-full">
+                  <span className="text-sm font-bold text-unicorn-400">1</span>
                 </div>
                 <h3 className="text-lg font-semibold text-white">Discover Servers</h3>
               </div>
@@ -317,8 +318,8 @@ const MCPDocs = () => {
             {/* Step 2 */}
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <div className="flex items-center space-x-3 mb-3">
-                <div className="flex items-center justify-center w-8 h-8 bg-purple-500/20 border border-purple-500/30 rounded-full">
-                  <span className="text-sm font-bold text-purple-400">2</span>
+                <div className="flex items-center justify-center w-8 h-8 bg-unicorn-500/20 border border-unicorn-500/30 rounded-full">
+                  <span className="text-sm font-bold text-unicorn-400">2</span>
                 </div>
                 <h3 className="text-lg font-semibold text-white">Configure Environment</h3>
               </div>
@@ -353,8 +354,8 @@ NOTION_API_KEY=secret_...`}
             {/* Step 3 */}
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <div className="flex items-center space-x-3 mb-3">
-                <div className="flex items-center justify-center w-8 h-8 bg-purple-500/20 border border-purple-500/30 rounded-full">
-                  <span className="text-sm font-bold text-purple-400">3</span>
+                <div className="flex items-center justify-center w-8 h-8 bg-unicorn-500/20 border border-unicorn-500/30 rounded-full">
+                  <span className="text-sm font-bold text-unicorn-400">3</span>
                 </div>
                 <h3 className="text-lg font-semibold text-white">Start Server</h3>
               </div>
@@ -377,8 +378,8 @@ NOTION_API_KEY=secret_...`}
             {/* Step 4 */}
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <div className="flex items-center space-x-3 mb-3">
-                <div className="flex items-center justify-center w-8 h-8 bg-purple-500/20 border border-purple-500/30 rounded-full">
-                  <span className="text-sm font-bold text-purple-400">4</span>
+                <div className="flex items-center justify-center w-8 h-8 bg-unicorn-500/20 border border-unicorn-500/30 rounded-full">
+                  <span className="text-sm font-bold text-unicorn-400">4</span>
                 </div>
                 <h3 className="text-lg font-semibold text-white">Assign Tools to Agents</h3>
               </div>
@@ -413,8 +414,8 @@ NOTION_API_KEY=secret_...`}
             {/* Step 5 */}
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <div className="flex items-center space-x-3 mb-3">
-                <div className="flex items-center justify-center w-8 h-8 bg-purple-500/20 border border-purple-500/30 rounded-full">
-                  <span className="text-sm font-bold text-purple-400">5</span>
+                <div className="flex items-center justify-center w-8 h-8 bg-unicorn-500/20 border border-unicorn-500/30 rounded-full">
+                  <span className="text-sm font-bold text-unicorn-400">5</span>
                 </div>
                 <h3 className="text-lg font-semibold text-white">Invoke Tools</h3>
               </div>
@@ -455,7 +456,7 @@ NOTION_API_KEY=secret_...`}
         {/* Building Custom MCP Servers */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center space-x-3 mb-6">
-            <FileCode className="w-6 h-6 text-purple-400" />
+            <FileCode className="w-6 h-6 text-unicorn-400" />
             <h2 className="text-2xl font-bold text-white">Building Custom MCP Servers</h2>
           </div>
 
@@ -651,7 +652,7 @@ async def call_tool(request: ToolCall):
             {/* Option 3: Fork Existing */}
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <div className="flex items-center space-x-2 mb-3">
-                <GitBranch className="w-5 h-5 text-purple-400" />
+                <GitBranch className="w-5 h-5 text-unicorn-400" />
                 <h3 className="text-lg font-semibold text-white">Option 3: Fork Existing Server</h3>
               </div>
               <p className="text-slate-400 mb-3">Start from an existing MCP server and customize it:</p>
@@ -697,7 +698,7 @@ npx my-custom-server`}
         {/* Finding New MCP Servers */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center space-x-3 mb-6">
-            <Search className="w-6 h-6 text-purple-400" />
+            <Search className="w-6 h-6 text-unicorn-400" />
             <h2 className="text-2xl font-bold text-white">Finding New MCP Servers</h2>
           </div>
 
@@ -725,7 +726,7 @@ npx my-custom-server`}
                 href="https://registry.modelcontextprotocol.io"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center space-x-2 text-purple-400 hover:text-purple-300 text-sm"
+                className="flex items-center space-x-2 text-unicorn-400 hover:text-unicorn-300 text-sm"
               >
                 <span>registry.modelcontextprotocol.io</span>
                 <ExternalLink className="w-4 h-4" />
@@ -739,7 +740,7 @@ npx my-custom-server`}
                 href="https://github.com/modelcontextprotocol/servers"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center space-x-2 text-purple-400 hover:text-purple-300 text-sm"
+                className="flex items-center space-x-2 text-unicorn-400 hover:text-unicorn-300 text-sm"
               >
                 <span>modelcontextprotocol/servers</span>
                 <ExternalLink className="w-4 h-4" />
@@ -751,7 +752,7 @@ npx my-custom-server`}
         {/* API Reference */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center space-x-3 mb-6">
-            <Code className="w-6 h-6 text-purple-400" />
+            <Code className="w-6 h-6 text-unicorn-400" />
             <h2 className="text-2xl font-bold text-white">API Reference</h2>
           </div>
 
@@ -764,18 +765,18 @@ npx my-custom-server`}
                   }`}>
                     {endpoint.method}
                   </span>
-                  <code className="text-purple-400 font-mono text-sm">{endpoint.path}</code>
+                  <code className="text-unicorn-400 font-mono text-sm">{endpoint.path}</code>
                 </div>
                 <p className="text-sm text-slate-400 mb-3">{endpoint.description}</p>
 
                 {endpoint.params && endpoint.params.length > 0 && (
                   <div className="mb-3">
-                    <p className="text-xs text-slate-500 mb-2">Path Parameters:</p>
+                    <p className="text-xs text-slate-400 mb-2">Path Parameters:</p>
                     <div className="space-y-1">
                       {endpoint.params.map((param, pidx) => (
                         <div key={pidx} className="text-xs">
-                          <code className="text-purple-400">{param.name}</code>
-                          <span className="text-slate-500"> - {param.description}</span>
+                          <code className="text-unicorn-400">{param.name}</code>
+                          <span className="text-slate-400"> - {param.description}</span>
                         </div>
                       ))}
                     </div>
@@ -784,7 +785,7 @@ npx my-custom-server`}
 
                 {endpoint.body && (
                   <div>
-                    <p className="text-xs text-slate-500 mb-2">Request Body:</p>
+                    <p className="text-xs text-slate-400 mb-2">Request Body:</p>
                     <div className="bg-slate-900/50 rounded p-2 font-mono text-xs">
                       <pre className="text-slate-300">
 {JSON.stringify(Object.fromEntries(
@@ -802,7 +803,7 @@ npx my-custom-server`}
         {/* FAQs */}
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center space-x-3 mb-6">
-            <HelpCircle className="w-6 h-6 text-purple-400" />
+            <HelpCircle className="w-6 h-6 text-unicorn-400" />
             <h2 className="text-2xl font-bold text-white">Frequently Asked Questions</h2>
           </div>
 
@@ -823,9 +824,9 @@ npx my-custom-server`}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <a
             href="/mcp-servers"
-            className="p-6 bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-lg hover:scale-105 transition-transform"
+            className="p-6 bg-gradient-to-br from-unicorn-500/20 to-unicorn-600/10 border border-unicorn-500/30 rounded-lg hover:scale-105 transition-transform"
           >
-            <Server className="w-8 h-8 text-purple-400 mb-3" />
+            <Server className="w-8 h-8 text-unicorn-400 mb-3" />
             <h3 className="font-semibold text-white mb-2">Browse All Servers</h3>
             <p className="text-sm text-slate-400">
               {totalServers > 0 ? `Explore all ${totalServers} MCP servers` : 'Explore the MCP server registry'}

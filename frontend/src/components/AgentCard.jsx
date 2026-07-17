@@ -12,14 +12,14 @@ import {
 const domainGradients = {
   financial: 'from-amber-500 to-yellow-600',
   legal: 'from-blue-500 to-indigo-600',
-  medical: 'from-red-500 to-pink-600',
+  medical: 'from-red-500 to-unicorn-600',
   technology: 'from-cyan-500 to-blue-600',
-  cybersecurity: 'from-purple-500 to-violet-600',
-  orchestration: 'from-pink-500 to-rose-600',
+  cybersecurity: 'from-unicorn-500 to-violet-600',
+  orchestration: 'from-unicorn-500 to-rose-600',
   investigation: 'from-amber-500 to-orange-600',
-  intelligence: 'from-indigo-500 to-purple-600',
+  intelligence: 'from-indigo-500 to-unicorn-600',
   meta: 'from-orange-500 to-red-600',
-  default: 'from-purple-500 to-pink-500'
+  default: 'from-unicorn-600 to-unicorn-500'
 };
 
 // Model icons
@@ -125,7 +125,7 @@ const AgentCard = ({ agent, onClick }) => {
         {/* Rank Stars */}
         {agent.rank && (
           <div className="flex items-center space-x-2">
-            <span className="text-xs text-slate-500 font-medium">{agent.rank}</span>
+            <span className="text-xs text-slate-400 font-medium">{agent.rank}</span>
             <StarRating rank={agent.rank} />
           </div>
         )}
@@ -135,7 +135,7 @@ const AgentCard = ({ agent, onClick }) => {
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <div className="h-px flex-1 bg-slate-800"></div>
-              <span className="text-xs text-slate-500 font-medium">Capabilities</span>
+              <span className="text-xs text-slate-400 font-medium">Capabilities</span>
               <div className="h-px flex-1 bg-slate-800"></div>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -161,7 +161,7 @@ const AgentCard = ({ agent, onClick }) => {
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <div className="h-px flex-1 bg-slate-800"></div>
-              <span className="text-xs text-slate-500 font-medium">Tools</span>
+              <span className="text-xs text-slate-400 font-medium">Tools</span>
               <div className="h-px flex-1 bg-slate-800"></div>
             </div>
             <div className="space-y-1">
@@ -182,7 +182,7 @@ const AgentCard = ({ agent, onClick }) => {
                 );
               })}
               {toolNames.length > 2 && (
-                <div className="text-xs text-slate-500 pl-5">
+                <div className="text-xs text-slate-400 pl-5">
                   +{toolNames.length - 2} more tools
                 </div>
               )}

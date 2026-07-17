@@ -48,7 +48,7 @@ const TagInput = ({
         ))}
 
         {tags.length === 0 && (
-          <p className="text-sm text-slate-500 italic">No tags added</p>
+          <p className="text-sm text-slate-400 italic">No tags added</p>
         )}
       </div>
 

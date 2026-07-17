@@ -26,7 +26,7 @@ const WorkflowVisualization3D = lazy(() =>
         <div className="text-center p-8">
           <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
           <p className="text-slate-300 font-medium">3D visualization unavailable</p>
-          <p className="text-sm text-slate-500 mt-1">WebGL is required for the demo view</p>
+          <p className="text-sm text-slate-400 mt-1">WebGL is required for the demo view</p>
         </div>
       </div>
     ),
@@ -188,7 +188,7 @@ const StatCard = ({ label, value, icon: Icon, color = 'purple' }) => (
       </div>
       <div>
         <p className="text-2xl font-bold text-white">{value.toLocaleString()}</p>
-        <p className="text-xs text-slate-500">{label}</p>
+        <p className="text-xs text-slate-400">{label}</p>
       </div>
     </div>
   </div>
@@ -372,8 +372,8 @@ const OrchestrationDemo = () => {
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30">
-                <Sparkles className="w-8 h-8 text-purple-400" />
+              <div className="p-3 rounded-xl bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 border border-unicorn-500/30">
+                <Sparkles className="w-8 h-8 text-unicorn-400" />
               </div>
               <div>
                 <h1 className="text-4xl font-bold text-white mb-2">
@@ -437,7 +437,7 @@ const OrchestrationDemo = () => {
               {WORKFLOWS.map((wf, i) => (
                 <div
                   key={wf.id}
-                  className="px-3 py-1 rounded-full bg-purple-500/20 text-purple-400 text-xs border border-purple-500/30"
+                  className="px-3 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs border border-unicorn-500/30"
                 >
                   {wf.domain}
                 </div>
@@ -445,7 +445,7 @@ const OrchestrationDemo = () => {
             </div>
           </div>
 
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-slate-400">
             Continuous Operation • All workflows running simultaneously
           </div>
         </div>
@@ -485,7 +485,7 @@ const OrchestrationDemo = () => {
           transition={{ delay: 0.2 }}
           className={isFullscreen ? 'fixed inset-0 z-50 p-6' : ''}
         >
-          <Suspense fallback={<div className="h-[600px] flex items-center justify-center"><Network className="w-8 h-8 text-purple-400 animate-pulse" /></div>}>
+          <Suspense fallback={<div className="h-[600px] flex items-center justify-center"><Network className="w-8 h-8 text-unicorn-400 animate-pulse" /></div>}>
             <WorkflowVisualization3D
               ref={fgRef}
               agents={agents}
@@ -513,10 +513,10 @@ const OrchestrationDemo = () => {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <div className="flex items-center space-x-2 mb-2">
-                    <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                    <div className="w-3 h-3 rounded-full bg-unicorn-500"></div>
                     <span className="text-sm text-slate-300">Delegation (Outward)</span>
                   </div>
-                  <p className="text-xs text-slate-500 ml-5">
+                  <p className="text-xs text-slate-400 ml-5">
                     The General → Team Lead → Workers
                   </p>
                 </div>
@@ -525,7 +525,7 @@ const OrchestrationDemo = () => {
                     <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
                     <span className="text-sm text-slate-300">Peer Communication</span>
                   </div>
-                  <p className="text-xs text-slate-500 ml-5">
+                  <p className="text-xs text-slate-400 ml-5">
                     Workers ↔ Data Sources
                   </p>
                 </div>
@@ -534,7 +534,7 @@ const OrchestrationDemo = () => {
                     <div className="w-3 h-3 rounded-full bg-green-500"></div>
                     <span className="text-sm text-slate-300">Results (Return)</span>
                   </div>
-                  <p className="text-xs text-slate-500 ml-5">
+                  <p className="text-xs text-slate-400 ml-5">
                     Workers → Team Lead → The General
                   </p>
                 </div>

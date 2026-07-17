@@ -40,7 +40,7 @@ const MiniStepNode = ({ data }) => {
   const getNodeColor = () => {
     switch (data.type) {
       case 'orchestrator':
-        return 'from-purple-500/30 to-pink-500/30 border-purple-500/50';
+        return 'from-unicorn-500/30 to-unicorn-500/30 border-unicorn-500/50';
       case 'team-lead':
         return 'from-blue-500/30 to-cyan-500/30 border-blue-500/50';
       case 'worker':
@@ -55,7 +55,7 @@ const MiniStepNode = ({ data }) => {
   return (
     <div className={`px-2 py-1.5 rounded border bg-gradient-to-br ${getNodeColor()} w-[80px]`}>
       <div className="flex items-center gap-1 justify-center">
-        <div className="text-purple-400">
+        <div className="text-unicorn-400">
           {getIcon()}
         </div>
         <div className="text-[9px] text-white font-medium truncate">{data.label}</div>
@@ -133,7 +133,7 @@ const MiniWorkflowDiagram = ({ workflow, height = '120px' }) => {
         className="flex items-center justify-center bg-slate-900/50 rounded-lg border border-slate-700/50"
         style={{ height }}
       >
-        <div className="text-xs text-slate-500">No workflow steps</div>
+        <div className="text-xs text-slate-400">No workflow steps</div>
       </div>
     );
   }
@@ -169,7 +169,7 @@ const MiniWorkflowDiagram = ({ workflow, height = '120px' }) => {
         />
       </ReactFlow>
       {workflow.steps.length > 6 && (
-        <div className="absolute bottom-1 right-2 text-[10px] text-slate-500 bg-slate-900/80 px-1.5 py-0.5 rounded">
+        <div className="absolute bottom-1 right-2 text-[10px] text-slate-400 bg-slate-900/80 px-1.5 py-0.5 rounded">
           +{workflow.steps.length - 6} more
         </div>
       )}

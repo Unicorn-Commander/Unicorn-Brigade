@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Search, Wrench, Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 
 const MCPToolList = ({ server, tools, onClose }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,7 +17,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
 
   const copyToolName = (toolName) => {
     navigator.clipboard.writeText(toolName);
-    toast.success('Tool name copied');
+    notify.success('Tool name copied');
   };
 
   const serverIcons = {
@@ -69,7 +70,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
             placeholder="Search tools..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-white placeholder-slate-500"
+            className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white placeholder-slate-500"
           />
         </div>
 
@@ -86,13 +87,13 @@ const MCPToolList = ({ server, tools, onClose }) => {
             filteredTools.map((tool, idx) => (
               <div
                 key={idx}
-                className="card hover:border-purple-500/50 transition-all group"
+                className="card hover:border-unicorn-500/50 transition-all group"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2 mb-2">
-                      <Wrench className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                      <h3 className="font-semibold text-white group-hover:text-purple-400 transition-colors truncate">
+                      <Wrench className="w-4 h-4 text-unicorn-400 flex-shrink-0" />
+                      <h3 className="font-semibold text-white group-hover:text-unicorn-400 transition-colors truncate">
                         {tool.name}
                       </h3>
                     </div>
@@ -106,7 +107,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
                     {/* Parameters */}
                     {tool.inputSchema?.properties && (
                       <div className="mt-2">
-                        <p className="text-xs text-slate-500 mb-1">Parameters:</p>
+                        <p className="text-xs text-slate-400 mb-1">Parameters:</p>
                         <div className="flex flex-wrap gap-1">
                           {Object.keys(tool.inputSchema.properties).slice(0, 5).map((param, pidx) => (
                             <span
@@ -120,7 +121,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
                             </span>
                           ))}
                           {Object.keys(tool.inputSchema.properties).length > 5 && (
-                            <span className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-500 text-xs">
+                            <span className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-400 text-xs">
                               +{Object.keys(tool.inputSchema.properties).length - 5}
                             </span>
                           )}
@@ -147,7 +148,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
 
         {/* Footer */}
         <div className="mt-6 pt-6 border-t border-slate-700/50 flex justify-between items-center">
-          <div className="text-sm text-slate-500">
+          <div className="text-sm text-slate-400">
             {server.category} • Phase {server.phase}
           </div>
           <button

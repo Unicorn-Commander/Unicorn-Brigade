@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import { apiJson } from '../services/http';
 import ToolCard from './ToolCard';
 import ToolConfigModal from './ToolConfigModal';
@@ -129,7 +130,7 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
       });
 
       setAssigned([...assigned, tool]);
-      toast.success(`Added ${tool.name}`);
+      notify.success(`Added ${tool.name}`);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Failed to add tool:', error);
@@ -143,7 +144,7 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
       await apiJson(`/agents/${agentId}/tools/${tool.id}`, { method: 'DELETE' });
 
       setAssigned(assigned.filter(t => t.id !== tool.id));
-      toast.success(`Removed ${tool.name}`);
+      notify.success(`Removed ${tool.name}`);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Failed to remove tool:', error);
@@ -171,7 +172,7 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
         t.id === configTool.id ? { ...t, config } : t
       ));
 
-      toast.success('Configuration saved');
+      notify.success('Configuration saved');
       setConfigTool(null);
       setToolConfig({});
       if (onUpdate) onUpdate();
@@ -260,7 +261,7 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
             ) : (
               <div className="text-center py-8">
                 <p className="text-slate-400">No tools assigned yet</p>
-                <p className="text-sm text-slate-500 mt-1">Add tools from the left panel</p>
+                <p className="text-sm text-slate-400 mt-1">Add tools from the left panel</p>
               </div>
             )}
           </div>

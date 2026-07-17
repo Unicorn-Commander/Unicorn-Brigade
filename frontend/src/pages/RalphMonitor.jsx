@@ -23,6 +23,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
 import Breadcrumbs from '../components/Breadcrumbs';
 import ListSkeleton from '../components/skeletons/ListSkeleton';
@@ -76,7 +77,7 @@ const RalphMonitor = () => {
       await api.post(`/ralph/executions/${selectedExecution.execution_id}/guidance`, {
         guidance: guidanceInput,
       });
-      toast.success('Guidance injected successfully');
+      notify.success('Guidance injected successfully');
       setGuidanceInput('');
       await loadExecutionDetails(selectedExecution.execution_id);
     } catch (error) {
@@ -89,7 +90,7 @@ const RalphMonitor = () => {
   const handleCancelExecution = async (executionId) => {
     try {
       await api.delete(`/ralph/executions/${executionId}`);
-      toast.success('Execution cancelled');
+      notify.success('Execution cancelled');
       setExecutions(executions.filter((e) => e.execution_id !== executionId));
       if (selectedExecution?.execution_id === executionId) {
         setSelectedExecution(null);
@@ -135,7 +136,7 @@ const RalphMonitor = () => {
       <div className="max-w-7xl mx-auto mb-8">
         <Breadcrumbs />
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
             <Zap className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -165,7 +166,7 @@ const RalphMonitor = () => {
             <ListSkeleton rows={6} />
           ) : executions.length === 0 ? (
             <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-8 text-center">
-              <AlertCircle className="w-12 h-12 text-slate-500 mx-auto mb-3" />
+              <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
               <p className="text-slate-400">No executions running</p>
             </div>
           ) : (
@@ -173,9 +174,9 @@ const RalphMonitor = () => {
               <div
                 key={execution.execution_id}
                 onClick={() => loadExecutionDetails(execution.execution_id)}
-                className={`backdrop-blur-xl bg-slate-900/50 border rounded-xl p-4 cursor-pointer transition-all hover:border-purple-500/50 ${
+                className={`backdrop-blur-xl bg-slate-900/50 border rounded-xl p-4 cursor-pointer transition-all hover:border-unicorn-500/50 ${
                   selectedExecution?.execution_id === execution.execution_id
-                    ? 'border-purple-500'
+                    ? 'border-unicorn-500'
                     : 'border-slate-700/50'
                 }`}
               >
@@ -185,7 +186,7 @@ const RalphMonitor = () => {
                     {getStatusIcon(execution.status)}
                     {execution.status}
                   </span>
-                  <span className="text-xs text-slate-500">Iteration {execution.iteration}/{execution.max_iterations}</span>
+                  <span className="text-xs text-slate-400">Iteration {execution.iteration}/{execution.max_iterations}</span>
                 </div>
 
                 {/* Workflow ID */}
@@ -194,7 +195,7 @@ const RalphMonitor = () => {
                 {/* Progress Bar */}
                 <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mb-2">
                   <div
-                    className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
+                    className="h-full bg-gradient-to-r from-unicorn-600 to-unicorn-500 transition-all"
                     style={{ width: `${execution.progress_percent}%` }}
                   />
                 </div>
@@ -235,19 +236,19 @@ const RalphMonitor = () => {
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="bg-slate-800/40 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1">Iteration</div>
+                    <div className="text-xs text-slate-400 mb-1">Iteration</div>
                     <div className="text-lg font-semibold text-white">{selectedExecution.iteration}/{selectedExecution.max_iterations}</div>
                   </div>
                   <div className="bg-slate-800/40 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1">Progress</div>
+                    <div className="text-xs text-slate-400 mb-1">Progress</div>
                     <div className="text-lg font-semibold text-white">{selectedExecution.progress_percent}%</div>
                   </div>
                   <div className="bg-slate-800/40 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1">Completed</div>
+                    <div className="text-xs text-slate-400 mb-1">Completed</div>
                     <div className="text-lg font-semibold text-emerald-400">{selectedExecution.tasks.completed}</div>
                   </div>
                   <div className="bg-slate-800/40 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1">Failed</div>
+                    <div className="text-xs text-slate-400 mb-1">Failed</div>
                     <div className="text-lg font-semibold text-red-400">{selectedExecution.tasks.failed}</div>
                   </div>
                 </div>
@@ -295,12 +296,12 @@ const RalphMonitor = () => {
                       onChange={(e) => setGuidanceInput(e.target.value)}
                       placeholder="Enter guidance or additional context..."
                       rows={3}
-                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-colors resize-none"
+                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-unicorn-500 transition-colors resize-none"
                     />
                     <button
                       onClick={handleInjectGuidance}
                       disabled={!guidanceInput.trim() || submittingGuidance}
-                      className="w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {submittingGuidance ? (
                         <>
@@ -322,7 +323,7 @@ const RalphMonitor = () => {
             <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-12 text-center">
               <TrendingUp className="w-16 h-16 text-slate-600 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-slate-400 mb-2">No Execution Selected</h3>
-              <p className="text-slate-500">Select an execution from the list to view details</p>
+              <p className="text-slate-400">Select an execution from the list to view details</p>
             </div>
           )}
         </div>

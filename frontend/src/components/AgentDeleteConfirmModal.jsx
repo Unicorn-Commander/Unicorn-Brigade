@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
 import Modal from './ui/Modal';
 
@@ -18,7 +19,7 @@ export default function AgentDeleteConfirmModal({ agent, onClose, onDelete }) {
     const rollback = onDelete?.(agent, { optimistic: true });
     try {
       await api.deleteAgent(agent.id);
-      toast.success(`${agent.displayName || agent.name} deleted successfully`);
+      notify.success(`${agent.displayName || agent.name} deleted successfully`);
       onDelete?.(agent, { optimistic: false });
       onClose();
     } catch (error) {

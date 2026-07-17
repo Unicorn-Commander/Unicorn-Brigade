@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Sparkles, Bot, User, Loader, RefreshCw, BookOpen, ChevronRight, ChevronLeft, ChevronDown, Settings, RotateCcw, Rocket, X, CheckCircle, Cpu, Wrench, Shield } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import { apiJson } from '../services/http';
 import ReactMarkdown from 'react-markdown';
 import { useNavigate } from 'react-router-dom';
@@ -246,7 +247,7 @@ What would you like to build?`
         body: JSON.stringify(deployPayload)
       });
 
-      toast.success('Agent deployed successfully!');
+      notify.success('Agent deployed successfully!');
       setShowConfirmation(false);
       setParsedAgentConfig(null);
       setAgentPreview(prev => ({ ...prev, status: 'created' }));
@@ -416,7 +417,7 @@ What would you like to create today?`
         })
       });
 
-      toast.success('Agent created successfully!');
+      notify.success('Agent created successfully!');
 
       // Update preview status
       setAgentPreview({ ...agentPreview, status: 'created' });
@@ -444,7 +445,7 @@ What would you like to create today?`
       systemPrompt: null,
       status: 'building'
     });
-    toast.success('Preview reset. Start fresh!');
+    notify.success('Preview reset. Start fresh!');
   };
 
   const resetPreferences = () => {
@@ -454,11 +455,11 @@ What would you like to create today?`
       temperature: 0.7,
       maxTokens: 4096
     });
-    toast.success('Preferences reset to defaults');
+    notify.success('Preferences reset to defaults');
   };
 
   const applyPreferences = () => {
-    toast.success('Preferences will be applied to Gunny\'s recommendations');
+    notify.success('Preferences will be applied to Gunny\'s recommendations');
     setShowPreferences(false);
   };
 
@@ -790,11 +791,11 @@ What would you like to create today?`
       {/* Deploy Confirmation Panel */}
       {showConfirmation && parsedAgentConfig && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg mx-4 rounded-2xl border border-slate-700/50 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-purple-500/10 overflow-hidden">
+          <div className="w-full max-w-lg mx-4 rounded-2xl border border-slate-700/50 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-unicorn-500/10 overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 bg-gradient-to-r from-purple-500/10 to-pink-500/10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 bg-gradient-to-r from-unicorn-500/10 to-unicorn-500/10">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
                   <Rocket className="w-5 h-5 text-white" />
                 </div>
                 <div>
@@ -814,7 +815,7 @@ What would you like to create today?`
             <div className="px-6 py-5 space-y-4 max-h-[60vh] overflow-y-auto">
               {/* Name & Display Name */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Agent Name</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Agent Name</label>
                 <p className="text-white font-medium text-lg">
                   {parsedAgentConfig.avatar && <span className="mr-2">{parsedAgentConfig.avatar}</span>}
                   {parsedAgentConfig.displayName || parsedAgentConfig.name || 'Unnamed Agent'}
@@ -828,16 +829,16 @@ What would you like to create today?`
               <div className="grid grid-cols-2 gap-4">
                 {parsedAgentConfig.domain && (
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Domain</label>
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Domain</label>
                     <div className="flex items-center space-x-2">
-                      <Shield className="w-4 h-4 text-purple-400" />
+                      <Shield className="w-4 h-4 text-unicorn-400" />
                       <span className="text-sm text-slate-200 capitalize">{parsedAgentConfig.domain}</span>
                     </div>
                   </div>
                 )}
                 {(parsedAgentConfig.model || agentPreview.model) && (
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Model</label>
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Model</label>
                     <div className="flex items-center space-x-2">
                       <Cpu className="w-4 h-4 text-cyan-400" />
                       <span className="text-sm text-slate-200">{(parsedAgentConfig.model || agentPreview.model || 'gpt-4-turbo').split('/').pop()}</span>
@@ -849,12 +850,12 @@ What would you like to create today?`
               {/* Capabilities */}
               {parsedAgentConfig.capabilities && parsedAgentConfig.capabilities.length > 0 && (
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Capabilities</label>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Capabilities</label>
                   <div className="flex flex-wrap gap-1.5">
                     {parsedAgentConfig.capabilities.map((cap, idx) => (
                       <span
                         key={idx}
-                        className="px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-300 text-xs border border-purple-500/20"
+                        className="px-2.5 py-1 rounded-lg bg-unicorn-500/10 text-unicorn-300 text-xs border border-unicorn-500/20"
                       >
                         {cap}
                       </span>
@@ -866,7 +867,7 @@ What would you like to create today?`
               {/* Tools */}
               {parsedAgentConfig.tools && parsedAgentConfig.tools.length > 0 && (
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tools</label>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tools</label>
                   <div className="space-y-1.5">
                     {parsedAgentConfig.tools.map((tool, idx) => (
                       <div key={idx} className="flex items-center space-x-2 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/30">
@@ -881,11 +882,11 @@ What would you like to create today?`
               {/* Parameters */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Temperature</label>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Temperature</label>
                   <p className="text-sm text-slate-200">{parsedAgentConfig.temperature ?? agentPreview.temperature ?? 0.7}</p>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Max Tokens</label>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Max Tokens</label>
                   <p className="text-sm text-slate-200">{(parsedAgentConfig.maxTokens || agentPreview.maxTokens || 4096).toLocaleString()}</p>
                 </div>
               </div>
@@ -893,7 +894,7 @@ What would you like to create today?`
               {/* System Prompt Preview */}
               {parsedAgentConfig.systemPrompt && (
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">System Prompt</label>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">System Prompt</label>
                   <div className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/30 max-h-24 overflow-y-auto">
                     <p className="text-xs text-slate-400 leading-relaxed">{parsedAgentConfig.systemPrompt}</p>
                   </div>
@@ -913,7 +914,7 @@ What would you like to create today?`
               <button
                 onClick={handleDeployAgent}
                 disabled={isDeploying}
-                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-purple-500/20"
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-unicorn-600 to-unicorn-500 hover:from-unicorn-500 hover:to-unicorn-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-unicorn-500/20"
               >
                 {isDeploying ? (
                   <>

@@ -15,6 +15,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
 
 const terminalExecutionStates = new Set(['completed', 'failed', 'cancelled']);
@@ -168,7 +169,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
         if (terminalExecutionStates.has(updated.state)) {
           clearInterval(interval);
           if (updated.state === 'completed') {
-            toast.success('Workflow completed successfully');
+            notify.success('Workflow completed successfully');
             onExecutionComplete?.(updated);
           } else if (updated.state === 'failed') {
             toast.error('Workflow failed');
@@ -231,7 +232,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
             state: result.outcome === 'success' ? 'completed' : 'failed',
           }));
           if (result.outcome === 'success') {
-            toast.success('Self-correction completed successfully');
+            notify.success('Self-correction completed successfully');
           } else {
             toast.error('Self-correction failed');
           }
@@ -279,7 +280,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
         }));
       }
 
-      toast.success('Workflow execution started');
+      notify.success('Workflow execution started');
     } catch (error) {
       console.error('Failed to start workflow:', error);
       toast.error(error?.message || 'Failed to start workflow');
@@ -298,7 +299,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
       } else {
         await api.cancelWorkflowExecution(execution.id);
       }
-      toast.success('Workflow cancelled');
+      notify.success('Workflow cancelled');
       setExecution((prev) => ({ ...prev, state: 'cancelled' }));
     } catch (error) {
       toast.error('Failed to cancel workflow');
@@ -323,7 +324,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
       setExecutionSource('ralph');
       setRalphProgress(null);
       setRalphResult(null);
-      toast.success('Retrying with self-correction enabled');
+      notify.success('Retrying with self-correction enabled');
     } catch (error) {
       toast.error(error?.message || 'Failed to retry workflow');
     } finally {
@@ -417,7 +418,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
               {workflow.tags?.map((tag) => (
                 <span
                   key={tag}
-                  className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-full"
+                  className="px-2 py-1 bg-unicorn-500/20 text-unicorn-400 text-xs rounded-full"
                 >
                   {tag}
                 </span>
@@ -449,7 +450,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
                     value={inputs[input] || ''}
                     onChange={(e) => setInputs({ ...inputs, [input]: e.target.value })}
                     disabled={!!execution}
-                    className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 min-h-[80px]"
+                    className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-unicorn-500 disabled:opacity-50 min-h-[80px]"
                     placeholder={`Enter ${input.replace(/_/g, ' ')}...`}
                   />
                 </div>
@@ -459,7 +460,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
+                  className="w-full px-4 py-3 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
                 >
                   {loading ? (
                     <>
@@ -544,7 +545,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
                       type="checkbox"
                       checked={autoScroll}
                       onChange={(e) => setAutoScroll(e.target.checked)}
-                      className="rounded text-purple-600 focus:ring-purple-500"
+                      className="rounded text-unicorn-600 focus:ring-unicorn-500"
                     />
                     <span>Auto-scroll</span>
                   </label>
@@ -557,13 +558,13 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
                         <span className="text-sm text-slate-400">
                           Step {currentStepIndex} of {totalStepCount || '?'}
                         </span>
-                        <span className="text-sm text-purple-400">
+                        <span className="text-sm text-unicorn-400">
                           {progressPercent}%
                         </span>
                       </div>
                       <div className="w-full bg-slate-700/50 rounded-full h-2">
                         <div
-                          className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-300"
+                          className="bg-gradient-to-r from-unicorn-600 to-unicorn-500 h-2 rounded-full transition-all duration-300"
                           style={{ width: `${progressPercent}%` }}
                         />
                       </div>

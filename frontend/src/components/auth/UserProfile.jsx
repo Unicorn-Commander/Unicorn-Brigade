@@ -106,7 +106,7 @@ const UserProfile = ({
         className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors w-full"
       >
         {/* Avatar */}
-        <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white font-semibold text-sm">
+        <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center text-white font-semibold text-sm">
           {initials}
         </div>
 
@@ -115,7 +115,7 @@ const UserProfile = ({
           <p className="text-sm font-medium text-gray-900 truncate">
             {user.username || user.name || 'User'}
           </p>
-          <p className="text-xs text-gray-500 truncate">
+          <p className="text-xs text-slate-400 truncate">
             {user.email}
           </p>
         </div>
@@ -142,7 +142,7 @@ const UserProfile = ({
               <p className="text-sm font-medium text-gray-900 mb-1">
                 {user.username || user.name}
               </p>
-              <div className="flex items-center gap-1 text-xs text-gray-500 mb-2">
+              <div className="flex items-center gap-1 text-xs text-slate-400 mb-2">
                 <Mail size={12} />
                 {user.email}
               </div>

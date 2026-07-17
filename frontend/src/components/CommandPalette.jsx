@@ -166,7 +166,7 @@ export default function CommandPalette() {
               {/* Results */}
               <div className="max-h-80 overflow-y-auto py-2">
                 {results.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-slate-500">
+                  <div className="px-4 py-8 text-center text-sm text-slate-400">
                     No results found
                   </div>
                 ) : (
@@ -184,7 +184,7 @@ export default function CommandPalette() {
                             onMouseEnter={() => setSelectedIndex(idx)}
                             className={`w-full flex items-center space-x-3 px-4 py-2.5 text-left transition-colors ${
                               selectedIndex === idx
-                                ? 'bg-purple-500/15 text-white'
+                                ? 'bg-unicorn-500/15 text-white'
                                 : 'text-slate-300 hover:bg-slate-700/50'
                             }`}
                           >
@@ -196,11 +196,11 @@ export default function CommandPalette() {
                             <div className="flex-1 min-w-0">
                               <span className="text-sm font-medium truncate block">{item.name}</span>
                               {item.subtitle && (
-                                <span className="text-xs text-slate-500">{item.subtitle}</span>
+                                <span className="text-xs text-slate-400">{item.subtitle}</span>
                               )}
                             </div>
                             {selectedIndex === idx && (
-                              <ArrowRight className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                              <ArrowRight className="w-4 h-4 text-unicorn-400 flex-shrink-0" />
                             )}
                           </button>
                         );

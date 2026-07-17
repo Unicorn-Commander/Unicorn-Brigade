@@ -37,7 +37,7 @@ const AgentPreview = ({ preview, onConfirm, onReset }) => {
       {/* Progress Bar */}
       <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
         <div
-          className="bg-gradient-to-r from-purple-500 via-pink-500 to-amber-500 h-2.5 rounded-full transition-all duration-700 ease-out"
+          className="bg-gradient-to-r from-unicorn-500 via-unicorn-500 to-amber-500 h-2.5 rounded-full transition-all duration-700 ease-out"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -77,17 +77,17 @@ const AgentPreview = ({ preview, onConfirm, onReset }) => {
         <div className="flex items-center space-x-3">
           <div className="flex-1 h-2 bg-slate-700 rounded-full relative overflow-hidden">
             <div
-              className="absolute h-2 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500"
+              className="absolute h-2 bg-gradient-to-r from-blue-500 via-unicorn-500 to-unicorn-500 rounded-full transition-all duration-500"
               style={{ width: `${(preview.temperature / 2) * 100}%` }}
             />
             <div
-              className="absolute h-3 w-3 bg-white rounded-full border-2 border-purple-500 -top-0.5 transform -translate-x-1/2 shadow-lg transition-all duration-500"
+              className="absolute h-3 w-3 bg-white rounded-full border-2 border-unicorn-500 -top-0.5 transform -translate-x-1/2 shadow-lg transition-all duration-500"
               style={{ left: `${(preview.temperature / 2) * 100}%` }}
             />
           </div>
           <span className="text-sm font-medium text-white w-8">{preview.temperature.toFixed(1)}</span>
         </div>
-        <div className="flex justify-between text-xs text-slate-500">
+        <div className="flex justify-between text-xs text-slate-400">
           <span>Precise</span>
           <span>Creative</span>
         </div>
@@ -121,7 +121,7 @@ const AgentPreview = ({ preview, onConfirm, onReset }) => {
             ))}
           </div>
         ) : (
-          <div className="text-sm text-slate-500 italic">No tools specified yet</div>
+          <div className="text-sm text-slate-400 italic">No tools specified yet</div>
         )}
       </div>
 
@@ -133,7 +133,7 @@ const AgentPreview = ({ preview, onConfirm, onReset }) => {
             {preview.capabilities.map((cap, idx) => (
               <span
                 key={idx}
-                className="text-xs px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-fade-in"
+                className="text-xs px-2.5 py-1 rounded-full bg-unicorn-500/20 text-unicorn-300 border border-unicorn-500/30 animate-fade-in"
                 style={{ animationDelay: `${idx * 50}ms` }}
               >
                 {cap}
@@ -193,10 +193,10 @@ const PreviewField = ({ label, value, status, icon }) => (
         : 'bg-slate-800/50 border-slate-700'
     }`}>
       <div className="flex items-center space-x-2">
-        <div className={status === 'complete' ? 'text-emerald-400' : 'text-slate-500'}>
+        <div className={status === 'complete' ? 'text-emerald-400' : 'text-slate-400'}>
           {icon}
         </div>
-        <span className={`text-sm flex-1 ${status === 'complete' ? 'text-white font-medium' : 'text-slate-500'}`}>
+        <span className={`text-sm flex-1 ${status === 'complete' ? 'text-white font-medium' : 'text-slate-400'}`}>
           {value || <span className="italic">Pending...</span>}
         </span>
         {status === 'complete' && (

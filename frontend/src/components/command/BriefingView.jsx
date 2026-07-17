@@ -123,9 +123,9 @@ export default function BriefingView({ tree, onPromote }) {
       {/* Response grid */}
       <div className="flex-1 overflow-y-auto p-3">
         {recipients.length === 0 ? (
-          <div className="mt-10 text-center text-sm text-slate-500">No agents match this group.</div>
+          <div className="mt-10 text-center text-sm text-slate-400">No agents match this group.</div>
         ) : round === 0 ? (
-          <div className="mt-10 text-center text-sm text-slate-500">
+          <div className="mt-10 text-center text-sm text-slate-400">
             Pick a group, write one prompt, and brief them all at once — every answer streams in below.
           </div>
         ) : (

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Settings } from 'lucide-react';
+import Modal from './ui/Modal';
 
 const ToolConfigModal = ({ tool, config, onSave, onClose }) => {
   const [formData, setFormData] = useState({});
@@ -99,8 +100,14 @@ const ToolConfigModal = ({ tool, config, onSave, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
+    <Modal
+      isOpen
+      onClose={onClose}
+      ariaLabel={`Configure ${tool.name}`}
+      showClose={false}
+      closeOnBackdrop={false}
+      panelClassName="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col focus:outline-none"
+    >
         {/* Header */}
         <div className="p-6 border-b border-slate-700 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -114,6 +121,7 @@ const ToolConfigModal = ({ tool, config, onSave, onClose }) => {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-2 rounded-lg hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -130,7 +138,7 @@ const ToolConfigModal = ({ tool, config, onSave, onClose }) => {
                 </label>
                 {renderField(key, field)}
                 {field.help && (
-                  <p className="text-xs text-slate-500 mt-1">{field.help}</p>
+                  <p className="text-xs text-slate-400 mt-1">{field.help}</p>
                 )}
               </div>
             ))
@@ -156,8 +164,7 @@ const ToolConfigModal = ({ tool, config, onSave, onClose }) => {
             Cancel
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 

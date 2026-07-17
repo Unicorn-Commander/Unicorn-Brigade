@@ -51,7 +51,7 @@ const AgentSelector = ({ selectedAgent, onSelectAgent }) => {
 
       {/* Search */}
       <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" />
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
         <input
           type="text"
           value={searchTerm}
@@ -86,7 +86,7 @@ const AgentSelector = ({ selectedAgent, onSelectAgent }) => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{agent.name}</p>
-                  <p className="text-xs text-slate-500">{agent.domain}</p>
+                  <p className="text-xs text-slate-400">{agent.domain}</p>
                 </div>
               </div>
             </button>

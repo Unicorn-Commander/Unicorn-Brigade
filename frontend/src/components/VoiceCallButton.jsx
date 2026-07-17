@@ -85,10 +85,10 @@ const VoiceCallButton = ({
     }
 
     if (isDisabled) {
-      return 'bg-slate-700/50 text-slate-500 cursor-not-allowed';
+      return 'bg-slate-700/50 text-slate-400 cursor-not-allowed';
     }
 
-    return 'bg-slate-800/60 hover:bg-purple-600 text-slate-300 hover:text-white border border-slate-700/50 hover:border-purple-500/50';
+    return 'bg-slate-800/60 hover:bg-unicorn-600 text-slate-300 hover:text-white border border-slate-700/50 hover:border-unicorn-500/50';
   };
 
   const getTooltipMessage = () => {

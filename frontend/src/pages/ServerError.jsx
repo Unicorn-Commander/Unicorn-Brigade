@@ -55,7 +55,7 @@ export default function ServerError() {
 
           <Link
             to="/dashboard"
-            className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-colors flex items-center justify-center space-x-2"
+            className="px-6 py-3 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-colors flex items-center justify-center space-x-2"
           >
             <Home className="w-5 h-5" />
             <span>Go to Dashboard</span>

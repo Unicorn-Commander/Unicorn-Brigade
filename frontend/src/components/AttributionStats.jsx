@@ -88,7 +88,7 @@ const SimpleBarChart = ({ data }) => {
               initial={{ width: 0 }}
               animate={{ width: `${(item.value / maxValue) * 100}%` }}
               transition={{ duration: 0.5, delay: index * 0.05 }}
-              className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"
+              className="h-full bg-gradient-to-r from-unicorn-600 to-unicorn-500 rounded-full"
             />
           </div>
         </div>
@@ -150,7 +150,7 @@ const AttributionStats = ({ statistics }) => {
     return (
       <div className="text-center py-12">
         <BarChart3 className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-        <p className="text-slate-500">No statistics available</p>
+        <p className="text-slate-400">No statistics available</p>
       </div>
     );
   }
@@ -168,13 +168,13 @@ const AttributionStats = ({ statistics }) => {
         >
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-slate-500 mb-1">Total Lines</p>
-              <p className="text-2xl font-bold text-purple-400">
+              <p className="text-xs text-slate-400 mb-1">Total Lines</p>
+              <p className="text-2xl font-bold text-unicorn-400">
                 {(statistics.total_lines || 0).toLocaleString()}
               </p>
             </div>
-            <div className="p-2 bg-purple-500/20 rounded-lg">
-              <FileCode className="w-5 h-5 text-purple-400" />
+            <div className="p-2 bg-unicorn-500/20 rounded-lg">
+              <FileCode className="w-5 h-5 text-unicorn-400" />
             </div>
           </div>
           <div className="flex items-center gap-1 mt-2 text-xs text-emerald-400">
@@ -192,16 +192,16 @@ const AttributionStats = ({ statistics }) => {
         >
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-slate-500 mb-1">Files Modified</p>
-              <p className="text-2xl font-bold text-pink-400">
+              <p className="text-xs text-slate-400 mb-1">Files Modified</p>
+              <p className="text-2xl font-bold text-unicorn-400">
                 {(statistics.total_files || 0).toLocaleString()}
               </p>
             </div>
-            <div className="p-2 bg-pink-500/20 rounded-lg">
-              <FileCode className="w-5 h-5 text-pink-400" />
+            <div className="p-2 bg-unicorn-500/20 rounded-lg">
+              <FileCode className="w-5 h-5 text-unicorn-400" />
             </div>
           </div>
-          <div className="flex items-center gap-1 mt-2 text-xs text-slate-500">
+          <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
             <Activity className="w-3 h-3" />
             <span>Unique files</span>
           </div>
@@ -216,7 +216,7 @@ const AttributionStats = ({ statistics }) => {
         >
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-slate-500 mb-1">Active Agents</p>
+              <p className="text-xs text-slate-400 mb-1">Active Agents</p>
               <p className="text-2xl font-bold text-blue-400">
                 {(statistics.total_agents || 0).toLocaleString()}
               </p>
@@ -225,7 +225,7 @@ const AttributionStats = ({ statistics }) => {
               <User className="w-5 h-5 text-blue-400" />
             </div>
           </div>
-          <div className="flex items-center gap-1 mt-2 text-xs text-slate-500">
+          <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
             <Activity className="w-3 h-3" />
             <span>Contributing agents</span>
           </div>
@@ -240,7 +240,7 @@ const AttributionStats = ({ statistics }) => {
         >
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-slate-500 mb-1">Models Used</p>
+              <p className="text-xs text-slate-400 mb-1">Models Used</p>
               <p className="text-2xl font-bold text-emerald-400">
                 {(statistics.total_models || 0).toLocaleString()}
               </p>
@@ -249,7 +249,7 @@ const AttributionStats = ({ statistics }) => {
               <Sparkles className="w-5 h-5 text-emerald-400" />
             </div>
           </div>
-          <div className="flex items-center gap-1 mt-2 text-xs text-slate-500">
+          <div className="flex items-center gap-1 mt-2 text-xs text-slate-400">
             <Activity className="w-3 h-3" />
             <span>Different models</span>
           </div>
@@ -266,7 +266,7 @@ const AttributionStats = ({ statistics }) => {
           className="card"
         >
           <div className="flex items-center gap-2 mb-4">
-            <PieChart className="w-5 h-5 text-purple-400" />
+            <PieChart className="w-5 h-5 text-unicorn-400" />
             <h3 className="text-lg font-semibold text-slate-200">
               Model Usage
             </h3>
@@ -293,7 +293,7 @@ const AttributionStats = ({ statistics }) => {
                       <p className="text-xs text-slate-300 truncate">
                         {item.name}
                       </p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-400">
                         {item.value} lines
                       </p>
                     </div>
@@ -302,7 +302,7 @@ const AttributionStats = ({ statistics }) => {
               </div>
             </div>
           ) : (
-            <div className="text-center py-8 text-slate-500 text-sm">
+            <div className="text-center py-8 text-slate-400 text-sm">
               No model data available
             </div>
           )}
@@ -316,7 +316,7 @@ const AttributionStats = ({ statistics }) => {
           className="card"
         >
           <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="w-5 h-5 text-pink-400" />
+            <BarChart3 className="w-5 h-5 text-unicorn-400" />
             <h3 className="text-lg font-semibold text-slate-200">
               Most Active Agents
             </h3>
@@ -325,7 +325,7 @@ const AttributionStats = ({ statistics }) => {
           {agentData.length > 0 ? (
             <SimpleBarChart data={agentData} />
           ) : (
-            <div className="text-center py-8 text-slate-500 text-sm">
+            <div className="text-center py-8 text-slate-400 text-sm">
               No agent data available
             </div>
           )}
@@ -349,7 +349,7 @@ const AttributionStats = ({ statistics }) => {
         {fileData.length > 0 ? (
           <SimpleBarChart data={fileData} />
         ) : (
-          <div className="text-center py-8 text-slate-500 text-sm">
+          <div className="text-center py-8 text-slate-400 text-sm">
             No file data available
           </div>
         )}

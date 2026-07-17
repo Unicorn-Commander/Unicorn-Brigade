@@ -84,7 +84,7 @@ const UpgradePrompt = ({
   if (loading) {
     return (
       <div className="flex items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-unicorn-600"></div>
       </div>
     );
   }
@@ -94,10 +94,10 @@ const UpgradePrompt = ({
   // Inline version (compact banner)
   if (inline) {
     return (
-      <div className={`bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-4 ${className}`}>
+      <div className={`bg-gradient-to-r from-unicorn-50 to-unicorn-50 border border-unicorn-200 rounded-lg p-4 ${className}`}>
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 mt-0.5">
-            <Lock className="h-5 w-5 text-purple-600" />
+            <Lock className="h-5 w-5 text-unicorn-600" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900">
@@ -114,7 +114,7 @@ const UpgradePrompt = ({
           </div>
           <button
             onClick={handleUpgrade}
-            className="flex-shrink-0 inline-flex items-center gap-1 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+            className="flex-shrink-0 inline-flex items-center gap-1 px-4 py-2 bg-unicorn-600 text-white text-sm font-medium rounded-lg hover:bg-unicorn-700 transition-colors"
           >
             Upgrade
             <ArrowRight size={14} />
@@ -156,14 +156,14 @@ const UpgradePrompt = ({
             )}
 
             {/* Header */}
-            <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-6 rounded-t-2xl text-white">
+            <div className="bg-gradient-to-r from-unicorn-600 to-unicorn-500 p-6 rounded-t-2xl text-white">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-white/20 rounded-full">
                   <Sparkles size={24} />
                 </div>
                 <div>
                   <h3 className="text-xl font-bold">Unlock Premium Features</h3>
-                  <p className="text-purple-100 text-sm mt-1">
+                  <p className="text-unicorn-100 text-sm mt-1">
                     Upgrade to access this feature
                   </p>
                 </div>
@@ -222,7 +222,7 @@ const UpgradePrompt = ({
               )}
               <button
                 onClick={handleUpgrade}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white font-medium rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-all flex items-center justify-center gap-2"
               >
                 Upgrade Now
                 <ArrowRight size={16} />

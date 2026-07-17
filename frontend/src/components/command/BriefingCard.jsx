@@ -77,7 +77,7 @@ export default function BriefingCard({ agent, prompt, round, onPromote, onStatus
         <AgentAvatar agent={agent} size={28} rounded="rounded-lg" status={status} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold text-white">{agent.displayName || agent.name}</div>
-          <div className={`truncate text-[11px] ${active ? 'text-unicorn-200' : 'text-slate-500'}`}>{label}</div>
+          <div className={`truncate text-[11px] ${active ? 'text-unicorn-200' : 'text-slate-400'}`}>{label}</div>
         </div>
         {!active && fired.current > 0 && (
           <button
@@ -116,7 +116,7 @@ export default function BriefingCard({ agent, prompt, round, onPromote, onStatus
             <Loader2 className="h-3 w-3 animate-spin" /> thinking…
           </div>
         ) : (
-          <p className="text-xs text-slate-500">{agent.bio || agent.title || 'Awaiting the briefing.'}</p>
+          <p className="text-xs text-slate-400">{agent.bio || agent.title || 'Awaiting the briefing.'}</p>
         )}
       </div>
     </div>

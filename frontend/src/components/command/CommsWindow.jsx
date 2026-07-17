@@ -97,7 +97,7 @@ function CommsWindow({ win, onFocus, onMinimize, onClose, onPromote, onDrag }) {
 
       {/* Per-window model override */}
       <div className="flex items-center gap-1.5 border-b border-slate-800 bg-slate-900/50 px-2 py-1">
-        <Cpu className="h-3 w-3 shrink-0 text-slate-500" />
+        <Cpu className="h-3 w-3 shrink-0 text-slate-400" />
         <select
           value={win.model || ''}
           onChange={(e) => setModel(agent.id, e.target.value)}

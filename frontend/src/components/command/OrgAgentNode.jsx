@@ -20,12 +20,12 @@ const domainRing = {
   orchestration: 'ring-yellow-300/80',
   investigation: 'ring-orange-400/70',
   intelligence: 'ring-indigo-400/70',
-  meta: 'ring-fuchsia-400/70',
+  meta: 'ring-unicorn-400/70',
   sales: 'ring-emerald-400/70',
   data: 'ring-sky-400/70',
   knowledge: 'ring-violet-400/70',
   productivity: 'ring-teal-400/70',
-  support: 'ring-pink-400/70',
+  support: 'ring-unicorn-400/70',
   default: 'ring-slate-500/60',
 };
 
@@ -130,7 +130,7 @@ function OrgAgentNodeBase({ data }) {
         </div>
         {agent.model && (
           <div className="mt-2 text-[11px]">
-            <span className="text-slate-500">Model: </span>
+            <span className="text-slate-400">Model: </span>
             <span className="text-cyan-300">{agent.model}</span>
             <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] leading-none ${tierChip}`}>{tier}</span>
           </div>

@@ -256,7 +256,7 @@ const AgentConfigurationTab = ({ agent, editMode, onUpdate }) => {
                       </span>
                     ))
                   ) : (
-                    <p className="text-sm text-slate-500 italic">No stop sequences defined</p>
+                    <p className="text-sm text-slate-400 italic">No stop sequences defined</p>
                   )}
                 </div>
               )}

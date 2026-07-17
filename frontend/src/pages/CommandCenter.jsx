@@ -182,7 +182,7 @@ export default function CommandCenter() {
     <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden lg:h-[100dvh]">
       {/* HUD header */}
       <div className="flex items-center gap-3 border-b border-slate-800 px-6 py-3.5">
-        <div className="rounded-xl border border-unicorn-500/30 bg-gradient-to-br from-unicorn-500/30 to-purple-600/20 p-2">
+        <div className="rounded-xl border border-unicorn-500/30 bg-gradient-to-br from-unicorn-500/30 to-unicorn-600/20 p-2">
           <Network className="h-5 w-5 text-unicorn-300" />
         </div>
         <div>
@@ -254,7 +254,7 @@ export default function CommandCenter() {
             </button>
           </div>
         ) : loading && !agents.length ? (
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-400">
             <Loader2 className="h-5 w-5 animate-spin" /> Loading the Brigade…
           </div>
         ) : view === 'chart' ? (
@@ -293,7 +293,7 @@ export default function CommandCenter() {
         ) : view === 'graph3d' ? (
           <Suspense
             fallback={
-              <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+              <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-400">
                 <Loader2 className="h-5 w-5 animate-spin" /> Loading 3D comms graph…
               </div>
             }

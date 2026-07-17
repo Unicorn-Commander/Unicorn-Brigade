@@ -62,7 +62,7 @@ const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
       className={`
-        card hover:border-purple-500/30 transition-all cursor-pointer group
+        card hover:border-unicorn-500/30 transition-all cursor-pointer group
         ${compact ? 'p-3' : 'p-4'}
       `}
       onClick={handleClick}
@@ -72,12 +72,12 @@ const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
         <div className="flex-1 min-w-0">
           {/* File Info */}
           <div className="flex items-center gap-2 mb-2">
-            <FileCode className="w-4 h-4 text-purple-400 flex-shrink-0" />
+            <FileCode className="w-4 h-4 text-unicorn-400 flex-shrink-0" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-slate-200 truncate">
                 {getFileName(attribution.file_path)}
               </p>
-              <p className="text-xs text-slate-500 truncate">
+              <p className="text-xs text-slate-400 truncate">
                 {getFilePath(attribution.file_path)}
               </p>
             </div>
@@ -101,7 +101,7 @@ const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
           <span className="badge badge-purple text-xs">
             {attribution.lines_count} lines
           </span>
-          <div className="flex items-center gap-1 text-xs text-slate-500">
+          <div className="flex items-center gap-1 text-xs text-slate-400">
             <Clock className="w-3 h-3" />
             {formatTime(attribution.timestamp)}
           </div>
@@ -111,7 +111,7 @@ const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
       {!compact && (
         <>
           {/* Date */}
-          <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-500">
+          <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-400">
             <Calendar className="w-3 h-3" />
             {formatDate(attribution.timestamp)}
           </div>
@@ -128,7 +128,7 @@ const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
           {/* Line Range */}
           {attribution.start_line && attribution.end_line && (
             <div className="flex items-center gap-2 mt-3 text-xs">
-              <GitCommit className="w-3 h-3 text-slate-500" />
+              <GitCommit className="w-3 h-3 text-slate-400" />
               <span className="text-slate-400">
                 Lines {attribution.start_line}-{attribution.end_line}
               </span>
@@ -136,7 +136,7 @@ const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
           )}
 
           {/* Expand Indicator */}
-          <div className="flex items-center justify-end mt-3 text-xs text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center justify-end mt-3 text-xs text-unicorn-400 opacity-0 group-hover:opacity-100 transition-opacity">
             <span>View details</span>
             <ChevronRight className="w-3 h-3 ml-1" />
           </div>
