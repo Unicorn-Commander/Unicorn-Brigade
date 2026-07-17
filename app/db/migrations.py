@@ -25,7 +25,9 @@ from sqlalchemy import text
 logger = logging.getLogger(__name__)
 
 # (version, description, sql). Append-only. Statements run in order, each once
-# per DB. Postgres dialect (Brigade runs on Postgres/asyncpg).
+# per DB. Postgres dialect (Brigade runs on Postgres/asyncpg). ``sql`` may be a
+# string of semicolon-separated simple statements, or an explicit list when a
+# statement contains internal semicolons (functions/policies).
 MIGRATIONS = [
     (
         "20260624_01_agent_value_billing",
@@ -168,6 +170,256 @@ MIGRATIONS = [
         CREATE UNIQUE INDEX IF NOT EXISTS ix_users_keycloak_id ON users (keycloak_id);
         """,
     ),
+    (
+        "20260626_01_org_tenancy_rls",
+        "Organization tenancy substrate, org_id backfill, and RLS policies",
+        [
+            """
+            CREATE OR REPLACE FUNCTION current_org_id() RETURNS uuid
+            LANGUAGE sql STABLE
+            AS $$ SELECT nullif(current_setting('app.current_org_id', true), '')::uuid $$
+            """,
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'brigade_app') THEN
+                    CREATE ROLE brigade_app NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+                ELSE
+                    ALTER ROLE brigade_app NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+                END IF;
+            END $$;
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS organizations (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                name varchar(255) NOT NULL,
+                slug varchar(255) NOT NULL UNIQUE,
+                plan_tier varchar(50) NOT NULL DEFAULT 'free',
+                api_calls_limit integer NOT NULL DEFAULT 0,
+                metadata json DEFAULT '{}'::json,
+                created_at timestamptz NOT NULL DEFAULT now(),
+                updated_at timestamptz NOT NULL DEFAULT now()
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS org_memberships (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role varchar(50) NOT NULL DEFAULT 'owner',
+                created_at timestamptz NOT NULL DEFAULT now(),
+                CONSTRAINT uq_org_memberships_org_user UNIQUE (org_id, user_id)
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_org_memberships_user_id ON org_memberships(user_id)",
+            "CREATE INDEX IF NOT EXISTS ix_org_memberships_org_id ON org_memberships(org_id)",
+            """
+            INSERT INTO organizations (name, slug, plan_tier, api_calls_limit, metadata)
+            VALUES ('Early Access', 'early-access', 'free', 0, '{"bootstrap": true}'::json)
+            ON CONFLICT (slug) DO NOTHING
+            """,
+            """
+            INSERT INTO org_memberships (org_id, user_id, role)
+            SELECT o.id, u.id, 'owner'
+            FROM organizations o
+            CROSS JOIN users u
+            WHERE o.slug = 'early-access'
+            ON CONFLICT (org_id, user_id) DO NOTHING
+            """,
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS org_id uuid",
+            "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS org_id uuid",
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS org_id uuid",
+            "ALTER TABLE builder_sessions ADD COLUMN IF NOT EXISTS org_id uuid",
+            "ALTER TABLE tool_executions ADD COLUMN IF NOT EXISTS org_id uuid",
+            "ALTER TABLE speaker_profiles ADD COLUMN IF NOT EXISTS org_id uuid",
+            "ALTER TABLE code_attributions ADD COLUMN IF NOT EXISTS org_id uuid",
+            "ALTER TABLE scheduled_runs ADD COLUMN IF NOT EXISTS org_id uuid",
+            "ALTER TABLE scheduled_run_history ADD COLUMN IF NOT EXISTS org_id uuid",
+            """
+            UPDATE conversations
+            SET org_id = (SELECT id FROM organizations WHERE slug = 'early-access')
+            WHERE org_id IS NULL
+            """,
+            """
+            UPDATE messages m
+            SET org_id = c.org_id
+            FROM conversations c
+            WHERE m.conversation_id = c.id AND m.org_id IS NULL
+            """,
+            """
+            UPDATE builder_sessions
+            SET org_id = (SELECT id FROM organizations WHERE slug = 'early-access')
+            WHERE org_id IS NULL
+            """,
+            """
+            UPDATE tool_executions te
+            SET org_id = COALESCE(
+                (SELECT c.org_id FROM conversations c WHERE c.id = te.conversation_id),
+                (SELECT id FROM organizations WHERE slug = 'early-access')
+            )
+            WHERE te.org_id IS NULL
+            """,
+            """
+            UPDATE speaker_profiles sp
+            SET org_id = COALESCE(
+                (SELECT om.org_id FROM org_memberships om WHERE om.user_id = sp.user_id LIMIT 1),
+                (SELECT id FROM organizations WHERE slug = 'early-access')
+            )
+            WHERE sp.org_id IS NULL
+            """,
+            """
+            UPDATE code_attributions
+            SET org_id = (SELECT id FROM organizations WHERE slug = 'early-access')
+            WHERE org_id IS NULL
+            """,
+            """
+            UPDATE scheduled_runs sr
+            SET org_id = COALESCE(
+                (SELECT om.org_id FROM org_memberships om WHERE om.user_id = sr.owner_user_id LIMIT 1),
+                (SELECT id FROM organizations WHERE slug = 'early-access')
+            )
+            WHERE sr.org_id IS NULL
+            """,
+            """
+            UPDATE scheduled_run_history h
+            SET org_id = COALESCE(
+                (SELECT sr.org_id FROM scheduled_runs sr WHERE sr.id = h.scheduled_run_id),
+                (SELECT id FROM organizations WHERE slug = 'early-access')
+            )
+            WHERE h.org_id IS NULL
+            """,
+            "ALTER TABLE conversations ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE messages ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE builder_sessions ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE tool_executions ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE speaker_profiles ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE code_attributions ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE scheduled_runs ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE scheduled_run_history ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE conversations ALTER COLUMN org_id SET NOT NULL",
+            "ALTER TABLE messages ALTER COLUMN org_id SET NOT NULL",
+            "ALTER TABLE builder_sessions ALTER COLUMN org_id SET NOT NULL",
+            "ALTER TABLE tool_executions ALTER COLUMN org_id SET NOT NULL",
+            "ALTER TABLE speaker_profiles ALTER COLUMN org_id SET NOT NULL",
+            "ALTER TABLE code_attributions ALTER COLUMN org_id SET NOT NULL",
+            "ALTER TABLE scheduled_runs ALTER COLUMN org_id SET NOT NULL",
+            "ALTER TABLE scheduled_run_history ALTER COLUMN org_id SET NOT NULL",
+            "CREATE INDEX IF NOT EXISTS ix_agents_org_id ON agents(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_conversations_org_id ON conversations(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_messages_org_id ON messages(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_builder_sessions_org_id ON builder_sessions(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tool_executions_org_id ON tool_executions(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_speaker_profiles_org_id ON speaker_profiles(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_code_attributions_org_id ON code_attributions(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_scheduled_runs_org_id ON scheduled_runs(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_scheduled_run_history_org_id ON scheduled_run_history(org_id)",
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_conversations_org_id_organizations') THEN
+                    ALTER TABLE conversations ADD CONSTRAINT fk_conversations_org_id_organizations FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_messages_org_id_organizations') THEN
+                    ALTER TABLE messages ADD CONSTRAINT fk_messages_org_id_organizations FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_builder_sessions_org_id_organizations') THEN
+                    ALTER TABLE builder_sessions ADD CONSTRAINT fk_builder_sessions_org_id_organizations FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_tool_executions_org_id_organizations') THEN
+                    ALTER TABLE tool_executions ADD CONSTRAINT fk_tool_executions_org_id_organizations FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_speaker_profiles_org_id_organizations') THEN
+                    ALTER TABLE speaker_profiles ADD CONSTRAINT fk_speaker_profiles_org_id_organizations FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_code_attributions_org_id_organizations') THEN
+                    ALTER TABLE code_attributions ADD CONSTRAINT fk_code_attributions_org_id_organizations FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_scheduled_runs_org_id_organizations') THEN
+                    ALTER TABLE scheduled_runs ADD CONSTRAINT fk_scheduled_runs_org_id_organizations FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_scheduled_run_history_org_id_organizations') THEN
+                    ALTER TABLE scheduled_run_history ADD CONSTRAINT fk_scheduled_run_history_org_id_organizations FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_agents_org_id_organizations') THEN
+                    ALTER TABLE agents ADD CONSTRAINT fk_agents_org_id_organizations FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
+                END IF;
+            END $$;
+            """,
+            "ALTER TABLE conversations ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE messages ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE builder_sessions ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE tool_executions ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE speaker_profiles ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE code_attributions ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE scheduled_runs ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE scheduled_run_history ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE conversations FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE messages FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE builder_sessions FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE tool_executions FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE speaker_profiles FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE code_attributions FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE scheduled_runs FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE scheduled_run_history FORCE ROW LEVEL SECURITY",
+            "DROP POLICY IF EXISTS conversations_org_isolation ON conversations",
+            "CREATE POLICY conversations_org_isolation ON conversations USING (org_id = current_org_id()) WITH CHECK (org_id = current_org_id())",
+            "DROP POLICY IF EXISTS messages_org_isolation ON messages",
+            """
+            CREATE POLICY messages_org_isolation ON messages
+            USING (org_id = current_org_id())
+            WITH CHECK (
+                org_id = current_org_id()
+                AND EXISTS (
+                    SELECT 1 FROM conversations c
+                    WHERE c.id = messages.conversation_id
+                    AND c.org_id = current_org_id()
+                )
+            )
+            """,
+            "DROP POLICY IF EXISTS builder_sessions_org_isolation ON builder_sessions",
+            "CREATE POLICY builder_sessions_org_isolation ON builder_sessions USING (org_id = current_org_id()) WITH CHECK (org_id = current_org_id())",
+            "DROP POLICY IF EXISTS tool_executions_org_isolation ON tool_executions",
+            """
+            CREATE POLICY tool_executions_org_isolation ON tool_executions
+            USING (org_id = current_org_id())
+            WITH CHECK (
+                org_id = current_org_id()
+                AND (
+                    conversation_id IS NULL
+                    OR EXISTS (
+                        SELECT 1 FROM conversations c
+                        WHERE c.id = tool_executions.conversation_id
+                        AND c.org_id = current_org_id()
+                    )
+                )
+            )
+            """,
+            "DROP POLICY IF EXISTS speaker_profiles_org_isolation ON speaker_profiles",
+            "CREATE POLICY speaker_profiles_org_isolation ON speaker_profiles USING (org_id = current_org_id()) WITH CHECK (org_id = current_org_id())",
+            "DROP POLICY IF EXISTS code_attributions_org_isolation ON code_attributions",
+            "CREATE POLICY code_attributions_org_isolation ON code_attributions USING (org_id = current_org_id()) WITH CHECK (org_id = current_org_id())",
+            "DROP POLICY IF EXISTS scheduled_runs_org_isolation ON scheduled_runs",
+            "CREATE POLICY scheduled_runs_org_isolation ON scheduled_runs USING (org_id = current_org_id()) WITH CHECK (org_id = current_org_id())",
+            "DROP POLICY IF EXISTS scheduled_run_history_org_isolation ON scheduled_run_history",
+            """
+            CREATE POLICY scheduled_run_history_org_isolation ON scheduled_run_history
+            USING (org_id = current_org_id())
+            WITH CHECK (
+                org_id = current_org_id()
+                AND EXISTS (
+                    SELECT 1 FROM scheduled_runs sr
+                    WHERE sr.id = scheduled_run_history.scheduled_run_id
+                    AND sr.org_id = current_org_id()
+                )
+            )
+            """,
+            "GRANT USAGE ON SCHEMA public TO brigade_app",
+            "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO brigade_app",
+            "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO brigade_app",
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO brigade_app",
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO brigade_app",
+        ],
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.
@@ -279,7 +531,10 @@ async def run_additive_migrations(engine) -> None:
     for version, desc, sql in MIGRATIONS:
         if version in applied:
             continue
-        statements = [s.strip() for s in sql.split(";") if s.strip()]
+        if isinstance(sql, str):
+            statements = [s.strip() for s in sql.split(";") if s.strip()]
+        else:
+            statements = [s.strip() for s in sql if s.strip()]
         try:
             # One transaction per migration so a failure can't half-apply others.
             async with engine.begin() as conn:

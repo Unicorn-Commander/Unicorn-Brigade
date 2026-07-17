@@ -29,14 +29,29 @@ from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import select
+from sqlalchemy import select, text
 
-from app.db.database import async_session
+# BR-1.2/BR-1.3: the scheduler is a trusted CROSS-TENANT dispatcher — it enumerates
+# and fires jobs across EVERY org. It therefore uses the admin/owner-bound session
+# factory (RLS-exempt), because the runtime app-role session with no bound
+# ``app.current_org_id`` and FORCE ROW LEVEL SECURITY would hide every row and the
+# scheduler would load zero jobs. It still binds the per-job org GUC (``_bind_org``)
+# before writing history so each write is attributed to the correct org and the
+# same set_config path is exercised. Requires the admin role to be superuser or
+# BYPASSRLS (it is the owner/migration role).
+from app.db.database import admin_session
 from app.db.models import Agent, ScheduledRun, ScheduledRunHistory
 from app.llm.tool_resolver import get_tools_for_agent
 from app.llm.ops_center_client import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
+
+
+async def _bind_org(session, org_id) -> None:
+    await session.execute(
+        text("SELECT set_config('app.current_org_id', :org_id, false)"),
+        {"org_id": str(org_id)},
+    )
 
 
 def _parse_cron(expr: str, tz: str = "UTC") -> CronTrigger:
@@ -85,7 +100,7 @@ class BrigadeScheduler:
         """Read every enabled ScheduledRun and (re)register it. Returns count."""
         if self.scheduler is None:
             return 0
-        async with async_session() as session:
+        async with admin_session() as session:
             rows = (
                 await session.execute(
                     select(ScheduledRun).where(ScheduledRun.enabled.is_(True))
@@ -148,7 +163,7 @@ class BrigadeScheduler:
         """The actual execution path, called by APScheduler or trigger_now."""
         history_id: Optional[str] = None
         try:
-            async with async_session() as session:
+            async with admin_session() as session:
                 run = await session.get(ScheduledRun, scheduled_run_id)
                 if run is None:
                     logger.warning("ScheduledRun %s vanished before fire", scheduled_run_id)
@@ -157,8 +172,10 @@ class BrigadeScheduler:
                     logger.info("ScheduledRun %s disabled, skipping", scheduled_run_id)
                     return ""
 
+                await _bind_org(session, run.org_id)
                 history = ScheduledRunHistory(
                     scheduled_run_id=run.id,
+                    org_id=run.org_id,
                     started_at=datetime.utcnow(),
                     status="running",
                 )
@@ -285,7 +302,14 @@ class BrigadeScheduler:
         error: Optional[str] = None,
         tool_calls_count: int = 0,
     ) -> None:
-        async with async_session() as session:
+        async with admin_session() as session:
+            org_id = (
+                await session.execute(
+                    select(ScheduledRunHistory.org_id).where(ScheduledRunHistory.id == history_id)
+                )
+            ).scalar_one_or_none()
+            if org_id is not None:
+                await _bind_org(session, org_id)
             row = await session.get(ScheduledRunHistory, history_id)
             if row is None:
                 return
@@ -299,7 +323,12 @@ class BrigadeScheduler:
     async def _update_run_status(
         self, run_id: str, status: str, summary: Optional[str]
     ) -> None:
-        async with async_session() as session:
+        async with admin_session() as session:
+            org_id = (
+                await session.execute(select(ScheduledRun.org_id).where(ScheduledRun.id == run_id))
+            ).scalar_one_or_none()
+            if org_id is not None:
+                await _bind_org(session, org_id)
             run = await session.get(ScheduledRun, run_id)
             if run is None:
                 return

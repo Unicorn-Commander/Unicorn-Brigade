@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, String, Text, Float, Integer, Boolean, DateTime,
-    ForeignKey, JSON, Index
+    ForeignKey, JSON, Index, UniqueConstraint, text
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -42,6 +42,7 @@ class Agent(Base):
     temperature = Column(Float, default=0.7)
     max_tokens = Column(Integer, default=2000)
     tools = Column(JSON, default=list)
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     # Per-agent value-billing (additive; neutral defaults = no change to what's
     # charged today). billing_tier feeds the rate_tier dimension on the
     # agent_work event; rate_multiplier + base_price_per_call let a Lago plan
@@ -71,6 +72,7 @@ class Agent(Base):
     __table_args__ = (
         Index("ix_agents_domain", "domain"),
         Index("ix_agents_status", "status"),
+        Index("ix_agents_org_id", "org_id"),
     )
 
     @staticmethod
@@ -107,6 +109,7 @@ class Agent(Base):
             "temperature": self.temperature,
             "maxTokens": self.max_tokens,
             "tools": self._as_str_list(self.tools),
+            "orgId": str(self.org_id) if self.org_id else None,
             "billingTier": self.billing_tier,
             "rateMultiplier": self.rate_multiplier,
             "basePricePerCall": self.base_price_per_call,
@@ -149,12 +152,58 @@ class ToolCatalog(Base):
         }
 
 
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(255), unique=True, nullable=False)
+    plan_tier = Column(String(50), nullable=False, server_default="free", default="free")
+    api_calls_limit = Column(Integer, nullable=False, server_default="0", default=0)
+    metadata_ = Column("metadata", JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    memberships = relationship("OrgMembership", back_populates="organization", cascade="all, delete-orphan")
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "name": self.name,
+            "slug": self.slug,
+            "planTier": self.plan_tier,
+            "apiCallsLimit": self.api_calls_limit,
+            "metadata": self.metadata_ or {},
+            "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() + "Z" if self.updated_at else None,
+        }
+
+
+class OrgMembership(Base):
+    __tablename__ = "org_memberships"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String(50), nullable=False, server_default="owner", default="owner")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="memberships")
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "user_id", name="uq_org_memberships_org_user"),
+        Index("ix_org_memberships_user_id", "user_id"),
+        Index("ix_org_memberships_org_id", "org_id"),
+    )
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     agent_id = Column(String(255), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     user_id = Column(String(255), default="anonymous")
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, server_default=text("current_org_id()"))
     title = Column(String(500))
     model = Column(String(255))
     status = Column(String(50), default="active")
@@ -170,6 +219,7 @@ class Conversation(Base):
 
     __table_args__ = (
         Index("ix_conversations_user_id", "user_id"),
+        Index("ix_conversations_org_id", "org_id"),
         Index("ix_conversations_agent_id", "agent_id"),
         Index("ix_conversations_created_at", "created_at"),
     )
@@ -179,6 +229,7 @@ class Conversation(Base):
             "id": str(self.id),
             "agent_id": self.agent_id,
             "user_id": self.user_id,
+            "org_id": str(self.org_id) if self.org_id else None,
             "title": self.title,
             "model": self.model,
             "status": self.status,
@@ -204,6 +255,7 @@ class Message(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     conversation_id = Column(UUID(as_uuid=False), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, server_default=text("current_org_id()"))
     role = Column(String(50), nullable=False)  # user, assistant, system, tool
     content = Column(Text, nullable=False)
     model = Column(String(255))
@@ -218,12 +270,14 @@ class Message(Base):
 
     __table_args__ = (
         Index("ix_messages_conversation_id", "conversation_id"),
+        Index("ix_messages_org_id", "org_id"),
     )
 
     def to_dict(self):
         return {
             "id": str(self.id),
             "conversation_id": str(self.conversation_id),
+            "org_id": str(self.org_id) if self.org_id else None,
             "role": self.role,
             "content": self.content,
             "model": self.model,
@@ -377,6 +431,7 @@ class BuilderSession(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     user_id = Column(String(255), default="anonymous")
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, server_default=text("current_org_id()"))
     messages = Column(JSON, default=list)
     agent_config = Column(JSON)
     status = Column(String(50), default="in_progress")  # in_progress, completed, abandoned
@@ -387,6 +442,7 @@ class BuilderSession(Base):
         return {
             "id": str(self.id),
             "user_id": self.user_id,
+            "org_id": str(self.org_id) if self.org_id else None,
             "messages": self.messages or [],
             "agent_config": self.agent_config,
             "status": self.status,
@@ -400,6 +456,7 @@ class ToolExecution(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     conversation_id = Column(UUID(as_uuid=False), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True)
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, server_default=text("current_org_id()"))
     message_id = Column(UUID(as_uuid=False), nullable=True)
     agent_id = Column(String(255), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     tool_name = Column(String(255), nullable=False)
@@ -411,6 +468,7 @@ class ToolExecution(Base):
 
     __table_args__ = (
         Index("ix_tool_executions_conversation_id", "conversation_id"),
+        Index("ix_tool_executions_org_id", "org_id"),
         Index("ix_tool_executions_agent_id", "agent_id"),
     )
 
@@ -418,6 +476,7 @@ class ToolExecution(Base):
         return {
             "id": str(self.id),
             "conversation_id": str(self.conversation_id) if self.conversation_id else None,
+            "org_id": str(self.org_id) if self.org_id else None,
             "message_id": str(self.message_id) if self.message_id else None,
             "agent_id": self.agent_id,
             "tool_name": self.tool_name,
@@ -435,6 +494,7 @@ class SpeakerProfile(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     name = Column(String(255), nullable=False)
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, server_default=text("current_org_id()"))
     user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
     embedding = Column(JSON, nullable=False)        # 256-dim float list
     enrollment_count = Column(Integer, default=1)
@@ -444,12 +504,14 @@ class SpeakerProfile(Base):
 
     __table_args__ = (
         Index("ix_speaker_profiles_name", "name"),
+        Index("ix_speaker_profiles_org_id", "org_id"),
     )
 
     def to_dict(self):
         return {
             "id": str(self.id),
             "name": self.name,
+            "orgId": str(self.org_id) if self.org_id else None,
             "userId": str(self.user_id) if self.user_id else None,
             "embedding": self.embedding,
             "enrollmentCount": self.enrollment_count,
@@ -470,6 +532,7 @@ class CodeAttribution(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     session_id = Column(String(255), nullable=False, index=True)  # Conversation or session ID
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, server_default=text("current_org_id()"))
     agent_id = Column(String(255), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True)
     agent_name = Column(String(255), nullable=False)
     model = Column(String(255), nullable=False)
@@ -489,6 +552,7 @@ class CodeAttribution(Base):
         return {
             "id": str(self.id),
             "sessionId": self.session_id,
+            "orgId": str(self.org_id) if self.org_id else None,
             "agentId": self.agent_id,
             "agentName": self.agent_name,
             "model": self.model,
@@ -518,6 +582,7 @@ class ScheduledRun(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     name = Column(String(255), nullable=False)
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, server_default=text("current_org_id()"))
     agent_id = Column(String(255), ForeignKey("agents.id", ondelete="CASCADE"),
                       nullable=False, index=True)
     prompt = Column(Text, nullable=False)
@@ -549,6 +614,7 @@ class ScheduledRun(Base):
         return {
             "id": str(self.id),
             "name": self.name,
+            "orgId": str(self.org_id) if self.org_id else None,
             "agentId": self.agent_id,
             "prompt": self.prompt,
             "cron": self.cron,
@@ -572,6 +638,7 @@ class ScheduledRunHistory(Base):
     scheduled_run_id = Column(UUID(as_uuid=False),
                               ForeignKey("scheduled_runs.id", ondelete="CASCADE"),
                               nullable=False, index=True)
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, server_default=text("current_org_id()"))
     started_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     finished_at = Column(DateTime, nullable=True)
     status = Column(String(32), nullable=False, default="running")
@@ -585,6 +652,7 @@ class ScheduledRunHistory(Base):
         return {
             "id": str(self.id),
             "scheduledRunId": str(self.scheduled_run_id),
+            "orgId": str(self.org_id) if self.org_id else None,
             "startedAt": self.started_at.isoformat() + "Z" if self.started_at else None,
             "finishedAt": self.finished_at.isoformat() + "Z" if self.finished_at else None,
             "status": self.status,

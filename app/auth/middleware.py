@@ -21,10 +21,10 @@ from datetime import datetime
 from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.db.database import get_session
-from app.db.models import ApiKey, UserApiKey, User
+from app.db.models import ApiKey, UserApiKey, User, Organization, OrgMembership
 from app.auth.roles import (
     UserRole,
     is_admin_path,
@@ -79,6 +79,7 @@ class AuthUser:
     permissions: list = None
     user_id: Optional[str] = None  # User ID if authenticated via user API key
     email: Optional[str] = None  # User email if authenticated via user API key
+    org_id: Optional[str] = None
     auth_source: str = "api_key"  # api_key | keycloak | session | bypass | public
     # Legacy pre-BR-1.1 identity key: the Keycloak ``sub``. BR-1.1 made
     # ``user_id`` the canonical local users.id, but per-user AGENT MEMORY groups
@@ -378,10 +379,20 @@ async def resolve_canonical_user_id(session, kc_sub, email, derived_apps, realm_
 async def _resolve_and_sync_keycloak_user(email, kc_sub, derived_apps, realm_role):
     """Open a session and resolve the canonical local ``users.id`` for a
     Keycloak principal. Best-effort — never breaks auth: on any failure returns
-    None and the caller falls back to the sub."""
+    None and the caller falls back to the sub.
+
+    Uses the ADMIN (owner) session, not the RLS-subject app-role session. Identity
+    resolution is trusted, pre-org, cross-tenant work: it creates/claims the global
+    ``users`` row (no org yet) and — via resolve_canonical_user_id → _remap_user_rows
+    — relabels a human's pre-cutover ``conversations``/``builder_sessions`` to their
+    canonical id. Those two tables are RLS-protected under BR-1.2, and no
+    ``app.current_org_id`` is bound this early, so on the app-role connection that
+    UPDATE would silently match zero rows and the BR-1.1 remap would quietly stop
+    working. The admin connection is RLS-exempt, so the remap still fires; it only
+    rewrites ownership (user_id), never org_id, so isolation is unaffected."""
     try:
-        from app.db.database import async_session
-        async with async_session() as s:
+        from app.db.database import admin_session
+        async with admin_session() as s:
             return await resolve_canonical_user_id(
                 s, kc_sub, email, derived_apps, realm_role
             )
@@ -530,6 +541,93 @@ async def _resolve_user(
     return None
 
 
+async def _default_org_id(session: AsyncSession) -> str:
+    result = await session.execute(
+        select(Organization).where(Organization.slug == "early-access")
+    )
+    org = result.scalar_one_or_none()
+    if org is None:
+        org = Organization(
+            name="Early Access",
+            slug="early-access",
+            plan_tier="free",
+            api_calls_limit=0,
+            metadata_={"bootstrap": True},
+        )
+        session.add(org)
+        await session.commit()
+        await session.refresh(org)
+    return str(org.id)
+
+
+async def _bind_org_context(user: AuthUser, session: AsyncSession) -> None:
+    """Resolve the user's active org and bind it into the Postgres RLS GUC
+    (``app.current_org_id``) that every org-isolation policy filters on.
+
+    BR-1.1 alignment (the whole point of building on feat/br-1.1): ``user.user_id``
+    is the CANONICAL local ``users.id`` — resolved, claimed, and provisioned by
+    ``resolve_canonical_user_id`` during auth — NOT a raw Keycloak sub. So we key
+    org membership on that canonical id and NEVER auto-provision a user row here.
+    The stale substrate looked up by email-first and minted a second
+    ``NOLOGIN-SSO-ONLY`` user on a miss, which would re-fork a human's identity by
+    auth method — exactly the bug BR-1.1 fixed. Provisioning is BR-1.1's job; this
+    function only reads the already-canonical user and maps it to an org.
+
+    Tenant model (Phase 2b): existing users were backfilled into the shared
+    ``early-access`` org by migration 20260626_01; a genuinely new user with no
+    membership yet gets a personal free org. Callers with no bound human
+    (agent/admin/service keys, or a degraded keycloak fallback whose sub matches no
+    row) fall back to the early-access org.
+    """
+    if user.auth_source == "public":
+        return
+
+    local_user = None
+    # Canonical local users.id first (set for keycloak / session / user-API-key
+    # auth; the row already exists thanks to BR-1.1 resolution).
+    if user.user_id:
+        result = await session.execute(select(User).where(User.id == user.user_id))
+        local_user = result.scalar_one_or_none()
+    # Fallback: match an existing row by email. We do NOT create one — that would
+    # re-fork identity. A miss here just means "no bound human" → early-access.
+    if local_user is None and user.email:
+        result = await session.execute(select(User).where(User.email == user.email.lower()))
+        local_user = result.scalar_one_or_none()
+
+    if local_user is None:
+        org_id = await _default_org_id(session)
+    else:
+        result = await session.execute(
+            select(OrgMembership)
+            .where(OrgMembership.user_id == local_user.id)
+            .order_by(OrgMembership.created_at.asc())
+            .limit(1)
+        )
+        membership = result.scalar_one_or_none()
+        if membership is None:
+            org = Organization(
+                name=f"{local_user.name or local_user.email}'s Brigade",
+                slug=f"personal-{local_user.id}",
+                plan_tier="free",
+                api_calls_limit=0,
+                metadata_={"personal": True},
+            )
+            session.add(org)
+            await session.flush()
+            membership = OrgMembership(org_id=org.id, user_id=local_user.id, role="owner")
+            session.add(membership)
+            await session.commit()
+            org_id = str(org.id)
+        else:
+            org_id = str(membership.org_id)
+
+    user.org_id = org_id
+    await session.execute(
+        text("SELECT set_config('app.current_org_id', :org_id, false)"),
+        {"org_id": org_id},
+    )
+
+
 async def get_current_user(
     request: Request,
     api_key: Annotated[Optional[str], Depends(api_key_header)],
@@ -566,6 +664,7 @@ async def get_current_user(
         )
 
     _enforce_early_access(user, path)
+    await _bind_org_context(user, session)
 
     # Check role authorization
     required_role = get_minimum_role_for_method(path, method)
@@ -604,7 +703,10 @@ async def get_current_user_optional(
     if AUTH_BYPASS_FLAG:
         logger.error("❌ AUTH_BYPASS=true but ENVIRONMENT!=development - IGNORING")
 
-    return await _resolve_user(request, api_key, creds, session)
+    user = await _resolve_user(request, api_key, creds, session)
+    if user is not None:
+        await _bind_org_context(user, session)
+    return user
 
 
 def require_api_key(
