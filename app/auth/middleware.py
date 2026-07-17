@@ -86,6 +86,14 @@ class AuthUser:
     # sits ON TOP OF the global ``role`` (UserRole) — a user can be a global
     # operator yet the owner of their org, or a member of someone else's.
     org_role: Optional[str] = None
+    # BR-2.4 per-key org binding (closes finding H1). The org a keyless SERVICE /
+    # AGENT API key is bound to (``api_keys.org_id``), set by ``validate_api_key``
+    # for an agent key. ``_bind_org_context`` binds the request's RLS org to THIS
+    # when the key has no human tenant, so two customers' keys are isolated instead
+    # of collapsing onto the shared 'early-access' org. None for the master-admin
+    # key, for user API keys (which resolve the human's own home org), and for
+    # legacy keys with a NULL org_id (→ early-access fallback).
+    key_org_id: Optional[str] = None
     auth_source: str = "api_key"  # api_key | keycloak | session | bypass | public
     # Legacy pre-BR-1.1 identity key: the Keycloak ``sub``. BR-1.1 made
     # ``user_id`` the canonical local users.id, but per-user AGENT MEMORY groups
@@ -237,6 +245,11 @@ async def validate_api_key(
             key_name=db_key.name,
             permissions=permissions,
             auth_source="api_key",
+            # BR-2.4 (H1 fix): carry the key's OWN org binding so _bind_org_context
+            # scopes this service/agent key to its customer's org instead of the
+            # shared 'early-access' org. None for legacy keys with a NULL org_id →
+            # they still fall back to early-access.
+            key_org_id=str(db_key.org_id) if db_key.org_id else None,
         )
 
     except Exception as e:
@@ -576,12 +589,14 @@ async def _resolve_user(
 async def _default_org_id(session: AsyncSession) -> str:
     """The shared 'early-access' bootstrap org id (created on first need).
 
-    H1 / BR-2.4: this is the SINGLE org that every keyless identity — service
-    keys, agent keys, the master-admin key — currently binds to (see the fallback
-    in ``_bind_org_context``). There is no per-key org isolation yet, so these
-    keys share one org's data. Not a regression (pre-tenancy had no isolation),
-    but multi-customer service/agent key issuance must wait for BR-2.4 to add a
-    per-key ``org_id``; until then, keys for distinct customers must not be issued.
+    H1 / BR-2.4 (CLOSED): this is now only the FALLBACK org for a keyless identity
+    that has neither a bound human NOR a per-key org binding — the master-admin key,
+    and legacy service/agent keys minted before BR-2.4 added ``api_keys.org_id``
+    (backfilled to early-access). As of BR-2.4 a NEW service/agent key carries its
+    own ``org_id`` and binds THAT here instead of this shared org (see the
+    ``key_org_id`` branch in ``_bind_org_context``), so per-customer keys are
+    isolated and multi-customer key issuance is safe. Admin cross-org reach is
+    unchanged: trusted system work runs on the RLS-exempt ``admin_session``.
     """
     result = await session.execute(
         select(Organization).where(Organization.slug == "early-access")
@@ -626,11 +641,13 @@ async def _bind_org_context(
       * ``user.org_role`` is set to the caller's per-org role in the bound org.
 
     Fallback (documented): a caller with NO bound human — the master-admin key
-    ("admin"), agent SERVICE keys, or a degraded keycloak token whose sub matches
-    no users row — has no personal org, so it binds the shared 'early-access' org
-    (``_default_org_id``). These identities are trusted service/bootstrap callers,
-    not tenants; per-service-key org scoping is BR-2.4's job. An ``X-Org-Id`` from
-    such a caller is ignored (there is no membership to validate it against).
+    ("admin"), an agent SERVICE key, or a degraded keycloak token whose sub matches
+    no users row — has no personal org. BR-2.4 (H1 CLOSED): a service/agent key
+    now binds the org named by its OWN ``api_keys.org_id`` (carried as
+    ``user.key_org_id``), so per-customer keys are isolated; only the master-admin
+    key and legacy NULL-org keys still bind the shared 'early-access' org
+    (``_default_org_id``). An ``X-Org-Id`` from such a caller is ignored (there is
+    no membership to validate it against — the key's own org_id is authoritative).
     """
     if user.auth_source == "public":
         return
@@ -648,19 +665,24 @@ async def _bind_org_context(
         local_user = result.scalar_one_or_none()
 
     if local_user is None:
-        # Keyless/service/admin/degraded identity → shared bootstrap org.
+        # Keyless/service/admin/degraded identity.
         #
-        # H1 / BR-2.4 boundary (NOT a regression): service keys, agent keys, and
-        # the master-admin key have NO bound human, so they ALL collapse onto the
-        # single shared 'early-access' org here — there is no per-KEY org_id yet.
-        # Two different service keys therefore see the SAME org's data. This is not
-        # a regression: pre-tenancy there was no isolation at all, and human tenants
-        # (keycloak/session/user-API-key) DO get their own org above. Per-key org
-        # binding is BR-2.4's job (add org_id to the ApiKey/UserApiKey records and
-        # resolve it here). Until BR-2.4 lands, issuing service/agent keys to
-        # SEPARATE customers must be GATED — a second customer's key would read the
-        # first customer's early-access rows.
-        org_id = await _default_org_id(session)
+        # H1 / BR-2.4 (CLOSED): a service/agent API key now carries its OWN org
+        # binding (``api_keys.org_id``, surfaced as ``user.key_org_id``). We bind
+        # the request's RLS org to THAT, so two customers' keys are isolated — the
+        # per-key org scoping that H1 was blocked on. This is the fix that makes
+        # multi-customer service/agent key issuance safe.
+        #
+        # The master-admin key (no ``key_org_id``) and any legacy key with a NULL
+        # org_id still fall back to the shared 'early-access' bootstrap org. Admin
+        # cross-org reach is unchanged: trusted system work (scheduler, identity
+        # remap) runs on the RLS-exempt ``admin_session``, not this per-request
+        # app-role bind — so binding the master-admin key to early-access here does
+        # not constrain it.
+        if getattr(user, "key_org_id", None):
+            org_id = user.key_org_id
+        else:
+            org_id = await _default_org_id(session)
         org_role = None
     else:
         from app.db.org_service import (

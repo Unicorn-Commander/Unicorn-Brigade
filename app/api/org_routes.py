@@ -81,8 +81,9 @@ async def _uid(session: AsyncSession, current_user: AuthUser) -> str:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "Organization operations require a user account. Service and "
-                "master-admin keys have no personal org (per-service-key org "
-                "scoping is deferred to BR-2.4)."
+                "master-admin keys authenticate a key, not a person: BR-2.4 "
+                "per-key org binding scopes their DATA isolation, but org "
+                "lifecycle (create/rename/invite) still needs a real user account."
             ),
         )
     return uid
