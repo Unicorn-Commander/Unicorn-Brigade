@@ -26,9 +26,17 @@ import os
 
 from app.db.database import get_session
 from app.db.repositories import AgentRepository
-# BR-1.4: bind the caller's org so an org-scoped agent resolves (post agents-RLS,
-# an unbound session sees only global/shared agents). Optional = no new 401.
-from app.auth.middleware import get_current_user_optional, AuthUser
+# S1 (HIGH) fix — every voice route is now authenticated. Token minting, room
+# creation, deletion and the agent-join trigger require OPERATOR; read-only
+# listing/detail/config require any valid API key or bearer (VIEWER+). Binding
+# the caller also gives us their org context (BR-1.4) so an org-scoped agent
+# resolves. NOTE (residual): ``VoiceRoom`` (app/voice/livekit_agent.py) carries
+# no owner/org field, so we cannot scope per-room *visibility* to the caller's
+# org here — that would require adding an org column to the room manager, which
+# is out of scope for this change. We therefore enforce the task's minimum:
+# verify an authenticated (operator) caller BEFORE any token is minted or a room
+# is mutated, closing the unauthenticated-access hole.
+from app.auth.middleware import require_api_key, require_operator, AuthUser
 from app.voice import VoiceRoomManager, VoiceConfig, STTProvider, TTSProvider
 
 logger = logging.getLogger(__name__)
@@ -153,7 +161,7 @@ class GetTokenRequest(BaseModel):
 async def create_voice_room(
     request: CreateRoomRequest,
     session: AsyncSession = Depends(get_session),
-    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+    _user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Create a new voice room for an agent.
@@ -214,6 +222,7 @@ async def get_participant_token(
     room_id: str,
     participant_name: str = Query(..., description="Display name for the participant"),
     ttl_seconds: int = Query(3600, description="Token TTL in seconds"),
+    _user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Get a participant token to join a voice room.
@@ -258,12 +267,16 @@ async def get_participant_token(
 async def get_participant_token_post(
     room_id: str,
     request: GetTokenRequest,
+    _user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Get a participant token to join a voice room (POST variant).
 
     Same as GET but accepts parameters in request body.
     """
+    # This handler carries its OWN auth dependency: the inner call below invokes
+    # get_participant_token as a plain function, which does NOT re-trigger that
+    # route's Depends(...), so the guard must live here too.
     return await get_participant_token(
         room_id=room_id,
         participant_name=request.participant_name,
@@ -274,6 +287,7 @@ async def get_participant_token_post(
 @router.get("/voice/rooms", response_model=Dict[str, Any])
 async def list_voice_rooms(
     agent_id: Optional[str] = Query(None, description="Filter by agent ID"),
+    _user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     List active voice rooms.
@@ -306,7 +320,10 @@ async def list_voice_rooms(
 
 
 @router.get("/voice/rooms/{room_id}", response_model=VoiceRoomResponse)
-async def get_voice_room(room_id: str):
+async def get_voice_room(
+    room_id: str,
+    _user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """
     Get details for a specific voice room.
     """
@@ -332,7 +349,10 @@ async def get_voice_room(room_id: str):
 
 
 @router.delete("/voice/rooms/{room_id}")
-async def close_voice_room(room_id: str):
+async def close_voice_room(
+    room_id: str,
+    _user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Close/end a voice room.
 
@@ -350,7 +370,9 @@ async def close_voice_room(room_id: str):
 
 
 @router.get("/voice/config", response_model=VoiceConfigResponse)
-async def get_voice_config_endpoint():
+async def get_voice_config_endpoint(
+    _user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """
     Get voice configuration options.
 
@@ -399,6 +421,12 @@ async def voice_health():
 
     Checks LiveKit connectivity and voice provider availability.
     Includes both cloud-based and self-hosted providers.
+
+    NOTE: ``/api/v1/voice/health`` is intentionally listed in
+    ``app.auth.roles.PUBLIC_PATHS`` (monitoring/liveness), so no auth dependency
+    is added here — ``get_current_user`` short-circuits public paths, which would
+    make ``require_api_key`` a no-op and ``require_operator`` a 403 for probes.
+    Changing that policy belongs in roles.py, which is out of scope for S1.
     """
     from app.voice.config import get_voice_config as get_config
     from app.voice.providers import VoiceProviderRegistry, list_available_providers
@@ -454,7 +482,7 @@ async def voice_health():
 async def trigger_agent_join(
     room_id: str,
     session: AsyncSession = Depends(get_session),
-    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+    _user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Trigger the voice agent to join a room.
