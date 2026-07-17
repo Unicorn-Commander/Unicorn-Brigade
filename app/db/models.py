@@ -4,7 +4,7 @@ SQLAlchemy ORM models for Unicorn Brigade.
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, Text, Float, Integer, Boolean, DateTime,
+    Column, String, Text, Float, Integer, BigInteger, Boolean, DateTime,
     ForeignKey, JSON, Index, UniqueConstraint, text
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -845,4 +845,123 @@ class ScheduledRunHistory(Base):
             "outputSummary": self.output_summary,
             "error": self.error,
             "toolCallsCount": self.tool_calls_count,
+        }
+
+
+class UsageEvent(Base):
+    """BR-3.1/3.4/3.8 durable per-ORG usage ledger.
+
+    Before BR-3 the ONLY metering was a best-effort fire-and-forget Lago event
+    (``app/integrations/lago.py``) keyed on the USER email as
+    ``external_customer_id`` — nothing durable, nothing per-org, and half the
+    execution paths (A2A, MCP, hierarchical, scheduled, orchestration, the
+    streaming shim) emitted no event at all. This table is the write-through
+    durable ledger every metered path now appends to (see
+    ``app/db/usage_ledger.py``): it is the source of truth for per-org usage
+    aggregation AND the substrate the per-org cap preflight (BR-3.6) sums.
+
+    Tenancy: this IS tenant data (a customer's usage must be invisible to other
+    tenants), so — UNLIKE the BR-4 system-bookkeeping tables — it carries FULL
+    RLS (ENABLE + FORCE + org-isolation policy, see the 20260720_01 migration),
+    exactly like conversations / messages / tool_executions. ``org_id`` is the
+    billing subject (BR-3.1): ``external_customer_id`` mirrors it so a row is
+    self-describing against Lago. ``user_id`` is retained for per-user
+    attribution WITHIN an org, never as the billing key. Writes come from the
+    RLS-exempt ``admin_session`` with an explicit ``org_id`` (metering can run in
+    a background task with no bound request org — mirrors execution_store), while
+    the RLS policy guarantees any request-session READER (the future usage UI)
+    only ever sees its own org.
+    """
+    __tablename__ = "usage_events"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
+                    nullable=False, server_default=text("current_org_id()"))
+    # BR-3.1: the billing subject. Stored explicitly (= org_id) so the row is
+    # self-describing and matches the Lago event's external_customer_id.
+    external_customer_id = Column(String(255), nullable=True)
+    # Per-user attribution WITHIN the org (email / users.id). NOT the billing key.
+    user_id = Column(String(255), nullable=True)
+    # 'ai_api_call' (LLM COGS) | 'agent_work' (per-agent value) | 'tool_call' | 'workflow'
+    event_type = Column(String(50), nullable=False, default="ai_api_call")
+    # Which execution path produced it: agent_chat | openai_stream | openai_passthrough |
+    # openai_dual | mlx | a2a | mcp_tool | hierarchical | scheduled_run | orchestration
+    source = Column(String(50), nullable=False, default="unknown")
+    agent_id = Column(String(255), nullable=True)
+    model = Column(String(255), nullable=True)
+    tokens = Column(Integer, nullable=False, default=0)
+    cost = Column(Float, nullable=False, default=0.0)
+    rate_tier = Column(String(50), nullable=True)
+    rate_multiplier = Column(Float, nullable=False, default=1.0)
+    outcome = Column(String(32), nullable=True)
+    # The Lago transaction_id this event was emitted under (cross-ref + dedup).
+    transaction_id = Column(String(255), nullable=True)
+    # tools_used, byok, and any other backward-compatible dimensions.
+    meta = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("ix_usage_events_org_id", "org_id"),
+        # Composite for the cap preflight's period sum (WHERE org_id AND created_at >= period_start).
+        Index("ix_usage_events_org_created", "org_id", "created_at"),
+        Index("ix_usage_events_event_type", "event_type"),
+        Index("ix_usage_events_created_at", "created_at"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "orgId": str(self.org_id) if self.org_id else None,
+            "externalCustomerId": self.external_customer_id,
+            "userId": self.user_id,
+            "eventType": self.event_type,
+            "source": self.source,
+            "agentId": self.agent_id,
+            "model": self.model,
+            "tokens": self.tokens,
+            "cost": self.cost,
+            "rateTier": self.rate_tier,
+            "rateMultiplier": self.rate_multiplier,
+            "outcome": self.outcome,
+            "transactionId": self.transaction_id,
+            "meta": self.meta or {},
+            "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
+        }
+
+
+class OrgBillingConfig(Base):
+    """BR-3.6 per-org billing configuration — the ceiling the preflight enforces.
+
+    One row per org. A NULL cap means "unlimited" (fall back to the env default
+    ``BRIGADE_DEFAULT_ORG_MONTHLY_TOKEN_CAP`` / ``..._COST_CAP``, 0/absent =
+    unlimited). ``hard_stop`` gates whether hitting the ceiling actually 402s
+    (True) or is soft/observe-only (False).
+
+    NO RLS — deliberately, and like ``organizations`` / ``api_keys``: this is a
+    config/pointer table keyed BY org, read+written by the RLS-exempt
+    ``admin_session`` in the preflight (which runs before/around a request and
+    must read an arbitrary org's cap by id, not only the bound one). It holds no
+    cross-tenant-sensitive rows — just the caps — so it stays out of the RLS
+    isolation surface (the usage_events table above is where isolation matters).
+    """
+    __tablename__ = "org_billing_config"
+
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
+                    primary_key=True)
+    monthly_token_cap = Column(BigInteger, nullable=True)   # NULL / 0 => unlimited
+    monthly_cost_cap = Column(Float, nullable=True)         # NULL / 0 => unlimited
+    hard_stop = Column(Boolean, nullable=False, default=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def to_dict(self):
+        return {
+            "orgId": str(self.org_id),
+            "monthlyTokenCap": int(self.monthly_token_cap) if self.monthly_token_cap else None,
+            "monthlyCostCap": float(self.monthly_cost_cap) if self.monthly_cost_cap else None,
+            "hardStop": bool(self.hard_stop),
+            "notes": self.notes,
+            "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() + "Z" if self.updated_at else None,
         }

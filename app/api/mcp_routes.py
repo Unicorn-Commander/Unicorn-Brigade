@@ -27,6 +27,7 @@ from app.db.database import get_session
 from app.protocols.mcp import mcp_server, MCPTool, MCPToolParameter
 from app.llm.tool_resolver import TOOL_REGISTRY, get_tool_by_name
 from app.llm.ops_center_client import ToolDefinition
+from app.integrations.metering import meter_usage
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -170,6 +171,23 @@ async def call_mcp_tool(
         name=request.name,
         arguments=request.arguments,
     )
+
+    # BR-3.4: meter the MCP tool invocation against the caller's ORG. Direct tool
+    # execution carries no LLM tokens, but the path was previously UNMETERED — a
+    # 'tool_call' event makes it attributable + visible to the per-org cap.
+    try:
+        await meter_usage(
+            org_id=getattr(admin, "org_id", None),
+            user=(getattr(admin, "email", "") or "").lower() or None,
+            source="mcp_tool",
+            event_type="tool_call",
+            tokens=0,
+            tools_used=[request.name],
+            outcome="partial" if isinstance(result, dict) and result.get("error") else "success",
+            emit_value=False,
+        )
+    except Exception as _me:
+        logger.debug(f"MCP tool meter skipped: {_me}")
 
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])

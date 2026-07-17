@@ -32,6 +32,7 @@ from app.db.database import get_session
 from app.db.repositories import AgentRepository
 from app.llm.ops_center_client import OpsCenterLLMClient
 from app.llm.tool_resolver import get_tools_for_agent
+from app.integrations.metering import meter_usage
 from app.orchestration import emit_agent_invocation
 from app.protocols.a2a import (
     AgentCard,
@@ -335,6 +336,31 @@ async def invoke_agent(
         content = llm_client.get_response_content(response)
         usage = response.get("usage", {})
         duration = time.time() - start_time
+
+        # BR-3.4: meter this A2A invocation against the CALLER'S ORG. This path
+        # calls the LLM client directly and was previously UNMETERED — no durable
+        # usage row, no Lago event, invisible to the per-org cap.
+        try:
+            _a2a_tokens = int(
+                usage.get("total_tokens")
+                or (usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0)
+                or 0
+            )
+            await meter_usage(
+                org_id=getattr(user, "org_id", None),
+                user=(getattr(user, "email", "") or request.user_id or "").lower() or None,
+                source="a2a",
+                model=(response.get("model") if isinstance(response, dict) else None) or model,
+                tokens=_a2a_tokens,
+                provider=response.get("provider") if isinstance(response, dict) else None,
+                agent_id=agent.get("id"),
+                agent_name=agent.get("displayName") or agent.get("name"),
+                agent_domain=agent.get("domain"),
+                tools_used=[t.get("name") for t in (tool_calls_log or [])] or None,
+                outcome="partial" if any(t.get("error") for t in (tool_calls_log or [])) else "success",
+            )
+        except Exception as _me:
+            logger.debug(f"A2A meter skipped: {_me}")
 
         # Build A2A response
         a2a_response = A2AInvokeResponse(

@@ -45,6 +45,7 @@ from app.db.database import admin_session, MIGRATION_DATABASE_URL
 from app.db.models import Agent, ScheduledRun, ScheduledRunHistory
 from app.llm.tool_resolver import get_tools_for_agent
 from app.llm.ops_center_client import DEFAULT_MODEL
+from app.integrations.metering import meter_usage
 from app.observability.metrics import scheduled_run_total
 from app.services.leader_election import PgAdvisoryLeaderLock, lock_key_from_name
 
@@ -389,6 +390,9 @@ class BrigadeScheduler:
                 agent_id_for_alert = agent_dict.get("id")
                 prompt = run.prompt
                 user_id = str(run.owner_user_id) if run.owner_user_id else "scheduler"
+                # BR-3.4: carry the run's org so the scheduled execution is metered
+                # against the owning tenant (this path was previously unmetered).
+                org_id_for_run = str(run.org_id) if run.org_id else None
                 timeout = max(
                     5,
                     int(run.max_runtime_seconds or DEFAULT_SCHEDULER_MAX_RUNTIME_SECONDS),
@@ -397,7 +401,7 @@ class BrigadeScheduler:
             # Execute outside the session — chat path may be slow.
             try:
                 result = await asyncio.wait_for(
-                    self._invoke_agent(agent_dict, prompt, user_id),
+                    self._invoke_agent(agent_dict, prompt, user_id, org_id_for_run),
                     timeout=timeout,
                 )
             except asyncio.TimeoutError:
@@ -443,7 +447,9 @@ class BrigadeScheduler:
                 await self._finalize(history_id, "error", error=str(e))
             return history_id or ""
 
-    async def _invoke_agent(self, agent: dict, message: str, user_id: str) -> dict:
+    async def _invoke_agent(
+        self, agent: dict, message: str, user_id: str, org_id: Optional[str] = None
+    ) -> dict:
         """Mirror of POST /api/v1/agents/{id}/chat (non-streaming, no memory)."""
         system_parts = []
         if agent.get("persona"):
@@ -515,6 +521,33 @@ class BrigadeScheduler:
             )
 
         content = self.llm_client.get_response_content(response) or ""
+
+        # BR-3.4: meter the scheduled run against its OWNING ORG. Scheduled runs
+        # call the LLM client directly (like the interactive path) and were
+        # previously UNMETERED — no durable usage row, invisible to the per-org cap.
+        try:
+            _resp = response if isinstance(response, dict) else {}
+            _usage = _resp.get("usage") or {}
+            _sched_tokens = int(
+                _usage.get("total_tokens")
+                or (_usage.get("prompt_tokens") or 0) + (_usage.get("completion_tokens") or 0)
+                or 0
+            )
+            await meter_usage(
+                org_id=org_id,
+                user=user_id if (user_id and user_id != "scheduler") else None,
+                source="scheduled_run",
+                model=_resp.get("model") or model,
+                tokens=_sched_tokens,
+                provider=_resp.get("provider"),
+                agent_id=agent.get("id"),
+                agent_name=agent.get("displayName") or agent.get("name"),
+                agent_domain=agent.get("domain"),
+                tools_used=[t.get("name") for t in (tool_calls_log or [])] or None,
+            )
+        except Exception as _me:
+            logger.debug("scheduled-run meter skipped: %s", _me)
+
         if tracer is not None:
             try:
                 tracer.log_generation(
