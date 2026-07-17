@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Bot } from 'lucide-react';
 
 // Live status -> avatar expression-variant suffix. Agents whose variants exist
 // visibly react as they work; anything without a variant falls back to primary.
@@ -53,7 +54,9 @@ export default function AgentAvatar({
     setStage(0);
   }, [chainKey]);
 
-  const emoji = (typeof agent?.avatar === 'string' && agent.avatar.trim()) || '🦄';
+  // Agent's chosen face is genuine content (seed emoji); only the true no-data
+  // case falls back to a branded lucide mark instead of a raw unicorn emoji.
+  const emoji = (typeof agent?.avatar === 'string' && agent.avatar.trim()) || null;
   const label = agent?.displayName || agent?.name || 'agent';
 
   const numeric = typeof size === 'number';
@@ -81,9 +84,16 @@ export default function AgentAvatar({
       title={label}
       className={`${sizeClass} ${rounded} bg-slate-900 flex items-center justify-center select-none shrink-0 ${className}`}
     >
-      <span style={{ fontSize: numeric ? Math.round(size * 0.55) : undefined }} className="leading-none">
-        {emoji}
-      </span>
+      {emoji ? (
+        <span style={{ fontSize: numeric ? Math.round(size * 0.55) : undefined }} className="leading-none">
+          {emoji}
+        </span>
+      ) : (
+        <Bot
+          className="text-unicorn-400"
+          style={numeric ? { width: Math.round(size * 0.5), height: Math.round(size * 0.5) } : undefined}
+        />
+      )}
     </div>
   );
 }

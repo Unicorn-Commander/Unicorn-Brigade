@@ -655,7 +655,7 @@ const AgentListItem = ({ agent, navigate, onEdit, onDelete }) => {
           agent.status === 'inactive' ? 'bg-slate-500/20 text-slate-400' :
           'bg-slate-500/20 text-slate-400'
         }`}>
-          {statusConfig.icon} {statusConfig.label}
+          {statusConfig.label}
         </span>
 
         {/* Quick Chat button */}
