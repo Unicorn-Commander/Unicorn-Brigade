@@ -237,15 +237,10 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         content={"detail": payload},
     )
 
-# Configure CORS
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:8000").split(",")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS is configured LAST (outermost) — see the BR-6 security block below. C3: it
+# must wrap the security middlewares so a 413/429 reject (or any outer-middleware
+# error) on a cross-origin browser request still carries Access-Control-Allow-Origin
+# instead of surfacing as a generic CORS failure that masks the real status.
 
 # Include routers — existing router FIRST (has /agents/execute which must match before /agents/{id})
 # Prometheus metrics middleware + scrape endpoint. Bound label cardinality
@@ -260,17 +255,33 @@ app.middleware("http")(request_id_middleware)
 app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_schema=False)
 
 # ══════════════════════ BR-6 SECURITY HARDENING (additive) ══════════════════
-# Registered LAST so they wrap OUTERMOST (Starlette applies middleware in reverse
-# registration order): SecurityHeaders → RateLimit → RequestSizeLimit → (existing
-# request_id → metrics → CORS) → app. Effect: 413/429 rejections and every error
-# response still receive the security headers, and floods/oversized bodies are
-# rejected before the request touches the app. All knobs are env-configurable
-# (SECURITY_* vars) with safe defaults, so existing deploys need no env change.
-# NOTE: the rate limiter is PER-PROCESS in-memory; a Redis-backed shared limiter
-# is the multi-replica follow-up (see app/security/ratelimit.py).
+# Starlette applies middleware in REVERSE registration order, so the LAST
+# add_middleware call is OUTERMOST. Final nesting (outermost → innermost):
+#   CORS → SecurityHeaders → RateLimit → RequestSizeLimit → request_id → metrics → app
+# C3: CORS is registered LAST (below) so it wraps the security middlewares — a
+# 413/429 reject (or any outer error) on a cross-origin browser request now passes
+# back out THROUGH CORS and receives Access-Control-Allow-Origin, instead of the
+# browser seeing a generic CORS error that hides the real 413/429. SecurityHeaders
+# still wraps the two reject-producing middlewares, so those responses keep their
+# security headers too. All knobs are env-configurable (SECURITY_* vars) with safe
+# defaults. NOTE: the rate limiter is PER-PROCESS in-memory; a Redis-backed shared
+# limiter is the multi-replica follow-up (see app/security/ratelimit.py).
 app.add_middleware(RequestSizeLimitMiddleware)  # 413 on oversized Content-Length
 app.add_middleware(RateLimitMiddleware)          # 429 per-identity on sensitive routes
-app.add_middleware(SecurityHeadersMiddleware)    # outermost: stamps security headers
+app.add_middleware(SecurityHeadersMiddleware)    # stamps security headers on every response
+# CORS OUTERMOST (registered last) so it wraps the security middlewares (C3): a
+# cross-origin browser request that hits a 429/413 still gets ACAO on the reject.
+cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://localhost:5173,http://localhost:8000",
+).split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # ════════════════════════════════════════════════════════════════════════════
 
 # Federation broker surface — always mounted, customer-facing on prod.

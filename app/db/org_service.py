@@ -31,6 +31,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Organization, OrgMembership, Invitation, User
@@ -119,9 +120,24 @@ async def ensure_personal_org(
         metadata_={"personal": True},
     )
     session.add(org)
-    await session.flush()  # populate org.id
-    session.add(OrgMembership(org_id=org.id, user_id=user_id, role=ORG_ROLE_OWNER))
-    await session.flush()
+    try:
+        await session.flush()  # populate org.id
+        session.add(OrgMembership(org_id=org.id, user_id=user_id, role=ORG_ROLE_OWNER))
+        await session.flush()
+    except IntegrityError:
+        # C7 cold-start race: two concurrent FIRST logins for the same user both
+        # passed the membership check above and raced to create a personal org.
+        # The organizations.slug UNIQUE (or the org_memberships UNIQUE(org_id,
+        # user_id)) makes one of them fail here. The other has now committed the
+        # user's home, so treat this exactly like the "already had a home" branch:
+        # roll back the failed insert and return None. The caller re-resolves the
+        # now-existing home org (resolve_home_org) — no second personal org minted.
+        await session.rollback()
+        logger.info(
+            "BR-2.1 ensure_personal_org: concurrent first-login already provisioned "
+            "a home for user %s — not minting a second org.", user_id,
+        )
+        return None
     logger.info("BR-2.1 provisioned personal org %s (slug=%s) for user %s",
                 org.id, org.slug, user_id)
     return org
@@ -340,11 +356,19 @@ async def accept_invitation(
     """Accept an invite by token, minting an OrgMembership for ``user_id``.
 
     Returns ``(status, invitation)`` where status is one of:
-      ok | not_found | expired | revoked | already_used
+      ok | not_found | expired | revoked | already_used | email_mismatch
 
     Idempotent: a second accept by the SAME user returns ``ok`` without creating
     a duplicate membership (org_memberships has a UNIQUE(org_id,user_id)). Expiry
     is checked and flips a stale pending invite to 'expired'.
+
+    C5/S10 email binding: an invite is issued to a specific email, so acceptance
+    is bound to it — the accepting user's email MUST equal ``inv.email``
+    (case-insensitive), else ``email_mismatch`` (the route rejects; nothing is
+    granted). Without this, ANY authed user holding a leaked/guessed token could
+    join an org they were never invited to. The check is placed AFTER the
+    revoked/expired guards so a dead invite still reports revoked/expired
+    regardless of who presents it.
 
     MUST run on a cross-tenant session (``admin_session``): the invitee is not yet
     a member of the org, so their request-session GUC is bound to a DIFFERENT org
@@ -366,6 +390,21 @@ async def accept_invitation(
         inv.updated_at = now
         await session.flush()
         return "expired", inv
+
+    # C5/S10: bind acceptance to the invited email. Look up the accepting user's
+    # email (users has no RLS; this runs on the RLS-exempt admin_session) and
+    # require a case-insensitive match with inv.email — else refuse without
+    # granting anything.
+    acc_email = (await session.execute(
+        select(User.email).where(User.id == user_id)
+    )).scalar_one_or_none()
+    if (acc_email or "").strip().lower() != (inv.email or "").strip().lower():
+        logger.warning(
+            "BR-2.1 invite %s email-binding MISMATCH: token invited %r but user %s "
+            "(%r) attempted to accept — refusing (no membership granted).",
+            inv.id, inv.email, user_id, acc_email,
+        )
+        return "email_mismatch", inv
 
     already = await get_membership_role(session, user_id, str(inv.org_id))
 

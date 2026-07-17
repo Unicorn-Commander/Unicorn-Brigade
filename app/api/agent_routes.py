@@ -3,6 +3,7 @@ Agent management and chat routes.
 Provides full CRUD for agents and real-time chat with function calling via Ops-Center LLM.
 """
 
+from contextlib import asynccontextmanager
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -709,6 +710,51 @@ async def get_agent(
     return agent
 
 
+@asynccontextmanager
+async def _agent_writer(agent_id: str, session: AsyncSession):
+    """Async context yielding ``(agent, repo)`` for MUTATING ``agent_id`` under
+    enforced RLS, or ``(None, None)`` when the agent is not visible to the caller.
+
+    BR-1.4 (C1) tenancy — the ``agents`` RLS policy is::
+
+        USING      (org_id IS NULL OR org_id = current_org_id())
+        WITH CHECK (org_id = current_org_id())
+
+    A shared/global agent (``org_id IS NULL`` — the 17-agent seed roster) is
+    READABLE by the RLS-subject request session but NOT writable by it: any
+    UPDATE that leaves ``org_id`` NULL fails ``WITH CHECK`` (NULL <>
+    current_org_id()) and 500s under enforced RLS (masked only in single-role dev
+    where the superuser bypasses RLS). So we READ the target via the request
+    session first — RLS lets that session see ONLY a shared agent or one in the
+    caller's OWN org, never another tenant's private agent, so the read itself is
+    isolation-safe — then route the write:
+
+      * ``org_id IS NULL`` (shared) → yield an OWNER/admin-session repo
+        (RLS-exempt) so the mutation passes, mirroring ``create_agent``'s
+        shared-creation path. Operators keep managing the shared roster at runtime.
+      * ``org_id == caller`` → yield the request-session repo (``WITH CHECK``
+        passes for the caller's own org).
+
+    ``delete_agent`` uses this same routing so shared-agent DELETE is CONSISTENT
+    with shared-agent UPDATE (both go through the owner session) instead of
+    relying on DELETE checking only the ``USING`` clause.
+    """
+    repo = AgentRepository(session)
+    agent = await repo.get(agent_id)
+    if agent is None:
+        yield None, None
+        return
+    if agent.get("orgId") is None:
+        # Shared (NULL-org) catalog agent — route through the RLS-exempt owner
+        # session. Safe: the RLS read above already proved this is a SHARED agent,
+        # not another tenant's private one.
+        from app.db.database import admin_session
+        async with admin_session() as owner_sess:
+            yield agent, AgentRepository(owner_sess)
+    else:
+        yield agent, repo
+
+
 @router.post("/agents", status_code=201)
 async def create_agent(
     request: AgentCreateRequest,
@@ -761,15 +807,20 @@ async def update_agent(
 
     Uses ``exclude_unset`` so callers can explicitly set a nullable field
     back to None (e.g. clearing accessPolicy). Fields not sent stay untouched.
+
+    C1 tenancy: a shared (NULL-org) agent is mutated via the RLS-exempt owner
+    session (see ``_agent_writer``); a per-org agent on the request session.
     """
-    repo = AgentRepository(session)
     updates = request.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-    agent = await repo.update(agent_id, updates)
-    if not agent:
-        raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
-    return agent
+    async with _agent_writer(agent_id, session) as (agent, repo):
+        if agent is None:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        updated = await repo.update(agent_id, updates)
+        if not updated:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        return updated
 
 
 @router.delete("/agents/{agent_id}")
@@ -778,9 +829,17 @@ async def delete_agent(
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_admin)] = None,
 ):
-    """Delete an agent."""
-    repo = AgentRepository(session)
-    success = await repo.delete(agent_id)
+    """Delete an agent.
+
+    C1 tenancy: a shared (NULL-org) agent's DELETE is routed through the owner
+    session too — CONSISTENT with shared-agent update — so it never depends on the
+    DELETE-only ``USING`` clause. A per-org agent deletes on the request session
+    (``USING`` scopes it to the caller's org).
+    """
+    async with _agent_writer(agent_id, session) as (agent, repo):
+        if agent is None:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        success = await repo.delete(agent_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
     return {"message": "Agent deleted", "id": agent_id}
@@ -806,17 +865,27 @@ async def import_agents(
     user: Annotated[AuthUser, Depends(require_operator)] = None,
     _size: Annotated[None, max_body_size(5 * 1024 * 1024)] = None,
 ):
-    """Import agents from JSON array. Upserts by ID."""
+    """Import agents from JSON array. Upserts by ID.
+
+    C1 tenancy: an existing SHARED (NULL-org) agent (e.g. re-importing the seed
+    roster) is updated via the RLS-exempt owner session (``_agent_writer``); a
+    per-org agent updates on the request session. New agents are created on the
+    request session so the DB default (current_org_id()) tags them to the caller's
+    org and RLS WITH CHECK passes.
+    """
     repo = AgentRepository(session)
     created = 0
     updated = 0
     for agent_data in agents:
         agent_id = agent_data.get("id")
+        did_update = False
         if agent_id:
-            existing = await repo.get(agent_id)
-            if existing:
-                await repo.update(agent_id, agent_data)
-                updated += 1
+            async with _agent_writer(agent_id, session) as (existing, w_repo):
+                if existing:
+                    await w_repo.update(agent_id, agent_data)
+                    updated += 1
+                    did_update = True
+            if did_update:
                 continue
         await repo.create(agent_data)
         created += 1
@@ -1527,13 +1596,12 @@ async def attach_tool(
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
-    """Attach a tool to an agent."""
-    _ensure_agent_access(user, agent_id)
+    """Attach a tool to an agent.
 
-    repo = AgentRepository(session)
-    agent = await repo.get(agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+    C1 tenancy: a shared (NULL-org) agent's tools are mutated via the RLS-exempt
+    owner session (``_agent_writer``); a per-org agent on the request session.
+    """
+    _ensure_agent_access(user, agent_id)
 
     tool_entry = {
         "id": f"{agent_id}-{request.toolId}",
@@ -1542,10 +1610,13 @@ async def attach_tool(
         "isEnabled": True,
     }
 
-    tools = list(agent.get("tools", []))
-    if request.toolId not in tools:
-        tools.append(request.toolId)
-    await repo.update(agent_id, {"tools": tools})
+    async with _agent_writer(agent_id, session) as (agent, repo):
+        if agent is None:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        tools = list(agent.get("tools", []))
+        if request.toolId not in tools:
+            tools.append(request.toolId)
+        await repo.update(agent_id, {"tools": tools})
 
     return tool_entry
 
@@ -1557,16 +1628,18 @@ async def detach_tool(
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
-    """Detach a tool from an agent."""
+    """Detach a tool from an agent.
+
+    C1 tenancy: a shared (NULL-org) agent's tools are mutated via the RLS-exempt
+    owner session (``_agent_writer``); a per-org agent on the request session.
+    """
     _ensure_agent_access(user, agent_id)
 
-    repo = AgentRepository(session)
-    agent = await repo.get(agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
-
-    tools = [t for t in agent.get("tools", []) if t != tool_id]
-    await repo.update(agent_id, {"tools": tools})
+    async with _agent_writer(agent_id, session) as (agent, repo):
+        if agent is None:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        tools = [t for t in agent.get("tools", []) if t != tool_id]
+        await repo.update(agent_id, {"tools": tools})
 
     return {"message": "Tool detached", "toolId": tool_id}
 
@@ -1579,15 +1652,34 @@ async def update_tool_config(
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
-    """Update tool configuration for an agent."""
+    """Update tool configuration for an agent.
+
+    C6: NOT IMPLEMENTED. Agents persist their tools as a plain name array
+    (``agents.tools``) with no per-tool config column anywhere in the schema, so
+    there is nowhere to store a per-tool config today. The previous implementation
+    reported ``{"message": "Tool config updated"}`` while persisting NOTHING — a
+    silent no-op masquerading as success. We now return ``501 Not Implemented``
+    (after the access + attachment checks) rather than lie. Add a per-agent-tool
+    config table/column before turning this into a real mutation.
+    """
     _ensure_agent_access(user, agent_id)
 
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+    if tool_id not in (agent.get("tools") or []):
+        raise HTTPException(
+            status_code=404, detail=f"Tool not attached to agent: {tool_id}"
+        )
 
-    return {"message": "Tool config updated", "toolId": tool_id, "config": request.config}
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            "Per-tool config persistence is not implemented (agents.tools stores "
+            "tool names only; there is no per-tool config store)."
+        ),
+    )
 
 
 # ---- Direct Chat ----

@@ -265,9 +265,20 @@ class ApiKeyRepository:
         return result
 
     async def list_for_agent(self, agent_id: str) -> List[Dict]:
+        # S9: org-scope key metadata even on a SHARED (NULL-org) agent. api_keys
+        # carries NO RLS (the key lookup in validate_api_key must run before any
+        # org is bound), so key rows are not policy-isolated on their own — for a
+        # global agent, ANY org's caller would otherwise list ANOTHER org's key
+        # metadata. Filter by ``org_id = current_org_id()`` (the caller's bound org
+        # GUC, set by _bind_org_context) so keys stay org-scoped regardless of the
+        # agent's own org.
         result = await self.session.execute(
             select(ApiKey)
-            .where(ApiKey.agent_id == agent_id, ApiKey.is_active == True)
+            .where(
+                ApiKey.agent_id == agent_id,
+                ApiKey.is_active == True,
+                ApiKey.org_id == func.current_org_id(),
+            )
             .order_by(ApiKey.created_at.desc())
         )
         return [k.to_dict() for k in result.scalars().all()]
@@ -280,8 +291,14 @@ class ApiKeyRepository:
         return key.to_dict() if key else None
 
     async def revoke(self, agent_id: str, key_id: str) -> bool:
+        # S9: org-scope revoke too (see list_for_agent). Without the org predicate,
+        # an admin of org B could revoke org A's key on a shared (NULL-org) agent.
         result = await self.session.execute(
-            select(ApiKey).where(ApiKey.id == key_id, ApiKey.agent_id == agent_id)
+            select(ApiKey).where(
+                ApiKey.id == key_id,
+                ApiKey.agent_id == agent_id,
+                ApiKey.org_id == func.current_org_id(),
+            )
         )
         key = result.scalar_one_or_none()
         if not key:

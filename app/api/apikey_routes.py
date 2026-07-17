@@ -67,7 +67,12 @@ async def list_api_keys(
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
-    """List all API keys for an agent (without full key values)."""
+    """List all API keys for an agent (without full key values).
+
+    S9: ``list_for_agent`` org-scopes the result to the caller's bound org
+    (``org_id = current_org_id()``), so on a SHARED (NULL-org) agent one org can no
+    longer enumerate another org's key metadata.
+    """
     if user and not user.can_access_agent(agent_id):
         raise HTTPException(status_code=403, detail="Access to agent denied")
     agent_repo = AgentRepository(session)
@@ -87,7 +92,12 @@ async def revoke_api_key(
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_admin)] = None,
 ):
-    """Revoke (soft-delete) an API key."""
+    """Revoke (soft-delete) an API key.
+
+    S9: ``revoke`` org-scopes by ``org_id = current_org_id()``, so an admin of one
+    org cannot revoke another org's key on a SHARED (NULL-org) agent (a
+    cross-org key that is out of scope simply reads as 404).
+    """
     if user and not user.can_access_agent(agent_id):
         raise HTTPException(status_code=403, detail="Access to agent denied")
     repo = ApiKeyRepository(session)
