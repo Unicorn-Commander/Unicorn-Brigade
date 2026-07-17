@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -43,6 +44,7 @@ from app.db.database import admin_session
 from app.db.models import Agent, ScheduledRun, ScheduledRunHistory
 from app.llm.tool_resolver import get_tools_for_agent
 from app.llm.ops_center_client import DEFAULT_MODEL
+from app.observability.metrics import scheduled_run_total
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,61 @@ async def _bind_org(session, org_id) -> None:
     # scheduled job runs are attributed to its org for the SSE org filter.
     from app.orchestration.event_bus import current_org_id_var
     current_org_id_var.set(str(org_id))
+
+
+async def notify_scheduled_run_failure(
+    run_id: str,
+    status: str,
+    error: str,
+    agent_id: Optional[str] = None,
+) -> None:
+    """Best-effort alert when a scheduled run fails or times out.
+
+    Prefers the MonitoringAgent's Slack notifier (already wired with the
+    Slack client at startup); falls back to a raw Slack incoming-webhook
+    (``SCHEDULER_ALERT_WEBHOOK`` or ``SLACK_WEBHOOK_URL``) so alerting works
+    even without the full monitoring stack. Never raises — a broken alert
+    channel must not take down the scheduler."""
+    text = (
+        f":rotating_light: Brigade scheduled run *{run_id}* "
+        f"({agent_id or 'unknown agent'}) ended `{status}`: {error[:500]}"
+    )
+    # 1) MonitoringAgent notifier, if available.
+    try:
+        from app.api.monitoring_routes import get_monitoring_agent
+
+        agent = get_monitoring_agent()
+        notifier = getattr(agent, "slack_client", None) if agent else None
+        if notifier is not None and getattr(notifier, "is_configured", False):
+            channel = os.getenv("SCHEDULER_ALERT_CHANNEL", "#alerts")
+            await notifier.send_message(channel, text)
+            return
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("MonitoringAgent notify unavailable: %s", e)
+
+    # 2) Raw Slack incoming-webhook fallback.
+    webhook = os.getenv("SCHEDULER_ALERT_WEBHOOK") or os.getenv("SLACK_WEBHOOK_URL")
+    if not webhook:
+        logger.warning(
+            "Scheduled run %s ended %s but no alert channel is configured "
+            "(set SCHEDULER_ALERT_WEBHOOK or SLACK_WEBHOOK_URL)", run_id, status
+        )
+        return
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(webhook, json={"text": text})
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("Failed to post scheduler failure alert: %s", e)
+
+
+def _record_run_outcome(outcome: str) -> None:
+    """Increment the scheduled-run Prometheus counter; never raises."""
+    try:
+        scheduled_run_total.labels(outcome=outcome).inc()
+    except Exception:  # pragma: no cover - defensive
+        pass
 
 
 def _parse_cron(expr: str, tz: str = "UTC") -> CronTrigger:
@@ -189,13 +246,19 @@ class BrigadeScheduler:
 
                 agent = await session.get(Agent, run.agent_id)
                 if agent is None:
+                    _record_run_outcome("agent_missing")
                     await self._finalize(
                         history_id, "error", error=f"agent {run.agent_id} not found"
                     )
                     await self._update_run_status(run.id, "error", "agent missing")
+                    await notify_scheduled_run_failure(
+                        scheduled_run_id, "error",
+                        f"agent {run.agent_id} not found", run.agent_id,
+                    )
                     return history_id
 
                 agent_dict = agent.to_dict()
+                agent_id_for_alert = agent_dict.get("id")
                 prompt = run.prompt
                 user_id = str(run.owner_user_id) if run.owner_user_id else "scheduler"
                 timeout = max(5, int(run.max_runtime_seconds or 300))
@@ -207,6 +270,7 @@ class BrigadeScheduler:
                     timeout=timeout,
                 )
             except asyncio.TimeoutError:
+                _record_run_outcome("timeout")
                 await self._finalize(
                     history_id,
                     "timeout",
@@ -214,15 +278,24 @@ class BrigadeScheduler:
                 )
                 await self._update_run_status(scheduled_run_id, "timeout",
                                               f"timed out after {timeout}s")
+                await notify_scheduled_run_failure(
+                    scheduled_run_id, "timeout",
+                    f"exceeded max_runtime_seconds={timeout}", agent_id_for_alert,
+                )
                 return history_id
             except Exception as e:
                 logger.exception("Scheduled run %s failed", scheduled_run_id)
+                _record_run_outcome("error")
                 await self._finalize(history_id, "error", error=str(e))
                 await self._update_run_status(scheduled_run_id, "error", str(e)[:500])
+                await notify_scheduled_run_failure(
+                    scheduled_run_id, "error", str(e), agent_id_for_alert,
+                )
                 return history_id
 
             content = (result.get("content") or "")[:4000]
             tool_calls = result.get("toolCalls") or []
+            _record_run_outcome("success")
             await self._finalize(
                 history_id,
                 "success",
@@ -257,6 +330,23 @@ class BrigadeScheduler:
         model = agent.get("model") or DEFAULT_MODEL
         temperature = agent.get("temperature", 0.7)
         max_tokens = agent.get("maxTokens", 2000)
+
+        # Langfuse trace for the scheduled run — mirrors the interactive chat
+        # path so scheduled executions show up in observability too.
+        tracer = None
+        try:
+            from app.observability import get_tracer
+
+            tracer = get_tracer(agent_id=agent.get("id"), user_id=user_id)
+            tracer.start_trace(
+                name=f"scheduled_run:{agent.get('id')}",
+                input_data={"message": message, "model": model},
+                metadata={"agent_name": agent.get("displayName") or agent.get("name")},
+                tags=["scheduled", agent.get("domain", "general")],
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("Langfuse tracer unavailable for scheduled run: %s", e)
+            tracer = None
 
         agent_tools = get_tools_for_agent(agent)
         tool_calls_log: list[dict] = []
@@ -294,6 +384,22 @@ class BrigadeScheduler:
             )
 
         content = self.llm_client.get_response_content(response) or ""
+        if tracer is not None:
+            try:
+                tracer.log_generation(
+                    name="scheduled_chat_completion",
+                    model=(response.get("model") if isinstance(response, dict) else None)
+                    or model,
+                    input_messages=messages,
+                    output=content,
+                    metadata={"tool_calls": len(tool_calls_log)},
+                )
+                tracer.end_trace(
+                    output={"content": content[:500], "tools_used": len(tool_calls_log)},
+                    status="success",
+                )
+            except Exception:  # pragma: no cover - defensive
+                pass
         return {"content": content, "toolCalls": tool_calls_log}
 
     # ── persistence helpers ──────────────────────────────────

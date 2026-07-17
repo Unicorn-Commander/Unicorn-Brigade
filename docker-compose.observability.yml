@@ -1,0 +1,61 @@
+# Observability overlay: Prometheus + Grafana + blackbox-exporter.
+#
+#   docker-compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+#
+# - Prometheus scrapes brigade-api:8100/metrics (admitted by the internal-source
+#   gate) and evaluates the alert rules in config/observability/alert_rules.yml.
+# - blackbox-exporter probes /readyz + /livez so a DB/scheduler outage becomes a
+#   BrigadeReadinessDown alert.
+# - Grafana is pre-pointed at Prometheus as its default datasource.
+version: '3.8'
+
+services:
+  brigade-prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: brigade-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./config/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/observability/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - brigade-prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - brigade-network
+    depends_on:
+      - brigade-blackbox
+
+  brigade-blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: brigade-blackbox
+    restart: unless-stopped
+    ports:
+      - "9115:9115"
+    networks:
+      - brigade-network
+
+  brigade-grafana:
+    image: grafana/grafana:11.2.0
+    container_name: brigade-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./config/observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - brigade-grafana-data:/var/lib/grafana
+    ports:
+      - "3010:3000"
+    networks:
+      - brigade-network
+    depends_on:
+      - brigade-prometheus
+
+volumes:
+  brigade-prometheus-data:
+  brigade-grafana-data:

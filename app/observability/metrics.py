@@ -4,6 +4,7 @@ Exposes /metrics with request counters, request-duration histogram, and
 agent-execution counters. The metrics module is import-safe — no side
 effects unless the middleware is registered with the FastAPI app.
 """
+import os
 import time
 import re
 from typing import Callable
@@ -63,6 +64,12 @@ agent_active = Gauge(
     ["agent"],
 )
 
+scheduled_run_total = Counter(
+    "brigade_scheduled_run_total",
+    "Scheduled agent runs by outcome",
+    ["outcome"],  # outcome: success | error | timeout | agent_missing
+)
+
 
 async def metrics_middleware(request: Request, call_next: Callable):
     """Records every HTTP request. Mounted via app.middleware("http")."""
@@ -101,6 +108,51 @@ async def metrics_middleware(request: Request, call_next: Callable):
     return response
 
 
+def _metrics_authorized(request: Request) -> bool:
+    """Gate /metrics.
+
+    When ``METRICS_TOKEN`` is set, require it as a bearer token or ``?token=``
+    query param — the Prometheus scrape config supplies it. When unset, only
+    allow scrapes from private/loopback source addresses (internal bind), so a
+    public deployment does not leak metrics by default. ``METRICS_PUBLIC=true``
+    restores the old unauthenticated behavior for trusted internal networks.
+    """
+    if os.getenv("METRICS_PUBLIC", "false").strip().lower() in ("1", "true", "yes", "on"):
+        return True
+
+    token = os.getenv("METRICS_TOKEN", "").strip()
+    if token:
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Bearer ") and auth[7:].strip() == token:
+            return True
+        if request.query_params.get("token", "") == token:
+            return True
+        return False
+
+    # No token configured → restrict to internal/loopback source addresses.
+    client_host = request.client.host if request.client else ""
+    if _is_internal_host(client_host):
+        return True
+    return False
+
+
+def _is_internal_host(host: str) -> bool:
+    """True for loopback / RFC-1918 / container-network source addresses."""
+    if not host:
+        return False
+    try:
+        import ipaddress
+
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback or ip.is_private or ip.is_link_local
+    except ValueError:
+        # Non-IP host (e.g. a docker service name proxied through) — treat as
+        # internal only for the obvious localhost aliases.
+        return host in ("localhost", "127.0.0.1", "::1")
+
+
 def metrics_endpoint(request: Request) -> Response:
-    """GET /metrics — Prometheus scrape endpoint."""
+    """GET /metrics — Prometheus scrape endpoint (gated; see _metrics_authorized)."""
+    if not _metrics_authorized(request):
+        return Response("forbidden", status_code=403)
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
