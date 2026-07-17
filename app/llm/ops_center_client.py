@@ -568,6 +568,8 @@ class OpsCenterLLMClient:
                 endpoint = f"{target_url}/v1/chat/completions"
             elif route_type == "direct":
                 headers = {"Content-Type": "application/json"}
+                if LITELLM_DIRECT_KEY:
+                    headers["Authorization"] = f"Bearer {LITELLM_DIRECT_KEY}"
                 endpoint = target_url
             elif route_type == "openrouter":
                 headers = {
@@ -744,6 +746,8 @@ class OpsCenterLLMClient:
                 logger.info(f"Sending tool-enabled request to LOCAL LLM: {resolved_model} with {len(tools)} tools")
             elif route_type == "direct":
                 headers = {"Content-Type": "application/json"}
+                if LITELLM_DIRECT_KEY:
+                    headers["Authorization"] = f"Bearer {LITELLM_DIRECT_KEY}"
                 endpoint = target_url
                 logger.info(f"Sending tool-enabled request DIRECT to {endpoint}: {resolved_model} with {len(tools)} tools")
             elif route_type == "openrouter":
