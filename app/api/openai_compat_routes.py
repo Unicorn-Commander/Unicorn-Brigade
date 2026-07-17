@@ -353,7 +353,7 @@ async def _passthrough_chat(
     from app.api.agent_routes import (
         _fetch_user_attrs, _enforce_billing_or_402, _enforce_org_cap_or_402,
     )
-    _user_attrs, _billing_state = await _fetch_user_attrs(auth_user)
+    _user_attrs, _billing_state = await _fetch_user_attrs(auth_user, session=session)
     _enforce_billing_or_402(auth_user, _billing_state)
     await _enforce_org_cap_or_402(auth_user)  # BR-3.6 per-org cap
 
@@ -690,7 +690,7 @@ async def _dual_layer_chat(
         return _Stream(_gen(), media_type="text/event-stream", headers=headers)
 
     # --- Phase 7: billing preflight + user_attrs ---
-    _user_attrs, _billing_state = await _fetch_user_attrs(auth_user)
+    _user_attrs, _billing_state = await _fetch_user_attrs(auth_user, session=session)
     _enforce_billing_or_402(auth_user, _billing_state)
     await _enforce_org_cap_or_402(auth_user)  # BR-3.6 per-org cap
 
@@ -1017,7 +1017,7 @@ async def _enhanced_stream_chat(
         _meter_chat_to_lago, _log_rbac_denial as _audit_denial,
     )
     from app.auth.roles import evaluate_agent_access, derive_user_tier
-    _user_attrs, _billing_state = await _fetch_user_attrs(auth_user)
+    _user_attrs, _billing_state = await _fetch_user_attrs(auth_user, session=session)
     _enforce_billing_or_402(auth_user, _billing_state)
     await _enforce_org_cap_or_402(auth_user)
     _rbac_email = (getattr(auth_user, "email", "") or "")

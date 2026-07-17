@@ -32,6 +32,8 @@ from app.auth.roles import (
     is_public_path,
     get_minimum_role_for_method,
     map_keycloak_roles,
+    role_from_permissions,
+    mfa_satisfied,
 )
 from app.auth.keycloak import (
     KeycloakValidationError,
@@ -96,6 +98,11 @@ class AuthUser:
     # legacy keys with a NULL org_id (→ early-access fallback).
     key_org_id: Optional[str] = None
     auth_source: str = "api_key"  # api_key | keycloak | session | bypass | public
+    # BR-2.6: whether this session authenticated with a genuine SECOND factor,
+    # derived from the OIDC token's acr/amr claims (see roles.mfa_satisfied).
+    # Feeds the ``require_mfa`` gate in evaluate_agent_access. False for API-key /
+    # service identities (no interactive login) and single-factor logins.
+    mfa: bool = False
     # Legacy pre-BR-1.1 identity key: the Keycloak ``sub``. BR-1.1 made
     # ``user_id`` the canonical local users.id, but per-user AGENT MEMORY groups
     # in Graphiti were keyed by whatever id the request carried — for SSO users
@@ -182,14 +189,10 @@ async def validate_api_key(
             user_key.usage_count = (user_key.usage_count or 0) + 1
             await session.commit()
 
-            # Determine role from user's role
+            # Determine role from the user's stored role + key scopes (BR-2.6:
+            # canonical derivation, formerly inlined here and drifting).
             permissions = user_key.permissions or []
-            if user.role == "admin" or "admin" in permissions:
-                role = UserRole.ADMIN
-            elif user.role == "operator" or "write" in permissions or "chat" in permissions:
-                role = UserRole.OPERATOR
-            else:
-                role = UserRole.VIEWER
+            role = role_from_permissions(permissions, base_role=user.role)
 
             return AuthUser(
                 id=str(user.id),
@@ -229,14 +232,10 @@ async def validate_api_key(
         db_key.usage_count = (db_key.usage_count or 0) + 1
         await session.commit()
 
-        # Determine role from key permissions
+        # Determine role from key scopes only — an agent/service key has no
+        # backing user row (BR-2.6: canonical derivation, base_role=None).
         permissions = db_key.permissions or []
-        if "admin" in permissions:
-            role = UserRole.ADMIN
-        elif "write" in permissions or "chat" in permissions:
-            role = UserRole.OPERATOR
-        else:
-            role = UserRole.VIEWER
+        role = role_from_permissions(permissions)
 
         return AuthUser(
             id=str(db_key.id),
@@ -481,6 +480,8 @@ async def validate_bearer_token(token: str) -> Optional[AuthUser]:
         # legacy-memory dual-read; in the degraded fallback where canonical_id IS
         # the sub, keycloak_id == user_id and the alias self-disables.
         keycloak_id=kc_user.sub,
+        # BR-2.6: multi-factor signal from the token's acr/amr (raw claims).
+        mfa=mfa_satisfied(kc_user.raw),
     )
 
 

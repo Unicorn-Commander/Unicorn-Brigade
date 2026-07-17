@@ -237,6 +237,92 @@ def map_keycloak_roles(roles: list) -> UserRole:
 
 
 # ---------------------------------------------------------------------------
+# BR-2.6 — canonical permission derivation (single source of truth)
+# ---------------------------------------------------------------------------
+#
+# Historically this logic was COPY-PASTED across ≥4 sites that drifted:
+#   - admin_keys_routes._permissions_for_role
+#   - user_routes._get_permissions_for_role
+#   - two role-from-permissions blocks in auth/middleware.validate_api_key
+# They now all delegate here so the role↔scope mapping cannot diverge.
+
+
+def permissions_for_role(role) -> list:
+    """Canonical DEFAULT API-key permission scopes for a coarse role.
+
+    admin  -> ["admin","write","chat","read"]
+    operator -> ["write","chat","read"]
+    everything else (viewer) -> ["read"]
+    """
+    role_val = role.value if hasattr(role, "value") else str(role or "").lower()
+    if role_val == UserRole.ADMIN.value:
+        return ["admin", "write", "chat", "read"]
+    if role_val == UserRole.OPERATOR.value:
+        return ["write", "chat", "read"]
+    return ["read"]
+
+
+def role_from_permissions(permissions, base_role=None) -> UserRole:
+    """Canonical coarse-role derivation from a credential's scopes.
+
+    ADMIN    if ``base_role``=="admin" OR the "admin" scope is present.
+    OPERATOR if ``base_role``=="operator" OR a "write"/"chat" scope is present.
+    VIEWER   otherwise.
+
+    ``base_role`` is the user's stored ``users.role`` string when the credential
+    is a USER API key (so a stored operator/admin still resolves even with a
+    read-only key). Pass ``None`` for an AGENT/SERVICE key that has no backing
+    user row — then only the key's scopes decide. This reproduces the exact prior
+    behavior of both middleware sites, byte-for-byte, now from one place.
+    """
+    perms = {str(p).lower() for p in (permissions or [])}
+    br = (base_role.value if hasattr(base_role, "value") else str(base_role or "")).lower()
+    if br == "admin" or "admin" in perms:
+        return UserRole.ADMIN
+    if br == "operator" or "write" in perms or "chat" in perms:
+        return UserRole.OPERATOR
+    return UserRole.VIEWER
+
+
+# AMR (authentication-methods-references) values that denote a genuine SECOND
+# factor. Deliberately EXCLUDES "pwd"/"cookie" (single-factor). Keycloak emits
+# amr per configured authenticator; other IdPs use OIDC-standard tokens.
+_MFA_AMR_METHODS = {
+    "mfa", "otp", "totp", "hwk", "hardware", "sms", "webauthn",
+    "u2f", "fido", "fido2", "duo", "push", "swk", "hotp",
+}
+# ACR (authentication-context-class-reference) values / LoA labels denoting >=2FA.
+_MFA_ACR_VALUES = {"mfa", "aal2", "aal3", "loa2", "loa3", "gold", "silver"}
+
+
+def mfa_satisfied(claims) -> bool:
+    """Whether an OIDC token's ``acr``/``amr`` prove multi-factor authentication.
+
+    True when ``amr`` lists a recognized second-factor method, when ``acr`` is a
+    known multi-factor LoA label, or when ``acr`` is a numeric level >= 2 (the
+    Keycloak "acr-to-LoA" convention where "1" = single, "2"+ = step-up). A
+    password-only login (amr=["pwd"], acr="1") returns False.
+
+    This is the signal that feeds the ``require_mfa`` gate in
+    ``evaluate_agent_access`` (previously always False — a decorative gate).
+    """
+    if not isinstance(claims, dict):
+        return False
+    amr = claims.get("amr")
+    if isinstance(amr, str):
+        amr = [amr]
+    methods = {str(m).lower() for m in (amr or [])}
+    if methods & _MFA_AMR_METHODS:
+        return True
+    acr = str(claims.get("acr", "")).strip().lower()
+    if acr in _MFA_ACR_VALUES:
+        return True
+    if acr.isdigit() and int(acr) >= 2:
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Agent-level RBAC
 # ---------------------------------------------------------------------------
 

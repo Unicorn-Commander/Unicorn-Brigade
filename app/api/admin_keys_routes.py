@@ -164,11 +164,9 @@ async def _upsert_user(
 
 
 def _permissions_for_role(role: str) -> List[str]:
-    if role == "admin":
-        return ["admin", "write", "chat", "read"]
-    if role == "operator":
-        return ["write", "chat", "read"]
-    return ["read"]
+    # BR-2.6: single source of truth — see app.auth.roles.permissions_for_role.
+    from app.auth.roles import permissions_for_role
+    return permissions_for_role(role)
 
 
 def _serialize(key: UserApiKey, email: str, raw_key: Optional[str] = None) -> dict:

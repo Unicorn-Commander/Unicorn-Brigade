@@ -619,10 +619,9 @@ async def revoke_user_api_key(
 # ---- Helper Functions ----
 
 def _get_permissions_for_role(role: str) -> List[str]:
-    """Get default permissions based on user role"""
-    if role == "admin":
-        return ["admin", "write", "chat", "read"]
-    elif role == "operator":
-        return ["write", "chat", "read"]
-    else:  # viewer
-        return ["read"]
+    """Get default permissions based on user role.
+
+    BR-2.6: single source of truth — see app.auth.roles.permissions_for_role.
+    """
+    from app.auth.roles import permissions_for_role
+    return permissions_for_role(role)

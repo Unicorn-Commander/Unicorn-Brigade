@@ -288,7 +288,33 @@ async def _user_apps(user_id: Optional[str]) -> list:
         return []
 
 
-async def _fetch_user_attrs(user: AuthUser) -> tuple:
+async def _user_orgs(user: AuthUser, session=None) -> list:
+    """Org IDs the caller belongs to — feeds the accessPolicy ``orgs`` gate (BR-2.6).
+
+    Always includes the actively-bound org (``user.org_id``); when a DB session and
+    a resolvable user row are available it also folds in every membership so a
+    policy that allowlists a NON-active org the user still belongs to resolves.
+    Best-effort: never raises into the chat hot path.
+    """
+    orgs = set()
+    active = getattr(user, "org_id", None) if user else None
+    if active:
+        orgs.add(str(active))
+    if session is not None and user is not None:
+        try:
+            from app.db.org_service import list_user_orgs, resolve_user_row_id
+            db_id = await resolve_user_row_id(session, user)
+            if db_id:
+                for o in await list_user_orgs(session, db_id):
+                    oid = o.get("id") if isinstance(o, dict) else None
+                    if oid:
+                        orgs.add(str(oid))
+        except Exception as _oe:
+            logger.debug(f"org attrs lookup skipped: {_oe}")
+    return sorted(orgs)
+
+
+async def _fetch_user_attrs(user: AuthUser, session=None) -> tuple:
     """Return ``(user_attrs, billing_state)`` for a Brigade chat caller.
 
     Admins short-circuit to a ``paid=True`` stub so they never 402 or get
@@ -296,11 +322,16 @@ async def _fetch_user_attrs(user: AuthUser) -> tuple:
     Ops-Center's ``/api/v1/billing/state`` (cached 30s) and project the
     result into the attrs dict consumed by ``evaluate_agent_access``.
 
-    Also surfaces user.apps from the DB so accessPolicy.apps checks work.
+    Also surfaces user.apps from the DB so accessPolicy.apps checks work, plus
+    the BR-2.6 signals ``mfa`` (from the token's acr/amr) and ``orgs`` (from
+    memberships) that back the ``require_mfa`` / ``orgs`` accessPolicy gates —
+    previously always absent, so those gates were decorative.
     """
     apps = await _user_apps(getattr(user, "user_id", None) or getattr(user, "id", None)) if user else []
+    mfa = bool(getattr(user, "mfa", False)) if user else False
+    orgs = await _user_orgs(user, session)
     if not user or user.role == UserRole.ADMIN:
-        return {"paid": True, "key_name": (getattr(user, "key_name", "") or ""), "apps": apps}, {
+        return {"paid": True, "key_name": (getattr(user, "key_name", "") or ""), "apps": apps, "mfa": mfa, "orgs": orgs}, {
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": "admin",
@@ -317,7 +348,7 @@ async def _fetch_user_attrs(user: AuthUser) -> tuple:
     }
     key_name = (getattr(user, "key_name", "") or "").lower()
     if key_name and key_name in trusted_names:
-        return {"paid": True, "key_name": key_name, "apps": apps}, {
+        return {"paid": True, "key_name": key_name, "apps": apps, "mfa": mfa, "orgs": orgs}, {
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": f"service:{key_name}",
@@ -325,13 +356,13 @@ async def _fetch_user_attrs(user: AuthUser) -> tuple:
     email = (getattr(user, "email", "") or "").lower()
     user_kn = (getattr(user, "key_name", "") or "").lower()
     if not email:
-        return {"paid": False, "key_name": user_kn, "apps": apps}, {
+        return {"paid": False, "key_name": user_kn, "apps": apps, "mfa": mfa, "orgs": orgs}, {
             "paid": False,
             "credits_remaining": 0.0,
             "subscription_tier": None,
         }
     state = await get_billing_state(email)
-    return {"paid": bool(state.get("paid")), "key_name": user_kn, "apps": apps}, state
+    return {"paid": bool(state.get("paid")), "key_name": user_kn, "apps": apps, "mfa": mfa, "orgs": orgs}, state
 
 
 def _enforce_billing_or_402(user: AuthUser, billing_state: dict) -> None:
@@ -952,7 +983,7 @@ async def chat_with_agent(
 
     # Phase 7: fetch billing state once per request, 402 out-of-credits non-admins,
     # and carry the paid signal into per-agent RBAC.
-    user_attrs, billing_state = await _fetch_user_attrs(user)
+    user_attrs, billing_state = await _fetch_user_attrs(user, session=session)
     _enforce_billing_or_402(user, billing_state)
     # BR-3.6: also 402 when the caller's ORG is over its monthly usage ceiling.
     await _enforce_org_cap_or_402(user)
@@ -1787,7 +1818,7 @@ async def chat_with_agent_local(
 
     # Phase 7: billing preflight + user_attrs for RBAC (MLX is a local path;
     # without a billing check free users could burn GPU indefinitely).
-    user_attrs, billing_state = await _fetch_user_attrs(user)
+    user_attrs, billing_state = await _fetch_user_attrs(user, session=session)
     _enforce_billing_or_402(user, billing_state)
     # BR-3.6: also 402 when the caller's ORG is over its monthly usage ceiling.
     await _enforce_org_cap_or_402(user)
