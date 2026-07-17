@@ -858,6 +858,34 @@ async def export_agents(
     return {"agents": agents, "count": len(agents)}
 
 
+# Audit-2 F1: the agent fields an import/upsert payload may WRITE to an EXISTING
+# agent. An existing SHARED (NULL-org) seed agent is updated via the RLS-EXEMPT
+# owner session (see ``_agent_writer``), which has NO ``WITH CHECK`` backstop —
+# so without this whitelist a raw ``org_id`` in the import JSON would let an
+# operator reassign/claim any of the 17 shared agents fleet-wide (and ``id``
+# would re-map the primary key). Allow only the client-settable content fields
+# (mirrors ``AgentCreateRequest`` + ``AgentUpdateRequest``); ``org_id``/``orgId``/
+# ``id`` and server-managed columns (createdAt/updatedAt) are dropped. The
+# repository's ``AgentRepository.update`` strips the tenancy keys again as a
+# second layer, so org assignment is never client-settable on any path.
+_IMPORT_WRITABLE_FIELDS = frozenset({
+    "name", "displayName", "title", "rank", "avatar", "avatarUrl", "bio",
+    "persona", "systemPrompt", "domain", "subdomain", "status", "type",
+    "agentType", "capabilities", "model", "temperature", "maxTokens", "tools",
+    "billingTier", "rateMultiplier", "basePricePerCall", "accessPolicy",
+    "affiliation",
+})
+
+
+def _sanitize_agent_import_updates(agent_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip everything not in ``_IMPORT_WRITABLE_FIELDS`` (esp. ``org_id``/
+    ``orgId``/``id``) so an import/upsert can never reassign an agent's org or
+    re-map its primary key — critical on the shared-agent path, which runs on the
+    RLS-exempt owner session with no ``WITH CHECK`` to reject a NULL/foreign org.
+    """
+    return {k: v for k, v in agent_data.items() if k in _IMPORT_WRITABLE_FIELDS}
+
+
 @router.post("/agents/import/json")
 async def import_agents(
     agents: List[Dict[str, Any]],
@@ -872,6 +900,12 @@ async def import_agents(
     per-org agent updates on the request session. New agents are created on the
     request session so the DB default (current_org_id()) tags them to the caller's
     org and RLS WITH CHECK passes.
+
+    Audit-2 F1: the update payload is whitelisted (``_sanitize_agent_import_updates``)
+    so an import can never set ``org_id``/``orgId``/``id`` on an existing agent —
+    without this an operator could POST ``[{"id":"gunny","org_id":"<uuid>"}]`` and,
+    because the shared-agent write runs on the RLS-exempt owner session, relocate/
+    claim a shared seed agent fleet-wide.
     """
     repo = AgentRepository(session)
     created = 0
@@ -882,7 +916,7 @@ async def import_agents(
         if agent_id:
             async with _agent_writer(agent_id, session) as (existing, w_repo):
                 if existing:
-                    await w_repo.update(agent_id, agent_data)
+                    await w_repo.update(agent_id, _sanitize_agent_import_updates(agent_data))
                     updated += 1
                     did_update = True
             if did_update:
