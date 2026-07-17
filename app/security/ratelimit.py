@@ -9,9 +9,15 @@ request is rejected with ``429 Too Many Requests`` + a ``Retry-After`` header.
 Identity key (precedence):
   1. Loopback delegations (127.0.0.1 / ::1) carrying ``X-Delegate-User`` bucket on
      that end-user, so concurrent delegations for different users don't all
-     starve on one shared service-key bucket. S8: only honored when a service key
-     is ALSO presented — otherwise the bucket key would be a fully
-     attacker-controlled header on the loopback path.
+     starve on one shared service-key bucket. S8: only honored when a VALID
+     service key is ALSO presented (verified the same way the service-key auth
+     path does — a constant-time compare against the master admin key, the one
+     credential checkable on this pre-auth hot path without a DB lookup). An
+     UNVALIDATED key is NOT trusted: the header alone is attacker-controllable on
+     the loopback path, so we fall through to key/IP bucketing rather than let a
+     spoofed ``X-Delegate-User`` mint arbitrary buckets. The real delegation path
+     presents ``BRIGADE_ADMIN_KEY`` (see app.llm.delegation_tools), so this does
+     not regress legitimate per-end-user bucketing.
   2. The PRESENTED API key (``X-API-Key``, or a ``Bearer`` credential) hashed to a
      stable id. We hash the presented credential rather than the DB key-id because
      this middleware runs BEFORE auth resolves — a DB lookup on the hot path would
@@ -36,6 +42,7 @@ with the finer-grained per-route ``app.security.rate_limit`` dependencies.
 """
 
 import hashlib
+import hmac
 import json
 import os
 import time
@@ -63,6 +70,34 @@ def _bool_env(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def delegate_key_is_trusted(api_key: Optional[str]) -> bool:
+    """Return True only when ``api_key`` VALIDATES as the master service/admin key.
+
+    This mirrors the FIRST check of the service-key auth path
+    (``app.auth.middleware.validate_api_key``): a constant-time compare against
+    ``BRIGADE_ADMIN_KEY``. It is the only credential either rate-limiter can verify
+    PRE-AUTH — the limiters run before auth resolves and must not do a DB lookup on
+    the hot path (see the module docstring), so a DB-backed service/agent key
+    cannot be validated here and is deliberately NOT trusted for delegation (the
+    caller then falls back to key/IP bucketing rather than honoring a spoofable
+    ``X-Delegate-User`` header).
+
+    Fails CLOSED when no master key is configured: an unset ``BRIGADE_ADMIN_KEY``
+    must never make an empty presented key compare-equal (``compare_digest('','')``
+    is True), so we short-circuit on either side being empty. Read from the env at
+    call time (not import time) so the compared value tracks the same source
+    ``validate_api_key`` uses and stays test-friendly.
+
+    Shared by BOTH limiters (``app.security.rate_limit`` imports this) so their
+    delegation-trust decision is identical. Reads stdlib only, keeping this module
+    self-contained per its docstring.
+    """
+    master = os.getenv("BRIGADE_ADMIN_KEY", "")
+    if not api_key or not master:
+        return False
+    return hmac.compare_digest(api_key.encode("utf-8"), master.encode("utf-8"))
 
 
 # Default path prefixes to protect: auth-sensitive + exec (LLM / tool / code-exec)
@@ -165,12 +200,15 @@ class RateLimitMiddleware:
         # (1) Loopback delegation: a sub-chat POSTs from loopback with the service
         # key PLUS an X-Delegate-User naming the end-user; bucket per end-user so
         # concurrent delegations don't starve on one key. S8: only trust the
-        # delegate header when a service key is ALSO presented — otherwise the
-        # bucket key would be a fully attacker-controlled header on the loopback
-        # path (anyone reaching loopback could spray/spoof identities).
+        # delegate header when a VALID master service key is ALSO presented
+        # (constant-time compare, same first check as the service-key auth path).
+        # A merely-PRESENT (unvalidated) key is not enough — anyone reaching
+        # loopback could otherwise pair a junk key with a spoofed X-Delegate-User
+        # to mint arbitrary buckets / evade another user's cap. When the key does
+        # not validate we fall through to key/IP bucketing below.
         if client_host in ("127.0.0.1", "::1", "localhost"):
             delegate = headers.get("x-delegate-user")
-            if delegate and api_key:
+            if delegate and delegate_key_is_trusted(api_key):
                 return f"deleg:{self._h(delegate)}"
 
         # (2) Presented API key → its own bucket.

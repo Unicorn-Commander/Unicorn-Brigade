@@ -25,6 +25,7 @@ from typing import Annotated
 from app.integrations.slack import get_slack_client, SlackClient
 from app.llm.ops_center_client import OpsCenterLLMClient
 from app.auth.middleware import require_admin, AuthUser
+from app.security.bootstrap import is_production_env
 
 logger = logging.getLogger(__name__)
 
@@ -105,16 +106,31 @@ async def slack_events(request: Request, background_tasks: BackgroundTasks):
     timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
     signature = request.headers.get("X-Slack-Signature", "")
 
-    # Verify signature (skip in development if signing secret not set)
+    # Verify signature. The Slack webhook endpoints are intentionally PUBLIC (no
+    # auth dependency — see roles.PUBLIC_PATHS); the signing-secret HMAC is their
+    # ONLY authenticity check. So an unset secret in production means the endpoint
+    # is wide open. FAIL CLOSED in prod (mirrors the github webhook fix): when a
+    # secret is set we require a valid signature; when it is unset we reject in a
+    # production env and only skip verification in dev/test.
     slack_client = get_slack_client()
     if slack_client.signing_secret:
-        try:
-            if not slack_client.verify_request(body, timestamp, signature):
-                logger.warning("Invalid Slack signature")
-                raise HTTPException(status_code=401, detail="Invalid signature")
-        except ValueError:
-            # Signing secret not configured - log warning but continue in dev
-            logger.warning("Slack signing secret not configured - skipping verification")
+        if not slack_client.verify_request(body, timestamp, signature):
+            logger.warning("Invalid Slack signature")
+            raise HTTPException(status_code=401, detail="Invalid signature")
+    elif is_production_env():
+        logger.error(
+            "Slack signing secret not configured in a production environment - "
+            "rejecting unverifiable webhook (set SLACK_SIGNING_SECRET)"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Slack signing secret not configured",
+        )
+    else:
+        logger.warning(
+            "Slack signing secret not configured - skipping verification "
+            "(non-production environment)"
+        )
 
     # Parse payload
     try:
