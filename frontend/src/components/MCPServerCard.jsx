@@ -3,6 +3,7 @@ import { Play, Square, Eye, Package, CheckCircle, XCircle, Loader2, AlertCircle,
 import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
 import McpServerIcon from '../utils/mcpIcons';
+import { RoleGate } from './auth';
 
 const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoading, statusOverride }) => {
   const [actionLoading, setActionLoading] = useState(false);
@@ -110,35 +111,40 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
         </div>
       )}
 
-      {/* Actions */}
+      {/* Actions.
+          Start/Stop and Manage drive admin-only backend routes (require_admin);
+          gate them so non-admins don't see dead controls (BR-2.3). Viewing tools
+          is read-only and stays available to everyone. */}
       <div className="flex space-x-2">
-        {isRunning ? (
-          <button
-            onClick={handleStop}
-            disabled={actionLoading || isLoading}
-            className="flex-1 px-3 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
-          >
-            {actionLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Square className="w-4 h-4" />
-            )}
-            <span>Stop</span>
-          </button>
-        ) : (
-          <button
-            onClick={handleStart}
-            disabled={actionLoading || isLoading}
-            className="flex-1 px-3 py-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
-          >
-            {actionLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Play className="w-4 h-4" />
-            )}
-            <span>Start</span>
-          </button>
-        )}
+        <RoleGate role="admin" showUpgradePrompt={false}>
+          {isRunning ? (
+            <button
+              onClick={handleStop}
+              disabled={actionLoading || isLoading}
+              className="flex-1 px-3 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+            >
+              {actionLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Square className="w-4 h-4" />
+              )}
+              <span>Stop</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleStart}
+              disabled={actionLoading || isLoading}
+              className="flex-1 px-3 py-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
+            >
+              {actionLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+              <span>Start</span>
+            </button>
+          )}
+        </RoleGate>
 
         <button
           onClick={() => onViewTools(server)}
@@ -149,13 +155,15 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
         </button>
 
         {onManage && (
-          <button
-            onClick={() => onManage(server)}
-            className="px-3 py-2 bg-slate-700/60 text-slate-200 hover:bg-slate-600 rounded-lg transition-colors flex items-center justify-center space-x-2"
-          >
-            <Settings className="w-4 h-4" />
-            <span>Manage</span>
-          </button>
+          <RoleGate role="admin" showUpgradePrompt={false}>
+            <button
+              onClick={() => onManage(server)}
+              className="px-3 py-2 bg-slate-700/60 text-slate-200 hover:bg-slate-600 rounded-lg transition-colors flex items-center justify-center space-x-2"
+            >
+              <Settings className="w-4 h-4" />
+              <span>Manage</span>
+            </button>
+          </RoleGate>
         )}
       </div>
     </div>
