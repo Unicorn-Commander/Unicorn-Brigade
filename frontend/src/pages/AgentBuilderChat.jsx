@@ -564,6 +564,7 @@ What would you like to create today?`
                     Target Domain
                   </label>
                   <select
+                    aria-label="Agent domain"
                     value={preferences.domain || ''}
                     onChange={(e) => setPreferences({ ...preferences, domain: e.target.value || null })}
                     className="w-full px-4 py-2.5 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent"

@@ -50,14 +50,14 @@ function CopyRow({ icon: Icon, label, value }) {
         {label}
       </div>
       <div className="flex items-stretch gap-2">
-        <code className="flex-1 min-w-0 truncate px-3 py-2 bg-slate-950/60 border border-border/60 rounded-lg text-xs text-slate-200 font-mono">
+        <code className="flex-1 min-w-0 truncate px-3 py-2 bg-bg/60 border border-border/60 rounded-lg text-xs text-fg font-mono">
           {value}
         </code>
         <button
           type="button"
           onClick={onCopy}
           aria-label={`Copy ${label.toLowerCase()}`}
-          className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg bg-slate-800/60 border border-border/60 text-slate-200 hover:bg-slate-700/60 transition-colors text-xs font-medium"
+          className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg bg-elevated/60 border border-border/60 text-fg hover:bg-elevated/60 transition-colors text-xs font-medium"
         >
           {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
           {copied ? 'Copied' : 'Copy'}
@@ -129,7 +129,7 @@ export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated })
           </p>
 
           <div>
-            <label htmlFor="invite-email" className="block text-sm font-medium text-white mb-1.5">
+            <label htmlFor="invite-email" className="block text-sm font-medium text-fg mb-1.5">
               Email address
             </label>
             <div className="relative">
@@ -141,20 +141,20 @@ export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated })
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="teammate@company.com"
-                className="w-full pl-9 pr-3 py-2.5 bg-slate-900/60 border border-border/60 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
+                className="w-full pl-9 pr-3 py-2.5 bg-card/60 border border-border/60 rounded-lg text-sm text-fg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
               />
             </div>
           </div>
 
           <div>
-            <label htmlFor="invite-role" className="block text-sm font-medium text-white mb-1.5">
+            <label htmlFor="invite-role" className="block text-sm font-medium text-fg mb-1.5">
               Role
             </label>
             <select
               id="invite-role"
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="w-full px-3 py-2.5 bg-slate-900/60 border border-border/60 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
+              className="w-full px-3 py-2.5 bg-card/60 border border-border/60 rounded-lg text-sm text-fg focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
             >
               <option value={ORG_ROLES.MEMBER}>Member — can view</option>
               <option value={ORG_ROLES.ADMIN}>Admin — can manage members &amp; invites</option>

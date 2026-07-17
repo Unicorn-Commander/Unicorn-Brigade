@@ -72,7 +72,7 @@ const FeatureLock = ({
         initial={showAnimation ? { opacity: 0, scale: 0.9 } : { opacity: 1, scale: 1 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.3 }}
-        className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-sm"
+        className="absolute inset-0 flex items-center justify-center bg-surface/70 backdrop-blur-sm"
       >
         <div className="text-center px-6 py-8 max-w-sm">
           {/* Lock icon with glow effect */}
@@ -107,11 +107,11 @@ const FeatureLock = ({
           </motion.div>
 
           {/* Feature locked message */}
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <h3 className="text-lg font-semibold text-fg mb-2">
             Feature Locked
           </h3>
 
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-muted mb-4">
             Upgrade to unlock this feature
           </p>
 

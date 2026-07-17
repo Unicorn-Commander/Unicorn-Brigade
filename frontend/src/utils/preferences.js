@@ -16,6 +16,9 @@ export const DEFAULT_PREFERENCES = {
   // Render assistant text token-by-token as it streams (vs. showing it once
   // the full response is ready).
   streamResponses: true,
+  // Color theme: 'system' follows the OS, 'light' / 'dark' force one.
+  // Consumed by src/utils/theme.js (+ the pre-paint script in index.html).
+  theme: 'system',
 };
 
 export function getPreferences() {

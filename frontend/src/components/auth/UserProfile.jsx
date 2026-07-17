@@ -74,8 +74,8 @@ const UserProfile = ({
   if (loading) {
     return (
       <div className="flex items-center gap-2 px-3 py-2">
-        <div className="animate-pulse bg-gray-200 rounded-full h-8 w-8"></div>
-        <div className="animate-pulse bg-gray-200 rounded h-4 w-24"></div>
+        <div className="animate-pulse bg-elevated rounded-full h-8 w-8"></div>
+        <div className="animate-pulse bg-elevated rounded h-4 w-24"></div>
       </div>
     );
   }
@@ -103,7 +103,7 @@ const UserProfile = ({
       {/* Profile Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors w-full"
+        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors w-full"
       >
         {/* Avatar */}
         <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center text-white font-semibold text-sm">
@@ -112,10 +112,10 @@ const UserProfile = ({
 
         {/* User Info */}
         <div className="flex-1 min-w-0 text-left">
-          <p className="text-sm font-medium text-gray-900 truncate">
+          <p className="text-sm font-medium text-fg truncate">
             {user.username || user.name || 'User'}
           </p>
-          <p className="text-xs text-slate-400 truncate">
+          <p className="text-xs text-muted truncate">
             {user.email}
           </p>
         </div>
@@ -123,7 +123,7 @@ const UserProfile = ({
         {/* Chevron */}
         <ChevronDown
           size={16}
-          className={`flex-shrink-0 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          className={`flex-shrink-0 text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
 
@@ -135,14 +135,14 @@ const UserProfile = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden"
+            className="absolute top-full left-0 right-0 mt-2 bg-surface rounded-lg shadow-xl border border-border z-50 overflow-hidden"
           >
             {/* User Details */}
-            <div className="p-4 border-b border-gray-100 bg-gray-50">
-              <p className="text-sm font-medium text-gray-900 mb-1">
+            <div className="p-4 border-b border-border/60 bg-elevated/50">
+              <p className="text-sm font-medium text-fg mb-1">
                 {user.username || user.name}
               </p>
-              <div className="flex items-center gap-1 text-xs text-slate-400 mb-2">
+              <div className="flex items-center gap-1 text-xs text-muted mb-2">
                 <Mail size={12} />
                 {user.email}
               </div>
@@ -156,7 +156,7 @@ const UserProfile = ({
             <div className="py-1">
               <button
                 onClick={handleProfileClick}
-                className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                className="w-full flex items-center gap-3 px-4 py-2 text-sm text-fg hover:bg-white/5 transition-colors"
               >
                 <Settings size={16} />
                 Profile Settings
@@ -165,7 +165,7 @@ const UserProfile = ({
               {canSeeBilling && (
                 <button
                   onClick={handleBillingClick}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-fg hover:bg-white/5 transition-colors"
                 >
                   <CreditCard size={16} />
                   Billing Dashboard
@@ -174,10 +174,10 @@ const UserProfile = ({
             </div>
 
             {/* Logout */}
-            <div className="border-t border-gray-100">
+            <div className="border-t border-border/60">
               <button
                 onClick={handleLogoutClick}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
               >
                 <LogOut size={16} />
                 Sign Out

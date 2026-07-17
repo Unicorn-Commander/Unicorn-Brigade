@@ -52,7 +52,7 @@ export default function CreateOrgModal({ isOpen, onClose }) {
         </p>
 
         <div>
-          <label htmlFor="new-org-name" className="block text-sm font-medium text-white mb-1.5">
+          <label htmlFor="new-org-name" className="block text-sm font-medium text-fg mb-1.5">
             Organization name
           </label>
           <div className="relative">
@@ -65,7 +65,7 @@ export default function CreateOrgModal({ isOpen, onClose }) {
               onChange={(e) => setName(e.target.value)}
               placeholder="Acme Robotics"
               maxLength={120}
-              className="w-full pl-9 pr-3 py-2.5 bg-slate-900/60 border border-border/60 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
+              className="w-full pl-9 pr-3 py-2.5 bg-card/60 border border-border/60 rounded-lg text-sm text-fg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
             />
           </div>
           <p className="mt-1.5 text-xs text-muted">At least 2 characters.</p>

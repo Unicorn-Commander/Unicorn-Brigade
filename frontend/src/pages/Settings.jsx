@@ -9,6 +9,8 @@ import {
   AlertCircle,
   RefreshCw,
   Monitor,
+  Sun,
+  Moon,
   Palette,
   Bell,
   Shield,
@@ -22,6 +24,7 @@ import KeyRevealModal from '../components/KeyRevealModal';
 import Toggle from '../components/ui/Toggle';
 import notify from '../utils/notify';
 import { getPreferences, savePreferences } from '../utils/preferences';
+import { applyTheme } from '../utils/theme';
 import { apiJson } from '../services/http';
 
 const Settings = () => {
@@ -138,12 +141,12 @@ const Settings = () => {
             <h1 className="text-3xl font-bold text-gradient">
               Settings
             </h1>
-            <p className="text-slate-400 mt-1">Platform configuration and preferences</p>
+            <p className="text-muted mt-1">Platform configuration and preferences</p>
           </div>
           <button
             onClick={loadSettings}
             disabled={loading}
-            className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors flex items-center space-x-2 disabled:opacity-50"
+            className="px-4 py-2 bg-elevated text-muted rounded-lg hover:bg-elevated transition-colors flex items-center space-x-2 disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
@@ -151,21 +154,21 @@ const Settings = () => {
         </div>
 
         {/* LLM Provider */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-fg mb-4 flex items-center space-x-2">
             <Zap className="w-5 h-5 text-unicorn-400" />
             <span>LLM Provider</span>
           </h2>
           <div className="space-y-4">
             {providers.map((provider, idx) => (
-              <div key={idx} className="p-4 bg-slate-800/50 rounded-lg flex items-center justify-between">
+              <div key={idx} className="p-4 bg-elevated/50 rounded-lg flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <div className="w-10 h-10 rounded-lg bg-unicorn-500/20 flex items-center justify-center">
                     <Globe className="w-5 h-5 text-unicorn-400" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-white">{provider.name}</h3>
-                    <p className="text-sm text-slate-400">{provider.endpoint || provider.url}</p>
+                    <h3 className="font-semibold text-fg">{provider.name}</h3>
+                    <p className="text-sm text-muted">{provider.endpoint || provider.url}</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -181,7 +184,7 @@ const Settings = () => {
                     </span>
                   )}
                   {typeof provider.latency_ms === 'number' && (
-                    <span className="text-xs text-slate-400 ml-2">
+                    <span className="text-xs text-muted ml-2">
                       {provider.latency_ms} ms
                     </span>
                   )}
@@ -189,23 +192,23 @@ const Settings = () => {
               </div>
             ))}
             {providers.length === 0 && !loading && (
-              <p className="text-slate-400 text-center py-4">No providers configured</p>
+              <p className="text-muted text-center py-4">No providers configured</p>
             )}
           </div>
         </div>
 
         {/* API Keys */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-1 flex items-center space-x-2">
+        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-fg mb-1 flex items-center space-x-2">
             <Key className="w-5 h-5 text-cyan-400" />
             <span>API Keys</span>
           </h2>
-          <p className="text-sm text-slate-400 mb-4">
-            Personal keys for the Brigade API — send them as an <code className="text-slate-300">X-API-Key</code> header.
+          <p className="text-sm text-muted mb-4">
+            Personal keys for the Brigade API — send them as an <code className="text-muted">X-API-Key</code> header.
             The full key value is shown only once, at creation.
           </p>
           {keysError ? (
-            <p className="text-slate-400 text-center py-4">{keysError}</p>
+            <p className="text-muted text-center py-4">{keysError}</p>
           ) : (
             <>
               <div className="flex items-center space-x-2 mb-4">
@@ -215,7 +218,7 @@ const Settings = () => {
                   onChange={(e) => setNewKeyName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleCreateKey(); }}
                   placeholder="Key name (e.g. CLI, n8n, staging)"
-                  className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-unicorn-500 focus:border-transparent outline-none"
+                  className="flex-1 px-3 py-2 bg-elevated border border-border rounded-lg text-sm text-fg placeholder-slate-500 focus:ring-2 focus:ring-unicorn-500 focus:border-transparent outline-none"
                 />
                 <button
                   onClick={handleCreateKey}
@@ -226,7 +229,7 @@ const Settings = () => {
                 </button>
               </div>
               {keysLoading ? (
-                <p className="text-slate-400 text-center py-4">Loading keys…</p>
+                <p className="text-muted text-center py-4">Loading keys…</p>
               ) : apiKeys.length > 0 ? (
                 <div className="space-y-3">
                   {apiKeys.map((key) => (
@@ -234,31 +237,31 @@ const Settings = () => {
                   ))}
                 </div>
               ) : (
-                <p className="text-slate-400 text-center py-4">No API keys yet — create one above.</p>
+                <p className="text-muted text-center py-4">No API keys yet — create one above.</p>
               )}
             </>
           )}
         </div>
 
         {/* Available Models */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-fg mb-4 flex items-center space-x-2">
             <Cpu className="w-5 h-5 text-blue-400" />
             <span>Available Models ({models.length})</span>
           </h2>
           <div className="space-y-4">
             {Object.entries(modelCategories).map(([category, categoryModels]) => (
               <div key={category}>
-                <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-2">
                   {category} ({categoryModels.length})
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {categoryModels.slice(0, 6).map((model, idx) => (
-                    <div key={idx} className="p-3 bg-slate-800/50 rounded-lg flex items-center justify-between">
+                    <div key={idx} className="p-3 bg-elevated/50 rounded-lg flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-white font-medium">{model.name || model.id}</p>
+                        <p className="text-sm text-fg font-medium">{model.name || model.id}</p>
                         {model.provider && (
-                          <p className="text-xs text-slate-400">{model.provider}</p>
+                          <p className="text-xs text-muted">{model.provider}</p>
                         )}
                       </div>
                       <div className="flex items-center space-x-2">
@@ -277,7 +280,7 @@ const Settings = () => {
                   ))}
                 </div>
                 {categoryModels.length > 6 && (
-                  <p className="text-xs text-slate-400 mt-1">+ {categoryModels.length - 6} more</p>
+                  <p className="text-xs text-muted mt-1">+ {categoryModels.length - 6} more</p>
                 )}
               </div>
             ))}
@@ -285,17 +288,59 @@ const Settings = () => {
         </div>
 
         {/* User Preferences */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-fg mb-4 flex items-center space-x-2">
             <Palette className="w-5 h-5 text-unicorn-400" />
             <span>Preferences</span>
           </h2>
           <div className="space-y-4">
+            {/* Appearance — applied immediately + persisted; 'system' follows the OS.
+                Wired to src/utils/theme.js which flips data-theme on <html>. */}
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-fg">Appearance</p>
+                <p className="text-xs text-muted">Color theme for the interface</p>
+              </div>
+              <div
+                role="radiogroup"
+                aria-label="Color theme"
+                className="flex items-center gap-1 rounded-lg border border-border/60 bg-elevated/60 p-1"
+              >
+                {[
+                  { value: 'system', label: 'System', icon: Monitor },
+                  { value: 'light', label: 'Light', icon: Sun },
+                  { value: 'dark', label: 'Dark', icon: Moon },
+                ].map(({ value, label, icon: Icon }) => {
+                  const active = preferences.theme === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => {
+                        updatePref('theme', value);
+                        applyTheme(value);
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-unicorn-500/60 ${
+                        active
+                          ? 'bg-unicorn-600 text-white shadow'
+                          : 'text-muted hover:text-fg'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" aria-hidden="true" />
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Default Model — used by new chats via useAgentChat when no per-window override is set */}
             <div className="flex items-center justify-between">
               <div>
-                <label htmlFor="pref-default-model" className="text-sm font-medium text-white">Default Model</label>
-                <p className="text-xs text-slate-400">Model used for new conversations</p>
+                <label htmlFor="pref-default-model" className="text-sm font-medium text-fg">Default Model</label>
+                <p className="text-xs text-muted">Model used for new conversations</p>
               </div>
               <select
                 id="pref-default-model"
@@ -304,7 +349,7 @@ const Settings = () => {
                   updatePref('defaultModel', e.target.value);
                   notify.success('Default model updated');
                 }}
-                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white max-w-xs"
+                className="bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-fg max-w-xs"
               >
                 <option value="">Auto (server default)</option>
                 {models.map((model, idx) => (
@@ -322,8 +367,8 @@ const Settings = () => {
             {/* Stream Responses — read by useAgentChat to render tokens live vs. all-at-once */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-white">Stream Responses</p>
-                <p className="text-xs text-slate-400">Show text as it's generated</p>
+                <p className="text-sm font-medium text-fg">Stream Responses</p>
+                <p className="text-xs text-muted">Show text as it's generated</p>
               </div>
               <Toggle
                 checked={preferences.streamResponses}
@@ -335,8 +380,8 @@ const Settings = () => {
             {/* Notifications — read by notify.js to gate non-error toasts */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-white">Notifications</p>
-                <p className="text-xs text-slate-400">Show non-error toast notifications</p>
+                <p className="text-sm font-medium text-fg">Notifications</p>
+                <p className="text-xs text-muted">Show non-error toast notifications</p>
               </div>
               <Toggle
                 checked={preferences.notifications}
@@ -348,34 +393,34 @@ const Settings = () => {
         </div>
 
         {/* Platform Info */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
-            <Info className="w-5 h-5 text-slate-400" />
+        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-fg mb-4 flex items-center space-x-2">
+            <Info className="w-5 h-5 text-muted" />
             <span>Platform Info</span>
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-xs text-slate-400">Platform</p>
-              <p className="text-white font-semibold">Unicorn Brigade</p>
+            <div className="p-3 bg-elevated/50 rounded-lg">
+              <p className="text-xs text-muted">Platform</p>
+              <p className="text-fg font-semibold">Unicorn Brigade</p>
             </div>
-            <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-xs text-slate-400">Version</p>
-              <p className="text-white font-semibold">{stats?.version ? `v${stats.version}` : '—'}</p>
+            <div className="p-3 bg-elevated/50 rounded-lg">
+              <p className="text-xs text-muted">Version</p>
+              <p className="text-fg font-semibold">{stats?.version ? `v${stats.version}` : '—'}</p>
             </div>
-            <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-xs text-slate-400">Backend</p>
-              <p className="text-white font-semibold">FastAPI + SQLAlchemy</p>
+            <div className="p-3 bg-elevated/50 rounded-lg">
+              <p className="text-xs text-muted">Backend</p>
+              <p className="text-fg font-semibold">FastAPI + SQLAlchemy</p>
             </div>
-            <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-xs text-slate-400">Agents</p>
-              <p className="text-white font-semibold">{stats?.totalAgents ?? '—'}</p>
+            <div className="p-3 bg-elevated/50 rounded-lg">
+              <p className="text-xs text-muted">Agents</p>
+              <p className="text-fg font-semibold">{stats?.totalAgents ?? '—'}</p>
             </div>
           </div>
         </div>
 
         {/* Keyboard Shortcuts */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-fg mb-4 flex items-center space-x-2">
             <Monitor className="w-5 h-5 text-cyan-400" />
             <span>Keyboard Shortcuts</span>
           </h2>
@@ -386,9 +431,9 @@ const Settings = () => {
               { keys: 'Shift + Enter', action: 'New line (in chat)' },
               { keys: 'Esc', action: 'Close dialogs' },
             ].map((shortcut, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
-                <span className="text-sm text-slate-300">{shortcut.action}</span>
-                <kbd className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-400 font-mono">
+              <div key={idx} className="flex items-center justify-between p-3 bg-elevated/50 rounded-lg">
+                <span className="text-sm text-muted">{shortcut.action}</span>
+                <kbd className="px-2 py-1 bg-elevated rounded text-xs text-muted font-mono">
                   {shortcut.keys}
                 </kbd>
               </div>

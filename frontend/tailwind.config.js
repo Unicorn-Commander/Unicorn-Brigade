@@ -35,13 +35,17 @@ export default {
           950: '#500724',
         },
         // Semantic design tokens — wired to the CSS vars in index.css so the
-        // whole UI can be re-themed from one place. Values track the dark
-        // slate palette today (bg-bg ≈ slate-950, surface/card ≈ slate-900,
-        // border ≈ slate-700, muted ≈ slate-400, accent = unicorn-500).
+        // whole UI can be re-themed from one place. They resolve to the dark
+        // slate palette on :root and flip to light on [data-theme="light"]
+        // (bg ≈ slate-950/100, surface+card ≈ slate-900/white, elevated ≈
+        // slate-800/200, border ≈ slate-700/300, fg ≈ slate-50/900, muted ≈
+        // slate-400/600, accent = unicorn-500/600).
         bg: 'hsl(var(--bg) / <alpha-value>)',
         surface: 'hsl(var(--surface) / <alpha-value>)',
         card: 'hsl(var(--card) / <alpha-value>)',
+        elevated: 'hsl(var(--elevated) / <alpha-value>)',
         border: 'hsl(var(--border) / <alpha-value>)',
+        fg: 'hsl(var(--fg) / <alpha-value>)',
         muted: 'hsl(var(--muted) / <alpha-value>)',
         accent: 'hsl(var(--accent) / <alpha-value>)',
       },

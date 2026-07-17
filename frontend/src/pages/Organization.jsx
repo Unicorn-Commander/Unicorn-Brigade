@@ -49,7 +49,7 @@ function formatDate(iso) {
 const INVITE_STATUS = {
   pending: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
   accepted: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
-  revoked: 'bg-slate-500/15 text-slate-300 border-slate-500/40',
+  revoked: 'bg-slate-500/15 text-muted border-slate-500/40',
   expired: 'bg-red-500/15 text-red-300 border-red-500/40',
 };
 
@@ -57,7 +57,7 @@ const INVITE_STATUS = {
 function Panel({ children, className = '' }) {
   return (
     <div
-      className={`backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 ${className}`}
+      className={`backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6 ${className}`}
     >
       {children}
     </div>
@@ -231,7 +231,7 @@ export default function Organization() {
           <Breadcrumbs />
           <Panel className="text-center py-16">
             <Building2 className="w-12 h-12 text-unicorn-400 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-white mb-1">No organization yet</h2>
+            <h2 className="text-xl font-bold text-fg mb-1">No organization yet</h2>
             <p className="text-muted mb-6">Create one to invite teammates and share your Brigade.</p>
             <div className="flex justify-center">
               <Button variant="primary" onClick={() => setShowCreate(true)}>
@@ -254,12 +254,12 @@ export default function Organization() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gradient">Organization</h1>
-            <p className="text-slate-400 mt-1">Members, roles, and invitations</p>
+            <p className="text-muted mt-1">Members, roles, and invitations</p>
           </div>
           <button
             onClick={refreshAll}
             disabled={membersLoading || invitesLoading}
-            className="px-4 py-2 min-h-[44px] bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+            className="px-4 py-2 min-h-[44px] bg-elevated text-muted rounded-lg hover:bg-elevated transition-colors flex items-center gap-2 disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${membersLoading || invitesLoading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
@@ -284,7 +284,7 @@ export default function Organization() {
                       if (e.key === 'Escape') setRenaming(false);
                     }}
                     maxLength={120}
-                    className="flex-1 min-w-0 px-3 py-1.5 bg-slate-900/60 border border-border/60 rounded-lg text-lg font-bold text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500/50"
+                    className="flex-1 min-w-0 px-3 py-1.5 bg-card/60 border border-border/60 rounded-lg text-lg font-bold text-fg focus:outline-none focus:ring-2 focus:ring-unicorn-500/50"
                   />
                   <button
                     onClick={saveName}
@@ -298,14 +298,14 @@ export default function Organization() {
                     onClick={() => setRenaming(false)}
                     disabled={savingName}
                     aria-label="Cancel rename"
-                    className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-50"
+                    className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg bg-elevated hover:bg-elevated text-muted transition-colors disabled:opacity-50"
                   >
                     <XIcon className="w-4 h-4" />
                   </button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-2xl font-bold text-white truncate">
+                  <h2 className="text-2xl font-bold text-fg truncate">
                     {activeOrg?.name || 'Organization'}
                   </h2>
                   {activeOrg?.role && <OrgRoleBadge role={activeOrg.role} />}
@@ -313,7 +313,7 @@ export default function Organization() {
                     <button
                       onClick={startRename}
                       aria-label="Rename organization"
-                      className="p-1.5 rounded-lg text-muted hover:text-white hover:bg-white/5 transition-colors"
+                      className="p-1.5 rounded-lg text-muted hover:text-fg hover:bg-white/5 transition-colors"
                     >
                       <Pencil className="w-4 h-4" />
                     </button>
@@ -323,7 +323,7 @@ export default function Organization() {
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
                 {activeOrg?.slug && (
                   <span>
-                    Slug: <code className="text-slate-300">{activeOrg.slug}</code>
+                    Slug: <code className="text-muted">{activeOrg.slug}</code>
                   </span>
                 )}
                 {activeOrg?.planTier && (
@@ -340,7 +340,7 @@ export default function Organization() {
         {/* Members */}
         <Panel>
           <div className="flex items-center justify-between mb-4 gap-4">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <h2 className="text-xl font-bold text-fg flex items-center gap-2">
               <Users className="w-5 h-5 text-unicorn-400" />
               <span>Members{members.length ? ` (${members.length})` : ''}</span>
             </h2>
@@ -368,14 +368,14 @@ export default function Organization() {
           ) : members.length === 0 ? (
             <p className="text-muted text-center py-8">No members yet.</p>
           ) : (
-            <ul className="divide-y divide-slate-800/60">
+            <ul className="divide-y divide-border/60">
               {members.map((m) => (
                 <li key={m.userId} className="flex items-center gap-3 py-3">
-                  <span className="flex-shrink-0 w-10 h-10 rounded-full bg-slate-700/60 flex items-center justify-center text-sm font-semibold text-slate-200">
+                  <span className="flex-shrink-0 w-10 h-10 rounded-full bg-elevated/60 flex items-center justify-center text-sm font-semibold text-fg">
                     {initials(m.name || m.email)}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">
+                    <p className="text-sm font-medium text-fg truncate">
                       {m.name || m.email}
                     </p>
                     <p className="text-xs text-muted truncate">
@@ -393,7 +393,7 @@ export default function Organization() {
         {canManage && (
           <Panel>
             <div className="flex items-center justify-between mb-4 gap-4">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <h2 className="text-xl font-bold text-fg flex items-center gap-2">
                 <Ticket className="w-5 h-5 text-unicorn-400" />
                 <span>Invitations{pendingCount ? ` (${pendingCount} pending)` : ''}</span>
               </h2>
@@ -417,14 +417,14 @@ export default function Organization() {
                 No invitations yet — invite a teammate by email.
               </p>
             ) : (
-              <ul className="divide-y divide-slate-800/60">
+              <ul className="divide-y divide-border/60">
                 {invites.map((inv) => (
                   <li key={inv.id} className="flex items-center gap-3 py-3">
-                    <span className="flex-shrink-0 w-10 h-10 rounded-full bg-slate-700/60 flex items-center justify-center">
-                      <Mail className="w-4 h-4 text-slate-300" />
+                    <span className="flex-shrink-0 w-10 h-10 rounded-full bg-elevated/60 flex items-center justify-center">
+                      <Mail className="w-4 h-4 text-muted" />
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{inv.email}</p>
+                      <p className="text-sm font-medium text-fg truncate">{inv.email}</p>
                       <p className="text-xs text-muted">
                         Invited {formatDate(inv.createdAt)}
                         {inv.status === 'pending' && inv.expiresAt
@@ -463,7 +463,7 @@ export default function Organization() {
 
         {/* Join another org by token — available to any user */}
         <Panel>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
+          <h2 className="text-xl font-bold text-fg flex items-center gap-2 mb-1">
             <LogIn className="w-5 h-5 text-cyan-400" />
             <span>Join an organization</span>
           </h2>
@@ -477,7 +477,7 @@ export default function Organization() {
               value={acceptToken}
               onChange={(e) => setAcceptToken(e.target.value)}
               placeholder="Invite token"
-              className="flex-1 min-w-0 px-3 py-2.5 bg-slate-900/60 border border-border/60 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500/50"
+              className="flex-1 min-w-0 px-3 py-2.5 bg-card/60 border border-border/60 rounded-lg text-sm text-fg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500/50"
             />
             <Button type="submit" variant="primary" disabled={!acceptToken.trim() || accepting}>
               {accepting ? (

@@ -20,7 +20,7 @@ const ROLE_CONFIG = {
   member: {
     label: 'Member',
     icon: User,
-    className: 'bg-slate-500/15 text-slate-300 border-slate-500/40',
+    className: 'bg-slate-500/15 text-muted border-slate-500/40',
   },
 };
 

@@ -350,6 +350,7 @@ const KnowledgeGraph = () => {
             <div className="flex items-center space-x-2">
               <Filter className="w-4 h-4 text-slate-400" />
               <select
+                aria-label="Filter by node type"
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
                 className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 focus:outline-none focus:border-cyan-500"

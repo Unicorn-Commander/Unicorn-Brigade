@@ -29,8 +29,8 @@ export default function BarList({ items = [], renderValue, className = '' }) {
             <Row
               type={item.onClick ? 'button' : undefined}
               onClick={item.onClick}
-              className={`group relative block w-full overflow-hidden rounded-lg border border-border/40 bg-slate-800/40 px-3 py-2 text-left transition-colors ${
-                item.onClick ? 'hover:border-unicorn-500/40 hover:bg-slate-800/70' : ''
+              className={`group relative block w-full overflow-hidden rounded-lg border border-border/40 bg-elevated/40 px-3 py-2 text-left transition-colors ${
+                item.onClick ? 'hover:border-unicorn-500/40 hover:bg-elevated/70' : ''
               }`}
             >
               {/* Bar fill (anchored left, scaled to the max value) */}
@@ -42,10 +42,10 @@ export default function BarList({ items = [], renderValue, className = '' }) {
               <span className="relative flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2.5 min-w-0">
                   {item.icon && <span className="flex-shrink-0 text-muted">{item.icon}</span>}
-                  <span className="truncate font-medium text-white capitalize">{item.label}</span>
+                  <span className="truncate font-medium text-fg capitalize">{item.label}</span>
                 </span>
                 <span
-                  className="flex-shrink-0 text-sm text-slate-300"
+                  className="flex-shrink-0 text-sm text-muted"
                   style={{ fontVariantNumeric: 'tabular-nums' }}
                 >
                   {renderValue ? renderValue(item) : item.value}

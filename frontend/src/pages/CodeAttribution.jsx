@@ -315,6 +315,7 @@ const CodeAttribution = () => {
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-slate-400" />
               <select
+                aria-label="Date range"
                 value={dateRange}
                 onChange={(e) => setDateRange(e.target.value)}
                 className="input w-40"
@@ -331,6 +332,7 @@ const CodeAttribution = () => {
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-slate-400" />
                 <select
+                  aria-label="Filter by agent"
                   value={selectedAgent || ''}
                   onChange={(e) => setSelectedAgent(e.target.value || null)}
                   className="input w-48"

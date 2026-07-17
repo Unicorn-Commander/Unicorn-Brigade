@@ -20,25 +20,25 @@ const WIZARD_STEPS = [
     description: 'Your AI Agent Factory for building, deploying, and orchestrating intelligent agents.',
     content: (
       <div className="space-y-4">
-        <p className="text-slate-300">
+        <p className="text-muted">
           Unicorn Brigade is a production-ready platform with:
         </p>
-        <ul className="space-y-2 text-sm text-slate-400">
+        <ul className="space-y-2 text-sm text-muted">
           <li className="flex items-start space-x-2">
             <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-white">Production-ready agents</strong> across multiple domains</span>
+            <span><strong className="text-fg">Production-ready agents</strong> across multiple domains</span>
           </li>
           <li className="flex items-start space-x-2">
             <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-white">Hierarchical multi-agent workflows</strong> with real-time tracking</span>
+            <span><strong className="text-fg">Hierarchical multi-agent workflows</strong> with real-time tracking</span>
           </li>
           <li className="flex items-start space-x-2">
             <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-white">MCP server integrations</strong> with a growing tool catalog</span>
+            <span><strong className="text-fg">MCP server integrations</strong> with a growing tool catalog</span>
           </li>
           <li className="flex items-start space-x-2">
             <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-white">Built-in working tools</strong> (search, email, memory, browser, and more)</span>
+            <span><strong className="text-fg">Built-in working tools</strong> (search, email, memory, browser, and more)</span>
           </li>
         </ul>
       </div>
@@ -51,25 +51,25 @@ const WIZARD_STEPS = [
     description: 'Start a conversation with any of your agents.',
     content: (
       <div className="space-y-4">
-        <p className="text-slate-300">
+        <p className="text-muted">
           Try chatting with one of our specialized agents:
         </p>
         <div className="grid grid-cols-2 gap-3 mt-4">
-          <div className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-3">
-            <div className="text-sm font-medium text-white">LtCol Sterling</div>
-            <div className="text-xs text-slate-400 mt-1">Financial Analysis</div>
+          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
+            <div className="text-sm font-medium text-fg">LtCol Sterling</div>
+            <div className="text-xs text-muted mt-1">Financial Analysis</div>
           </div>
-          <div className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-3">
-            <div className="text-sm font-medium text-white">Maj CodeCraft</div>
-            <div className="text-xs text-slate-400 mt-1">Software Engineering</div>
+          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
+            <div className="text-sm font-medium text-fg">Maj CodeCraft</div>
+            <div className="text-xs text-muted mt-1">Software Engineering</div>
           </div>
-          <div className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-3">
-            <div className="text-sm font-medium text-white">Cpl Scout</div>
-            <div className="text-xs text-slate-400 mt-1">Research & Intelligence</div>
+          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
+            <div className="text-sm font-medium text-fg">Cpl Scout</div>
+            <div className="text-xs text-muted mt-1">Research & Intelligence</div>
           </div>
-          <div className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-3">
-            <div className="text-sm font-medium text-white">Sgt Scribe</div>
-            <div className="text-xs text-slate-400 mt-1">Meeting Notes & Summaries</div>
+          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
+            <div className="text-sm font-medium text-fg">Sgt Scribe</div>
+            <div className="text-xs text-muted mt-1">Meeting Notes & Summaries</div>
           </div>
         </div>
       </div>
@@ -82,10 +82,10 @@ const WIZARD_STEPS = [
     description: 'Create your own agents with custom personalities and tools.',
     content: (
       <div className="space-y-4">
-        <p className="text-slate-300">
+        <p className="text-muted">
           Build agents tailored to your needs:
         </p>
-        <ul className="space-y-2 text-sm text-slate-400">
+        <ul className="space-y-2 text-sm text-muted">
           <li className="flex items-start space-x-2">
             <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-unicorn-400">1.</div>
             <span>Define personality and behavior</span>
@@ -119,24 +119,24 @@ const WIZARD_STEPS = [
     description: 'Run automated multi-agent workflows with real-time tracking.',
     content: (
       <div className="space-y-4">
-        <p className="text-slate-300">
+        <p className="text-muted">
           Choose from a library of ready-made workflow templates:
         </p>
         <div className="space-y-2 text-sm">
-          <div className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-3">
-            <div className="font-medium text-white">Investment Due Diligence</div>
-            <div className="text-xs text-slate-400 mt-1">Finance, Research, Investment</div>
+          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
+            <div className="font-medium text-fg">Investment Due Diligence</div>
+            <div className="text-xs text-muted mt-1">Finance, Research, Investment</div>
           </div>
-          <div className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-3">
-            <div className="font-medium text-white">Content Production Factory</div>
-            <div className="text-xs text-slate-400 mt-1">Research, Content, SEO</div>
+          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
+            <div className="font-medium text-fg">Content Production Factory</div>
+            <div className="text-xs text-muted mt-1">Research, Content, SEO</div>
           </div>
-          <div className="bg-slate-700/30 border border-slate-600/50 rounded-lg p-3">
-            <div className="font-medium text-white">Incident Response & Resolution</div>
-            <div className="text-xs text-slate-400 mt-1">DevOps, Monitoring, Investigation</div>
+          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
+            <div className="font-medium text-fg">Incident Response & Resolution</div>
+            <div className="text-xs text-muted mt-1">DevOps, Monitoring, Investigation</div>
           </div>
         </div>
-        <p className="text-sm text-slate-400 mt-4">
+        <p className="text-sm text-muted mt-4">
           Each workflow coordinates multiple specialized agents working together.
         </p>
       </div>
@@ -184,24 +184,24 @@ export default function GettingStartedWizard({ onClose }) {
       onClose={handleFinish}
       ariaLabel={`Getting started: ${step.title}`}
       showClose={false}
-      panelClassName="bg-slate-800/95 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl max-w-2xl w-full"
+      panelClassName="bg-elevated/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl max-w-2xl w-full"
     >
-        <div className="flex justify-between items-center p-6 border-b border-slate-700/50">
+        <div className="flex justify-between items-center p-6 border-b border-border/50">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-unicorn-500/20 rounded-lg">
               <Icon className="w-6 h-6 text-unicorn-400" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">{step.title}</h2>
-              <p className="text-sm text-slate-400 mt-0.5">{step.description}</p>
+              <h2 className="text-xl font-bold text-fg">{step.title}</h2>
+              <p className="text-sm text-muted mt-0.5">{step.description}</p>
             </div>
           </div>
           <button
             onClick={handleFinish}
             aria-label="Close getting started"
-            className="p-3 min-h-[44px] min-w-[44px] hover:bg-slate-700/50 rounded-lg transition-colors"
+            className="p-3 min-h-[44px] min-w-[44px] hover:bg-elevated/50 rounded-lg transition-colors"
           >
-            <X className="w-5 h-5 text-slate-400" />
+            <X className="w-5 h-5 text-muted" />
           </button>
         </div>
 
@@ -209,7 +209,7 @@ export default function GettingStartedWizard({ onClose }) {
           {step.content}
         </div>
 
-        <div className="flex justify-between items-center p-6 border-t border-slate-700/50 bg-slate-800/50">
+        <div className="flex justify-between items-center p-6 border-t border-border/50 bg-elevated/50">
           <div className="flex space-x-2">
             {WIZARD_STEPS.map((_, index) => (
               <div
@@ -219,7 +219,7 @@ export default function GettingStartedWizard({ onClose }) {
                     ? 'bg-unicorn-500'
                     : index < currentStep
                     ? 'bg-unicorn-500/50'
-                    : 'bg-slate-600'
+                    : 'bg-border'
                 }`}
               />
             ))}
@@ -229,7 +229,7 @@ export default function GettingStartedWizard({ onClose }) {
             {currentStep > 0 && (
               <button
                 onClick={handleBack}
-                className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors flex items-center space-x-2"
+                className="px-4 py-2 bg-elevated text-fg rounded-lg hover:bg-elevated transition-colors flex items-center space-x-2"
               >
                 <ChevronLeft className="w-4 h-4" />
                 <span>Back</span>

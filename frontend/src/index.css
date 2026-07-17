@@ -5,25 +5,31 @@
 @layer base {
   /*
    * Semantic design tokens (HSL channel triples, consumed by tailwind.config.js
-   * as hsl(var(--token) / <alpha>)). These ARE the theme — a single, deliberate
-   * dark theme — and they are actively consumed by the primitives (Modal, Card,
-   * StatCard) and the charts, so they are not dead vars.
+   * as hsl(var(--token) / <alpha>)). These ARE the theme and are consumed by the
+   * primitives (Modal, Card, StatCard, Button, Toggle), the charts, and the
+   * high-traffic surfaces (nav, dashboard, chat, settings, auth, org).
    *
-   * Light mode is DEFERRED, on purpose. `darkMode:'class'` + <html class="dark">
-   * are wired as the substrate, but the app body is still ~2,200 hard-coded
-   * slate/white utility classes (bg-slate-900, border-slate-700, text-white ×450)
-   * with almost no token adoption and no foreground token. Flipping these tokens
-   * to light values today would only re-theme the handful of tokenized surfaces
-   * and leave the rest dark — white-on-white headings, dark cards on a light page.
-   * A real light theme needs the app tokenized first (bg/surface/card/border +
-   * NEW fg/elevated tokens, then a slate→token codemod), verified in both modes.
-   * Until then dark is the intentional single theme; no broken toggle is shipped.
+   * TWO themes now ship. Dark is the default (values on :root, so no-JS / first
+   * paint = dark, matching the historical look). Light overrides live on
+   * :root[data-theme="light"]. The runtime toggle (src/utils/theme.js, wired
+   * from Settings → Appearance) flips data-theme on <html> and mirrors it on the
+   * `dark` class; prefers-color-scheme seeds the initial default.
+   *
+   * Not every historical slate/white utility has been migrated to tokens — the
+   * high-traffic surfaces have; low-traffic pages (see the LIGHT-MODE COVERAGE
+   * note at the end of this file) keep dark slate panels and render dark-correct
+   * on the light page. Semantic status colors (emerald/red/amber/cyan/…-400) and
+   * translucent-white tints are remapped app-wide for light mode by the scoped
+   * overrides at the end of this file, so they stay legible on both white and
+   * dark panels without touching JSX.
    */
   :root {
     --bg: 229 84% 5%;        /* app background   ≈ slate-950 */
     --surface: 222 47% 11%;  /* elevated panel   ≈ slate-900 */
     --card: 222 47% 11%;     /* card background  ≈ slate-900 */
+    --elevated: 217 33% 17%; /* nested tiles     ≈ slate-800 */
     --border: 215 25% 27%;   /* hairline borders ≈ slate-700 */
+    --fg: 210 40% 98%;       /* primary text     ≈ slate-50 (was text-white) */
     --muted: 215 20% 65%;    /* muted body text  = slate-400 (AA on dark) */
     --accent: 322.8 84.7% 59.8%; /* one accent    = unicorn-500 */
 
@@ -45,11 +51,39 @@
     --chart-grid: rgba(148, 163, 184, 0.14);
     --chart-axis: #94a3b8;                  /* slate-400 — axis/ticks      */
   }
+
+  /* ---- Light theme token overrides ---------------------------------------
+   * Verified for AA: fg (slate-900) on card (white) ≈ 17:1; muted (slate-600)
+   * on white ≈ 7:1 and on bg (slate-100) ≈ 6.4:1; accent (unicorn-600) on
+   * white ≈ 3.9:1 (AA for UI / large accent text). */
+  :root[data-theme="light"] {
+    --bg: 210 40% 96%;       /* page background  ≈ slate-100 */
+    --surface: 0 0% 100%;    /* raised panels    = white */
+    --card: 0 0% 100%;       /* cards            = white */
+    --elevated: 214 32% 93%; /* nested tiles     ≈ slate-200 */
+    --border: 214 25% 84%;   /* hairline borders ≈ slate-300 */
+    --fg: 222 47% 13%;       /* primary text     ≈ slate-900 */
+    --muted: 215 19% 35%;    /* muted body text  ≈ slate-600/700 (AA on white) */
+    --accent: 330 81% 44%;   /* accent           ≈ unicorn-600 (AA on white) */
+
+    --background: 210 40% 96%;
+    --foreground: 222 47% 13%;
+    --card-foreground: 222 47% 13%;
+    --primary: 330 81% 44%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Chart palette re-tuned for the white plot surface (darker, saturated). */
+    --chart-1: #1d67c9;                     /* blue    */
+    --chart-2: #be2a63;                     /* magenta */
+    --chart-3: #0f7a54;                     /* aqua    */
+    --chart-grid: rgba(51, 65, 85, 0.14);
+    --chart-axis: #475569;                  /* slate-600 axis/ticks */
+  }
 }
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100 font-sans antialiased;
+    @apply bg-bg text-fg font-sans antialiased;
     background-image:
       radial-gradient(at 27% 37%, hsla(215, 98%, 61%, 0.15) 0px, transparent 50%),
       radial-gradient(at 97% 21%, hsla(322, 87%, 65%, 0.15) 0px, transparent 50%),
@@ -59,15 +93,25 @@
     min-height: 100vh;
     margin: 0;
   }
+
+  /* Soften the aurora on light so it reads as a faint tint, not muddy blobs. */
+  :root[data-theme="light"] body {
+    background-image:
+      radial-gradient(at 27% 37%, hsla(215, 98%, 55%, 0.08) 0px, transparent 50%),
+      radial-gradient(at 97% 21%, hsla(322, 87%, 55%, 0.08) 0px, transparent 50%),
+      radial-gradient(at 52% 99%, hsla(189, 90%, 45%, 0.06) 0px, transparent 50%),
+      radial-gradient(at 10% 29%, hsla(256, 90%, 60%, 0.06) 0px, transparent 50%),
+      radial-gradient(at 76% 65%, hsla(187, 90%, 40%, 0.06) 0px, transparent 50%);
+  }
 }
 
 @layer components {
   .glass {
-    @apply bg-slate-900/40 backdrop-blur-md border border-slate-800/50;
+    @apply bg-surface/40 backdrop-blur-md border border-border/40;
   }
 
   .glass-hover {
-    @apply hover:bg-slate-800/50 transition-all duration-200;
+    @apply hover:bg-elevated/50 transition-all duration-200;
   }
 
   .btn-primary {
@@ -75,7 +119,7 @@
   }
 
   .btn-secondary {
-    @apply bg-slate-800/50 text-slate-200 px-6 py-3 rounded-lg font-medium hover:bg-slate-700/50 transition-all duration-200 border border-slate-700/50;
+    @apply bg-elevated/60 text-fg px-6 py-3 rounded-lg font-medium hover:bg-elevated transition-all duration-200 border border-border/60;
   }
 
   .card {
@@ -83,7 +127,7 @@
   }
 
   .input {
-    @apply bg-slate-900/50 border border-slate-700/50 rounded-lg px-4 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50;
+    @apply bg-surface/50 border border-border/60 rounded-lg px-4 py-2 text-fg placeholder-muted focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50;
   }
 
   .text-gradient {
@@ -338,3 +382,81 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+ * LIGHT-THEME SCOPED UTILITY OVERRIDES
+ *
+ * These only apply under [data-theme="light"]. They fix two whole classes of
+ * historical utilities app-wide WITHOUT touching JSX, so light mode is legible
+ * even on the low-traffic pages that still ship dark slate panels:
+ *
+ *   1. Semantic status TEXT colors. In dark they're the -400 shades. The -600/
+ *      -700 replacements below are chosen to clear AA on BOTH the white cards of
+ *      converted surfaces AND the dark slate panels of unconverted ones (each is
+ *      ≥3.5:1 on white and ≥3:1 on slate-900). Backgrounds (bg-*-500/20 tints)
+ *      are left alone — they're pale on white and subtle on dark, both fine.
+ *   2. Translucent-white elevation/hover tints → translucent-black, so hovers
+ *      and glassy fills read on light surfaces instead of vanishing.
+ *
+ * They sit outside @layer so they win the cascade over the layered utilities
+ * regardless of source order. Deliberately NOT overridden: text-white (means
+ * "on-accent" on buttons — must stay white) and text/bg-slate-* (context
+ * dependent — migrated per-surface instead).
+ * ====================================================================== */
+:root[data-theme="light"] .text-emerald-400 { color: #059669; }
+:root[data-theme="light"] .text-emerald-300 { color: #047857; }
+:root[data-theme="light"] .text-teal-400    { color: #0d9488; }
+:root[data-theme="light"] .text-green-400   { color: #16a34a; }
+:root[data-theme="light"] .text-red-400     { color: #dc2626; }
+:root[data-theme="light"] .text-red-300     { color: #dc2626; }
+:root[data-theme="light"] .text-red-200     { color: #b91c1c; }
+:root[data-theme="light"] .text-rose-400    { color: #e11d48; }
+:root[data-theme="light"] .text-amber-400   { color: #b45309; }
+:root[data-theme="light"] .text-amber-300   { color: #b45309; }
+:root[data-theme="light"] .text-amber-200   { color: #92400e; }
+:root[data-theme="light"] .text-yellow-400  { color: #a16207; }
+:root[data-theme="light"] .text-yellow-200  { color: #854d0e; }
+:root[data-theme="light"] .text-orange-400  { color: #c2410c; }
+:root[data-theme="light"] .text-cyan-400    { color: #0e7490; }
+:root[data-theme="light"] .text-cyan-300    { color: #0e7490; }
+:root[data-theme="light"] .text-sky-400     { color: #0369a1; }
+:root[data-theme="light"] .text-blue-400    { color: #2563eb; }
+:root[data-theme="light"] .text-indigo-400  { color: #4f46e5; }
+:root[data-theme="light"] .text-violet-400  { color: #7c3aed; }
+:root[data-theme="light"] .text-purple-400  { color: #9333ea; }
+:root[data-theme="light"] .text-pink-400    { color: #db2777; }
+:root[data-theme="light"] .text-unicorn-400 { color: #db2777; }
+:root[data-theme="light"] .text-unicorn-300 { color: #be185d; }
+:root[data-theme="light"] .text-unicorn-200 { color: #9d174d; }
+
+/* Translucent-white tints → translucent-black on light surfaces. */
+:root[data-theme="light"] .bg-white\/5        { background-color: rgb(15 23 42 / 0.05); }
+:root[data-theme="light"] .bg-white\/10       { background-color: rgb(15 23 42 / 0.08); }
+:root[data-theme="light"] .hover\:bg-white\/5:hover  { background-color: rgb(15 23 42 / 0.05); }
+:root[data-theme="light"] .hover\:bg-white\/10:hover { background-color: rgb(15 23 42 / 0.08); }
+
+/* Wordmark / heading gradient: light pink→cyan washes out on white, so darken. */
+:root[data-theme="light"] .text-gradient {
+  background-image: linear-gradient(to right, #be185d, #0e7490);
+}
+
+/* ==========================================================================
+ * LIGHT-MODE COVERAGE (BR-8.1)
+ *
+ * TOKENIZED (correct in both themes): index.css tokens + component classes,
+ * tailwind tokens, primitives (Modal, Card, StatCard, Button, Toggle, BarList),
+ * Navigation + OrgSwitcher + UserProfile, Dashboard, Settings, AgentChat +
+ * chat/ChatPanel + ChatMessage, AgentLibrary + AgentCard, Login, Register,
+ * Organization + org modals, Breadcrumbs, GettingStartedWizard, ErrorBoundary,
+ * NotFound / ServerError, App/Suspense fallbacks.
+ *
+ * DARK-ONLY (still hardcoded slate; render dark-correct on the light page,
+ * status colors + white-tints remapped by the overrides above — legible, just
+ * not re-skinned): Orchestration, OrchestrationDemo, KnowledgeGraph,
+ * CommandCenter + command/*, Conversations, MCPServers, MCPDocs, ApiDocs,
+ * Monitoring, RalphMonitor, ScheduledRuns, LangflowFlows, ToolLibrary,
+ * CodeAttribution, AgentDetail, AgentBuilderChat, Workflows, plus the heavier
+ * standalone components (WorkflowVisualization3D/Diagram, Voice*, MCP*, tools/*).
+ * These were left dark deliberately (3D/graph/canvas surfaces are designed dark)
+ * — none ship white-on-white; they show dark widgets on the light canvas.
+ * ====================================================================== */

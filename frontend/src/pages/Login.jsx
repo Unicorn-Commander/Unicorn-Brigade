@@ -103,12 +103,12 @@ export default function Login() {
   // Show loading screen while checking auth state
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-bg via-surface to-bg">
         <div className="text-center">
           <div className="mb-6 flex justify-center">
             <BrigadeLogo size={80} className="shadow-lg shadow-unicorn-500/30" />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Unicorn Brigade</h2>
+          <h2 className="text-2xl font-bold text-fg mb-2">Unicorn Brigade</h2>
           <p className="text-unicorn-300 mb-6">Loading...</p>
           <div className="flex justify-center space-x-2">
             <div className="w-3 h-3 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
@@ -121,7 +121,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-bg via-surface to-bg relative overflow-hidden">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-unicorn-500/20 rounded-full blur-3xl animate-pulse"></div>
@@ -130,7 +130,7 @@ export default function Login() {
 
       {/* Login Card */}
       <div className="relative z-10 w-full max-w-md mx-4">
-        <div className="glass border border-slate-700/50 rounded-2xl p-8 shadow-2xl">
+        <div className="glass border border-border/50 rounded-2xl p-8 shadow-2xl">
           {/* Logo & Title */}
           <div className="text-center mb-6">
             <div className="flex justify-center mb-4">
@@ -143,20 +143,20 @@ export default function Login() {
               </span>
             </h1>
 
-            <p className="text-slate-400 text-sm">
+            <p className="text-muted text-sm">
               AI Agent Infrastructure Platform
             </p>
           </div>
 
           {/* Tab Navigation (hidden when identity is SSO-managed) */}
           {!nativeAuthHidden && (
-          <div className="flex bg-slate-800/50 rounded-lg p-1 mb-6">
+          <div className="flex bg-elevated/50 rounded-lg p-1 mb-6">
             <button
               onClick={() => setActiveTab('sso')}
               className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-md text-sm font-medium transition-all ${
                 activeTab === 'sso'
                   ? 'bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-muted hover:text-fg'
               }`}
             >
               <Users className="w-4 h-4" />
@@ -167,7 +167,7 @@ export default function Login() {
               className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-md text-sm font-medium transition-all ${
                 activeTab === 'email'
                   ? 'bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-muted hover:text-fg'
               }`}
             >
               <Mail className="w-4 h-4" />
@@ -210,8 +210,8 @@ export default function Login() {
 
               {/* SSO Providers */}
               <div className="mt-6 text-center">
-                <p className="text-slate-400 text-sm mb-3">Sign in with</p>
-                <div className="flex items-center justify-center space-x-4 text-slate-400">
+                <p className="text-muted text-sm mb-3">Sign in with</p>
+                <div className="flex items-center justify-center space-x-4 text-muted">
                   <div className="flex items-center space-x-1">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -239,7 +239,7 @@ export default function Login() {
               {/* Register Link for SSO (native signup only) */}
               {!nativeAuthHidden && (
                 <div className="mt-6 text-center">
-                  <p className="text-slate-400 text-sm">
+                  <p className="text-muted text-sm">
                     Don't have an account?{' '}
                     <Link
                       to="/register"
@@ -259,7 +259,7 @@ export default function Login() {
               <form onSubmit={handleEmailLogin} className="space-y-4">
                 {/* Email Input */}
                 <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1">
+                  <label htmlFor="email" className="block text-sm font-medium text-muted mb-1">
                     Email Address
                   </label>
                   <input
@@ -268,7 +268,7 @@ export default function Login() {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    className="w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition"
+                    className="w-full px-4 py-3 bg-elevated/50 border border-border rounded-lg text-fg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition"
                     placeholder="you@example.com"
                     disabled={isSubmitting}
                     autoComplete="email"
@@ -277,7 +277,7 @@ export default function Login() {
 
                 {/* Password Input */}
                 <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1">
+                  <label htmlFor="password" className="block text-sm font-medium text-muted mb-1">
                     Password
                   </label>
                   <div className="relative">
@@ -287,7 +287,7 @@ export default function Login() {
                       name="password"
                       value={formData.password}
                       onChange={handleChange}
-                      className="w-full px-4 py-3 pr-12 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition"
+                      className="w-full px-4 py-3 pr-12 bg-elevated/50 border border-border rounded-lg text-fg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition"
                       placeholder="Enter your password"
                       disabled={isSubmitting}
                       autoComplete="current-password"
@@ -297,7 +297,7 @@ export default function Login() {
                       onClick={() => setShowPassword(!showPassword)}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                       aria-pressed={showPassword}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
                     >
                       {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                     </button>
@@ -328,7 +328,7 @@ export default function Login() {
 
               {/* Register Link */}
               <div className="mt-6 text-center">
-                <p className="text-slate-400 text-sm">
+                <p className="text-muted text-sm">
                   Don't have an account?{' '}
                   <Link
                     to="/register"
@@ -342,40 +342,40 @@ export default function Login() {
           )}
 
           {/* Divider */}
-          <div className="my-8 border-t border-slate-700/50"></div>
+          <div className="my-8 border-t border-border/50"></div>
 
           {/* Features */}
           <div className="space-y-3">
-            <div className="flex items-center space-x-3 text-slate-400 text-sm">
+            <div className="flex items-center space-x-3 text-muted text-sm">
               <Sparkles className="w-4 h-4 text-unicorn-400" />
               <span>Build custom AI agents with conversational interface</span>
             </div>
-            <div className="flex items-center space-x-3 text-slate-400 text-sm">
+            <div className="flex items-center space-x-3 text-muted text-sm">
               <Zap className="w-4 h-4 text-cyan-400" />
               <span>Connect MCP servers and 20+ built-in tools</span>
             </div>
-            <div className="flex items-center space-x-3 text-slate-400 text-sm">
+            <div className="flex items-center space-x-3 text-muted text-sm">
               <Shield className="w-4 h-4 text-green-400" />
               <span>Enterprise-grade security and authentication</span>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="mt-8 pt-6 border-t border-slate-700/50 text-center">
-            <p className="text-slate-400 text-xs">
+          <div className="mt-8 pt-6 border-t border-border/50 text-center">
+            <p className="text-muted text-xs">
               Part of{' '}
               <span className="text-unicorn-400 font-semibold">
                 Unicorn Commander Ecosystem
               </span>
             </p>
-            <p className="text-slate-600 text-xs mt-1">
+            <p className="text-muted text-xs mt-1">
               Powered by Keycloak SSO
             </p>
           </div>
         </div>
 
         {/* Platform Info */}
-        <div className="mt-6 text-center text-slate-400 text-xs">
+        <div className="mt-6 text-center text-muted text-xs">
           <p>Magic Unicorn Unconventional Technology & Stuff Inc</p>
           <p className="mt-1">
             <a href="https://unicorncommander.com" target="_blank" rel="noopener noreferrer" className="text-unicorn-400 hover:text-unicorn-300 transition">

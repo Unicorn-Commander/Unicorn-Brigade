@@ -55,7 +55,7 @@ export default function OrgSwitcher() {
 
   if (loading && !loaded) {
     return (
-      <div className="h-[52px] rounded-lg border border-border/50 bg-slate-800/40 animate-pulse" aria-hidden="true" />
+      <div className="h-[52px] rounded-lg border border-border/50 bg-elevated/40 animate-pulse" aria-hidden="true" />
     );
   }
 
@@ -67,20 +67,20 @@ export default function OrgSwitcher() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Switch organization"
-        className="w-full flex items-center gap-3 min-h-[52px] px-3 py-2 rounded-lg border border-border/60 bg-slate-800/40 hover:bg-slate-800/70 transition-colors text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-unicorn-500/60"
+        className="w-full flex items-center gap-3 min-h-[52px] px-3 py-2 rounded-lg border border-border/60 bg-elevated/40 hover:bg-elevated/70 transition-colors text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-unicorn-500/60"
       >
         <span className="flex-shrink-0 w-9 h-9 rounded-lg bg-unicorn-500/15 border border-unicorn-500/30 flex items-center justify-center">
           <Building2 className="w-[18px] h-[18px] text-unicorn-300" />
         </span>
         <span className="flex-1 min-w-0">
-          <span className="block text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+          <span className="block text-[10px] uppercase tracking-wider text-muted font-semibold">
             Organization
           </span>
-          <span className="block text-sm font-semibold text-white truncate">
+          <span className="block text-sm font-semibold text-fg truncate">
             {activeOrg?.name || (error ? 'Unavailable' : 'No organization')}
           </span>
         </span>
-        <ChevronsUpDown className="flex-shrink-0 w-4 h-4 text-slate-400" aria-hidden="true" />
+        <ChevronsUpDown className="flex-shrink-0 w-4 h-4 text-muted" aria-hidden="true" />
       </button>
 
       {open && (
@@ -96,7 +96,7 @@ export default function OrgSwitcher() {
                 <button
                   type="button"
                   onClick={() => loadOrgs()}
-                  className="mt-1 block text-slate-300 underline hover:text-white"
+                  className="mt-1 block text-muted underline hover:text-fg"
                 >
                   Retry
                 </button>
@@ -128,9 +128,9 @@ export default function OrgSwitcher() {
                     ) : null}
                   </span>
                   <span className="flex-1 min-w-0">
-                    <span className="block text-sm text-white truncate">{org.name}</span>
+                    <span className="block text-sm text-fg truncate">{org.name}</span>
                     {org?.metadata?.personal && (
-                      <span className="block text-[11px] text-slate-500">Personal</span>
+                      <span className="block text-[11px] text-muted">Personal</span>
                     )}
                   </span>
                   <OrgRoleBadge role={org.role} size="sm" />
@@ -144,7 +144,7 @@ export default function OrgSwitcher() {
               type="button"
               role="menuitem"
               onClick={goManage}
-              className="w-full flex items-center gap-2.5 min-h-[44px] px-2.5 py-2 rounded-lg text-left text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+              className="w-full flex items-center gap-2.5 min-h-[44px] px-2.5 py-2 rounded-lg text-left text-muted hover:bg-white/5 hover:text-fg transition-colors"
             >
               <Settings2 className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
               <span className="text-sm">Manage organization</span>
@@ -156,7 +156,7 @@ export default function OrgSwitcher() {
                 setOpen(false);
                 setShowCreate(true);
               }}
-              className="w-full flex items-center gap-2.5 min-h-[44px] px-2.5 py-2 rounded-lg text-left text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+              className="w-full flex items-center gap-2.5 min-h-[44px] px-2.5 py-2 rounded-lg text-left text-muted hover:bg-white/5 hover:text-fg transition-colors"
             >
               <Plus className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
               <span className="text-sm">Create organization</span>

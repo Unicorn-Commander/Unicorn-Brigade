@@ -119,6 +119,7 @@ const ToolLibrary = () => {
 
             {/* Type Filter */}
             <select
+              aria-label="Filter by type"
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
               className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent"
@@ -131,6 +132,7 @@ const ToolLibrary = () => {
 
             {/* Domain Filter */}
             <select
+              aria-label="Filter by domain"
               value={selectedDomain}
               onChange={(e) => setSelectedDomain(e.target.value)}
               className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent"
