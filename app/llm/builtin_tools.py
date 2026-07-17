@@ -20,6 +20,16 @@ from urllib.parse import urlparse
 
 from app.llm.ops_center_client import ToolDefinition, ToolParameter
 
+# BR-4: shared outbound-tool timeout defaults (connect kept short for fast-fail).
+try:
+    from app.reliability.retry import DEFAULT_TOOL_TIMEOUT, DEFAULT_CONNECT_TIMEOUT
+except Exception:  # pragma: no cover - reliability layer should always import
+    DEFAULT_TOOL_TIMEOUT, DEFAULT_CONNECT_TIMEOUT = 30.0, 10.0
+
+# Hard ceiling on the model-supplied http_request timeout so a tool call cannot
+# request an unbounded (or absurdly long) wait and hang the turn.
+MAX_HTTP_REQUEST_TIMEOUT: float = float(os.getenv("HTTP_REQUEST_MAX_TIMEOUT_SECONDS", "60") or 60)
+
 logger = logging.getLogger(__name__)
 
 
@@ -438,10 +448,20 @@ async def http_request_handler(
             "success": False,
         }
 
+    # BR-4: clamp the model-supplied timeout to a sane range so a tool call
+    # cannot hang the turn indefinitely, and always attach an explicit connect
+    # timeout for fast-fail on unreachable hosts.
+    try:
+        req_timeout = float(timeout) if timeout else DEFAULT_TOOL_TIMEOUT
+    except (TypeError, ValueError):
+        req_timeout = DEFAULT_TOOL_TIMEOUT
+    req_timeout = min(max(1.0, req_timeout), MAX_HTTP_REQUEST_TIMEOUT)
+    total_timeout = httpx.Timeout(req_timeout, connect=min(DEFAULT_CONNECT_TIMEOUT, req_timeout))
+
     try:
         # follow_redirects=False so a redirect cannot bounce us to an internal
         # host that the guard never validated (redirect-based SSRF bypass).
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        async with httpx.AsyncClient(timeout=total_timeout, follow_redirects=False) as client:
             response = await client.request(
                 method=method.upper(),
                 url=url,

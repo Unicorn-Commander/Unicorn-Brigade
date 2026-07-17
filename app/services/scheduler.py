@@ -48,6 +48,13 @@ from app.observability.metrics import scheduled_run_total
 
 logger = logging.getLogger(__name__)
 
+# BR-4: deploy-wide default cap on a scheduled run's wall-clock time, used when a
+# ScheduledRun row does not set its own ``max_runtime_seconds``. Configurable via
+# env so operators can tune without a code change. The per-run value still wins.
+DEFAULT_SCHEDULER_MAX_RUNTIME_SECONDS: int = int(
+    os.getenv("SCHEDULER_MAX_RUNTIME_SECONDS", "300") or 300
+)
+
 
 async def _bind_org(session, org_id) -> None:
     await session.execute(
@@ -261,7 +268,10 @@ class BrigadeScheduler:
                 agent_id_for_alert = agent_dict.get("id")
                 prompt = run.prompt
                 user_id = str(run.owner_user_id) if run.owner_user_id else "scheduler"
-                timeout = max(5, int(run.max_runtime_seconds or 300))
+                timeout = max(
+                    5,
+                    int(run.max_runtime_seconds or DEFAULT_SCHEDULER_MAX_RUNTIME_SECONDS),
+                )
 
             # Execute outside the session — chat path may be slow.
             try:

@@ -1,5 +1,6 @@
 """Ops-Center LLM Client - Routes through UC-Cloud's inference infrastructure"""
 
+import asyncio
 import httpx
 import logging
 import os
@@ -13,6 +14,33 @@ try:
 except Exception:  # pragma: no cover — module may be absent in test harness
     def _observe_backend(endpoint, success, error=None):  # type: ignore
         return None
+
+# BR-4 reliability: bounded retry + circuit breaker + timeout defaults. The
+# module is dependency-free and in-repo, but the import is guarded so the LLM
+# client still functions (without resilience) if it is ever unavailable.
+try:
+    from app.reliability.retry import (
+        retry_async,
+        RetryConfig,
+        default_is_transient,
+        DEFAULT_LLM_TIMEOUT,
+        DEFAULT_CONNECT_TIMEOUT,
+    )
+    from app.reliability.circuit import CircuitBreaker, CircuitOpenError
+    _RELIABILITY_AVAILABLE = True
+except Exception:  # pragma: no cover - reliability layer should always import
+    _RELIABILITY_AVAILABLE = False
+    DEFAULT_LLM_TIMEOUT = 120.0
+    DEFAULT_CONNECT_TIMEOUT = 10.0
+
+    class CircuitOpenError(Exception):  # type: ignore
+        pass
+
+# Per-tool execution timeout (seconds) for execute_tool_loop. A single hung
+# tool must not stall the whole chat turn. Configurable; 0/negative disables.
+DEFAULT_TOOL_EXECUTION_TIMEOUT: float = float(
+    os.getenv("TOOL_EXECUTION_TIMEOUT_SECONDS", "60") or 60
+)
 
 logger = logging.getLogger(__name__)
 
@@ -208,12 +236,31 @@ class OpsCenterLLMClient:
 
         self.service_key = service_key or BRIGADE_SERVICE_KEY
         self.local_llm_url = LOCAL_LLM_URL
+        # BR-4: explicit total timeout on EVERY outbound LLM call. ``connect``
+        # is short so an unreachable backend fails fast; ``read`` (applied
+        # per-chunk while streaming) is longer to tolerate slow generation.
+        # Both configurable via env (LLM_HTTP_TIMEOUT_SECONDS /
+        # HTTP_CONNECT_TIMEOUT_SECONDS).
         # Disable gzip/deflate: httpx 0.27.x has a bug where gzip-compressed
         # chunked responses from uvicorn return empty bodies
         self.client = httpx.AsyncClient(
-            timeout=180.0,
+            timeout=httpx.Timeout(DEFAULT_LLM_TIMEOUT, connect=DEFAULT_CONNECT_TIMEOUT),
             headers={"Accept-Encoding": "identity"},
         )
+
+        # BR-4: bounded retry (transient failures) + circuit breaker (fail fast
+        # when the backend is unhealthy) around the non-streaming completion
+        # calls. Only transient failures count toward opening the breaker, so
+        # deterministic client 4xx errors never trip it.
+        if _RELIABILITY_AVAILABLE:
+            self._retry_config = RetryConfig.from_env()
+            self._llm_breaker = CircuitBreaker.from_env(
+                name="ops-center-llm", is_failure=default_is_transient
+            )
+        else:  # pragma: no cover - reliability layer should always import
+            self._retry_config = None
+            self._llm_breaker = None
+
         logger.info(f"OpsCenterLLMClient initialized: {self.ops_center_url}")
         logger.info(f"Local LLM URL: {self.local_llm_url}")
 
@@ -264,7 +311,7 @@ class OpsCenterLLMClient:
         except (socket.error, socket.timeout, OSError):
             return DEFAULT_EXTERNAL_URL
 
-    async def chat_completion(
+    async def _chat_completion_once(
         self,
         messages: List[Dict[str, str]],
         model: str = "default",
@@ -274,7 +321,11 @@ class OpsCenterLLMClient:
         user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Create chat completion via Ops-Center
+        Create chat completion via Ops-Center (single attempt).
+
+        BR-4: the public ``chat_completion`` wraps this in retry + circuit
+        breaker. This inner method performs exactly ONE request and raises on
+        failure so the resilience layer can decide whether to retry.
 
         Ops-Center routes to:
         - vLLM (local GPU inference)
@@ -574,7 +625,54 @@ class OpsCenterLLMClient:
         """Close HTTP client"""
         await self.client.aclose()
 
-    async def chat_completion_with_tools(
+    # ── BR-4 resilience wrappers ──────────────────────────────
+    async def _resilient_llm_call(self, fn: Callable, *args, **kwargs):
+        """Run an LLM HTTP call through the circuit breaker + bounded retry.
+
+        - Transient failures (connection errors, timeouts, HTTP 5xx, 429) are
+          retried with exponential backoff + jitter, capped by ``RetryConfig``.
+        - Deterministic client errors (HTTP 4xx except 429) and
+          ``ModelUnavailableError`` propagate immediately — no retry — so the
+          existing 4xx/422 tool-format fallback in ``execute_tool_loop`` still
+          fires unchanged.
+        - After N consecutive transient failures the breaker opens and calls
+          fail fast with ``CircuitOpenError`` for a cooldown, then half-opens to
+          probe recovery.
+
+        If the reliability layer is unavailable the call is made directly.
+        """
+        if self._llm_breaker is None:  # pragma: no cover - reliability always present
+            return await fn(*args, **kwargs)
+
+        async def _attempt():
+            return await fn(*args, **kwargs)
+
+        async def _retried():
+            return await retry_async(
+                _attempt,
+                config=self._retry_config,
+                is_transient=default_is_transient,
+            )
+
+        return await self._llm_breaker.call(_retried)
+
+    async def chat_completion(self, *args, **kwargs) -> Dict[str, Any]:
+        """Resilient chat completion (retry + circuit breaker).
+
+        Same signature as ``_chat_completion_once``.
+        """
+        return await self._resilient_llm_call(self._chat_completion_once, *args, **kwargs)
+
+    async def chat_completion_with_tools(self, *args, **kwargs) -> Dict[str, Any]:
+        """Resilient tool-enabled chat completion (retry + circuit breaker).
+
+        Same signature as ``_chat_completion_with_tools_once``.
+        """
+        return await self._resilient_llm_call(
+            self._chat_completion_with_tools_once, *args, **kwargs
+        )
+
+    async def _chat_completion_with_tools_once(
         self,
         messages: List[Dict[str, Any]],
         tools: List[ToolDefinition],
@@ -585,7 +683,10 @@ class OpsCenterLLMClient:
         user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Chat completion with function calling support.
+        Chat completion with function calling support (single attempt).
+
+        BR-4: the public ``chat_completion_with_tools`` wraps this in retry +
+        circuit breaker; this inner method performs exactly ONE request.
 
         Args:
             messages: List of chat messages
@@ -815,6 +916,7 @@ class OpsCenterLLMClient:
         agent_name: Optional[str] = None,  # Agent name for tracing
         room_id: Optional[str] = None,  # Stable room id (for needs_room_context tools)
         room_name: Optional[str] = None,  # Stable livekit room name (for needs_room_context tools)
+        tool_timeout: Optional[float] = None,  # BR-4: per-tool wall-clock cap (s); None=env default, <=0 disables
     ) -> Dict[str, Any]:
         """
         Execute a complete tool use loop.
@@ -846,6 +948,12 @@ class OpsCenterLLMClient:
         """
         # Build tool registry for execution
         tool_registry = {tool.name: tool for tool in tools}
+
+        # BR-4: bound each tool's wall-clock runtime so one hung/slow tool
+        # cannot stall the whole chat turn. None -> env default; <=0 disables.
+        per_tool_timeout = (
+            DEFAULT_TOOL_EXECUTION_TIMEOUT if tool_timeout is None else float(tool_timeout)
+        )
 
         current_messages = list(messages)
         iteration = 0
@@ -946,11 +1054,35 @@ class OpsCenterLLMClient:
                             call_args["caller_room_id"] = room_id
                             call_args["caller_room_name"] = room_name
                             call_args["caller_agent_id"] = agent_id
-                        tool_output = await tool_def.handler(**call_args)
+                        # BR-4: bound each tool's wall-clock time. asyncio.wait_for
+                        # cancels the handler coroutine on timeout so a single
+                        # hung/slow tool can't stall the whole chat turn.
+                        if per_tool_timeout and per_tool_timeout > 0:
+                            tool_output = await asyncio.wait_for(
+                                tool_def.handler(**call_args),
+                                timeout=per_tool_timeout,
+                            )
+                        else:
+                            tool_output = await tool_def.handler(**call_args)
                         result = ToolResult(
                             tool_call_id=tc.id,
                             name=tc.name,
                             result=tool_output,
+                        )
+                    except asyncio.TimeoutError:
+                        # Structured, model-visible error so the agent can
+                        # recover/apologize instead of the turn crashing.
+                        logger.error(
+                            f"Tool {tc.name} timed out after {per_tool_timeout:.0f}s"
+                        )
+                        result = ToolResult(
+                            tool_call_id=tc.id,
+                            name=tc.name,
+                            result=None,
+                            error=(
+                                f"Tool '{tc.name}' timed out after "
+                                f"{per_tool_timeout:.0f}s and was cancelled"
+                            ),
                         )
                     except Exception as e:
                         logger.error(f"Tool execution error for {tc.name}: {e}")
