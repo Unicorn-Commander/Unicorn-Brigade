@@ -115,6 +115,7 @@ const GenerateApiKeyModal = ({ agentId, onSuccess, onClose }) => {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-2 rounded-lg hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />

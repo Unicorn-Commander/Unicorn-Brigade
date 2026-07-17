@@ -207,6 +207,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-3 min-h-[44px] min-w-[44px] hover:bg-slate-700/50 rounded-lg transition-colors"
             disabled={loading}
           >
