@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from dotenv import load_dotenv
 load_dotenv()
 
-from app.db.database import engine, Base, async_session
+from app.db.database import engine, migration_engine, Base, async_session, admin_session
 from app.db.models import Agent
 from app.llm.ops_center_client import DEFAULT_MODEL
 
@@ -26,8 +26,13 @@ logger = logging.getLogger(__name__)
 
 
 async def create_tables():
-    """Create all tables."""
-    async with engine.begin() as conn:
+    """Create all tables.
+
+    DDL runs on the OWNER/admin engine (migration_engine) — the RLS-subject app
+    role can't create tables or the brigade_app parent. In single-role dev
+    migration_engine is the same engine as `engine`, so this is unchanged there.
+    """
+    async with migration_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("All database tables created successfully")
 
@@ -46,7 +51,12 @@ async def seed_agents():
         logger.warning(f"Seed file not found: {seed_path}")
         return
 
-    async with async_session() as session:
+    # BR-1.4: seed the GLOBAL roster (NULL org_id) on the OWNER/admin session.
+    # agents now has FORCE RLS with WITH CHECK (org_id = current_org_id()); the
+    # RLS-subject app role can never insert a NULL-org (shared) row, so the seed
+    # loader must use the owner session, which is not subject to RLS. In
+    # single-role dev admin_session is the same engine as async_session.
+    async with admin_session() as session:
         from sqlalchemy import select, func
         result = await session.execute(select(func.count(Agent.id)))
         count = result.scalar() or 0

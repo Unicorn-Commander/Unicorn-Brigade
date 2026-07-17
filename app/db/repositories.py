@@ -62,6 +62,13 @@ class AgentRepository:
             rate_multiplier=data.get("rateMultiplier", 1.0),
             base_price_per_call=data.get("basePricePerCall"),
         )
+        # BR-1.4: only set org_id when the caller explicitly provides it. When the
+        # key is ABSENT we leave the attribute unset so the DB server_default
+        # (current_org_id()) tags the row with the caller's bound org and the RLS
+        # WITH CHECK passes. An explicit None is the admin SHARED-agent path (a
+        # global NULL-org row) and must be inserted via the owner/admin session.
+        if "org_id" in data:
+            agent.org_id = data["org_id"]
         self.session.add(agent)
         await self.session.commit()
         await self.session.refresh(agent)

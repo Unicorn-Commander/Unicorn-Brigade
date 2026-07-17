@@ -420,6 +420,50 @@ MIGRATIONS = [
             "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO brigade_app",
         ],
     ),
+    (
+        "20260716_02_tenancy_extend",
+        "BR-1.4: agents RLS with a SHARED-CATALOG policy (NULL org_id = global roster)",
+        # BR-1.2 (20260626_01) deferred agents: it added agents.org_id (nullable),
+        # ix_agents_org_id, and fk_agents_org_id_organizations, but left agents
+        # WITHOUT RLS so the seed/global roster kept working during the rollout.
+        # BR-1.4 turns RLS on for agents with a twist the 8 data tables don't have:
+        # a NULL org_id is a GLOBAL/shared agent readable by EVERY org (the seed
+        # roster, Gunny, The General, ...), while an org-tagged agent is visible
+        # only to its own org.
+        #
+        #   USING (org_id IS NULL OR org_id = current_org_id())
+        #     -> reads: everyone sees shared agents + their own org's agents.
+        #        An UNBOUND session (empty GUC, e.g. public A2A discovery) sees
+        #        ONLY shared agents — never a tenant's private roster. That makes
+        #        the intentionally-public federation surfaces safe by construction.
+        #   WITH CHECK (org_id = current_org_id())
+        #     -> writes: a tenant may only create/modify agents tagged with its
+        #        OWN org. It can never write a NULL (shared) row nor another org's
+        #        row, because current_org_id() is its own non-null org.
+        #
+        # Consequence: the RLS-subject app role CANNOT create a shared (NULL-org)
+        # agent at all. Shared-agent creation is therefore admin-only and runs on
+        # the OWNER/admin session which is not subject to RLS — gated at the app
+        # layer (see app/api/agent_routes.create_agent) and used by the global
+        # seed loader (app/db/init_db.seed_agents). Per-org creation is handled
+        # purely by RLS + the org_id default below.
+        [
+            # Default org_id to the bound org — exactly like conversations/messages
+            # and friends — so EVERY existing agent-creation path (create_agent,
+            # import_agents, dynamic builder) lands the agent in the caller's org
+            # without editing each call site. An explicit NULL (the admin shared
+            # path, inserted via the owner session) overrides this default.
+            "ALTER TABLE agents ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE agents ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE agents FORCE ROW LEVEL SECURITY",
+            "DROP POLICY IF EXISTS agents_org_isolation ON agents",
+            """
+            CREATE POLICY agents_org_isolation ON agents
+            USING (org_id IS NULL OR org_id = current_org_id())
+            WITH CHECK (org_id = current_org_id())
+            """,
+        ],
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.

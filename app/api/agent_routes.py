@@ -465,6 +465,11 @@ class AgentCreateRequest(BaseModel):
     billingTier: Optional[str] = "standard"
     rateMultiplier: Optional[float] = 1.0
     basePricePerCall: Optional[float] = None
+    # BR-1.4: when true, create a GLOBAL/shared agent (NULL org_id) visible to
+    # every org. Admin-only and inserted via the owner session (the RLS-subject
+    # app role cannot write a NULL-org row). Default false = a per-org agent
+    # scoped to the caller's organization.
+    shared: Optional[bool] = False
 
 
 class AgentUpdateRequest(BaseModel):
@@ -705,9 +710,37 @@ async def create_agent(
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
-    """Create a new agent."""
-    repo = AgentRepository(session)
+    """Create a new agent.
+
+    BR-1.4 tenancy: agents are org-isolated by RLS. A normal create is scoped to
+    the caller's org automatically (the org_id DB default = current_org_id(), and
+    the RLS WITH CHECK enforces it). Creating a GLOBAL/shared agent (NULL org_id,
+    visible to every org) is ADMIN-ONLY and must run on the owner/admin session,
+    because the RLS-subject app role can never satisfy WITH CHECK for a NULL row.
+    """
     data = request.model_dump(exclude_none=True)
+    wants_shared = bool(data.pop("shared", False))
+
+    if wants_shared:
+        # Shared (global) agent: gate to admins, then insert a NULL-org row via
+        # the owner session (not subject to RLS). This is the ONLY sanctioned way
+        # to add to the global roster at runtime.
+        if user is None or user.role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=403,
+                detail="Only admins can create shared (global) agents",
+            )
+        from app.db.database import admin_session
+        data["org_id"] = None  # explicit NULL = global; overrides the org default
+        async with admin_session() as owner_sess:
+            agent = await AgentRepository(owner_sess).create(data)
+        return agent
+
+    # Per-org agent: leave org_id unset so the DB default (current_org_id()) tags
+    # it with the caller's bound org. RLS WITH CHECK guarantees it can't land in
+    # another org even if a caller tried to force one.
+    data.pop("org_id", None)
+    repo = AgentRepository(session)
     agent = await repo.create(data)
     return agent
 

@@ -42,7 +42,13 @@ class Agent(Base):
     temperature = Column(Float, default=0.7)
     max_tokens = Column(Integer, default=2000)
     tools = Column(JSON, default=list)
-    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
+    # BR-1.4 shared-catalog tenancy: org_id stays NULLABLE — a NULL org_id is a
+    # GLOBAL/shared agent visible to every org (seed roster). The server_default
+    # mirrors the 8 sibling tables so a tenant-created agent auto-lands in the
+    # caller's org (RLS WITH CHECK org_id = current_org_id() then passes) without
+    # each call site setting org_id. The admin shared path inserts an explicit
+    # NULL via the owner session (see app/api/agent_routes.create_agent).
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, server_default=text("current_org_id()"))
     # Per-agent value-billing (additive; neutral defaults = no change to what's
     # charged today). billing_tier feeds the rate_tier dimension on the
     # agent_work event; rate_multiplier + base_price_per_call let a Lago plan
