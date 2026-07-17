@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { DollarSign } from 'lucide-react';
+import { DollarSign, Star } from 'lucide-react';
 import AgentAvatar from '../AgentAvatar';
 import { rankStars } from '../../utils/rank';
 import {
@@ -101,9 +101,9 @@ function OrgAgentNodeBase({ data }) {
           )}
         </div>
         {stars > 0 && (
-          <div aria-hidden="true" className="mt-0.5 flex gap-px text-[9px] leading-none text-yellow-400">
+          <div aria-hidden="true" className="mt-0.5 flex gap-px text-yellow-400">
             {Array.from({ length: stars }).map((_, i) => (
-              <span key={i}>★</span>
+              <Star key={i} className="h-2 w-2 fill-current" />
             ))}
           </div>
         )}

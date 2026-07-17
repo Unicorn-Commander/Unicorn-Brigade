@@ -2,58 +2,11 @@ import { useState } from 'react';
 import { Play, Square, Eye, Package, CheckCircle, XCircle, Loader2, AlertCircle, Settings } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
-
-// Server Icons (matching category)
-const serverIcons = {
-  // Infrastructure & Development
-  github: '🐙',
-  playwright: '🎭',
-  slack: '💬',
-  postgresql: '🐘',
-  filesystem: '📁',
-  memory: '🧠',
-  fetch: '🌐',
-  brave_search: '🔍',
-  google_drive: '📂',
-  puppeteer: '🎪',
-
-  // Phase 1
-  stripe: '💳',
-  linear: '📊',
-  git: '📦',
-  notion: '📝',
-
-  // Phase 2
-  airtable: '🗂️',
-  vercel: '▲',
-  cloudflare: '☁️',
-  supabase: '⚡',
-
-  // Phase 3
-  twilio: '📞',
-  sendgrid: '📧',
-  sentry: '🐛',
-  monday: '📅',
-
-  // Phase 4+
-  shopify: '🛍️',
-  salesforce: '☁️',
-  zendesk: '🎫',
-  jira: '📋',
-  hubspot: '🎯',
-  mailchimp: '📬',
-  semrush: '📈',
-  zapier: '⚡',
-  amplitude: '📊',
-  mixpanel: '📈',
-  hotjar: '🔥',
-  fullstory: '🎬',
-};
+import McpServerIcon from '../utils/mcpIcons';
 
 const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoading, statusOverride }) => {
   const [actionLoading, setActionLoading] = useState(false);
   const isRunning = statusOverride ? statusOverride === 'running' : (server.status === 'running' || server.running);
-  const icon = serverIcons[server.name] || '🔧';
 
   const handleStart = async () => {
     setActionLoading(true);
@@ -83,7 +36,9 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
     <div className="card hover:shadow-lg hover:shadow-unicorn-500/10 transition-all group">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3">
-          <div className="text-3xl">{icon}</div>
+          <div className="p-2.5 rounded-lg bg-unicorn-500/15 text-unicorn-400">
+            <McpServerIcon name={server.name} className="w-6 h-6" />
+          </div>
           <div>
             <h3 className="font-semibold text-white group-hover:text-unicorn-400 transition-colors">
               {server.display_name}

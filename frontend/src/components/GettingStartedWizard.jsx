@@ -4,6 +4,7 @@ import {
   ChevronRight,
   ChevronLeft,
   CheckCircle,
+  Lightbulb,
   MessageSquare,
   Bot,
   Workflow,
@@ -103,8 +104,9 @@ const WIZARD_STEPS = [
           </li>
         </ul>
         <div className="bg-unicorn-500/10 border border-unicorn-500/30 rounded-lg p-3 mt-4">
-          <p className="text-sm text-unicorn-300">
-            💡 Tip: Use the Agent Library to edit existing agents or create new ones from scratch.
+          <p className="text-sm text-unicorn-300 flex items-start gap-2">
+            <Lightbulb className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <span>Tip: Use the Agent Library to edit existing agents or create new ones from scratch.</span>
           </p>
         </div>
       </div>

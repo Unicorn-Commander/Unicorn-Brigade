@@ -133,8 +133,9 @@ const OpenRouterConfig = () => {
               </button>
             </div>
             {keyStored && (
-              <p className="text-sm text-green-400 mt-2">
-                ✓ API key saved to browser storage
+              <p className="text-sm text-green-400 mt-2 flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                API key saved to browser storage
               </p>
             )}
           </div>

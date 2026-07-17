@@ -19,6 +19,13 @@ import {
   GitBranch,
   Zap,
   TrendingUp,
+  Search,
+  Briefcase,
+  Settings,
+  Scale,
+  Stethoscope,
+  Fingerprint,
+  Workflow,
 } from 'lucide-react';
 import MiniWorkflowDiagram from './MiniWorkflowDiagram';
 
@@ -43,16 +50,16 @@ const tagColors = {
   documentation: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
 };
 
-// Domain icons
+// Domain → lucide mark (replaces the decorative emoji glyphs).
 const domainIcons = {
-  research: '🔍',
-  finance: '💰',
-  content: '📝',
-  sales: '💼',
-  devops: '⚙️',
-  legal: '⚖️',
-  medical: '🏥',
-  investigation: '🕵️',
+  research: Search,
+  finance: DollarSign,
+  content: FileText,
+  sales: Briefcase,
+  devops: Settings,
+  legal: Scale,
+  medical: Stethoscope,
+  investigation: Fingerprint,
 };
 
 // Estimated cost per preset
@@ -77,7 +84,7 @@ const WorkflowCard = ({
   const primaryDomain = (workflow.tags || []).find(tag =>
     ['research', 'finance', 'content', 'sales', 'devops', 'legal', 'medical', 'investigation'].includes(tag)
   );
-  const domainIcon = primaryDomain ? domainIcons[primaryDomain] : '🔄';
+  const DomainIcon = primaryDomain ? domainIcons[primaryDomain] || Workflow : Workflow;
 
   // Get cost estimate (default to cost_optimized)
   const costInfo = presetCostEstimates['cost_optimized'];
@@ -113,8 +120,8 @@ const WorkflowCard = ({
       <div className="p-5">
         {/* Header */}
         <div className="flex items-start gap-3 mb-3">
-          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 border border-unicorn-500/30 flex items-center justify-center text-2xl flex-shrink-0">
-            {domainIcon}
+          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 border border-unicorn-500/30 flex items-center justify-center flex-shrink-0">
+            <DomainIcon className="w-6 h-6 text-unicorn-400" aria-hidden="true" />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-white group-hover:text-unicorn-400 transition-colors line-clamp-1">
