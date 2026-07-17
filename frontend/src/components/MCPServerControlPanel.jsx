@@ -15,6 +15,7 @@ import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
 import api from '../services/api';
 import Modal from './ui/Modal';
+import { RoleGate } from './auth';
 
 export default function MCPServerControlPanel({ server, onClose, onServerUpdated }) {
   const [actionLoading, setActionLoading] = useState(null); // 'start', 'stop', 'restart'
@@ -137,6 +138,10 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
 
         <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
           <div className="w-full lg:w-1/3 border-b lg:border-b-0 lg:border-r border-slate-700/50 p-6 overflow-y-auto">
+            {/* Start/stop/restart hit admin-only routes (require_admin); hide the
+                whole control block from non-admins so they don't see dead controls
+                (BR-2.3). Server info + capabilities below remain visible. */}
+            <RoleGate role="admin" showUpgradePrompt={false}>
             <h3 className="text-lg font-semibold text-white mb-4">Server Controls</h3>
 
             <fieldset disabled={Boolean(actionLoading)} className="space-y-2 mb-6">
@@ -194,6 +199,7 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
                 )}
               </button>
             </fieldset>
+            </RoleGate>
 
             <div className="pt-6 border-t border-slate-700/50">
               <h4 className="text-sm font-semibold text-slate-300 mb-3">Server Information</h4>
@@ -245,17 +251,20 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
                             <span className="font-medium text-white text-sm">{tool}</span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => {
-                            setTestingTool(tool);
-                            setTestArgsText('{}');
-                            setTestResult(null);
-                          }}
-                          disabled={!serverDetails.running}
-                          className="px-3 py-1 bg-unicorn-600/20 text-unicorn-400 text-xs rounded-lg hover:bg-unicorn-600/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Test
-                        </button>
+                        {/* Executing a tool hits the admin-only tools/call route. */}
+                        <RoleGate role="admin" showUpgradePrompt={false}>
+                          <button
+                            onClick={() => {
+                              setTestingTool(tool);
+                              setTestArgsText('{}');
+                              setTestResult(null);
+                            }}
+                            disabled={!serverDetails.running}
+                            className="px-3 py-1 bg-unicorn-600/20 text-unicorn-400 text-xs rounded-lg hover:bg-unicorn-600/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Test
+                          </button>
+                        </RoleGate>
                       </div>
                     </div>
                   ))}

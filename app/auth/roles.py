@@ -351,3 +351,67 @@ def can_user_access_agent(
         user_email, user_role, user_tier, access_policy, user_attrs
     )
     return allowed
+
+
+# ---------------------------------------------------------------------------
+# BR-2.5 — per-key MCP tool scopes (read / chat / write / admin)
+# ---------------------------------------------------------------------------
+#
+# A single Brigade API key (the "one-key MCP" credential a customer wires into
+# their MCP client) carries a subset of these scopes in ``ApiKey.permissions``
+# (e.g. ["read"], ["chat","read"], ["write","chat","read"], ["admin",...]). The
+# federation MCP gateway (app/federation/mcp_gateway.py) uses these helpers to
+# gate each federated tool by the KEY's scope so a read-only key cannot invoke a
+# write/exec tool. Ordered least→most privileged; higher levels subsume lower.
+MCP_SCOPE_LEVELS = {"read": 1, "chat": 2, "write": 3, "admin": 4}
+
+
+def mcp_scope_level(user_role, permissions) -> int:
+    """Return the MCP access LEVEL a caller's credential grants (0 = none).
+
+    Prefer the EXPLICIT per-key scopes in ``permissions`` — this is how Brigade
+    API keys model read/chat/write/admin, and it is the authoritative signal for
+    a scoped one-key credential. Only when the caller carries NONE of those named
+    scopes (e.g. a Keycloak human whose ``permissions`` are realm/client role
+    names, or the master-admin key with an empty list) do we fall back to the
+    coarse ``UserRole``: ADMIN→admin, OPERATOR→write, VIEWER→read.
+
+    Deriving from the explicit scopes first is what keeps a *chat* key (whose role
+    resolves to OPERATOR because "chat" is present) from being treated as
+    write-capable — the scope, not the derived role, decides tool access.
+    """
+    perms = [str(p).lower() for p in (permissions or [])]
+    explicit = [MCP_SCOPE_LEVELS[p] for p in perms if p in MCP_SCOPE_LEVELS]
+    if explicit:
+        return max(explicit)
+
+    role_val = user_role.value if hasattr(user_role, "value") else str(user_role)
+    if role_val == UserRole.ADMIN.value:
+        return MCP_SCOPE_LEVELS["admin"]
+    if role_val == UserRole.OPERATOR.value:
+        return MCP_SCOPE_LEVELS["write"]
+    if role_val == UserRole.VIEWER.value:
+        return MCP_SCOPE_LEVELS["read"]
+    return 0
+
+
+def mcp_tool_required_level(read_only: bool, scopes_required=None) -> int:
+    """Minimum key scope LEVEL required to invoke a federated MCP tool.
+
+    A tool the app declares ``read_only`` needs only ``read``; every other tool is
+    treated as a write/exec tool and needs ``write`` (so read- and chat-scoped
+    keys are refused). Tools that don't declare ``read_only`` default to write —
+    fail-closed. ``scopes_required`` (the downstream app's own scope names) is
+    accepted for future refinement but does not currently lower the bar.
+    """
+    return MCP_SCOPE_LEVELS["read"] if read_only else MCP_SCOPE_LEVELS["write"]
+
+
+def key_permits_mcp_tool(user_role, permissions, *, read_only, scopes_required=None) -> bool:
+    """True iff a credential's scope is sufficient to invoke the given MCP tool.
+
+    read/chat keys → read_only tools only; write/admin keys → all tools.
+    """
+    return mcp_scope_level(user_role, permissions) >= mcp_tool_required_level(
+        read_only, scopes_required
+    )

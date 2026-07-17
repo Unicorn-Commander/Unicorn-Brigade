@@ -23,7 +23,10 @@ const DEV_USER = {
 
 let refreshIntervalId = null;
 
-const useAuth = create((set, get) => ({
+// Exported BOTH as a named and a default binding: the auth components
+// (RoleGate/PermissionGate/UpgradePrompt/FeatureLock) import `{ useAuth }` while
+// the rest of the app imports it as default. Keeping both keeps every call site working.
+export const useAuth = create((set, get) => ({
   // State
   user: null,
   isAuthenticated: false,
@@ -171,18 +174,30 @@ const useAuth = create((set, get) => ({
   },
 
   /**
-   * Check if user has a specific role
+   * Check if user has a specific role.
+   *
+   * Recognizes every shape the backend hands us, so gates like
+   * <RoleGate role="admin"> work regardless of auth method:
+   *   - user.role       — the canonical backend role ('admin'|'operator'|'viewer'),
+   *                       returned by /auth/me. Authoritative.
+   *   - user.roles       — legacy brigade-* UI role list (present in dev / some flows).
+   *   - user.permissions — Keycloak realm/client roles + API-key scopes; an admin
+   *                        carries 'admin' here. '*' is the dev/superuser wildcard.
+   *
    * @param {string} role - Role to check
    * @returns {boolean} True if user has role
    */
   hasRole: (role) => {
     const { user } = get();
+    if (!user) return false;
 
-    if (!user || !user.roles) {
-      return false;
+    if (user.role === role) return true;
+    if (Array.isArray(user.roles) && user.roles.includes(role)) return true;
+    if (Array.isArray(user.permissions) &&
+        (user.permissions.includes(role) || user.permissions.includes('*'))) {
+      return true;
     }
-
-    return user.roles.includes(role);
+    return false;
   },
 
   /**

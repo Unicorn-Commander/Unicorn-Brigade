@@ -35,6 +35,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import AuthUser, require_api_key
+from app.auth.roles import key_permits_mcp_tool
 from app.db.database import get_session
 from app.federation.catalog import build_catalog, resolve_customer_rank, resolve_tool, tool_allowed
 from app.federation.mint import mint_app_jwt
@@ -89,10 +90,25 @@ async def _handle_tools_call(
 
     resolved = resolve_tool(apps, name)
     if resolved is None:
-        return _rpc_error(req_id, -32602, f"unknown tool: {name}")
+        # JSON-RPC error carried at HTTP 200 (the outer route reads out["payload"]).
+        return {"_status": 200, "payload": _rpc_error(req_id, -32602, f"unknown tool: {name}")}
     # Defense in depth: re-check tier at invoke (the client's cached list may be stale).
     if not tool_allowed(resolved["tool"], rank):
-        return _rpc_error(req_id, -32602, f"tool not available for your tier: {name}")
+        return {"_status": 200, "payload": _rpc_error(
+            req_id, -32602, f"tool not available for your tier: {name}")}
+    # BR-2.5: enforce the caller's per-KEY scope (read/chat/write). A read- or
+    # chat-scoped one-key credential may only invoke read_only tools; write/exec
+    # tools require a write (or admin) key. Independent of tier — a paid customer
+    # with a read-only key still cannot call a write tool. 403-equivalent.
+    if not key_permits_mcp_tool(
+        user.role,
+        getattr(user, "permissions", None),
+        read_only=bool(resolved["tool"].get("read_only", False)),
+        scopes_required=resolved.get("scopes_required"),
+    ):
+        return {"_status": 403, "payload": _rpc_error(
+            req_id, -32003,
+            f"insufficient key scope for tool: {name} (a write-scoped key is required)")}
 
     aud = resolved["expected_audience"]
     jwt = mint_app_jwt(
@@ -187,6 +203,14 @@ async def mcp_gateway(
     if method == "tools/list":
         apps = await FederatedAppRepository(session).list_active()
         catalog = build_catalog(apps, rank)
+        # BR-2.5: also hide tools the caller's KEY scope can't invoke, so a
+        # read/chat-scoped credential never sees write/exec tools it would be
+        # refused on tools/call (defense-in-depth mirrors the tier filter above).
+        perms = getattr(user, "permissions", None)
+        catalog = [
+            t for t in catalog
+            if key_permits_mcp_tool(user.role, perms, read_only=bool(t.get("read_only", False)))
+        ]
         return _rpc_result(req_id, {"tools": [_public_tool(t) for t in catalog]})
 
     if method == "tools/call":
