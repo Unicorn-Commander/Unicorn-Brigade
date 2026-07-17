@@ -44,6 +44,10 @@ router = APIRouter()
 
 # Global room manager (initialized during startup)
 room_manager: Optional[VoiceRoomManager] = None
+# Sticky flag: voice could not initialize (e.g. the S6 guard refused unsafe LiveKit
+# creds). Set once so get_room_manager() short-circuits to 503 without re-running the
+# guard — and re-logging its loud ERROR — on every subsequent voice request.
+_voice_init_failed: bool = False
 
 
 def init_voice_routes(manager: Optional[VoiceRoomManager] = None):
@@ -55,16 +59,19 @@ def init_voice_routes(manager: Optional[VoiceRoomManager] = None):
     optional integration must degrade gracefully. The voice endpoints then return
     503 via get_room_manager() until real creds are configured.
     """
-    global room_manager
+    global room_manager, _voice_init_failed
     if manager:
         room_manager = manager
+        _voice_init_failed = False
         logger.info("Voice routes initialized")
         return
     try:
         room_manager = VoiceRoomManager()
+        _voice_init_failed = False
         logger.info("Voice routes initialized")
     except Exception as e:  # incl. InsecureConfigurationError from the S6 creds guard
         room_manager = None
+        _voice_init_failed = True
         logger.warning(
             "Voice DISABLED — could not initialize the LiveKit room manager: %s. "
             "The app is running normally; /api/v1/voice/* will return 503 until "
@@ -74,11 +81,20 @@ def init_voice_routes(manager: Optional[VoiceRoomManager] = None):
 
 def get_room_manager() -> VoiceRoomManager:
     """Get the room manager, or 503 if voice is unavailable in this environment."""
-    global room_manager
+    global room_manager, _voice_init_failed
     if room_manager is None:
+        # Voice already known-unavailable this process: 503 immediately, do NOT
+        # re-construct (which would re-fire the S6 guard's loud ERROR every request).
+        if _voice_init_failed:
+            raise HTTPException(
+                status_code=503,
+                detail="Voice service unavailable: LiveKit is not configured for "
+                       "this environment.",
+            )
         try:
             room_manager = VoiceRoomManager()
         except Exception as e:  # incl. InsecureConfigurationError
+            _voice_init_failed = True
             raise HTTPException(
                 status_code=503,
                 detail="Voice service unavailable: LiveKit is not configured for "
