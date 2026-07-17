@@ -24,6 +24,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import hashlib
 import hmac
+import os
 import secrets
 import json
 import logging
@@ -32,6 +33,10 @@ import uuid
 import time
 
 logger = logging.getLogger(__name__)
+
+# Bound the detached async A2A callback POST so a slow or hostile callback sink
+# cannot hang the background task indefinitely.
+A2A_CALLBACK_TIMEOUT_SECONDS: float = float(os.getenv("A2A_CALLBACK_TIMEOUT_SECONDS", "15") or 15)
 
 
 # ============== Enums ==============
@@ -1770,23 +1775,60 @@ class A2AServer:
             self._async_tasks[task_id].status = response.status
             self._async_tasks[task_id].result = response
 
-            # Send callback if configured
+            # Send callback if configured (SSRF-guarded + timeout-bounded).
             if request.callback_url:
-                try:
-                    async with httpx.AsyncClient() as client:
-                        await client.post(
-                            request.callback_url,
-                            json=response.model_dump(mode="json"),
-                            headers=request.callback_headers,
-                        )
-                except Exception as e:
-                    logger.error(f"Failed to send callback: {e}")
+                await self._post_callback(
+                    request.callback_url,
+                    response.model_dump(mode="json"),
+                    request.callback_headers,
+                )
 
         except Exception as e:
             self._async_tasks[task_id].status = InvocationStatus.FAILED
             self._async_tasks[task_id].message = str(e)
 
         self._async_tasks[task_id].updated_at = datetime.utcnow()
+
+    async def _post_callback(
+        self,
+        callback_url: str,
+        payload: Dict[str, Any],
+        headers: Optional[Dict[str, str]],
+    ) -> bool:
+        """POST an async-task callback, guarded against SSRF and bounded by a timeout.
+
+        The ``callback_url`` is caller-supplied, so an authenticated client must
+        not be able to use it as an SSRF / arbitrary-POST vector against internal
+        services (localhost, RFC1918, the 169.254.169.254 metadata endpoint). We
+        reuse the egress guard from ``builtin_tools`` to validate the host AND pin
+        the connection to the resolved public IP (DNS-rebinding TOCTOU fix), keep
+        redirects off, and cap the request with an explicit total timeout.
+
+        Returns ``True`` if the callback was sent, ``False`` if blocked or failed.
+        """
+        # Lazy import to avoid any import-order coupling between protocol + llm layers.
+        from app.llm.builtin_tools import build_egress_guarded_transport
+
+        transport, block_reason = build_egress_guarded_transport(callback_url)
+        if transport is None:
+            logger.warning(
+                f"A2A callback blocked by SSRF guard: {callback_url} ({block_reason})"
+            )
+            return False
+
+        try:
+            timeout = httpx.Timeout(
+                A2A_CALLBACK_TIMEOUT_SECONDS,
+                connect=min(10.0, A2A_CALLBACK_TIMEOUT_SECONDS),
+            )
+            async with httpx.AsyncClient(
+                timeout=timeout, follow_redirects=False, transport=transport
+            ) as client:
+                await client.post(callback_url, json=payload, headers=headers)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send callback: {e}")
+            return False
 
     def get_task_status(self, task_id: str) -> Optional[A2ATaskStatus]:
         """Get status of an async task"""

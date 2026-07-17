@@ -26,6 +26,70 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+# LiveKit's well-known PUBLIC development credentials. These are NOT secrets —
+# they ship in LiveKit's own examples/quickstarts — which is exactly why they
+# must never be accepted in production (anyone could mint valid, admin-capable
+# room tokens with them). Kept only as sentinels so the guard below can REFUSE
+# them; the env-var defaults are "" (no live secret in source, repo is mirrored
+# to a public -OSS repo).
+_INSECURE_LIVEKIT_API_KEY = "devkey"
+_INSECURE_LIVEKIT_API_SECRET = "REMOVED"
+
+
+def assert_livekit_creds_safe(api_key: str, api_secret: str) -> None:
+    """Refuse to start the voice worker with empty / well-known-dev LiveKit creds
+    in a production-like environment.
+
+    Mirrors the fail-closed style of
+    ``app.security.bootstrap.assert_auth_bypass_safe``: in prod, empty or public
+    dev credentials are a FATAL misconfiguration, so we log LOUDLY and raise
+    ``InsecureConfigurationError``. In dev/test we allow it with a warning.
+    """
+    insecure = (
+        not api_key
+        or not api_secret
+        or api_key == _INSECURE_LIVEKIT_API_KEY
+        or api_secret == _INSECURE_LIVEKIT_API_SECRET
+    )
+    if not insecure:
+        return
+
+    # Reuse the app's env detection + fail-closed error type. Fall back safely to
+    # "assume production" if the bootstrap helper cannot be imported.
+    try:
+        from app.security.bootstrap import (
+            is_production_env,
+            resolve_environment,
+            InsecureConfigurationError,
+        )
+        env = resolve_environment()
+        prod = is_production_env()
+    except Exception:  # pragma: no cover - bootstrap should always import
+        env = (os.getenv("BRIGADE_ENV") or os.getenv("ENV") or os.getenv("ENVIRONMENT") or "production").strip().lower()
+        prod = env not in {"development", "dev", "local", "test", "testing"}
+        InsecureConfigurationError = RuntimeError  # type: ignore[assignment]
+
+    if prod:
+        banner = (
+            "FATAL SECURITY MISCONFIGURATION: LiveKit API key/secret are empty or set "
+            f"to the well-known public dev values in a production-like environment "
+            f"(resolved environment='{env}'). The LiveKit devkey/devsecret are PUBLIC, "
+            "so anyone could mint valid (admin-capable) room tokens. Refusing to start "
+            "the voice worker. Set LIVEKIT_API_KEY and LIVEKIT_API_SECRET to real "
+            "secrets and redeploy."
+        )
+        logger.critical("❌❌❌ %s", banner)
+        logger.error("❌❌❌ %s", banner)
+        raise InsecureConfigurationError(banner)
+
+    logger.warning(
+        "⚠️ LiveKit credentials are empty or the public dev defaults (environment='%s' "
+        "is non-production). Voice room tokens are INSECURE — never use this posture in "
+        "production.",
+        env,
+    )
+
+
 class STTProvider(str, Enum):
     """Speech-to-Text provider options."""
     DEEPGRAM = "deepgram"
@@ -104,8 +168,14 @@ class VoiceRoomManager:
         api_secret: Optional[str] = None,
     ):
         self.livekit_url = livekit_url or os.getenv("LIVEKIT_URL", "ws://localhost:7880")
-        self.api_key = api_key or os.getenv("LIVEKIT_API_KEY", "devkey")
-        self.api_secret = api_secret or os.getenv("LIVEKIT_API_SECRET", "REMOVED")
+        # No hardcoded credential defaults in source (public -OSS mirror). Empty
+        # when unset; the guard below refuses to run with empty/dev creds in prod.
+        self.api_key = api_key or os.getenv("LIVEKIT_API_KEY", "")
+        self.api_secret = api_secret or os.getenv("LIVEKIT_API_SECRET", "")
+
+        # S6: fail closed — refuse to start the voice worker with empty or public
+        # dev LiveKit credentials in a production-like environment.
+        assert_livekit_creds_safe(self.api_key, self.api_secret)
 
         # In-memory room tracking (for now)
         self._rooms: Dict[str, VoiceRoom] = {}

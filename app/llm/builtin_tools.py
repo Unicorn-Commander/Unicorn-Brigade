@@ -191,6 +191,69 @@ def _ip_is_blocked(ip_str: str) -> bool:
     )
 
 
+def resolve_and_validate_egress(
+    url: str,
+) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+    """
+    SSRF guard that ALSO returns the connection pin.
+
+    Returns ``(allowed, error_message, hostname, pinned_ip)``:
+
+    - ``allowed`` / ``error_message`` mirror :func:`validate_url_egress`.
+    - ``hostname`` is the parsed host (preserved for the Host header + TLS SNI).
+    - ``pinned_ip`` is a validated address the caller should CONNECT to. It is
+      ``None`` when the host is already an IP literal (no DNS — connect normally)
+      and on any failure.
+
+    Resolving ONCE here and connecting to ``pinned_ip`` closes the DNS-rebinding
+    TOCTOU: a hostile resolver could otherwise pass this guard and then, when
+    httpx (or any client) re-resolves at connect time, point the socket at
+    127.0.0.1 / 169.254.169.254. See :class:`_PinnedIPTransport`.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False, "invalid URL", None, None
+
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in ("http", "https"):
+        return False, f"blocked URL scheme '{scheme or 'none'}' (only http/https allowed)", None, None
+
+    hostname = parsed.hostname
+    if not hostname:
+        return False, "URL has no host", None, None
+
+    # If the host is already an IP literal, check it directly (no DNS, no pin).
+    try:
+        ipaddress.ip_address(hostname)
+        if _ip_is_blocked(hostname):
+            return False, f"blocked: {hostname} is a private/reserved address", None, None
+        return True, None, hostname, None
+    except ValueError:
+        pass
+
+    # Resolve the hostname to every address it maps to and block if ANY is
+    # internal. The FIRST validated address becomes the connection pin.
+    port = parsed.port or (443 if scheme == "https" else 80)
+    try:
+        infos = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as exc:
+        return False, f"DNS resolution failed for {hostname}: {exc}", None, None
+
+    if not infos:
+        return False, f"no addresses resolved for {hostname}", None, None
+
+    pinned_ip: Optional[str] = None
+    for info in infos:
+        ip_str = info[4][0]
+        if _ip_is_blocked(ip_str):
+            return False, f"blocked: {hostname} resolves to non-public address {ip_str}", None, None
+        if pinned_ip is None:
+            pinned_ip = ip_str
+
+    return True, None, hostname, pinned_ip
+
+
 def validate_url_egress(url: str) -> Tuple[bool, Optional[str]]:
     """
     SSRF guard. Returns (allowed, error_message).
@@ -199,52 +262,86 @@ def validate_url_egress(url: str) -> Tuple[bool, Optional[str]]:
     loopback / private / link-local (169.254/16 metadata) / reserved /
     unspecified address. Callers should return a clean tool error (not raise)
     when allowed is False.
+
+    Thin wrapper over :func:`resolve_and_validate_egress` — use that directly (or
+    :func:`build_egress_guarded_transport`) when you also need to PIN the
+    connection to the validated IP.
     """
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return False, "invalid URL"
+    allowed, error, _host, _pinned_ip = resolve_and_validate_egress(url)
+    return allowed, error
 
-    scheme = (parsed.scheme or "").lower()
-    if scheme not in ("http", "https"):
-        return False, f"blocked URL scheme '{scheme or 'none'}' (only http/https allowed)"
 
-    hostname = parsed.hostname
-    if not hostname:
-        return False, "URL has no host"
+class _PinnedIPTransport(httpx.AsyncHTTPTransport):
+    """httpx transport that pins the TCP connection to a pre-validated IP.
 
-    # If the host is already an IP literal, check it directly (no DNS).
-    try:
-        ipaddress.ip_address(hostname)
-        if _ip_is_blocked(hostname):
-            return False, f"blocked: {hostname} is a private/reserved address"
-        return True, None
-    except ValueError:
-        pass
+    Closes the SSRF DNS-rebinding TOCTOU: the egress guard resolves + validates
+    the host ONCE, and this transport connects to THAT ip instead of letting
+    httpx re-resolve at connect time. The original hostname is preserved for the
+    Host header (httpx already derived it from the request URL) and for TLS SNI +
+    certificate verification via the ``sni_hostname`` request extension, so HTTPS
+    still verifies against the real hostname rather than the raw IP.
+    """
 
-    # Resolve the hostname to every address it maps to and block if ANY is internal.
-    port = parsed.port or (443 if scheme == "https" else 80)
-    try:
-        infos = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
-    except socket.gaierror as exc:
-        return False, f"DNS resolution failed for {hostname}: {exc}"
+    def __init__(self, expected_host: str, pinned_ip: str, **kwargs):
+        super().__init__(**kwargs)
+        self._expected_host = (expected_host or "").lower()
+        self._pinned_ip = pinned_ip
 
-    if not infos:
-        return False, f"no addresses resolved for {hostname}"
+    async def handle_async_request(self, request: "httpx.Request") -> "httpx.Response":
+        host = (request.url.host or "").lower()
+        if host == self._expected_host:
+            # Defense in depth: never connect to a blocked IP even if pinned.
+            if _ip_is_blocked(self._pinned_ip):
+                raise httpx.ConnectError(
+                    f"SSRF guard: pinned address {self._pinned_ip} is private/reserved"
+                )
+            request.extensions = dict(request.extensions)
+            request.extensions.setdefault("sni_hostname", request.url.host)
+            # Connect to the validated IP; Host header + SNI keep the real host.
+            request.url = request.url.copy_with(host=self._pinned_ip)
+        else:
+            # Host changed unexpectedly (e.g. a redirect slipped past a caller
+            # that did not disable them). Re-validate and refuse anything
+            # internal rather than connecting blind.
+            allowed, error = validate_url_egress(str(request.url))
+            if not allowed:
+                raise httpx.ConnectError(f"SSRF guard: {error}")
+        return await super().handle_async_request(request)
 
-    for info in infos:
-        ip_str = info[4][0]
-        if _ip_is_blocked(ip_str):
-            return False, f"blocked: {hostname} resolves to non-public address {ip_str}"
 
-    return True, None
+def build_egress_guarded_transport(
+    url: str, **transport_kwargs
+) -> Tuple[Optional[httpx.AsyncBaseTransport], Optional[str]]:
+    """Validate egress for ``url`` and return a DNS-pinned httpx transport.
+
+    Returns ``(transport, None)`` when the URL is allowed, or ``(None, reason)``
+    when it is blocked (caller should return a clean tool error, not raise).
+
+    Build the client with ``follow_redirects=False`` so the pin (tied to the
+    original host) cannot be bypassed by a redirect to another host::
+
+        transport, reason = build_egress_guarded_transport(url)
+        if transport is None:
+            return {"error": reason, "success": False}
+        async with httpx.AsyncClient(transport=transport, follow_redirects=False) as client:
+            ...
+    """
+    allowed, error, host, pinned_ip = resolve_and_validate_egress(url)
+    if not allowed:
+        return None, error
+    if pinned_ip is None:
+        # Host was an IP literal (already validated) — no DNS, nothing to pin.
+        return httpx.AsyncHTTPTransport(**transport_kwargs), None
+    return _PinnedIPTransport(expected_host=host, pinned_ip=pinned_ip, **transport_kwargs), None
 
 
 # ============== Web Search Configuration ==============
 
 # Search provider config from environment
 SEARCH_PROVIDER = os.getenv("SEARCH_PROVIDER", "serper")  # serper, searxng, brightdata
-SERPER_API_KEY = os.getenv("SERPER_API_KEY", "REMOVED")
+# No hardcoded default: a source-code secret is treated as leaked (repo is mirrored
+# to a public -OSS repo). web_search degrades gracefully when this is unset.
+SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://localhost:8889")
 BRIGHTDATA_API_KEY = os.getenv("BRIGHTDATA_API_KEY", "")
 BRIGHTDATA_ZONE = os.getenv("BRIGHTDATA_ZONE", "serp")
@@ -252,6 +349,17 @@ BRIGHTDATA_ZONE = os.getenv("BRIGHTDATA_ZONE", "serp")
 
 async def _search_serper(query: str, num_results: int = 5) -> Dict[str, Any]:
     """Search via Serper.dev (Google SERP API)"""
+    # Degrade gracefully instead of firing a request with an empty API key
+    # (which would 4xx) — return a clean, actionable tool error.
+    if not SERPER_API_KEY:
+        logger.warning("web_search: SERPER_API_KEY is not configured; serper provider unavailable")
+        return {
+            "query": query,
+            "provider": "serper",
+            "results": [],
+            "error": "Web search unavailable: SERPER_API_KEY is not configured.",
+            "success": False,
+        }
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.post(
@@ -439,9 +547,13 @@ async def http_request_handler(
     """Make an HTTP request"""
     logger.info(f"HTTP {method} request to: {url}")
 
-    # BR-0.4: SSRF egress guard. Block internal/metadata targets before any connect.
-    allowed, block_reason = validate_url_egress(url)
-    if not allowed:
+    # BR-0.4 / SSRF hardening: resolve + validate the host ONCE and pin the
+    # connection to the validated IP (DNS-rebinding TOCTOU fix). The returned
+    # transport connects to the checked address while preserving Host + TLS SNI,
+    # so a hostile resolver cannot pass validation then rebind to 127.0.0.1 /
+    # 169.254.169.254 at connect time.
+    transport, block_reason = build_egress_guarded_transport(url)
+    if transport is None:
         logger.warning(f"http_request blocked by SSRF guard: {url} ({block_reason})")
         return {
             "error": f"Request blocked by SSRF guard: {block_reason}",
@@ -460,8 +572,11 @@ async def http_request_handler(
 
     try:
         # follow_redirects=False so a redirect cannot bounce us to an internal
-        # host that the guard never validated (redirect-based SSRF bypass).
-        async with httpx.AsyncClient(timeout=total_timeout, follow_redirects=False) as client:
+        # host that the guard never validated (redirect-based SSRF bypass), and
+        # so the pinned transport's host binding cannot be sidestepped.
+        async with httpx.AsyncClient(
+            timeout=total_timeout, follow_redirects=False, transport=transport
+        ) as client:
             response = await client.request(
                 method=method.upper(),
                 url=url,

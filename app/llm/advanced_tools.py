@@ -20,7 +20,7 @@ from pathlib import Path
 import httpx
 
 from app.llm.ops_center_client import ToolDefinition, ToolParameter
-from app.llm.builtin_tools import validate_url_egress
+from app.llm.builtin_tools import validate_url_egress, build_egress_guarded_transport
 
 logger = logging.getLogger(__name__)
 
@@ -561,8 +561,17 @@ async def pdf_extract_handler(
         # Determine if source is URL or file path
         if source.startswith(("http://", "https://")):
             source_type = "url"
+            # SSRF guard: validate egress and pin the connection to the resolved
+            # public IP (DNS-rebinding TOCTOU fix) before downloading. Keep
+            # follow_redirects=False so a redirect can't bounce us internal.
+            transport, block_reason = build_egress_guarded_transport(source)
+            if transport is None:
+                logger.warning(f"pdf_extract blocked by SSRF guard: {source} ({block_reason})")
+                return {"success": False, "error": f"PDF download blocked by SSRF guard: {block_reason}"}
             # Download PDF from URL
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(
+                timeout=60, follow_redirects=False, transport=transport
+            ) as client:
                 response = await client.get(source)
                 response.raise_for_status()
 
@@ -1488,69 +1497,75 @@ async def url_preview_handler(
 
     # Fallback: Extract metadata via HTTP
     try:
-        # Manually follow redirects so the SSRF guard runs on EVERY hop
-        # (an allowed public URL must not be able to redirect us to an
-        # internal/metadata host).
+        # Manually follow redirects so the SSRF guard runs on EVERY hop (an
+        # allowed public URL must not be able to redirect us to an internal /
+        # metadata host). Each hop validates AND pins the connection to the
+        # resolved public IP (DNS-rebinding TOCTOU fix), with follow_redirects
+        # left off so httpx never chases a hop we did not guard.
         max_redirects = 5
         current_url = url
-        async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
-            response = None
-            for _ in range(max_redirects + 1):
-                allowed, block_reason = validate_url_egress(current_url)
-                if not allowed:
-                    logger.warning(
-                        f"url_preview redirect blocked by SSRF guard: {current_url} ({block_reason})"
-                    )
-                    result["success"] = False
-                    result["error"] = f"URL preview blocked by SSRF guard: {block_reason}"
-                    return result
+        response = None
+        for _ in range(max_redirects + 1):
+            transport, block_reason = build_egress_guarded_transport(current_url)
+            if transport is None:
+                logger.warning(
+                    f"url_preview redirect blocked by SSRF guard: {current_url} ({block_reason})"
+                )
+                result["success"] = False
+                result["error"] = f"URL preview blocked by SSRF guard: {block_reason}"
+                return result
 
+            async with httpx.AsyncClient(
+                timeout=30, follow_redirects=False, transport=transport
+            ) as client:
+                # Non-streaming .get() fully reads the body, so `response` stays
+                # usable after the per-hop client closes.
                 response = await client.get(current_url, headers={
                     "User-Agent": "Mozilla/5.0 (compatible; UnicornBrigade/1.0)"
                 })
 
-                if response.is_redirect and response.headers.get("location"):
-                    current_url = str(response.url.join(response.headers["location"]))
-                    continue
-                break
-            else:
-                result["success"] = False
-                result["error"] = "Too many redirects"
-                return result
+            if response.is_redirect and response.headers.get("location"):
+                current_url = str(response.url.join(response.headers["location"]))
+                continue
+            break
+        else:
+            result["success"] = False
+            result["error"] = "Too many redirects"
+            return result
 
-            response.raise_for_status()
+        response.raise_for_status()
 
-            html = response.text
-            result["metadata"]["status_code"] = response.status_code
-            result["metadata"]["content_type"] = response.headers.get("content-type", "")
-            result["metadata"]["final_url"] = str(response.url)
+        html = response.text
+        result["metadata"]["status_code"] = response.status_code
+        result["metadata"]["content_type"] = response.headers.get("content-type", "")
+        result["metadata"]["final_url"] = str(response.url)
 
-            # Parse HTML for metadata
-            import re
+        # Parse HTML for metadata
+        import re
 
-            # Title
-            title_match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
-            if title_match:
-                result["metadata"]["title"] = title_match.group(1).strip()
+        # Title
+        title_match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
+        if title_match:
+            result["metadata"]["title"] = title_match.group(1).strip()
 
-            # Meta description
-            desc_match = re.search(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
-            if not desc_match:
-                desc_match = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']description["\']', html, re.IGNORECASE)
-            if desc_match:
-                result["metadata"]["description"] = desc_match.group(1).strip()
+        # Meta description
+        desc_match = re.search(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+        if not desc_match:
+            desc_match = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']description["\']', html, re.IGNORECASE)
+        if desc_match:
+            result["metadata"]["description"] = desc_match.group(1).strip()
 
-            # Open Graph image
-            og_match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
-            if og_match:
-                result["metadata"]["og_image"] = og_match.group(1).strip()
+        # Open Graph image
+        og_match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
+        if og_match:
+            result["metadata"]["og_image"] = og_match.group(1).strip()
 
-            # Favicon
-            favicon_match = re.search(r'<link[^>]+rel=["\'](?:shortcut )?icon["\'][^>]+href=["\']([^"\']+)["\']', html, re.IGNORECASE)
-            if favicon_match:
-                result["metadata"]["favicon"] = favicon_match.group(1).strip()
+        # Favicon
+        favicon_match = re.search(r'<link[^>]+rel=["\'](?:shortcut )?icon["\'][^>]+href=["\']([^"\']+)["\']', html, re.IGNORECASE)
+        if favicon_match:
+            result["metadata"]["favicon"] = favicon_match.group(1).strip()
 
-            result["method"] = "http_metadata"
+        result["method"] = "http_metadata"
 
     except httpx.HTTPError as e:
         result["success"] = False
