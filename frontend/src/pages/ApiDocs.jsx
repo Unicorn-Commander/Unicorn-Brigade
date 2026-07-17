@@ -744,6 +744,7 @@ print(response.json())`
           <div className="bg-slate-800/50 rounded-lg p-4 font-mono text-sm relative">
             <button
               onClick={() => copyToClipboard('X-API-Key: YOUR_API_KEY')}
+              aria-label="Copy API key header"
               className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
             >
               <Copy className="w-4 h-4 text-slate-400" />
@@ -900,6 +901,7 @@ print(response.json())`
                   <div className="bg-slate-800/50 rounded-lg p-4 font-mono text-sm relative">
                     <button
                       onClick={() => copyToClipboard(selectedEndpoint.examples[selectedLanguage])}
+                      aria-label="Copy code example"
                       className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded z-10"
                     >
                       <Copy className="w-4 h-4 text-slate-400" />

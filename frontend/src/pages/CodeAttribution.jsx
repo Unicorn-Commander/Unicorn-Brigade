@@ -276,6 +276,7 @@ const CodeAttribution = () => {
               onClick={() => loadData()}
               className="btn btn-secondary"
               disabled={loading}
+              aria-label="Refresh attributions"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
@@ -302,6 +303,7 @@ const CodeAttribution = () => {
                     setSearchQuery('');
                     loadData();
                   }}
+                  aria-label="Clear search"
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
                 >
                   <X className="w-4 h-4" />

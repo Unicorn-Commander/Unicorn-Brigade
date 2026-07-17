@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Plus, Bot, ExternalLink, Eye, Edit, Trash2, Star, TrendingUp, MessageSquare, Shield, DollarSign, ArrowUpDown, Wrench, Zap, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { Search, Filter, Plus, Bot, ExternalLink, Eye, Edit, Trash2, Star, TrendingUp, MessageSquare, Shield, DollarSign, ArrowUpDown, Wrench, Zap, CheckCircle, AlertCircle, X, Scale, Stethoscope, Code2, Target, Award } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../services/http';
@@ -21,16 +21,16 @@ const agentToolList = (agent) => {
 const agentCapabilityList = (agent) =>
   Array.isArray(agent?.capabilities) ? agent.capabilities : [];
 
-// Domain Icons and Colors
+// Domain → lucide mark + accent color (replaces the decorative emoji glyphs).
 const domainConfig = {
-  financial: { icon: '💰', color: 'emerald', emoji: '💰' },
-  legal: { icon: '⚖️', color: 'blue', emoji: '⚖️' },
-  medical: { icon: '🏥', color: 'red', emoji: '🏥' },
-  technology: { icon: '💻', color: 'purple', emoji: '💻' },
-  investigation: { icon: '🔍', color: 'amber', emoji: '🔍' },
-  orchestration: { icon: '🎯', color: 'cyan', emoji: '🎯' },
-  meta: { icon: '🎖️', color: 'orange', emoji: '🎖️' },
-  intelligence: { icon: '🕵️', color: 'indigo', emoji: '🕵️' }
+  financial: { Icon: DollarSign, color: 'emerald' },
+  legal: { Icon: Scale, color: 'blue' },
+  medical: { Icon: Stethoscope, color: 'red' },
+  technology: { Icon: Code2, color: 'purple' },
+  investigation: { Icon: Search, color: 'amber' },
+  orchestration: { Icon: Target, color: 'cyan' },
+  meta: { Icon: Award, color: 'orange' },
+  intelligence: { Icon: Eye, color: 'indigo' }
 };
 
 // Status Icons
@@ -197,7 +197,7 @@ const AgentLibrary = () => {
   };
 
   const getDomainConfig = (domain) => {
-    return domainConfig[domain] || { icon: '🤖', color: 'slate', emoji: '🤖' };
+    return domainConfig[domain] || { Icon: Bot, color: 'slate' };
   };
 
   const getStatusConfig = (status) => {
@@ -327,7 +327,7 @@ const AgentLibrary = () => {
               {searchQuery && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
                   Search: {searchQuery}
-                  <button onClick={() => setSearchQuery('')} className="hover:text-white">
+                  <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -335,7 +335,7 @@ const AgentLibrary = () => {
               {selectedDomain && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs">
                   Domain: {selectedDomain}
-                  <button onClick={() => setSelectedDomain('')} className="hover:text-white">
+                  <button onClick={() => setSelectedDomain('')} aria-label="Clear domain filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -343,7 +343,7 @@ const AgentLibrary = () => {
               {selectedTool && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-cyan-500/20 text-cyan-400 text-xs">
                   Tool: {selectedTool}
-                  <button onClick={() => setSelectedTool('')} className="hover:text-white">
+                  <button onClick={() => setSelectedTool('')} aria-label="Clear tool filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -351,7 +351,7 @@ const AgentLibrary = () => {
               {selectedStatus && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
                   Status: {selectedStatus}
-                  <button onClick={() => setSelectedStatus('')} className="hover:text-white">
+                  <button onClick={() => setSelectedStatus('')} aria-label="Clear status filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -359,7 +359,7 @@ const AgentLibrary = () => {
               {selectedType && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/20 text-amber-400 text-xs">
                   Type: {selectedType}
-                  <button onClick={() => setSelectedType('')} className="hover:text-white">
+                  <button onClick={() => setSelectedType('')} aria-label="Clear type filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -429,6 +429,8 @@ const AgentLibrary = () => {
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => setViewMode('grid')}
+                  aria-label="Grid view"
+                  aria-pressed={viewMode === 'grid'}
                   className={`p-2 rounded transition-colors ${viewMode === 'grid' ? 'bg-unicorn-500' : 'bg-slate-800 hover:bg-slate-700'}`}
                 >
                   <div className="w-4 h-4 grid grid-cols-2 gap-0.5">
@@ -440,6 +442,8 @@ const AgentLibrary = () => {
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
+                  aria-label="List view"
+                  aria-pressed={viewMode === 'list'}
                   className={`p-2 rounded transition-colors ${viewMode === 'list' ? 'bg-unicorn-500' : 'bg-slate-800 hover:bg-slate-700'}`}
                 >
                   <div className="w-4 h-4 flex flex-col gap-1">
@@ -482,13 +486,16 @@ const AgentLibrary = () => {
 
         {!loading && !filterLoading && Object.keys(groupedAgents).map(domain => {
           const config = getDomainConfig(domain);
+          const DomainIcon = config.Icon;
           const domainAgents = groupedAgents[domain];
 
           return (
             <div key={domain} className="space-y-4">
               {/* Domain Header */}
               <div className="flex items-center space-x-3">
-                <span className="text-3xl">{config.emoji}</span>
+                <span className="p-2 rounded-lg bg-slate-800/60 text-slate-300">
+                  <DomainIcon className="w-6 h-6" aria-hidden="true" />
+                </span>
                 <div>
                   <h2 className="text-xl font-bold capitalize">{domain}</h2>
                   <p className="text-sm text-slate-400">{domainAgents.length} agents</p>

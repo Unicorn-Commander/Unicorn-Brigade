@@ -37,6 +37,7 @@ import {
 } from '@livekit/components-react';
 import { Track, ConnectionState } from 'livekit-client';
 import useVoiceCall, { CallState } from '../hooks/useVoiceCall';
+import Modal from './ui/Modal';
 
 // Audio level visualizer component
 const AudioVisualizer = ({ level = 0, isActive = false, size = 'md' }) => {
@@ -189,30 +190,12 @@ const VoiceCallModal = ({
   if (!isOpen) return null;
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      >
-        {/* Backdrop */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-          onClick={handleClose}
-        />
-
-        {/* Modal */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.9, y: 20 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-sm rounded-3xl overflow-hidden"
-        >
+    <Modal
+      onClose={handleClose}
+      ariaLabel={`Voice call with ${agent?.displayName || agent?.name || 'agent'}`}
+      showClose={false}
+      panelClassName="relative w-full max-w-sm rounded-3xl overflow-hidden focus:outline-none"
+    >
           {/* Background gradient */}
           <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-unicorn-900/30 to-slate-900" />
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(139,92,246,0.15),transparent_50%)]" />
@@ -224,6 +207,7 @@ const VoiceCallModal = ({
               <ConnectionBadge state={callState} />
               <button
                 onClick={handleClose}
+                aria-label="Close voice call"
                 className="p-2 rounded-full hover:bg-white/10 transition-colors"
               >
                 <X className="w-5 h-5 text-slate-400" />
@@ -338,6 +322,8 @@ const VoiceCallModal = ({
               <motion.button
                 onClick={toggleMute}
                 disabled={!isConnected}
+                aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                aria-pressed={isMuted}
                 className={`
                   w-14 h-14 rounded-full flex items-center justify-center
                   transition-all duration-200
@@ -360,6 +346,7 @@ const VoiceCallModal = ({
               {/* End call button */}
               <motion.button
                 onClick={handleEndCall}
+                aria-label="End call"
                 className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-lg shadow-red-500/30 transition-colors"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -370,6 +357,8 @@ const VoiceCallModal = ({
               {/* Settings button */}
               <motion.button
                 onClick={() => setShowSettings(!showSettings)}
+                aria-label="Audio settings"
+                aria-expanded={showSettings}
                 className={`
                   w-14 h-14 rounded-full flex items-center justify-center
                   bg-white/10 text-white hover:bg-white/20 border border-white/10
@@ -425,9 +414,7 @@ const VoiceCallModal = ({
               )}
             </AnimatePresence>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    </Modal>
   );
 };
 

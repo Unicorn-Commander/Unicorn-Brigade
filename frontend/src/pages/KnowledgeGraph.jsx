@@ -412,6 +412,7 @@ const KnowledgeGraph = () => {
                       : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                   }`}
                   title={viewMode === '3d' ? 'Switch to 2D' : 'Switch to 3D'}
+                  aria-label={viewMode === '3d' ? 'Switch to 2D view' : 'Switch to 3D view'}
                 >
                   {viewMode === '3d' ? <Box className="w-4 h-4" /> : <Grid3X3 className="w-4 h-4" />}
                 </button>
@@ -423,6 +424,7 @@ const KnowledgeGraph = () => {
                       : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                   }`}
                   title={isAnimating ? 'Pause animation' : 'Resume animation'}
+                  aria-label={isAnimating ? 'Pause animation' : 'Resume animation'}
                 >
                   {isAnimating ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                 </button>
@@ -430,6 +432,7 @@ const KnowledgeGraph = () => {
                   onClick={resetCamera}
                   className="p-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-all"
                   title="Reset camera"
+                  aria-label="Reset camera"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
@@ -437,6 +440,8 @@ const KnowledgeGraph = () => {
                   onClick={() => setIsFullscreen(!isFullscreen)}
                   className="p-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-all"
                   title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                  aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                  aria-pressed={isFullscreen}
                 >
                   {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                 </button>
@@ -716,6 +721,7 @@ const KnowledgeGraph = () => {
               </div>
               <button
                 onClick={() => { setSelectedNode(null); setNodeDetails(null); }}
+                aria-label="Close node details"
                 className="text-slate-400 hover:text-white"
               >
                 <X className="w-4 h-4" />

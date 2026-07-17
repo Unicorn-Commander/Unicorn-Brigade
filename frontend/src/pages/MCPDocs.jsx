@@ -305,6 +305,7 @@ const MCPDocs = () => {
                   onClick={() => copyToClipboard(`curl -X GET "${API_BASE}/api/v1/mcp/registry/servers" \\
   -H "X-API-Key: YOUR_API_KEY"`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
+                  aria-label="Copy code"
                 >
                   <Copy className="w-4 h-4 text-slate-400" />
                 </button>
@@ -335,6 +336,7 @@ STRIPE_API_KEY=sk_test_000000000000000000000000
 # Notion
 NOTION_API_KEY=secret_...`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
+                  aria-label="Copy code"
                 >
                   <Copy className="w-4 h-4 text-slate-400" />
                 </button>
@@ -365,6 +367,7 @@ NOTION_API_KEY=secret_...`}
                   onClick={() => copyToClipboard(`curl -X POST "${API_BASE}/api/v1/mcp/registry/servers/stripe/start" \\
   -H "X-API-Key: YOUR_API_KEY"`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
+                  aria-label="Copy code"
                 >
                   <Copy className="w-4 h-4 text-slate-400" />
                 </button>
@@ -395,6 +398,7 @@ NOTION_API_KEY=secret_...`}
   ]
 }`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
+                  aria-label="Copy code"
                 >
                   <Copy className="w-4 h-4 text-slate-400" />
                 </button>
@@ -433,6 +437,7 @@ NOTION_API_KEY=secret_...`}
     }
   }'`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
+                  aria-label="Copy code"
                 >
                   <Copy className="w-4 h-4 text-slate-400" />
                 </button>
@@ -514,6 +519,7 @@ server.setRequestHandler("tools/call", async (request) => {
 const transport = new StdioServerTransport();
 await server.connect(transport);`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
+                  aria-label="Copy code"
                 >
                   <Copy className="w-4 h-4 text-slate-400" />
                 </button>
@@ -608,6 +614,7 @@ async def call_tool(request: ToolCall):
 
 # Run with: uvicorn server:app --port 8080`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
+                  aria-label="Copy code"
                 >
                   <Copy className="w-4 h-4 text-slate-400" />
                 </button>
@@ -669,6 +676,7 @@ cd servers/src/filesystem
 npm link
 npx my-custom-server`)}
                   className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
+                  aria-label="Copy code"
                 >
                   <Copy className="w-4 h-4 text-slate-400" />
                 </button>

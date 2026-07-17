@@ -284,7 +284,7 @@ const MCPServers = () => {
               {searchQuery && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
                   Search: {searchQuery}
-                  <button onClick={() => setSearchQuery('')} className="hover:text-white">
+                  <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -292,7 +292,7 @@ const MCPServers = () => {
               {selectedCategory && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs">
                   Category: {selectedCategory}
-                  <button onClick={() => setSelectedCategory('')} className="hover:text-white">
+                  <button onClick={() => setSelectedCategory('')} aria-label="Clear category filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -300,7 +300,7 @@ const MCPServers = () => {
               {selectedStatus && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
                   Status: {selectedStatus}
-                  <button onClick={() => setSelectedStatus('')} className="hover:text-white">
+                  <button onClick={() => setSelectedStatus('')} aria-label="Clear status filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>

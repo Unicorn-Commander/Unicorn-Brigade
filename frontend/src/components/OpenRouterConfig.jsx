@@ -109,7 +109,7 @@ const OpenRouterConfig = () => {
         {/* API Key Input */}
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
               OpenRouter API Key
             </label>
             <div className="flex space-x-2">
@@ -118,7 +118,7 @@ const OpenRouterConfig = () => {
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="sk-or-v1-000000000000000000000000000000000000"
-                className="flex-1 px-4 py-2 bg-black/30 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400"
+                className="flex-1 px-4 py-2 bg-black/30 border border-white/20 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-unicorn-500"
               />
               <button
                 onClick={handleSaveKey}
@@ -133,22 +133,23 @@ const OpenRouterConfig = () => {
               </button>
             </div>
             {keyStored && (
-              <p className="text-sm text-green-400 mt-2">
-                ✓ API key saved to browser storage
+              <p className="text-sm text-green-400 mt-2 flex items-center gap-1.5">
+                <CheckCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                API key saved to browser storage
               </p>
             )}
           </div>
 
           {/* Test Message Input */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
               Test Message (Symptoms)
             </label>
             <textarea
               value={testMessage}
               onChange={(e) => setTestMessage(e.target.value)}
               rows={3}
-              className="w-full px-4 py-2 bg-black/30 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400"
+              className="w-full px-4 py-2 bg-black/30 border border-white/20 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-unicorn-500"
               placeholder="Describe symptoms to test..."
             />
           </div>
@@ -202,20 +203,20 @@ const OpenRouterConfig = () => {
                 </div>
 
                 {testResult.model && (
-                  <div className="text-sm text-gray-300">
-                    <span className="text-gray-400">Model:</span> {testResult.model}
+                  <div className="text-sm text-slate-300">
+                    <span className="text-slate-400">Model:</span> {testResult.model}
                   </div>
                 )}
 
                 {testResult.response && (
                   <div className="mt-3 p-3 bg-black/30 rounded-lg">
-                    <p className="text-sm text-gray-400 mb-2">AI Response:</p>
+                    <p className="text-sm text-slate-400 mb-2">AI Response:</p>
                     <p className="text-white whitespace-pre-wrap">{testResult.response.content || testResult.response}</p>
                   </div>
                 )}
 
                 {testResult.usage && (
-                  <div className="text-xs text-gray-400 mt-2">
+                  <div className="text-xs text-slate-400 mt-2">
                     Tokens: {testResult.usage.total_tokens} |
                     Cost: ${testResult.usage.total_cost?.toFixed(4) || '0.0000'}
                   </div>
@@ -228,7 +229,7 @@ const OpenRouterConfig = () => {
         {/* Instructions */}
         <div className="mt-6 p-4 bg-blue-900/20 border border-blue-600/30 rounded-lg">
           <h3 className="text-sm font-semibold text-blue-400 mb-2">How to get your API key:</h3>
-          <ol className="text-sm text-gray-300 space-y-1">
+          <ol className="text-sm text-slate-300 space-y-1">
             <li>1. Visit <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline">openrouter.ai</a></li>
             <li>2. Sign up or log in to your account</li>
             <li>3. Navigate to API Keys section</li>

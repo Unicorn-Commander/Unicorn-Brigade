@@ -1,7 +1,7 @@
 import React, { useId } from 'react';
 import PropTypes from 'prop-types';
 import { Tooltip } from 'react-tooltip';
-import { User, Wrench, Zap, Shield, Crown } from 'lucide-react';
+import { User, Wrench, Zap, Shield, Crown, Check } from 'lucide-react';
 
 /**
  * RoleBadge Component
@@ -130,7 +130,7 @@ const RoleBadge = ({
           <ul className="text-xs space-y-0.5 mt-2">
             {config.permissions.map((perm, idx) => (
               <li key={idx} className="flex items-start gap-1">
-                <span className="text-green-400">✓</span>
+                <Check className="w-3 h-3 text-green-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <span>{perm}</span>
               </li>
             ))}

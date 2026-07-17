@@ -14,6 +14,7 @@ import {
 import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
 import api from '../services/api';
+import Modal from './ui/Modal';
 
 export default function MCPServerControlPanel({ server, onClose, onServerUpdated }) {
   const [actionLoading, setActionLoading] = useState(null); // 'start', 'stop', 'restart'
@@ -93,8 +94,13 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+    <Modal
+      onClose={onClose}
+      ariaLabel={`${serverDetails.display_name || serverDetails.name} controls`}
+      showClose={false}
+      closeOnBackdrop={false}
+      panelClassName="bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col focus:outline-none"
+    >
         <div className="flex justify-between items-start p-6 border-b border-slate-700/50">
           <div className="flex items-start space-x-4">
             <div className="p-3 bg-unicorn-500/20 rounded-lg">
@@ -122,6 +128,7 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-3 min-h-[44px] min-w-[44px] hover:bg-slate-700/50 rounded-lg transition-colors"
           >
             <X className="w-6 h-6 text-slate-400" />
@@ -269,6 +276,7 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
                   </h4>
                   <button
                     onClick={() => setTestingTool(null)}
+                    aria-label="Close tool test"
                     className="p-3 min-h-[44px] min-w-[44px] text-slate-400 hover:text-white"
                   >
                     <X className="w-5 h-5" />
@@ -336,7 +344,6 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

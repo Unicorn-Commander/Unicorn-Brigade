@@ -12,10 +12,12 @@ import {
   Plus,
   ExternalLink,
   Copy,
-  ArrowRight
+  ArrowRight,
+  X
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
+import Modal from '../components/ui/Modal';
 import Breadcrumbs from '../components/Breadcrumbs';
 import CardSkeleton from '../components/skeletons/CardSkeleton';
 import api from '../services/api';
@@ -212,14 +214,12 @@ const ToolLibrary = () => {
 
       {/* Tool Detail Modal */}
       {selectedTool && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
-          onClick={() => setSelectedTool(null)}
+        <Modal
+          onClose={() => setSelectedTool(null)}
+          ariaLabel={`${selectedTool.name} details`}
+          showClose={false}
+          panelClassName="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto focus:outline-none"
         >
-          <div
-            className="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center space-x-4">
                 <div className="text-4xl">{selectedTool.icon}</div>
@@ -230,9 +230,10 @@ const ToolLibrary = () => {
               </div>
               <button
                 onClick={() => setSelectedTool(null)}
-                className="text-slate-400 hover:text-white"
+                aria-label="Close dialog"
+                className="p-2 -m-2 text-slate-400 hover:text-white"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -290,6 +291,7 @@ const ToolLibrary = () => {
                 <div className="bg-slate-800/50 rounded-lg p-4 font-mono text-sm relative">
                   <button
                     onClick={() => copyToClipboard(`agent.use_tool("${selectedTool.id}", {params})`)}
+                    aria-label="Copy usage example"
                     className="absolute top-2 right-2 p-2 hover:bg-slate-700 rounded"
                   >
                     <Copy className="w-4 h-4 text-slate-400" />
@@ -311,8 +313,7 @@ const ToolLibrary = () => {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

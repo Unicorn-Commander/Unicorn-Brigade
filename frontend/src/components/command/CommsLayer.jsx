@@ -53,6 +53,7 @@ export default function CommsLayer() {
               key={w.agent.id}
               onClick={() => focusWindow(w.agent.id)}
               title={`Reopen ${w.agent.displayName || w.agent.name}`}
+              aria-label={`Reopen ${w.agent.displayName || w.agent.name}`}
               className="flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/90 px-2 py-1 shadow-lg hover:border-unicorn-500/60"
             >
               <AgentAvatar agent={w.agent} size={20} rounded="rounded-full" />

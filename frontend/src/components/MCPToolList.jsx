@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { X, Search, Wrench, Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
+import Modal from './ui/Modal';
+import McpServerIcon from '../utils/mcpIcons';
 
 const MCPToolList = ({ server, tools, onClose }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,33 +22,19 @@ const MCPToolList = ({ server, tools, onClose }) => {
     notify.success('Tool name copied');
   };
 
-  const serverIcons = {
-    github: '🐙', playwright: '🎭', slack: '💬', postgresql: '🐘',
-    filesystem: '📁', memory: '🧠', fetch: '🌐', brave_search: '🔍',
-    google_drive: '📂', puppeteer: '🎪', stripe: '💳', linear: '📊',
-    git: '📦', notion: '📝', airtable: '🗂️', vercel: '▲',
-    cloudflare: '☁️', supabase: '⚡', twilio: '📞', sendgrid: '📧',
-    sentry: '🐛', monday: '📅', shopify: '🛍️', salesforce: '☁️',
-    zendesk: '🎫', jira: '📋', hubspot: '🎯', mailchimp: '📬',
-    semrush: '📈', zapier: '⚡', amplitude: '📊', mixpanel: '📈',
-    hotjar: '🔥', fullstory: '🎬',
-  };
-
-  const icon = serverIcons[server.name] || '🔧';
-
   return (
-    <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
-      onClick={onClose}
+    <Modal
+      onClose={onClose}
+      ariaLabel={`${server.display_name} tools`}
+      showClose={false}
+      panelClassName="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col focus:outline-none"
     >
-      <div
-        className="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center space-x-4">
-            <div className="text-4xl">{icon}</div>
+            <div className="p-3 rounded-xl bg-unicorn-500/15 text-unicorn-400">
+              <McpServerIcon name={server.name} className="w-8 h-8" />
+            </div>
             <div>
               <h2 className="text-2xl font-bold text-white">{server.display_name}</h2>
               <p className="text-slate-400">
@@ -56,6 +44,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-3 min-h-[44px] min-w-[44px] text-slate-400 hover:text-white transition-colors"
           >
             <X className="w-6 h-6" />
@@ -136,6 +125,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
                       onClick={() => copyToolName(tool.name)}
                       className="p-2 hover:bg-slate-800 rounded transition-colors"
                       title="Copy tool name"
+                      aria-label={`Copy tool name ${tool.name}`}
                     >
                       <Copy className="w-4 h-4 text-slate-400 hover:text-white" />
                     </button>
@@ -158,8 +148,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
             Close
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 

@@ -64,6 +64,7 @@ const WorkflowFilters = ({
               onClick={() => setSearchQuery('')}
               className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
               title="Clear search"
+              aria-label="Clear search"
             >
               <X className="w-4 h-4" />
             </button>
@@ -74,6 +75,8 @@ const WorkflowFilters = ({
         <div className="flex items-center bg-slate-800/50 rounded-lg p-1 border border-slate-700">
           <button
             onClick={() => setViewMode('grid')}
+            aria-label="Grid view"
+            aria-pressed={viewMode === 'grid'}
             className={`p-2 rounded transition-colors ${
               viewMode === 'grid'
                 ? 'bg-unicorn-500 text-white'
@@ -85,6 +88,8 @@ const WorkflowFilters = ({
           </button>
           <button
             onClick={() => setViewMode('list')}
+            aria-label="List view"
+            aria-pressed={viewMode === 'list'}
             className={`p-2 rounded transition-colors ${
               viewMode === 'list'
                 ? 'bg-unicorn-500 text-white'

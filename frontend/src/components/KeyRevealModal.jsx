@@ -59,6 +59,7 @@ const KeyRevealModal = ({ apiKey, onClose }) => {
                     onClick={handleCopy}
                     className="ml-3 p-2 hover:bg-slate-700 rounded-lg transition-colors flex-shrink-0"
                     title="Copy to clipboard"
+                    aria-label="Copy key to clipboard"
                   >
                     {copied ? (
                       <CheckCircle className="w-5 h-5 text-emerald-400" />

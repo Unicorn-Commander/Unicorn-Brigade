@@ -36,6 +36,7 @@ import WorkflowDiagram from '../components/WorkflowDiagram';
 import WorkflowGallery from '../components/WorkflowGallery';
 import WorkflowFilters from '../components/WorkflowFilters';
 import WorkflowExecutionPanel from '../components/WorkflowExecutionPanel';
+import Modal from '../components/ui/Modal';
 import Breadcrumbs from '../components/Breadcrumbs';
 import CardSkeleton from '../components/skeletons/CardSkeleton';
 import TableSkeleton from '../components/skeletons/TableSkeleton';
@@ -60,18 +61,6 @@ const tagColors = {
   compliance: 'bg-unicorn-500/20 text-unicorn-400 border-unicorn-500/30',
   outreach: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
   documentation: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
-};
-
-// Domain icons
-const domainIcons = {
-  research: '🔍',
-  finance: '💰',
-  content: '📝',
-  sales: '💼',
-  devops: '⚙️',
-  legal: '⚖️',
-  medical: '🏥',
-  investigation: '🕵️',
 };
 
 // Status colors and icons
@@ -402,6 +391,7 @@ const Workflows = () => {
               onClick={() => { loadTemplates(); loadExecutions(); checkHealth(); }}
               className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
               title="Refresh"
+              aria-label="Refresh workflows"
             >
               <RefreshCw className="w-5 h-5 text-slate-400" />
             </button>
@@ -649,6 +639,7 @@ const Workflows = () => {
                                   onClick={(e) => { e.stopPropagation(); handleViewExecution(execution); }}
                                   className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
                                   title="View Details"
+                                  aria-label="View execution details"
                                 >
                                   <Eye className="w-4 h-4 text-slate-400 hover:text-white" />
                                 </button>
@@ -657,6 +648,7 @@ const Workflows = () => {
                                     onClick={(e) => { e.stopPropagation(); handleCancelExecution(execution.id); }}
                                     className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
                                     title="Cancel"
+                                    aria-label="Cancel execution"
                                   >
                                     <XCircle className="w-4 h-4 text-red-400" />
                                   </button>
@@ -671,6 +663,7 @@ const Workflows = () => {
                                     }}
                                     className="p-2 hover:bg-unicorn-500/20 rounded-lg transition-colors"
                                     title="Run Again"
+                                    aria-label="Run workflow again"
                                   >
                                     <RefreshCw className="w-4 h-4 text-unicorn-400" />
                                   </button>
@@ -780,14 +773,12 @@ const Workflows = () => {
 
       {/* Template Detail Modal */}
       {showDetailModal && templateDetail && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
-          onClick={() => setShowDetailModal(false)}
+        <Modal
+          onClose={() => setShowDetailModal(false)}
+          ariaLabel={`${templateDetail.name} details`}
+          showClose={false}
+          panelClassName="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-4xl w-full max-h-[85vh] overflow-y-auto focus:outline-none"
         >
-          <div
-            className="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-4xl w-full max-h-[85vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
@@ -800,6 +791,7 @@ const Workflows = () => {
               </div>
               <button
                 onClick={() => setShowDetailModal(false)}
+                aria-label="Close dialog"
                 className="text-slate-400 hover:text-white p-3 min-h-[44px] min-w-[44px] hover:bg-slate-800 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -977,20 +969,17 @@ const Workflows = () => {
                 <span>Execute Workflow</span>
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Execution Detail Modal */}
       {showExecutionModal && selectedExecution && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
-          onClick={() => { setShowExecutionModal(false); setPollingExecution(null); }}
+        <Modal
+          onClose={() => { setShowExecutionModal(false); setPollingExecution(null); }}
+          ariaLabel={`${selectedExecution.workflow_name || selectedExecution.workflow_id} execution`}
+          showClose={false}
+          panelClassName="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-4xl w-full max-h-[85vh] overflow-y-auto focus:outline-none"
         >
-          <div
-            className="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-4xl w-full max-h-[85vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center space-x-4">
                 <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${statusConfig[selectedExecution.state]?.bg || 'bg-slate-700'}`}>
@@ -1008,6 +997,7 @@ const Workflows = () => {
               </div>
               <button
                 onClick={() => { setShowExecutionModal(false); setPollingExecution(null); }}
+                aria-label="Close dialog"
                 className="text-slate-400 hover:text-white p-3 min-h-[44px] min-w-[44px] hover:bg-slate-800 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -1135,8 +1125,7 @@ const Workflows = () => {
                 Close
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {selectedWorkflow && (

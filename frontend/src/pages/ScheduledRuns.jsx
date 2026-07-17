@@ -16,6 +16,7 @@ import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
 import { buildAuthHeaders, handleUnauthorized } from '../services/authHeaders';
 import Breadcrumbs from '../components/Breadcrumbs';
+import Modal from '../components/ui/Modal';
 
 import { API_BASE } from '../services/apiBase';
 
@@ -111,8 +112,13 @@ function EditModal({ open, initial, agents, onClose, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full p-6 space-y-4">
+    <Modal
+      onClose={onClose}
+      ariaLabel={initial?.id ? 'Edit scheduled run' : 'New scheduled run'}
+      showClose={false}
+      closeOnBackdrop={false}
+      panelClassName="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full p-6 space-y-4 focus:outline-none"
+    >
         <h2 className="text-xl font-semibold text-white">
           {initial?.id ? 'Edit scheduled run' : 'New scheduled run'}
         </h2>
@@ -221,8 +227,7 @@ function EditModal({ open, initial, agents, onClose, onSave }) {
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -436,6 +441,7 @@ export default function ScheduledRuns() {
                         <button
                           onClick={() => runNow(row)}
                           title="Run now"
+                          aria-label={`Run ${row.name} now`}
                           className="p-1 text-emerald-400 hover:bg-slate-800 rounded"
                         >
                           <Play size={16} />
@@ -443,6 +449,7 @@ export default function ScheduledRuns() {
                         <button
                           onClick={() => edit(row)}
                           title="Edit"
+                          aria-label={`Edit ${row.name}`}
                           className="p-1 text-sky-400 hover:bg-slate-800 rounded"
                         >
                           <Pencil size={16} />
@@ -450,6 +457,7 @@ export default function ScheduledRuns() {
                         <button
                           onClick={() => remove(row)}
                           title="Delete"
+                          aria-label={`Delete ${row.name}`}
                           className="p-1 text-rose-400 hover:bg-slate-800 rounded"
                         >
                           <Trash2 size={16} />
