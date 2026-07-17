@@ -1,0 +1,98 @@
+# Unicorn Brigade — tooling configuration
+#
+# NOTE ON PYTEST: pytest configuration deliberately lives in ./pytest.ini, NOT
+# here. If a project has BOTH a pytest.ini and a [tool.pytest.ini_options]
+# table, pytest silently ignores the pyproject table (pytest.ini wins). To
+# avoid that footgun there is intentionally no [tool.pytest.ini_options] table
+# below — edit pytest.ini for pytest settings (testpaths already include both
+# `tests` and `app/tests`).
+
+# ---------------------------------------------------------------------------
+# Ruff — linter / import-sorter
+# ---------------------------------------------------------------------------
+# Two-tier strategy (see docs/CI.md):
+#   * CI hard-gate runs a small, currently-green real-breakage subset
+#       ruff check --select E9,F63,F7 app tests
+#     so new code cannot introduce syntax errors / broken f-strings / etc.
+#   * The full config below is what `ruff check .` and `make lint` report. It
+#     currently surfaces a large pre-existing backlog (~5k findings) and is
+#     run in CI as an ADVISORY (non-blocking) step until the backlog is burned
+#     down. Tightening the gate is a follow-up once the count drops.
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "frontend",
+    "alembic/versions",
+    "migrations",
+    ".venv",
+    "venv",
+]
+
+[tool.ruff.lint]
+# Sane default select: pyflakes (F) catches real bugs, pycodestyle errors (E),
+# import sorting (I), warnings (W), pyupgrade (UP), bugbear (B), comprehensions
+# (C4). Kept advisory for now — see note above.
+select = ["E", "F", "I", "W", "UP", "B", "C4"]
+ignore = [
+    "E501",   # line too long — handled by formatter, noisy on legacy code
+    "B008",   # function call in default arg — FastAPI Depends() idiom
+    "UP007",  # Optional[X] vs X | None — large mechanical churn, defer
+    "UP035",  # deprecated typing imports — defer with UP007
+    "B905",   # zip() without strict= — defer
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally use star-imports, unused fixtures, asserts, etc.
+"tests/**" = ["F401", "F811", "F841", "E402"]
+"app/tests/**" = ["F401", "F811", "F841", "E402"]
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# ---------------------------------------------------------------------------
+# Mypy — static type checking (baseline / lenient)
+# ---------------------------------------------------------------------------
+# Intentionally permissive so it can run against the whole tree without a wall
+# of errors. This establishes a baseline; strictness can be ratcheted per-module
+# over time. Run in CI as an ADVISORY (non-blocking) step.
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+follow_imports = "silent"
+warn_redundant_casts = true
+warn_unused_ignores = false
+no_implicit_optional = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+exclude = [
+    "^frontend/",
+    "^build/",
+    "^dist/",
+    "^alembic/versions/",
+    "^migrations/",
+    "^tests/",
+    "^app/tests/",
+]
+
+[[tool.mypy.overrides]]
+# Third-party libs without type stubs — silence import noise explicitly.
+module = [
+    "falkordb.*",
+    "graphiti_core.*",
+    "slack_sdk.*",
+    "asyncssh.*",
+    "livekit.*",
+    "kokoro.*",
+    "langgraph.*",
+    "langchain.*",
+    "langchain_community.*",
+]
+ignore_missing_imports = true
