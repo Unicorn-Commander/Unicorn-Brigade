@@ -49,9 +49,11 @@ RUN mkdir -p /app/logs
 # Expose API port
 EXPOSE 8100
 
-# Health check
+# Health check — /readyz verifies the DB pool + scheduler, returning 503 when
+# degraded so the orchestrator drains this instance. Use /livez for a pure
+# liveness (process-up) probe that ignores upstream dependencies.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8100/api/v1/health || exit 1
+    CMD curl -f http://localhost:8100/readyz || exit 1
 
 # Run application
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100"]

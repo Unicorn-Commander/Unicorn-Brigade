@@ -1,0 +1,51 @@
+# Alerting rules for Unicorn Brigade. Evaluated by Prometheus (route them to
+# Alertmanager to actually deliver — the scheduler also self-notifies failures
+# over Slack independently of this pipeline).
+groups:
+  - name: brigade-availability
+    rules:
+      # Backend metrics endpoint unreachable — process down or /metrics broken.
+      - alert: BrigadeBackendDown
+        expr: up{job="brigade-metrics"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Brigade backend is down"
+          description: "Prometheus cannot scrape brigade-api:8100/metrics for >2m."
+
+      # Readiness probe failing — DB pool SELECT 1 or scheduler is degraded
+      # (/readyz returns 503, so the blackbox probe reports failure).
+      - alert: BrigadeReadinessDown
+        expr: probe_success{job="brigade-readyz"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Brigade readiness (DB/scheduler) degraded"
+          description: "GET /readyz has been non-2xx for >2m — DB pool or scheduler unhealthy."
+
+  - name: brigade-errors
+    rules:
+      # Sustained 5xx rate on HTTP requests.
+      - alert: BrigadeHigh5xxRate
+        expr: |
+          sum(rate(brigade_http_requests_total{status_class="5xx"}[5m]))
+            /
+          clamp_min(sum(rate(brigade_http_requests_total[5m])), 1e-9) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Brigade 5xx error rate above 5%"
+          description: "More than 5% of HTTP responses were 5xx over the last 5m."
+
+      # Scheduled agent runs failing or timing out.
+      - alert: BrigadeScheduledRunFailures
+        expr: increase(brigade_scheduled_run_total{outcome=~"error|timeout|agent_missing"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Brigade scheduled run failures detected"
+          description: "One or more scheduled agent runs failed/timed out in the last 15m."

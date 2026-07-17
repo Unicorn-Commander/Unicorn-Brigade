@@ -66,16 +66,15 @@ from app.workflows.benchmark import init_benchmark_engine
 from app.db.database import init_db, close_db
 from app.db.init_db import seed_agents
 from app.observability import flush as langfuse_flush, shutdown as langfuse_shutdown
+from app.observability import configure_logging, request_id_middleware
 from app.config import FEDERATION_ONLY, INTERNAL_AGENTS_ENABLED
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Configure logging — JSON formatter + request-id correlation filter.
+# Falls back to a human-readable format when LOG_JSON=false.
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # Global managers
@@ -236,9 +235,14 @@ app.add_middleware(
 
 # Include routers — existing router FIRST (has /agents/execute which must match before /agents/{id})
 # Prometheus metrics middleware + scrape endpoint. Bound label cardinality
-# via UUID scrubbing in the metrics module. /metrics is unauthenticated —
-# Brigade is internal-only on the docker network so this is safe.
+# via UUID scrubbing in the metrics module. /metrics is gated: it requires a
+# METRICS_TOKEN bearer/query token when set, otherwise only answers internal/
+# loopback source addresses (see metrics._metrics_authorized).
 app.middleware("http")(metrics_middleware)
+# Request-ID correlation. Registered AFTER metrics so it wraps outermost
+# (Starlette applies http middleware in reverse registration order): every
+# metrics/handler log line for the request carries the same request_id.
+app.middleware("http")(request_id_middleware)
 app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_schema=False)
 
 # Federation broker surface — always mounted, customer-facing on prod.
@@ -584,6 +588,61 @@ async def root():
 async def ping():
     """Simple ping endpoint"""
     return {"message": "pong"}
+
+
+@app.get("/livez", include_in_schema=False)
+async def livez():
+    """Liveness probe — the process is up and the event loop is responsive.
+
+    Deliberately trivial: it must never touch the DB or any upstream, so an
+    orchestrator restarts the container only on a truly hung process, not on
+    a transient dependency outage (that's what /readyz is for)."""
+    return {"status": "alive"}
+
+
+@app.get("/readyz", include_in_schema=False)
+async def readyz():
+    """Readiness probe — can this instance actually serve traffic?
+
+    Checks the DB pool (``SELECT 1``) and, when internal routers are enabled,
+    that the scheduler is running. Returns 503 with per-check detail when any
+    required dependency is degraded so a load balancer drains this instance."""
+    from sqlalchemy import text
+    from app.db.database import async_session
+
+    checks: dict = {}
+    ready = True
+
+    # DB pool probe.
+    try:
+        async with async_session() as session:
+            await session.execute(text("SELECT 1"))
+        checks["database"] = {"ok": True}
+    except Exception as e:
+        ready = False
+        checks["database"] = {"ok": False, "detail": (str(e) or type(e).__name__)[:200]}
+
+    # Scheduler probe — only required in the internal/dogfood posture where it
+    # is started. In FEDERATION_ONLY mode there is no scheduler by design.
+    if not FEDERATION_ONLY:
+        try:
+            sched = get_scheduler()
+            running = bool(
+                sched is not None
+                and sched.scheduler is not None
+                and sched.scheduler.running
+            )
+            checks["scheduler"] = {"ok": running}
+            if not running:
+                ready = False
+        except Exception as e:
+            ready = False
+            checks["scheduler"] = {"ok": False, "detail": (str(e) or type(e).__name__)[:200]}
+
+    payload = {"status": "ready" if ready else "degraded", "checks": checks}
+    if not ready:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 if __name__ == "__main__":
     import uvicorn

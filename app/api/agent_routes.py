@@ -31,6 +31,11 @@ from app.orchestration import (
     emit_agent_completed,
 )
 from app.observability import get_tracer
+from app.observability.metrics import (
+    agent_chat_total,
+    agent_tool_calls_total,
+    agent_active,
+)
 from app.agents.deep_research import DeepResearchAgent, ResearchDepth
 from app.integrations.lago import (
     emit_ai_api_call,
@@ -889,6 +894,11 @@ async def chat_with_agent(
         )
 
     # Non-streaming
+    _metric_agent = agent.get("id", "unknown")
+    try:
+        agent_active.labels(agent=_metric_agent).inc()
+    except Exception:
+        pass
     try:
         tool_calls_log = []
         agent_name = agent.get("displayName", agent["name"])
@@ -910,6 +920,10 @@ async def chat_with_agent(
         # tool loop can emit a source->target edge for the live org chart.
         _CURRENT_AGENT_ID.set(agent["id"])
         _CURRENT_AGENT_NAME.set(agent_name)
+        # Stamp correlation ids onto every log record for this request.
+        from app.observability import mission_id_ctx, agent_id_ctx
+        mission_id_ctx.set(mission_id)
+        agent_id_ctx.set(agent["id"])
 
         # Initialize Langfuse tracer for observability
         tracer = get_tracer(
@@ -940,6 +954,12 @@ async def chat_with_agent(
                     "name": tc.name,
                     "arguments": tc.arguments,
                 })
+                try:
+                    agent_tool_calls_total.labels(
+                        agent=_metric_agent, tool=tc.name
+                    ).inc()
+                except Exception:
+                    pass
                 logger.info(f"Tool call: {tc.name}({tc.arguments})")
                 # Emit to orchestration event bus
                 _spawn(emit_tool_call(
@@ -1140,16 +1160,29 @@ async def chat_with_agent(
             outcome=_chat_outcome(tool_calls_log),
         )
 
+        try:
+            agent_chat_total.labels(agent=_metric_agent, outcome="ok").inc()
+        except Exception:
+            pass
         return result
 
     except Exception as e:
         logger.error(f"Chat error with agent {agent_id}: {e}")
+        try:
+            agent_chat_total.labels(agent=_metric_agent, outcome="error").inc()
+        except Exception:
+            pass
         # End trace with error status
         try:
             tracer.end_trace(output={"error": str(e)}, status="error")
         except Exception:
             pass
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        try:
+            agent_active.labels(agent=_metric_agent).dec()
+        except Exception:
+            pass
 
 
 async def _stream_chat(

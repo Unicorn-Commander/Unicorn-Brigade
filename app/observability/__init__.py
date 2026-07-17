@@ -29,6 +29,17 @@ from app.observability.agent_trace import (
 
 from app.observability.trace_repository import TraceRepository
 
+from app.observability.logging_config import (
+    configure_logging,
+    request_id_middleware,
+    RequestContextFilter,
+    JsonFormatter,
+    request_id_ctx,
+    mission_id_ctx,
+    agent_id_ctx,
+    REQUEST_ID_HEADER,
+)
+
 __all__ = [
     # Langfuse tracing
     "LangfuseTracer",
@@ -49,4 +60,13 @@ __all__ = [
     "CodeExtractor",
     "TraceRepository",
     "AGENT_TRACE_ENABLED",
+    # Structured logging + request-id correlation
+    "configure_logging",
+    "request_id_middleware",
+    "RequestContextFilter",
+    "JsonFormatter",
+    "request_id_ctx",
+    "mission_id_ctx",
+    "agent_id_ctx",
+    "REQUEST_ID_HEADER",
 ]
