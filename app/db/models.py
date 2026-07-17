@@ -241,6 +241,14 @@ class User(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     email = Column(String(255), unique=True, nullable=False)  # unique implies index
+    # Canonical Keycloak binding (BR-1.1). The Keycloak `sub` claim is the stable
+    # per-human identifier across every auth method. Nullable because native /
+    # legacy rows predate SSO and only learn their sub on first Keycloak login;
+    # unique so two users rows can never claim the same sub. Once set, ALL auth
+    # paths resolve this same local `users.id` for the human, so their data
+    # (conversations, builder sessions, personal API keys) stops forking by how
+    # they signed in. See app/auth/middleware.resolve_canonical_user_id.
+    keycloak_id = Column(String(255), unique=True, nullable=True, index=True)
     password_hash = Column(String(255), nullable=False)
     name = Column(String(255), nullable=False)
     role = Column(String(50), default="operator", index=True)  # admin, operator, viewer
@@ -257,6 +265,7 @@ class User(Base):
         return {
             "id": str(self.id),
             "email": self.email,
+            "keycloakId": self.keycloak_id,
             "name": self.name,
             "role": self.role,
             "isActive": self.is_active,

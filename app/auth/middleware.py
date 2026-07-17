@@ -239,54 +239,132 @@ def _derive_apps_from_roles(roles):
     return sorted(apps)
 
 
-async def _sync_user_apps_from_keycloak(email, kc_sub, derived_apps, realm_role):
-    """Find-or-create the Brigade User row by email and sync apps + role.
+# Tables whose free-form ``user_id`` column the pre-BR-1.1 Keycloak-bearer path
+# wrote the raw Keycloak ``sub`` into (it set AuthUser.id = sub). Every other
+# user-scoped column is either a UUID FK onto users.id (already canonical) or an
+# opaque downstream pass-through (ScheduledRun.owner_user_id) that must NOT be
+# rewritten. Keep this in sync with app/db/migrations.remap_forked_keycloak_rows.
+_KEYCLOAK_REMAP_TABLES = ("conversations", "builder_sessions")
 
-    Apps are merged additively (provisioned apps from upstream services and
-    apps from Keycloak both contribute). role is updated to match the
-    Keycloak-derived role on every login so changes propagate.
+
+async def _remap_user_rows(session, from_id: str, to_id: str) -> None:
+    """Relabel rows owned by ``from_id`` (a raw Keycloak sub) to the canonical
+    local ``to_id``. Targeted + idempotent: after the first pass no row still
+    carries the sub, so subsequent logins match zero rows. 'anonymous'/NULL and
+    downstream pass-through ids never equal a sub, so they are untouched."""
+    from sqlalchemy import text as _text
+    for table in _KEYCLOAK_REMAP_TABLES:
+        await session.execute(
+            _text(f"UPDATE {table} SET user_id = :to_id WHERE user_id = :from_id"),
+            {"to_id": to_id, "from_id": from_id},
+        )
+
+
+async def resolve_canonical_user_id(session, kc_sub, email, derived_apps, realm_role):
+    """Resolve the canonical LOCAL ``users.id`` for a Keycloak principal.
+
+    This is the core of BR-1.1: every auth method must converge on one id per
+    human. Resolution order:
+      1. Match by ``keycloak_id`` (the durable binding once learned).
+      2. Fall back to ``email`` — and *claim* that row for this sub by stamping
+         ``keycloak_id`` when it is still unset (the legacy email-keyed rows that
+         auto-provisioned before BR-1.1). If the row is already bound to a
+         DIFFERENT sub, keep the existing binding (two Keycloak identities
+         colliding on one email) — log and reuse the row.
+      3. Auto-provision a fresh row (needs an email — ``users.email`` is NOT
+         NULL UNIQUE).
+
+    Also merges apps additively + syncs role (unchanged behavior), and lazily
+    remaps any rows written under the raw sub to the local id (see
+    _remap_user_rows). Returns the local ``users.id`` as a str, or None when it
+    cannot resolve (no keycloak_id match AND no email) — the caller then keeps
+    the sub, a degraded but honest fallback.
     """
-    if not email:
-        return
+    from app.db.models import User as _User
+    from sqlalchemy import select as _select
+    from datetime import datetime as _dt
+
+    new_role = realm_role.value if hasattr(realm_role, "value") else str(realm_role)
+    email_norm = email.lower() if email else None
+
+    user = None
+    if kc_sub:
+        r = await session.execute(_select(_User).where(_User.keycloak_id == kc_sub))
+        user = r.scalar_one_or_none()
+
+    claimed = False
+    if user is None and email_norm:
+        r = await session.execute(_select(_User).where(_User.email == email_norm))
+        user = r.scalar_one_or_none()
+        if user is not None and kc_sub:
+            if not user.keycloak_id:
+                # Claim the legacy email-keyed row for this sub — the BR-1.1 unify.
+                user.keycloak_id = kc_sub
+                claimed = True
+                logger.info("BR-1.1 bound users.id=%s email=%s to keycloak sub=%s",
+                            user.id, email_norm, kc_sub)
+            elif user.keycloak_id != kc_sub:
+                logger.warning(
+                    "Keycloak sub %s presents email %s already bound to sub %s; "
+                    "reusing existing row (not overwriting)",
+                    kc_sub, email_norm, user.keycloak_id,
+                )
+
+    if user is None:
+        if not email_norm:
+            # No keycloak_id match and no email → cannot mint a row.
+            return None
+        user = _User(
+            email=email_norm,
+            name=email_norm.split("@")[0],
+            password_hash="NOLOGIN-SSO-ONLY",
+            role=new_role,
+            apps=list(derived_apps or []),
+            is_active=True,
+            keycloak_id=kc_sub or None,
+        )
+        session.add(user)
+        await session.flush()  # populate user.id
+        logger.info("SSO auto-provisioned Brigade user %s id=%s kc_sub=%s apps=%s",
+                    email_norm, user.id, kc_sub, derived_apps)
+
+    # Merge apps additively + sync role on every login.
+    existing = set(user.apps or [])
+    merged = sorted(existing.union(derived_apps or []))
+    changed = False
+    if list(merged) != list(user.apps or []):
+        user.apps = merged
+        changed = True
+    if new_role and user.role != new_role:
+        user.role = new_role
+        changed = True
+    if claimed or changed:
+        user.updated_at = _dt.utcnow()
+
+    local_id = str(user.id)
+
+    # Lazy identity remap: relabel any pre-BR-1.1 rows keyed on the raw sub to
+    # the canonical local id. Only when the sub actually differs from the id.
+    if kc_sub and kc_sub != local_id:
+        await _remap_user_rows(session, kc_sub, local_id)
+
+    await session.commit()
+    return local_id
+
+
+async def _resolve_and_sync_keycloak_user(email, kc_sub, derived_apps, realm_role):
+    """Open a session and resolve the canonical local ``users.id`` for a
+    Keycloak principal. Best-effort — never breaks auth: on any failure returns
+    None and the caller falls back to the sub."""
     try:
         from app.db.database import async_session
-        from app.db.models import User as _User
-        from sqlalchemy import select as _select
-        from datetime import datetime as _dt
         async with async_session() as s:
-            r = await s.execute(_select(_User).where(_User.email == email.lower()))
-            user = r.scalar_one_or_none()
-            if user is None:
-                # Auto-provision on first SSO login
-                user = _User(
-                    email=email.lower(),
-                    name=email.split("@")[0],
-                    password_hash="NOLOGIN-SSO-ONLY",
-                    role=realm_role.value if hasattr(realm_role, "value") else str(realm_role),
-                    apps=list(derived_apps),
-                    is_active=True,
-                )
-                s.add(user)
-                await s.commit()
-                logger.info(f"SSO auto-provisioned Brigade user {email} apps={derived_apps}")
-                return
-            # Merge apps additively + sync role
-            existing = set(user.apps or [])
-            merged = sorted(existing.union(derived_apps))
-            new_role = realm_role.value if hasattr(realm_role, "value") else str(realm_role)
-            changed = False
-            if list(merged) != list(user.apps or []):
-                user.apps = merged
-                changed = True
-            if user.role != new_role:
-                user.role = new_role
-                changed = True
-            if changed:
-                user.updated_at = _dt.utcnow()
-                await s.commit()
-                logger.info(f"SSO synced Brigade user {email} role={user.role} apps={user.apps}")
+            return await resolve_canonical_user_id(
+                s, kc_sub, email, derived_apps, realm_role
+            )
     except Exception as exc:  # noqa: BLE001 — never break auth on a sync failure
-        logger.warning(f"Keycloak->User.apps sync failed for {email}: {exc}")
+        logger.warning(f"Keycloak->User resolve/sync failed for {email}: {exc}")
+        return None
 
 
 async def validate_bearer_token(token: str) -> Optional[AuthUser]:
@@ -314,16 +392,22 @@ async def validate_bearer_token(token: str) -> Optional[AuthUser]:
     all_roles = kc_user.realm_roles + kc_user.client_roles
     role = map_keycloak_roles(all_roles)
 
-    # Derive apps from app:* roles and persist to the Brigade User row so
-    # subsequent API-key calls see the same apps. Best-effort — never breaks
-    # auth on sync failure.
+    # Resolve the CANONICAL local users.id for this Keycloak principal, creating
+    # /claiming the row and syncing apps + role. This is the BR-1.1 unify: the
+    # id returned here is the same local id the API-key path yields for the same
+    # human, so their data stops forking by auth method. Best-effort — on a DB
+    # failure we fall back to the raw sub (degraded, matches pre-BR-1.1).
     derived_apps = _derive_apps_from_roles(all_roles)
-    await _sync_user_apps_from_keycloak(kc_user.email, kc_user.sub, derived_apps, role)
+    canonical_id = await _resolve_and_sync_keycloak_user(
+        kc_user.email, kc_user.sub, derived_apps, role
+    )
+    if canonical_id is None:
+        canonical_id = kc_user.sub
 
     return AuthUser(
-        id=kc_user.sub,
+        id=canonical_id,
         role=role,
-        user_id=kc_user.sub,
+        user_id=canonical_id,
         email=kc_user.email,
         key_name=kc_user.preferred_username or kc_user.email,
         permissions=all_roles,

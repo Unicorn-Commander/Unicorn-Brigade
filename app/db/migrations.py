@@ -153,7 +153,102 @@ MIGRATIONS = [
         ALTER TABLE agents ADD COLUMN IF NOT EXISTS avatar_url TEXT;
         """,
     ),
+    (
+        "20260716_01_user_keycloak_id",
+        "BR-1.1: users.keycloak_id — canonical Keycloak sub binding (unique-nullable + index)",
+        # Additive + idempotent. Nullable so legacy/native rows stay valid until
+        # they learn their sub on first SSO login; UNIQUE so two rows can never
+        # claim the same sub (Postgres allows many NULLs under a unique index).
+        # The DATA remap (relabeling rows written under a raw sub to the local
+        # users.id) is NOT here — it is procedural and lives in
+        # remap_forked_keycloak_rows / run_identity_remap below, plus the lazy
+        # per-login remap in app/auth/middleware.resolve_canonical_user_id.
+        """
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS keycloak_id varchar(255);
+        CREATE UNIQUE INDEX IF NOT EXISTS ix_users_keycloak_id ON users (keycloak_id);
+        """,
+    ),
 ]
+
+# Recorded in schema_migrations so the one-shot identity remap runs once per DB.
+_IDENTITY_REMAP_VERSION = "20260716_02_identity_remap_backfill"
+
+# BR-1.1 identity remap. Portable SQL (correlated subquery form) so it runs
+# unchanged on Postgres (prod) and SQLite (the throwaway test DB). Each statement
+# relabels rows whose ``user_id`` equals a *populated* ``keycloak_id`` to that
+# user's canonical local ``users.id``.
+#
+# What this CAN remap right now: only rows whose user_id matches a keycloak_id
+# that is already populated on some users row. Because we have NO stored
+# sub->email map, a legacy email-keyed row does not know its own sub until a
+# human logs in via Keycloak (which stamps keycloak_id and lazily remaps that
+# user's rows in the middleware). So at first deploy — before anyone has logged
+# in post-migration — this one-shot matches ~nothing; it is a belt-and-suspenders
+# batch pass that catches any keycloak_ids populated out-of-band (e.g. an
+# operator backfill). The durable, per-human remap happens lazily on next login.
+#
+# Edge cases handled by the WHERE clause:
+#   * user_id NULL / 'anonymous'      -> never equals a uuid keycloak_id, skipped
+#   * downstream pass-through ids     -> not a keycloak_id, skipped
+#   * sub already == users.id         -> excluded by ``keycloak_id <> id``, no churn
+#   * already-canonical rows          -> user_id not in the keycloak_id set, skipped
+_REMAP_STATEMENTS = [
+    """
+    UPDATE conversations
+       SET user_id = (SELECT u.id FROM users u WHERE u.keycloak_id = conversations.user_id)
+     WHERE user_id IN (
+        SELECT keycloak_id FROM users
+         WHERE keycloak_id IS NOT NULL AND keycloak_id <> id
+     )
+    """,
+    """
+    UPDATE builder_sessions
+       SET user_id = (SELECT u.id FROM users u WHERE u.keycloak_id = builder_sessions.user_id)
+     WHERE user_id IN (
+        SELECT keycloak_id FROM users
+         WHERE keycloak_id IS NOT NULL AND keycloak_id <> id
+     )
+    """,
+]
+
+
+async def remap_forked_keycloak_rows(conn) -> None:
+    """Run the BR-1.1 batch identity remap on the given async connection/session.
+
+    Portable + idempotent (a second run matches zero rows). Extracted as a
+    standalone helper so the throwaway-DB test drives the exact SQL prod runs.
+    Keep the table list in sync with
+    app/auth/middleware._KEYCLOAK_REMAP_TABLES.
+    """
+    for stmt in _REMAP_STATEMENTS:
+        await conn.execute(text(stmt))
+
+
+async def run_identity_remap(engine) -> None:
+    """One-shot BR-1.1 identity remap, recorded in schema_migrations so it runs
+    once per DB. Best-effort + loud, like run_additive_migrations. Idempotent, so
+    a re-run (were the guard row missing) is harmless."""
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                "version varchar(255) PRIMARY KEY, "
+                "applied_at timestamptz NOT NULL DEFAULT now())"
+            ))
+            rows = await conn.execute(text("SELECT version FROM schema_migrations"))
+            applied = {r[0] for r in rows}
+        if _IDENTITY_REMAP_VERSION in applied:
+            return
+        async with engine.begin() as conn:
+            await remap_forked_keycloak_rows(conn)
+            await conn.execute(
+                text("INSERT INTO schema_migrations (version) VALUES (:v) "
+                     "ON CONFLICT (version) DO NOTHING"),
+                {"v": _IDENTITY_REMAP_VERSION},
+            )
+        logger.info(f"Applied identity remap {_IDENTITY_REMAP_VERSION}")
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Identity remap {_IDENTITY_REMAP_VERSION} FAILED: {exc}")
 
 
 async def run_additive_migrations(engine) -> None:

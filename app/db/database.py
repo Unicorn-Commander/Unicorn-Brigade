@@ -46,8 +46,11 @@ async def init_db():
     async with engine.begin() as conn:
         # checkfirst=True prevents errors when indexes/tables already exist
         await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
-    from app.db.migrations import run_additive_migrations
+    from app.db.migrations import run_additive_migrations, run_identity_remap
     await run_additive_migrations(engine)
+    # BR-1.1: one-shot batch remap of rows written under a raw Keycloak sub to
+    # the canonical local users.id (must run AFTER users.keycloak_id exists).
+    await run_identity_remap(engine)
     logger.info("Database tables created/verified")
 
 
