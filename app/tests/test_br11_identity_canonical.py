@@ -10,6 +10,11 @@ touches prod/dogfood Postgres. Exercises the two halves of BR-1.1:
     principal and a personal API key resolve to the SAME local ``users.id`` for
     one human, that the legacy email-keyed row is claimed by its sub, and that
     the collision / brand-new-user edges behave.
+  * ``GraphitiMemoryManager._read_group_ids`` — the memory dual-read alias,
+    proving a cutover SSO user's pre-BR-1.1 agent memory (keyed by the raw sub)
+    stays reachable: retrieval reads BOTH the canonical ``{local_id}__{agent}``
+    and legacy ``{sub}__{agent}`` namespaces while writes stay canonical-only.
+    Pure string logic — needs no Graphiti/FalkorDB, so it runs in this env.
 
 Run directly:  python -m app.tests.test_br11_identity_canonical
 Or via pytest: pytest app/tests/test_br11_identity_canonical.py
@@ -218,10 +223,61 @@ async def _scenario_resolver(log):
         os.unlink(path)
 
 
+def _scenario_memory_alias(log):
+    """BR-1.1 memory dual-read: a cutover SSO user's pre-BR-1.1 agent memory —
+    stored in Graphiti under a group_id keyed by the raw Keycloak sub — stays
+    reachable AFTER the id cutover with no data movement. Retrieval reads both
+    the canonical and legacy namespaces; writes stay canonical-only, so the sub
+    namespace only drains via reads and never accretes new memory.
+
+    Pure ``_group_id`` / ``_read_group_ids`` string logic — Graphiti/FalkorDB are
+    not importable in this env, but the manager degrades to ``graphiti=None`` and
+    these methods stay callable, which is exactly the alias surface under test."""
+    from app.memory.graphiti_manager import GraphitiMemoryManager
+
+    m = GraphitiMemoryManager()  # graphiti absent -> self.graphiti None; pure methods still work
+    local_id = "11111111-2222-3333-4444-555555555555"  # canonical local users.id
+    sub = "kc|abcd-legacy-sub"                          # pre-BR-1.1 Keycloak sub
+    agent = "col-finance"
+
+    write_group = m._group_id(local_id, agent)
+
+    # 1. Dual-read covers BOTH namespaces, canonical first.
+    read_groups = m._read_group_ids(local_id, agent, legacy_user_id=sub)
+    assert write_group in read_groups, "reads must cover the canonical write namespace"
+    assert m._group_id(sub, agent) in read_groups, "reads must ALSO cover the legacy sub namespace"
+    assert len(read_groups) == 2, "exactly canonical + legacy"
+    assert read_groups[0] == write_group, "canonical namespace is read first"
+
+    # 2. Writes are canonical-only: the write namespace is the local-id group and
+    #    is never the legacy group — new memory can only land under the local id.
+    assert write_group == m._group_id(local_id, agent)
+    assert write_group != m._group_id(sub, agent), "write namespace must differ from the legacy one"
+
+    # 3. Nothing to alias -> a single (canonical) namespace, identical to pre-alias.
+    assert m._read_group_ids(local_id, agent, legacy_user_id=None) == [write_group], \
+        "None sub -> single namespace"
+    assert m._read_group_ids(local_id, agent, legacy_user_id=local_id) == [write_group], \
+        "sub == canonical id -> single namespace"
+
+    # 4. Case scoping is preserved on BOTH namespaces (memory can't bleed cases).
+    cg = m._read_group_ids(local_id, agent, case_id="case-9", legacy_user_id=sub)
+    assert cg == [m._group_id(local_id, agent, "case-9"), m._group_id(sub, agent, "case-9")], \
+        "case segment applied to both canonical + legacy groups"
+
+    # 5. A legacy id that slugs to the SAME group is deduped to a single read.
+    assert m._read_group_ids("a.b", agent, legacy_user_id="a/b") == [m._group_id("a.b", agent)], \
+        "slug collision must not double-read the same namespace"
+
+    log.append(f"[memory] read={read_groups}; write-only={write_group}; "
+               f"None/equal->single; case+dedupe OK")
+
+
 async def _run_all():
     log = []
     await _scenario_batch_remap(log)
     await _scenario_resolver(log)
+    _scenario_memory_alias(log)
     return log
 
 
@@ -235,6 +291,22 @@ async def test_batch_remap_unifies_forked_rows():
 @pytest.mark.asyncio
 async def test_resolver_unifies_kc_and_apikey():
     await _scenario_resolver([])
+
+
+def test_memory_dual_read_alias():
+    """Sync — the alias is pure string logic, no DB/event-loop needed."""
+    _scenario_memory_alias([])
+
+
+def test_authuser_carries_keycloak_id():
+    """The dual-read plumbing hinges on AuthUser exposing the legacy sub."""
+    from app.auth.middleware import AuthUser
+    from app.auth.roles import UserRole
+    # Default None: master-admin / agent keys have no bound sub -> no alias.
+    assert AuthUser(id="x", role=UserRole.VIEWER).keycloak_id is None
+    # Threaded by the KC-bearer and user-API-key paths.
+    au = AuthUser(id="local-1", role=UserRole.VIEWER, user_id="local-1", keycloak_id="kc-sub-9")
+    assert au.keycloak_id == "kc-sub-9"
 
 
 if __name__ == "__main__":

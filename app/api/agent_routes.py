@@ -787,6 +787,33 @@ async def import_agents(
 
 # ---- Chat with Function Calling ----
 
+def _legacy_memory_alias(user, effective_user_id):
+    """The pre-BR-1.1 memory key (a Keycloak ``sub``) to DUAL-READ for this chat,
+    or None.
+
+    BR-1.1 made ``user_id`` the canonical local users.id, but a user's older
+    agent memory was stored in Graphiti under their raw sub. Passing that sub as
+    ``legacy_user_id`` to memory retrieval re-includes the ``{sub}__{agent}``
+    namespace so a cutover SSO user doesn't silently lose everything from before.
+
+    We alias ONLY when the memory being queried belongs to the authenticated
+    principal THEMSELVES — i.e. ``effective_user_id`` is their own canonical id —
+    and their sub actually differs from it. That keeps an admin who delegates
+    with an explicit ``user_id`` from ever bleeding their own sub onto another
+    user's memory (we don't have the delegated target's sub here; that remains a
+    documented residual). Retrieval-only: writes are always canonical.
+    """
+    if user is None:
+        return None
+    kc = getattr(user, "keycloak_id", None)
+    if not kc:
+        return None
+    own = getattr(user, "user_id", None) or getattr(user, "id", None)
+    if own and str(effective_user_id) == str(own) and str(kc) != str(own):
+        return kc
+    return None
+
+
 @router.post("/agents/{agent_id}/chat")
 async def chat_with_agent(
     agent_id: str,
@@ -834,11 +861,15 @@ async def chat_with_agent(
     # Inject relevant memories for this user+agent pair (Phase 2)
     if memory_manager and request.user_id and request.user_id != "anonymous":
         try:
+            # BR-1.1 dual-read: also surface memory this human accreted under
+            # their pre-cutover Keycloak sub (None → single canonical namespace).
+            legacy_uid = _legacy_memory_alias(user, request.user_id)
             recalled = await memory_manager.retrieve(
                 user_id=request.user_id,
                 query=request.message,
                 agent_id=agent["id"],
                 limit=5,
+                legacy_user_id=legacy_uid,
             )
             if recalled:
                 mem_lines = []

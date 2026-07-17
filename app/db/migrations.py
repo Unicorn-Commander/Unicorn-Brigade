@@ -187,6 +187,14 @@ _IDENTITY_REMAP_VERSION = "20260716_02_identity_remap_backfill"
 # batch pass that catches any keycloak_ids populated out-of-band (e.g. an
 # operator backfill). The durable, per-human remap happens lazily on next login.
 #
+# OUT OF SCOPE for this (or any) SQL remap: per-user Graphiti/FalkorDB agent
+# memory is keyed by a group_id of ``{user_id}__{agent}`` (the raw sub, pre-
+# cutover) -- a graph namespace, not a relational row this migration can UPDATE.
+# Rather than move graph nodes, the memory RETRIEVAL path dual-reads the legacy
+# ``{sub}__{agent}`` namespace via AuthUser.keycloak_id while writes stay
+# canonical (app/memory/graphiti_manager._read_group_ids). No data movement, no
+# FalkorDB surgery, so a cutover user keeps old memory without a backfill.
+#
 # Edge cases handled by the WHERE clause:
 #   * user_id NULL / 'anonymous'      -> never equals a uuid keycloak_id, skipped
 #   * downstream pass-through ids     -> not a keycloak_id, skipped

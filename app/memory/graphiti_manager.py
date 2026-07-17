@@ -104,7 +104,12 @@ try:
     GRAPHITI_LLM_CLIENT = LlamaCppOpenAIClient
 except Exception as _patch_err:  # pragma: no cover
     logger.warning(f"Could not install llama.cpp openai patch: {_patch_err}")
-    GRAPHITI_LLM_CLIENT = OpenAIClient
+    # When graphiti-core itself failed to import (line ~15), ``OpenAIClient`` is
+    # never defined — fall back to None so this module still IMPORTS in envs
+    # without graphiti installed (the test env, and any consumer that only needs
+    # the pure ``_group_id`` / ``_read_group_ids`` string logic). __init__ bails
+    # on ``not GRAPHITI_AVAILABLE`` long before this is used as an LLM client.
+    GRAPHITI_LLM_CLIENT = OpenAIClient if GRAPHITI_AVAILABLE else None
 
 
 def _slug(s):
@@ -163,15 +168,44 @@ class GraphitiMemoryManager:
         return True
 
     def _group_id(self, user_id, agent_id, case_id=None):
-        """Per-user-per-case-per-agent isolation. case_id is optional for
-        callers that aren't case-scoped (existing Brigade consumers like
-        LibreChat); when None, the group is {user}__{agent} as before."""
+        """The single canonical WRITE namespace: per-user-per-case-per-agent
+        isolation. case_id is optional for callers that aren't case-scoped
+        (existing Brigade consumers like LibreChat); when None, the group is
+        {user}__{agent} as before. Every ``store`` targets exactly this group."""
         parts = [_slug(user_id)]
         if case_id:
             parts.append(_slug(case_id))
         if agent_id:
             parts.append(_slug(agent_id))
         return "__".join(parts)
+
+    def _read_group_ids(self, user_id, agent_id, case_id=None, legacy_user_id=None):
+        """The set of group namespaces a retrieval SEARCHES (BR-1.1 dual-read).
+
+        Always includes the canonical write namespace (``_group_id``). When a
+        ``legacy_user_id`` is supplied and resolves to a DIFFERENT group, that
+        legacy group is appended so memory written under a pre-BR-1.1 identity
+        key stays reachable.
+
+        Background: BR-1.1 made ``users.id`` the canonical id, but per-user agent
+        memory was stored under a group_id built from whatever id the caller
+        passed — for SSO users pre-cutover that was the raw Keycloak ``sub``. So
+        their old episodes live under ``{sub}__{agent}`` while post-cutover reads
+        key on ``{local_id}__{agent}`` and would miss them. Passing the sub as
+        ``legacy_user_id`` here re-includes the old namespace.
+
+        This is READ-ONLY: ``store``/``_store_episode_now`` write ``_group_id``
+        alone, so new memory always accretes canonically and the legacy namespace
+        is never written again (it only drains via reads). ``legacy_user_id``
+        that is None, equal to ``user_id``, or that slugs to the same group →
+        the single canonical group, byte-identical to pre-alias behavior.
+        """
+        groups = [self._group_id(user_id, agent_id, case_id)]
+        if legacy_user_id is not None and str(legacy_user_id) != str(user_id):
+            legacy_group = self._group_id(legacy_user_id, agent_id, case_id)
+            if legacy_group not in groups:  # guard against a slug collision
+                groups.append(legacy_group)
+        return groups
 
     async def _store_episode_now(self, user_id, agent_id, messages, metadata, case_id=None):
         try:
@@ -209,23 +243,37 @@ class GraphitiMemoryManager:
         asyncio.create_task(self._store_episode_now(user_id, agent_id, messages, metadata, case_id))
         return True
 
-    async def retrieve(self, user_id, query, agent_id=None, limit=10, case_id=None):
+    async def retrieve(self, user_id, query, agent_id=None, limit=10, case_id=None,
+                       legacy_user_id=None):
+        """Search this user's memory. ``legacy_user_id`` (a pre-BR-1.1 identity
+        key, e.g. the Keycloak sub) additionally reads the legacy namespace so a
+        cutover user keeps their old memory; see ``_read_group_ids``. Results
+        across the canonical + legacy groups are merged and deduped by uuid."""
         if not self.graphiti:
             return []
         if not await self._ensure_indices():
             return []
         try:
-            group_id = self._group_id(user_id, agent_id, case_id)
+            group_ids = self._read_group_ids(user_id, agent_id, case_id, legacy_user_id)
             edges = await asyncio.wait_for(
-                self.graphiti.search(query=query, group_ids=[group_id], num_results=limit),
+                self.graphiti.search(query=query, group_ids=group_ids, num_results=limit),
                 timeout=15.0,
             )
             memories = []
+            seen = set()
             for edge in edges or []:
+                uid = getattr(edge, "uuid", None)
+                if uid is not None and uid in seen:
+                    continue  # dedupe across the canonical + legacy namespaces
+                if uid is not None:
+                    seen.add(uid)
                 fact = getattr(edge, "fact", None) or getattr(edge, "name", None)
                 if fact:
-                    memories.append({"memory": fact, "uuid": getattr(edge, "uuid", None)})
-            logger.info(f"Retrieved {len(memories)} graphiti memories user={user_id} agent={agent_id} case={case_id}")
+                    memories.append({"memory": fact, "uuid": uid})
+            logger.info(
+                f"Retrieved {len(memories)} graphiti memories user={user_id} "
+                f"agent={agent_id} case={case_id} groups={len(group_ids)}"
+            )
             return memories
         except asyncio.TimeoutError:
             logger.warning("Graphiti retrieve timed out")
@@ -234,8 +282,9 @@ class GraphitiMemoryManager:
             logger.error(f"Error retrieving graphiti memory: {e}")
             return []
 
-    async def get_all(self, user_id, agent_id=None):
-        return await self.retrieve(user_id=user_id, query="*", agent_id=agent_id, limit=100)
+    async def get_all(self, user_id, agent_id=None, legacy_user_id=None):
+        return await self.retrieve(user_id=user_id, query="*", agent_id=agent_id,
+                                   limit=100, legacy_user_id=legacy_user_id)
 
     async def delete(self, memory_id):
         return False

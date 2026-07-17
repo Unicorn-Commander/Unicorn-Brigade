@@ -385,12 +385,16 @@ async def _passthrough_chat(
         _mm = None
     if _mm and effective_user_id and effective_user_id != "anonymous":
         try:
+            from app.api.agent_routes import _legacy_memory_alias
             recalled = await _mm.retrieve(
                 user_id=effective_user_id,
                 query=request.messages[-1].content if request.messages else "",
                 agent_id=agent["id"],
                 limit=5,
                 case_id=request.case_id,
+                # BR-1.1 dual-read: also surface this human's pre-cutover
+                # Keycloak-sub memory (None → single canonical namespace).
+                legacy_user_id=_legacy_memory_alias(auth_user, effective_user_id),
             )
             if recalled:
                 lines = []
@@ -716,12 +720,16 @@ async def _dual_layer_chat(
                 (m.content for m in reversed(request.messages) if m.role == "user"),
                 "",
             )
+            from app.api.agent_routes import _legacy_memory_alias
             recalled = await _mm.retrieve(
                 user_id=effective_user_id,
                 query=latest_user,
                 agent_id=agent["id"],
                 limit=5,
                 case_id=request.case_id,
+                # BR-1.1 dual-read: also surface this human's pre-cutover
+                # Keycloak-sub memory (None → single canonical namespace).
+                legacy_user_id=_legacy_memory_alias(auth_user, effective_user_id),
             )
             if recalled:
                 lines = []
@@ -1002,12 +1010,16 @@ async def _enhanced_stream_chat(
                 (m.content for m in reversed(request.messages) if m.role == "user"),
                 "",
             )
+            from app.api.agent_routes import _legacy_memory_alias
             recalled = await _mm.retrieve(
                 user_id=effective_user_id,
                 query=latest_user,
                 agent_id=agent["id"],
                 limit=5,
                 case_id=request.case_id,
+                # BR-1.1 dual-read: also surface this human's pre-cutover
+                # Keycloak-sub memory (None → single canonical namespace).
+                legacy_user_id=_legacy_memory_alias(auth_user, effective_user_id),
             )
             if recalled:
                 lines = []

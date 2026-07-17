@@ -80,6 +80,15 @@ class AuthUser:
     user_id: Optional[str] = None  # User ID if authenticated via user API key
     email: Optional[str] = None  # User email if authenticated via user API key
     auth_source: str = "api_key"  # api_key | keycloak | session | bypass | public
+    # Legacy pre-BR-1.1 identity key: the Keycloak ``sub``. BR-1.1 made
+    # ``user_id`` the canonical local users.id, but per-user AGENT MEMORY groups
+    # in Graphiti were keyed by whatever id the request carried — for SSO users
+    # pre-cutover that was the raw sub. Carrying it here lets the chat path
+    # DUAL-READ the legacy ``{sub}__{agent}`` memory namespace (see
+    # app/memory/graphiti_manager._read_group_ids) so old memory stays reachable.
+    # None for master-admin / agent keys with no bound sub; when it equals
+    # ``user_id`` the alias is a no-op (no legacy namespace to read).
+    keycloak_id: Optional[str] = None
 
     def __post_init__(self):
         if self.permissions is None:
@@ -175,6 +184,10 @@ async def validate_api_key(
                 user_id=str(user.id),
                 email=user.email,
                 auth_source="api_key",
+                # Their bound Keycloak sub (or None). Lets an API-key session
+                # dual-read memory this human accreted while signing in via SSO
+                # pre-BR-1.1. None when they never logged in via Keycloak.
+                keycloak_id=user.keycloak_id,
             )
 
         # Fall back to agent API keys
@@ -240,10 +253,20 @@ def _derive_apps_from_roles(roles):
 
 
 # Tables whose free-form ``user_id`` column the pre-BR-1.1 Keycloak-bearer path
-# wrote the raw Keycloak ``sub`` into (it set AuthUser.id = sub). Every other
+# wrote the raw Keycloak ``sub`` into (it set AuthUser.id = sub). These RELATIONAL
+# rows are relabeled in place by the batch + lazy remap. Every OTHER *relational*
 # user-scoped column is either a UUID FK onto users.id (already canonical) or an
 # opaque downstream pass-through (ScheduledRun.owner_user_id) that must NOT be
-# rewritten. Keep this in sync with app/db/migrations.remap_forked_keycloak_rows.
+# rewritten.
+#
+# CORRECTION (adversarial-review finding): one NON-relational store was ALSO
+# sub-keyed and is NOT covered here — per-user Graphiti/FalkorDB AGENT MEMORY,
+# whose group_id is ``{user_id}__{agent}`` (see app/memory/graphiti_manager).
+# Moving those graph nodes would be out-of-band FalkorDB surgery, so instead the
+# memory RETRIEVAL path dual-reads the legacy ``{sub}__{agent}`` namespace via
+# AuthUser.keycloak_id while writes stay canonical — no data movement, and this
+# SQL remap deliberately leaves memory alone.
+# Keep this in sync with app/db/migrations.remap_forked_keycloak_rows.
 _KEYCLOAK_REMAP_TABLES = ("conversations", "builder_sessions")
 
 
@@ -412,6 +435,11 @@ async def validate_bearer_token(token: str) -> Optional[AuthUser]:
         key_name=kc_user.preferred_username or kc_user.email,
         permissions=all_roles,
         auth_source="keycloak",
+        # The raw sub — the pre-BR-1.1 memory key. When resolution succeeded this
+        # differs from ``canonical_id`` (the local users.id) and enables the
+        # legacy-memory dual-read; in the degraded fallback where canonical_id IS
+        # the sub, keycloak_id == user_id and the alias self-disables.
+        keycloak_id=kc_user.sub,
     )
 
 

@@ -246,8 +246,17 @@ class User(Base):
     # legacy rows predate SSO and only learn their sub on first Keycloak login;
     # unique so two users rows can never claim the same sub. Once set, ALL auth
     # paths resolve this same local `users.id` for the human, so their data
-    # (conversations, builder sessions, personal API keys) stops forking by how
-    # they signed in. See app/auth/middleware.resolve_canonical_user_id.
+    # (conversations, builder sessions, personal API keys, and per-user agent
+    # memory) stops forking by how they signed in. See
+    # app/auth/middleware.resolve_canonical_user_id.
+    #
+    # Not every store is relabeled the same way. Conversations + builder sessions
+    # are SQL rows remapped in place. Per-user agent MEMORY (Graphiti/FalkorDB)
+    # is different: episodes were stored under a group_id of `{user_id}__{agent}`,
+    # so pre-cutover memory sits under `{sub}__{agent}`. That graph store is NOT
+    # relabeled by any SQL remap; instead the retrieval path DUAL-READS the legacy
+    # namespace via this keycloak_id while writes stay canonical. See
+    # app/memory/graphiti_manager `_read_group_ids`.
     keycloak_id = Column(String(255), unique=True, nullable=True, index=True)
     password_hash = Column(String(255), nullable=False)
     name = Column(String(255), nullable=False)
