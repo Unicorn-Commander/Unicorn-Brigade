@@ -214,11 +214,14 @@ MIGRATIONS = [
             "CREATE INDEX IF NOT EXISTS ix_org_memberships_user_id ON org_memberships(user_id)",
             "CREATE INDEX IF NOT EXISTS ix_org_memberships_org_id ON org_memberships(org_id)",
             # H1 / BR-2.4 note: 'early-access' is the shared bootstrap org. Existing
-            # users are backfilled into it (CROSS JOIN below) and every keyless
-            # identity (service/agent/admin keys) also collapses onto it at request
-            # time (middleware._default_org_id). There is NO per-key org isolation
-            # yet — not a regression (pre-tenancy had none), but issuing service keys
-            # to distinct customers must wait for BR-2.4's per-key org_id.
+            # users are backfilled into it (CROSS JOIN below) and, at the time this
+            # migration shipped, every keyless identity (service/agent/admin keys)
+            # also collapsed onto it at request time (middleware._default_org_id).
+            # UPDATE (BR-2.4, migration 20260718_01_api_key_org_binding): H1 is now
+            # CLOSED — api_keys.org_id gives each service/agent key its own org
+            # binding, so multi-customer key issuance is isolated and safe. This org
+            # is now only the FALLBACK for the master-admin key and legacy NULL-org
+            # keys (which are backfilled here).
             """
             INSERT INTO organizations (id, name, slug, plan_tier, api_calls_limit, metadata)
             VALUES (gen_random_uuid(), 'Early Access', 'early-access', 'free', 0, '{"bootstrap": true}'::json)
@@ -518,6 +521,47 @@ MIGRATIONS = [
             BEGIN
                 IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'brigade_app') THEN
                     GRANT SELECT, INSERT, UPDATE, DELETE ON invitations TO brigade_app;
+                END IF;
+            END $$;
+            """,
+        ],
+    ),
+    (
+        "20260718_01_api_key_org_binding",
+        "BR-2.4 / H1: per-key org binding — api_keys.org_id (+ backfill to early-access)",
+        # Closes finding H1. Before this, EVERY service/agent key collapsed onto the
+        # shared 'early-access' org (no per-key org_id), so two customers' keys read
+        # each other's data — which gated multi-customer key issuance. This adds
+        # api_keys.org_id; the auth middleware (_bind_org_context) now binds the
+        # request's RLS org to it (see AuthUser.key_org_id).
+        #
+        # api_keys deliberately gets NO RLS: the key lookup in validate_api_key runs
+        # BEFORE any org is bound (empty GUC), so FORCE RLS there would hide every
+        # key and break all auth. org_id here is a binding POINTER used to CHOOSE the
+        # org, not an RLS-isolated column (mirrors users / organizations /
+        # org_memberships, which also carry no RLS).
+        #
+        # Additive + idempotent: create_all already builds the column from the ORM
+        # model on a fresh install (this is the deployed-DB path). Existing keys are
+        # backfilled to 'early-access' (their pre-BR-2.4 home) so behavior is
+        # unchanged on cutover; new keys are stamped with the creator's active org
+        # (server_default current_org_id() + explicit stamp in apikey_routes).
+        # Left NULLABLE (unlike the RLS data tables' NOT NULL) — api_keys has no RLS
+        # and a NULL org_id gracefully falls back to early-access at bind time.
+        [
+            "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS org_id uuid",
+            """
+            UPDATE api_keys
+            SET org_id = (SELECT id FROM organizations WHERE slug = 'early-access')
+            WHERE org_id IS NULL
+            """,
+            "ALTER TABLE api_keys ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "CREATE INDEX IF NOT EXISTS ix_api_keys_org_id ON api_keys(org_id)",
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_api_keys_org_id_organizations') THEN
+                    ALTER TABLE api_keys ADD CONSTRAINT fk_api_keys_org_id_organizations FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE;
                 END IF;
             END $$;
             """,

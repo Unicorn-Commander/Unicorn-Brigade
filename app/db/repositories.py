@@ -231,7 +231,7 @@ class ApiKeyRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def generate(self, agent_id: str, data: Dict[str, Any]) -> Dict:
+    async def generate(self, agent_id: str, data: Dict[str, Any], org_id: Optional[str] = None) -> Dict:
         raw_key = f"ubk-{secrets.token_urlsafe(32)}"
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
         key_prefix = raw_key[:8]
@@ -249,6 +249,13 @@ class ApiKeyRepository:
             rate_limit=data.get("rateLimit", 100),
             expires_at=expires_at,
         )
+        # BR-2.4 (H1 fix): bind the new key to the creating user's ACTIVE org so it
+        # resolves to that org at auth time. When org_id is None we leave the column
+        # unset so the server_default (current_org_id() = the caller's bound org on
+        # the request session) applies — never send an explicit NULL that would
+        # bypass the default.
+        if org_id is not None:
+            api_key.org_id = org_id
         self.session.add(api_key)
         await self.session.commit()
         await self.session.refresh(api_key)

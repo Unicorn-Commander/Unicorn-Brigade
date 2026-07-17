@@ -472,6 +472,20 @@ class ApiKey(Base):
 
     id = Column(String(255), primary_key=True, default=lambda: uuid.uuid4().hex[:16])
     agent_id = Column(String(255), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    # BR-2.4 per-key org binding (closes finding H1). The org this service/agent
+    # key acts as. The auth middleware (``_bind_org_context``) binds the request's
+    # RLS org (``app.current_org_id``) to THIS value for a keyless service/agent
+    # key, so two customers' keys are isolated instead of both collapsing onto the
+    # shared 'early-access' org. NULLABLE + server_default current_org_id() exactly
+    # like the tenant data tables: a key created by a bound request auto-tags the
+    # caller's active org (also stamped explicitly in apikey_routes), and a legacy
+    # key with a NULL org_id falls back to 'early-access' in the middleware so
+    # nothing breaks on cutover. NOTE: api_keys deliberately carries NO RLS — the
+    # key lookup in ``validate_api_key`` runs BEFORE any org is bound (empty GUC),
+    # so FORCE RLS here would hide every key and break all auth. org_id is a binding
+    # POINTER used to CHOOSE the org, not an RLS-isolated data column (mirrors how
+    # users / organizations / org_memberships carry no RLS).
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, server_default=text("current_org_id()"))
     name = Column(String(255), nullable=False)
     key_prefix = Column(String(20), nullable=False)
     key_hash = Column(String(255), nullable=False)
@@ -489,12 +503,14 @@ class ApiKey(Base):
     __table_args__ = (
         Index("ix_api_keys_agent_id", "agent_id"),
         Index("ix_api_keys_key_hash", "key_hash"),
+        Index("ix_api_keys_org_id", "org_id"),
     )
 
     def to_dict(self, include_hash=False):
         d = {
             "id": self.id,
             "agentId": self.agent_id,
+            "orgId": str(self.org_id) if self.org_id else None,
             "name": self.name,
             "keyPrefix": self.key_prefix,
             "permissions": self.permissions or ["chat", "read"],

@@ -44,9 +44,20 @@ async def generate_api_key(
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
 
     repo = ApiKeyRepository(session)
-    result = await repo.generate(agent_id, request.model_dump())
+    # BR-2.4 (H1 fix): stamp the creating user's ACTIVE org onto the new key so it
+    # binds to that org at auth time (per-customer key isolation). ``user.org_id``
+    # is the org resolved by ``_bind_org_context`` during auth — it already honors
+    # an ``X-Org-Id`` active-org header (validated against membership), else the
+    # user's personal/home org. None only for the master-admin key, in which case
+    # the ApiKey.org_id server_default (current_org_id()) tags the bound org.
+    result = await repo.generate(
+        agent_id, request.model_dump(), org_id=(user.org_id if user else None)
+    )
 
-    logger.info(f"Generated API key {result.get('keyPrefix', '???')}... for agent {agent_id}")
+    logger.info(
+        f"Generated API key {result.get('keyPrefix', '???')}... for agent {agent_id} "
+        f"in org {result.get('orgId')}"
+    )
     return result
 
 
