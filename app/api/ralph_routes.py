@@ -24,9 +24,28 @@ from app.db.execution_store import (
     load_inflight_ralph_execution_data,
 )
 from app.auth.middleware import require_api_key, require_operator, AuthUser
+from app.auth.roles import UserRole
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ralph", tags=["ralph"])
+
+
+def _org_can_access(ralph_engine: "RalphWorkflowEngine", user: AuthUser) -> bool:
+    """Whether ``user`` is permitted to see/act on this Ralph execution.
+
+    Cross-tenant disclosure fix: an admin/global operator reaches every org's
+    execution (unchanged trusted view); any other caller is confined to their own
+    bound org. A caller with NO bound org can reach nothing (fail closed). Ralph
+    executions carry a real ``org_id`` (stamped at launch from the caller's bound
+    org and persisted on the state), so this is genuine org scoping — not an
+    admin-only gate. Callers that fail this check are 404'd, never 403'd, so the
+    existence of another tenant's execution is not leaked.
+    """
+    if user.role == UserRole.ADMIN:
+        return True
+    state = getattr(ralph_engine, "state", None)
+    exec_org = getattr(state, "org_id", None) if state else None
+    return bool(user.org_id) and exec_org == user.org_id
 
 # In-memory registry of active Ralph executions. BR-4: this is now just a hot
 # cache over the durable ralph_executions table — _get_or_load() transparently
@@ -190,11 +209,14 @@ async def execute_workflow_with_ralph(
         if not workflow_def:
             raise HTTPException(status_code=404, detail=f"Workflow '{request.workflow_id}' not found")
 
-        # Create Ralph engine
+        # Create Ralph engine. Capture the launching caller's bound org so the
+        # execution is tenant-scoped for later reads (works for background/async
+        # runs too, where the request contextvar may no longer be set).
         ralph_engine = RalphWorkflowEngine(
             workflow_id=request.workflow_id,
             workflow_definition=workflow_def.model_dump() if hasattr(workflow_def, 'model_dump') else workflow_def.dict(),
             state_dir=Path(".ralph"),
+            org_id=getattr(user, "org_id", None),
         )
 
         # Override max iterations if specified
@@ -246,7 +268,7 @@ async def get_execution_progress(
     matching the require_operator gate already on the mutating Ralph routes.
     """
     ralph_engine = await _get_or_load(execution_id)
-    if not ralph_engine:
+    if not ralph_engine or not _org_can_access(ralph_engine, user):
         raise HTTPException(status_code=404, detail=f"Execution '{execution_id}' not found")
 
     progress = ralph_engine.get_progress()
@@ -281,7 +303,7 @@ async def get_execution_result(
     history — gated behind a valid API key / token like the other Ralph routes.
     """
     ralph_engine = await _get_or_load(execution_id)
-    if not ralph_engine:
+    if not ralph_engine or not _org_can_access(ralph_engine, user):
         raise HTTPException(status_code=404, detail=f"Execution '{execution_id}' not found")
 
     if not ralph_engine.state or not ralph_engine.state.is_complete:
@@ -324,7 +346,7 @@ async def inject_guidance(
     ```
     """
     ralph_engine = await _get_or_load(execution_id)
-    if not ralph_engine:
+    if not ralph_engine or not _org_can_access(ralph_engine, user):
         raise HTTPException(status_code=404, detail=f"Execution '{execution_id}' not found")
 
     ralph_engine.inject_guidance(request.guidance)
@@ -357,8 +379,13 @@ async def list_executions(
     # correct across restarts + replicas, not just what this process ran.
     await rehydrate_active_executions()
 
+    # Tenant scoping (cross-tenant disclosure fix): admins see every org's
+    # executions; any other caller is confined to their own bound org, and an
+    # unbound caller sees an EMPTY list (fail closed, never everything).
     executions = []
     for execution_id, ralph_engine in _active_executions.items():
+        if not _org_can_access(ralph_engine, user):
+            continue
         progress = ralph_engine.get_progress()
         executions.append({
             "execution_id": execution_id,
@@ -386,7 +413,7 @@ async def cancel_execution(
     State files are preserved in .ralph/ directory.
     """
     ralph_engine = await _get_or_load(execution_id)
-    if ralph_engine is None:
+    if ralph_engine is None or not _org_can_access(ralph_engine, user):
         raise HTTPException(status_code=404, detail=f"Execution '{execution_id}' not found")
 
     # Mark as cancelled if still running
@@ -408,18 +435,17 @@ async def cancel_execution(
 
 @router.get("/health")
 async def health_check() -> Dict[str, Any]:
-    """Ralph subsystem health check"""
+    """Ralph subsystem health check.
+
+    PUBLIC (unauthenticated, in PUBLIC_PATHS): reports only liveness + an
+    aggregate active-execution COUNT. It deliberately does NOT enumerate
+    execution ids / workflow ids / completion state — doing so leaked every
+    tenant's execution inventory to any anonymous caller (cross-org disclosure).
+    Per-execution detail lives on the authenticated, org-scoped GET /executions.
+    """
     return {
         "status": "healthy",
         "active_executions": len(_active_executions),
-        "executions": [
-            {
-                "id": exec_id,
-                "workflow_id": engine.workflow_id,
-                "is_complete": engine.state.is_complete if engine.state else False
-            }
-            for exec_id, engine in _active_executions.items()
-        ]
     }
 
 

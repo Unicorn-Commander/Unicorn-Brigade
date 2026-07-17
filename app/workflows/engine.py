@@ -228,6 +228,9 @@ class WorkflowEngine:
             inputs=inputs,
             state=WorkflowExecutionState.RUNNING,
             started_at=datetime.utcnow(),
+            # Stamp the owning org from the bound request context so cache-backed
+            # list/get reads can be tenant-scoped (cross-tenant disclosure fix).
+            org_id=_current_org_id(),
         )
         # Store the model config used for this execution
         execution.model_config_used = config.model_dump()
@@ -1146,17 +1149,41 @@ Respond with valid JSON matching the output schema."""
     # Execution Management
     # =========================================================================
 
-    def get_execution(self, execution_id: str) -> Optional[WorkflowExecution]:
-        """Get execution by ID"""
-        return self._executions.get(execution_id)
+    def get_execution(
+        self,
+        execution_id: str,
+        org_id: Optional[str] = None,
+    ) -> Optional[WorkflowExecution]:
+        """Get execution by ID.
+
+        Kept SYNC + cache-backed (the API contract + unit tests depend on it).
+        When ``org_id`` is provided, an execution belonging to a DIFFERENT org
+        (or to no org) is treated as absent (returns None) so a caller cannot
+        read another tenant's execution — the caller 404s without leaking its
+        existence. Pass ``org_id=None`` for the trusted admin/global path.
+        """
+        execution = self._executions.get(execution_id)
+        if execution is None:
+            return None
+        if org_id is not None and execution.org_id != org_id:
+            return None
+        return execution
 
     def list_executions(
         self,
         workflow_id: Optional[str] = None,
         state: Optional[WorkflowExecutionState] = None,
+        org_id: Optional[str] = None,
     ) -> List[WorkflowExecution]:
-        """List executions with optional filters"""
+        """List executions with optional filters.
+
+        When ``org_id`` is provided, only executions owned by that org are
+        returned (in-memory tenant scoping — no async/DB round-trip, contract
+        preserved). Pass ``org_id=None`` for the trusted admin/global view.
+        """
         executions = list(self._executions.values())
+        if org_id is not None:
+            executions = [e for e in executions if e.org_id == org_id]
         if workflow_id:
             executions = [e for e in executions if e.workflow_id == workflow_id]
         if state:

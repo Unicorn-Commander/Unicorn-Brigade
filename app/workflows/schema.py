@@ -348,6 +348,13 @@ class WorkflowExecution(BaseModel):
     workflow_id: str
     workflow_name: str
 
+    # Owning organization (tenancy). Stamped at creation from the bound request
+    # org (event_bus.current_org_id_var) so cache-backed reads can be org-scoped:
+    # a non-admin caller only ever sees executions whose org_id equals their own.
+    # None for executions created with no bound org (system/unbound) — those are
+    # visible only to admins, never leaked to a tenant.
+    org_id: Optional[str] = None
+
     # State
     state: WorkflowExecutionState = WorkflowExecutionState.PENDING
     current_step: Optional[str] = None

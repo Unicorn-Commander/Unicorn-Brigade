@@ -17,6 +17,7 @@ from typing import Optional, List, Dict, Any, Annotated
 import logging
 
 from app.auth.middleware import require_api_key, require_operator, require_admin, AuthUser
+from app.auth.roles import UserRole
 from app.integrations.metering import meter_usage
 from app.workflows import (
     WorkflowEngine,
@@ -334,7 +335,18 @@ async def list_executions(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid state: {state}")
 
-    executions = engine.list_executions(workflow_id=workflow_id, state=state_filter)
+    # Tenant scoping (cross-tenant disclosure fix): an admin/global operator sees
+    # every org's executions (unchanged trusted view); any other caller is scoped
+    # strictly to their own bound org. A caller with NO bound org sees an EMPTY
+    # list — fail closed, never everything.
+    if user.role == UserRole.ADMIN:
+        executions = engine.list_executions(workflow_id=workflow_id, state=state_filter)
+    elif user.org_id:
+        executions = engine.list_executions(
+            workflow_id=workflow_id, state=state_filter, org_id=user.org_id
+        )
+    else:
+        executions = []
 
     return {
         "executions": [e.to_dict() for e in executions],
@@ -349,7 +361,16 @@ async def get_execution(
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get execution details including step-by-step results"""
-    execution = engine.get_execution(execution_id)
+    # Tenant scoping (cross-tenant disclosure fix): admins read any org's
+    # execution; every other caller is confined to their own bound org. A
+    # mismatch (or an unbound caller) yields a 404 — NOT 403 — so we never leak
+    # that another tenant's execution id exists.
+    if user.role == UserRole.ADMIN:
+        execution = engine.get_execution(execution_id)
+    elif user.org_id:
+        execution = engine.get_execution(execution_id, org_id=user.org_id)
+    else:
+        execution = None
     if not execution:
         raise HTTPException(status_code=404, detail=f"Execution not found: {execution_id}")
 

@@ -97,6 +97,11 @@ class RalphWorkflowState(BaseModel):
     """Complete state of a Ralph workflow execution"""
     workflow_id: str
     execution_id: str
+    # Owning organization (tenancy). Stamped at state init from the launching
+    # request's bound org so the in-memory registry can be tenant-scoped: a
+    # non-admin caller only reaches Ralph executions whose org_id equals their
+    # own. None for runs launched with no bound org (visible to admins only).
+    org_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
@@ -140,12 +145,17 @@ class RalphWorkflowEngine:
         workflow_definition: Dict,
         state_dir: Optional[Path] = None,
         on_task_complete: Optional[Callable] = None,
-        on_iteration_complete: Optional[Callable] = None
+        on_iteration_complete: Optional[Callable] = None,
+        org_id: Optional[str] = None,
     ):
         self.workflow_id = workflow_id
         self.workflow_definition = workflow_definition
         self.state_dir = state_dir or Path(".ralph")
         self.state_dir.mkdir(exist_ok=True)
+        # Owning org for tenancy scoping — captured at launch by the route (from
+        # the authenticated caller's bound org) and stamped onto the state so the
+        # read endpoints can confine a tenant to their own executions.
+        self.org_id = org_id
 
         # Callbacks
         self.on_task_complete = on_task_complete
@@ -219,9 +229,21 @@ class RalphWorkflowEngine:
 
     def _initialize_state(self, inputs: Dict[str, Any]):
         """Initialize workflow state with task breakdown"""
+        # Resolve the owning org: the org captured at construction (from the
+        # authenticated request), falling back to the currently-bound request
+        # context if available. Stamped on the state so tenant scoping survives
+        # persistence + rehydration.
+        org_id = getattr(self, "org_id", None)
+        if org_id is None:
+            try:
+                from app.orchestration.event_bus import current_org_id_var
+                org_id = current_org_id_var.get() or None
+            except Exception:
+                org_id = None
         self.state = RalphWorkflowState(
             workflow_id=self.workflow_id,
-            execution_id=self.execution_id
+            execution_id=self.execution_id,
+            org_id=org_id,
         )
 
         # Break down workflow into tasks
