@@ -22,6 +22,7 @@ from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 
 from app.db.database import get_session, _clear_org_context
 from app.db.models import ApiKey, UserApiKey, User, Organization
@@ -611,8 +612,19 @@ async def _default_org_id(session: AsyncSession) -> str:
             metadata_={"bootstrap": True},
         )
         session.add(org)
-        await session.commit()
-        await session.refresh(org)
+        try:
+            await session.commit()
+            await session.refresh(org)
+        except IntegrityError:
+            # C7 cold-start race: a concurrent keyless request created 'early-access'
+            # first (organizations.slug is UNIQUE). Roll back our losing INSERT and
+            # refetch the winner rather than 500 — the bootstrap org exists now.
+            await session.rollback()
+            org = (await session.execute(
+                select(Organization).where(Organization.slug == "early-access")
+            )).scalar_one_or_none()
+            if org is None:
+                raise  # truly unexpected — surface it rather than mask
     return str(org.id)
 
 

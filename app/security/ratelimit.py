@@ -6,15 +6,23 @@ An in-memory token-bucket limiter applied to auth-sensitive and execution
 a burst capacity; a request costs one token, and when the bucket is empty the
 request is rejected with ``429 Too Many Requests`` + a ``Retry-After`` header.
 
-Identity key (mirrors ``app.security.rate_limit._default_key_fn``):
+Identity key (precedence):
   1. Loopback delegations (127.0.0.1 / ::1) carrying ``X-Delegate-User`` bucket on
      that end-user, so concurrent delegations for different users don't all
-     starve on one shared service-key bucket.
-  2. Otherwise the PRESENTED API key (``X-API-Key``, or a ``Bearer`` API key)
-     hashed to a stable id. We hash the presented credential rather than the DB
-     key-id because this middleware runs BEFORE auth resolves — doing a DB lookup
-     on the hot path would defeat the purpose of a cheap pre-auth abuse cap.
-  3. Fallback: client IP.
+     starve on one shared service-key bucket. S8: only honored when a service key
+     is ALSO presented — otherwise the bucket key would be a fully
+     attacker-controlled header on the loopback path.
+  2. The PRESENTED API key (``X-API-Key``, or a ``Bearer`` credential) hashed to a
+     stable id. We hash the presented credential rather than the DB key-id because
+     this middleware runs BEFORE auth resolves — a DB lookup on the hot path would
+     defeat the purpose of a cheap pre-auth abuse cap.
+  3. The ``brigade_session`` cookie (browser users authenticate with it, not an
+     API key) hashed — so each browser user gets their OWN bucket.
+  4. The SSE ticket (``?ticket=`` query param or the ``brigade_sse_ticket``
+     cookie) hashed — so each EventSource consumer gets its OWN bucket. C2: browser
+     + SSE callers previously carried none of {api key} and all collapsed onto a
+     single ``ip:<host>`` bucket, so shared-NAT users 429'd each other.
+  5. Fallback: client IP.
 
 ============================ MULTI-REPLICA FOLLOW-UP ============================
 ⚠️ This limiter is PER-PROCESS and IN-MEMORY ONLY. Each uvicorn worker / replica
@@ -34,7 +42,20 @@ import time
 from typing import Dict, Optional, Tuple
 
 from starlette.datastructures import Headers
+from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp, Receive, Scope, Send
+
+# Auth-credential names folded into the per-identity bucket key so browser
+# (cookie) and SSE (ticket) callers each get their OWN bucket instead of all
+# collapsing onto a shared ``ip:<host>`` bucket (shared-NAT users would otherwise
+# 429 each other). Kept in sync with the auth layer's source of truth:
+#   app.auth.middleware.OIDC_SESSION_COOKIE   = "brigade_session"
+#   app.auth.sse_ticket.SSE_TICKET_COOKIE     = "brigade_sse_ticket"
+# Defined locally (not imported) so this middleware stays self-contained
+# (starlette + stdlib only, per the module docstring) and free of an app.auth
+# import at startup.
+_SESSION_COOKIE = "brigade_session"
+_SSE_TICKET_COOKIE = "brigade_sse_ticket"
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -124,23 +145,54 @@ class RateLimitMiddleware:
                 return True
         return False
 
+    @staticmethod
+    def _h(value: str) -> str:
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
     def _identity(self, scope: Scope) -> str:
         headers = Headers(scope=scope)
         client = scope.get("client")
         client_host = client[0] if client else "unknown"
-        if client_host in ("127.0.0.1", "::1", "localhost"):
-            delegate = headers.get("x-delegate-user")
-            if delegate:
-                h = hashlib.sha256(delegate.encode("utf-8")).hexdigest()[:16]
-                return f"deleg:{h}"
+
+        # Presented API key (X-API-Key, or a Bearer API/JWT credential). Hashed
+        # rather than DB-resolved because this runs BEFORE auth on the hot path.
         api_key = headers.get("x-api-key")
         if not api_key:
             auth = headers.get("authorization")
             if auth and auth.lower().startswith("bearer "):
                 api_key = auth.split(" ", 1)[1].strip()
+
+        # (1) Loopback delegation: a sub-chat POSTs from loopback with the service
+        # key PLUS an X-Delegate-User naming the end-user; bucket per end-user so
+        # concurrent delegations don't starve on one key. S8: only trust the
+        # delegate header when a service key is ALSO presented — otherwise the
+        # bucket key would be a fully attacker-controlled header on the loopback
+        # path (anyone reaching loopback could spray/spoof identities).
+        if client_host in ("127.0.0.1", "::1", "localhost"):
+            delegate = headers.get("x-delegate-user")
+            if delegate and api_key:
+                return f"deleg:{self._h(delegate)}"
+
+        # (2) Presented API key → its own bucket.
         if api_key:
-            h = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
-            return f"api:{h}"
+            return f"api:{self._h(api_key)}"
+
+        # (3)/(4) Browser + SSE identities. Fold the auth credential into the
+        # bucket so cookie/ticket users each get their OWN bucket instead of all
+        # sharing ip:<host>. HTTPConnection derives cookies/query from the scope
+        # alone (no receive needed). C2: browser users authenticate via the
+        # ``brigade_session`` cookie and SSE via ``?ticket=`` / the SSE ticket
+        # cookie — none of which the pre-fix identity looked at, so they all fell
+        # to a single shared ip bucket.
+        conn = HTTPConnection(scope)
+        session_cookie = conn.cookies.get(_SESSION_COOKIE)
+        if session_cookie:
+            return f"sess:{self._h(session_cookie)}"
+        ticket = conn.query_params.get("ticket") or conn.cookies.get(_SSE_TICKET_COOKIE)
+        if ticket:
+            return f"ticket:{self._h(ticket)}"
+
+        # (5) Fallback: client IP.
         return f"ip:{client_host}"
 
     def _check(self, key: str) -> Tuple[bool, float]:
