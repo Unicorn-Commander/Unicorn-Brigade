@@ -24,6 +24,7 @@ from app.api.landing_route import router as landing_router
 from app.api.memory_inspector_routes import router as memory_inspector_router, init_memory_routes as init_memory_inspector
 from app.api.tool_routes import router as tool_router
 from app.api.system_routes import router as system_router, init_system_routes
+from app.api.billing_routes import router as billing_router  # BR-3.7 usage/billing surface
 from app.api.builder_routes import router as builder_router, init_builder_routes
 from app.api.apikey_routes import router as apikey_router
 from app.api.admin_keys_routes import router as admin_keys_router
@@ -356,6 +357,7 @@ if not FEDERATION_ONLY:
     app.include_router(memory_inspector_router, tags=["memory-inspector"])
     app.include_router(tool_router, prefix="/api/v1", tags=["tools"])
     app.include_router(system_router, prefix="/api/v1", tags=["system"])
+    app.include_router(billing_router, prefix="/api/v1", tags=["billing"])  # BR-3.7
     app.include_router(builder_router, prefix="/api/v1", tags=["builder"])
     app.include_router(apikey_router, prefix="/api/v1", tags=["api-keys"])
     app.include_router(admin_keys_router)

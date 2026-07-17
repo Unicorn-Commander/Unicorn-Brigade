@@ -6,6 +6,7 @@ import { useEffect, useState, lazy, Suspense } from 'react';
 // is lazy so the initial bundle is just the app frame, not all ~25 pages.
 import Navigation from './components/Navigation';
 import CommandPalette from './components/CommandPalette';
+import PaymentRequiredModal from './components/billing/PaymentRequiredModal';
 import useAuth from './hooks/useAuth';
 import { Loader2 } from 'lucide-react';
 import GettingStartedWizard from './components/GettingStartedWizard';
@@ -40,6 +41,7 @@ const RalphMonitor = lazy(() => import('./pages/RalphMonitor'));
 const ScheduledRuns = lazy(() => import('./pages/ScheduledRuns'));
 const Organization = lazy(() => import('./pages/Organization'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Billing = lazy(() => import('./pages/Billing'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
@@ -337,6 +339,14 @@ function App() {
               </ProtectedRoute>
             } />
 
+            <Route path="/billing" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Billing />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+
             {/* Root redirect */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
@@ -352,6 +362,9 @@ function App() {
         )}
 
         <CommandPalette />
+
+        {/* BR-3.7: root-level 402 → upgrade-path modal (listens for brigade:payment-required) */}
+        <PaymentRequiredModal />
 
         <Toaster
           position="top-right"

@@ -59,7 +59,16 @@ class APIService {
         apiError.status = response.status;
         apiError.data = data;
 
-        if (!suppressToast && response.status !== 401) {
+        // BR-3.7: a 402 is the highest willingness-to-pay moment — the backend
+        // builds it with credits_remaining + subscription_tier. Surface it as an
+        // upgrade prompt (a root-level PaymentRequiredModal listens) instead of a
+        // dead-end generic toast.
+        if (response.status === 402) {
+          const detail = (data && data.detail) || {};
+          window.dispatchEvent(
+            new CustomEvent('brigade:payment-required', { detail })
+          );
+        } else if (!suppressToast && response.status !== 401) {
           toast.error(friendlyMessage, {
             duration: 5000,
             position: 'top-right',

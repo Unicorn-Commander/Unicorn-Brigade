@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import Modal from '../ui/Modal';
 import TierBadge from './TierBadge';
 import RoleBadge from './RoleBadge';
+import { billingService } from '../../services/billingService';
 
 /**
  * UpgradePrompt Component
@@ -39,46 +40,43 @@ const UpgradePrompt = ({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch upgrade requirements from API
+    // BR-3.7: fetch REAL upgrade requirements from the backend (was mock data).
+    // Falls back to sensible defaults if the endpoint is unreachable so the
+    // prompt still renders rather than showing nothing.
     const fetchUpgradeInfo = async () => {
       setLoading(true);
       try {
-        // TODO: Replace with actual API call when backend is ready
-        // const response = await fetch(`/api/v1/brigade/upgrade-requirements?feature=${feature}`);
-        // const data = await response.json();
-
-        // Mock data for development
-        const mockData = {
-          feature,
-          requiredTier: requiredTier || 'professional',
-          requiredRole: requiredRole || 'brigade-builder',
-          benefits: [
-            'Access to advanced agent builder',
-            'Unlimited agent creation',
-            'Publishing to marketplace',
-            'Priority support'
-          ],
-          upgradeUrl: `${window.location.origin}/upgrade?plan=professional`,
-          opsCenterUrl: 'https://unicorncommander.ai/plans.html'
-        };
-
-        setUpgradeInfo(mockData);
+        const data = await billingService.getUpgradeRequirements(feature);
+        setUpgradeInfo({
+          feature: data.feature || feature,
+          requiredTier: data.requiredTier || requiredTier || 'professional',
+          requiredRole: requiredRole,
+          benefits: data.benefits || [],
+          upgradeUrl: data.upgradeUrl,
+          opsCenterUrl: data.opsCenterUrl || 'https://unicorncommander.ai',
+        });
       } catch (error) {
         console.error('Failed to fetch upgrade info:', error);
+        setUpgradeInfo({
+          feature,
+          requiredTier: requiredTier || 'professional',
+          requiredRole,
+          benefits: [],
+          upgradeUrl: 'https://unicorncommander.ai/plans.html',
+          opsCenterUrl: 'https://unicorncommander.ai',
+        });
       } finally {
         setLoading(false);
       }
     };
 
-    if (feature || requiredTier || requiredRole) {
-      fetchUpgradeInfo();
-    }
+    fetchUpgradeInfo();
   }, [feature, requiredTier, requiredRole]);
 
   const handleUpgrade = () => {
-    // Redirect to Ops Center billing page
-    const opsCenterUrl = upgradeInfo?.opsCenterUrl || 'https://unicorncommander.ai/plans.html';
-    window.open(opsCenterUrl, '_blank');
+    // Deep-link into the Ops-Center checkout (real URL from /upgrade-requirements).
+    const url = upgradeInfo?.upgradeUrl || upgradeInfo?.opsCenterUrl || 'https://unicorncommander.ai/plans.html';
+    window.open(url, '_blank', 'noopener');
   };
 
   if (loading) {

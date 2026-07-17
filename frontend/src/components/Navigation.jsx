@@ -26,7 +26,8 @@ import {
   Sparkles,
   GraduationCap,
   AlertTriangle,
-  Building2
+  Building2,
+  Wallet
 } from 'lucide-react';
 import { Tooltip } from 'react-tooltip';
 import UserProfile from './auth/UserProfile';
@@ -113,6 +114,7 @@ const Navigation = () => {
     '/monitoring': 'System health, performance metrics, and logs',
     '/scheduled-runs': 'Cron-based agent invocations that survive container restarts',
     '/organization': 'Manage members, roles, and invitations for your organization',
+    '/billing': 'View your usage, spend, and plan',
     '/settings': 'Configure platform settings and preferences',
   };
 
@@ -434,6 +436,16 @@ const Navigation = () => {
             >
               <Building2 className="w-4 h-4" />
               <span className="text-sm font-medium">Organization</span>
+            </NavLink>
+            <NavLink
+              to="/billing"
+              className={navLinkClass}
+              data-tooltip-id="nav-tooltip"
+              data-tooltip-content={TOOLTIP_CONTENT['/billing']}
+              data-tooltip-place="right"
+            >
+              <Wallet className="w-4 h-4" />
+              <span className="text-sm font-medium">Usage &amp; Billing</span>
             </NavLink>
             <NavLink
               to="/settings"
