@@ -25,10 +25,12 @@ import {
   X as CloseIcon,
   Sparkles,
   GraduationCap,
-  AlertTriangle
+  AlertTriangle,
+  Building2
 } from 'lucide-react';
 import { Tooltip } from 'react-tooltip';
 import UserProfile from './auth/UserProfile';
+import OrgSwitcher from './org/OrgSwitcher';
 import { BrigadeLogo } from './UnicornBrigadeLogo';
 import { apiJson } from '../services/http';
 
@@ -110,6 +112,7 @@ const Navigation = () => {
     '/code-attribution': 'Track AI-generated code attribution and lineage',
     '/monitoring': 'System health, performance metrics, and logs',
     '/scheduled-runs': 'Cron-based agent invocations that survive container restarts',
+    '/organization': 'Manage members, roles, and invitations for your organization',
     '/settings': 'Configure platform settings and preferences',
   };
 
@@ -193,6 +196,11 @@ const Navigation = () => {
               <span>Development Mode: Authentication Bypassed</span>
             </div>
           )}
+        </div>
+
+        {/* Active-organization switcher */}
+        <div className="px-4 pt-4">
+          <OrgSwitcher />
         </div>
 
         {/* Navigation Items */}
@@ -416,6 +424,16 @@ const Navigation = () => {
             >
               <CalendarClock className="w-4 h-4" />
               <span className="text-sm font-medium">Scheduled Runs</span>
+            </NavLink>
+            <NavLink
+              to="/organization"
+              className={navLinkClass}
+              data-tooltip-id="nav-tooltip"
+              data-tooltip-content={TOOLTIP_CONTENT['/organization']}
+              data-tooltip-place="right"
+            >
+              <Building2 className="w-4 h-4" />
+              <span className="text-sm font-medium">Organization</span>
             </NavLink>
             <NavLink
               to="/settings"
