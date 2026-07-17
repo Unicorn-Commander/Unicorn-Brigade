@@ -5,10 +5,19 @@
 @layer base {
   /*
    * Semantic design tokens (HSL channel triples, consumed by tailwind.config.js
-   * as hsl(var(--token) / <alpha>)). These are the dark defaults and live on
-   * :root so the app is dark out of the box. A future light theme overrides
-   * these under `:root:not(.dark)` / `[data-theme="light"]` — the class strategy
-   * (darkMode:'class' + <html class="dark">) is already wired.
+   * as hsl(var(--token) / <alpha>)). These ARE the theme — a single, deliberate
+   * dark theme — and they are actively consumed by the primitives (Modal, Card,
+   * StatCard) and the charts, so they are not dead vars.
+   *
+   * Light mode is DEFERRED, on purpose. `darkMode:'class'` + <html class="dark">
+   * are wired as the substrate, but the app body is still ~2,200 hard-coded
+   * slate/white utility classes (bg-slate-900, border-slate-700, text-white ×450)
+   * with almost no token adoption and no foreground token. Flipping these tokens
+   * to light values today would only re-theme the handful of tokenized surfaces
+   * and leave the rest dark — white-on-white headings, dark cards on a light page.
+   * A real light theme needs the app tokenized first (bg/surface/card/border +
+   * NEW fg/elevated tokens, then a slate→token codemod), verified in both modes.
+   * Until then dark is the intentional single theme; no broken toggle is shipped.
    */
   :root {
     --bg: 229 84% 5%;        /* app background   ≈ slate-950 */
