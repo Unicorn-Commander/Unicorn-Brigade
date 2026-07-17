@@ -441,6 +441,7 @@ export default function ScheduledRuns() {
                         <button
                           onClick={() => runNow(row)}
                           title="Run now"
+                          aria-label={`Run ${row.name} now`}
                           className="p-1 text-emerald-400 hover:bg-slate-800 rounded"
                         >
                           <Play size={16} />
@@ -448,6 +449,7 @@ export default function ScheduledRuns() {
                         <button
                           onClick={() => edit(row)}
                           title="Edit"
+                          aria-label={`Edit ${row.name}`}
                           className="p-1 text-sky-400 hover:bg-slate-800 rounded"
                         >
                           <Pencil size={16} />
@@ -455,6 +457,7 @@ export default function ScheduledRuns() {
                         <button
                           onClick={() => remove(row)}
                           title="Delete"
+                          aria-label={`Delete ${row.name}`}
                           className="p-1 text-rose-400 hover:bg-slate-800 rounded"
                         >
                           <Trash2 size={16} />

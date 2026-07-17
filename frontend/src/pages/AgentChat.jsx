@@ -839,6 +839,7 @@ const AgentChat = () => {
               disabled={messages.length === 0}
               className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 disabled:opacity-30 transition-all"
               title="Clear chat"
+              aria-label="Clear chat"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -877,6 +878,7 @@ const AgentChat = () => {
                 </div>
                 <button
                   onClick={() => setShowToolsPanel(false)}
+                  aria-label="Close tools panel"
                   className="p-1 rounded hover:bg-slate-700/50 text-slate-400 hover:text-white transition-colors"
                 >
                   <X className="w-4 h-4" />
@@ -1211,6 +1213,7 @@ const AgentChat = () => {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || !selectedAgent || isStreaming || loadingConversation}
+              aria-label="Send message"
               className="flex-shrink-0 w-10 h-10 rounded-xl bg-unicorn-600 hover:bg-unicorn-500 disabled:bg-slate-700 disabled:text-slate-400 text-white flex items-center justify-center transition-all disabled:opacity-40"
             >
               {isStreaming ? (

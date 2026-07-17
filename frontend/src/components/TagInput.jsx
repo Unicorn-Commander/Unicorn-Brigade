@@ -40,6 +40,7 @@ const TagInput = ({
                 onClick={() => onRemove(tag)}
                 className="ml-1 hover:bg-unicorn-500/30 rounded p-0.5 transition-colors"
                 title="Remove tag"
+                aria-label={`Remove tag ${tag}`}
               >
                 <X className="w-3 h-3" />
               </button>

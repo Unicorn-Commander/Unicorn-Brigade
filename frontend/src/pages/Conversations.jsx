@@ -324,6 +324,7 @@ const Conversations = () => {
                         disabled={deletingId === conv.id}
                         className="p-1.5 rounded-lg text-slate-600 opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-50 transition-all"
                         title="Delete conversation"
+                        aria-label="Delete conversation"
                       >
                         {deletingId === conv.id ? (
                           <Loader2 className="w-4 h-4 animate-spin" />

@@ -20,6 +20,7 @@ const ToolCard = ({ tool, action, onAction, onConfigure }) => {
               onClick={onConfigure}
               className="p-2 rounded-lg hover:bg-slate-700 transition-colors"
               title="Configure"
+              aria-label="Configure tool"
             >
               <Settings className="w-4 h-4" />
             </button>
@@ -33,6 +34,7 @@ const ToolCard = ({ tool, action, onAction, onConfigure }) => {
                 : 'hover:bg-red-500/20 text-red-400'
             }`}
             title={action === 'add' ? 'Add tool' : 'Remove tool'}
+            aria-label={action === 'add' ? 'Add tool' : 'Remove tool'}
           >
             {action === 'add' ? (
               <Plus className="w-4 h-4" />

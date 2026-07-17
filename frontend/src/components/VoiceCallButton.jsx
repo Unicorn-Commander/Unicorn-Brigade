@@ -109,6 +109,7 @@ const VoiceCallButton = ({
       <motion.button
         onClick={onClick}
         disabled={isDisabled}
+        aria-label={getTooltipMessage()}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         className={`

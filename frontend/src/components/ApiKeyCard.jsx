@@ -58,6 +58,8 @@ const ApiKeyCard = ({ apiKey, onRevoke, onViewDetails }) => {
                 onClick={() => setShowKey(!showKey)}
                 className="p-1 rounded hover:bg-slate-700 transition-colors"
                 title={showKey ? 'Hide key' : 'Show key'}
+                aria-label={showKey ? 'Hide API key' : 'Show API key'}
+                aria-pressed={showKey}
               >
                 {showKey ? (
                   <EyeOff className="w-3 h-3 text-slate-400" />
@@ -127,6 +129,7 @@ const ApiKeyCard = ({ apiKey, onRevoke, onViewDetails }) => {
             onClick={handleRevoke}
             className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
             title="Revoke key"
+            aria-label="Revoke key"
           >
             <Trash2 className="w-4 h-4" />
           </button>

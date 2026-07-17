@@ -198,6 +198,7 @@ export default function GettingStartedWizard({ onClose }) {
           </div>
           <button
             onClick={handleFinish}
+            aria-label="Close getting started"
             className="p-3 min-h-[44px] min-w-[44px] hover:bg-slate-700/50 rounded-lg transition-colors"
           >
             <X className="w-5 h-5 text-slate-400" />

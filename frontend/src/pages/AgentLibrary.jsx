@@ -327,7 +327,7 @@ const AgentLibrary = () => {
               {searchQuery && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
                   Search: {searchQuery}
-                  <button onClick={() => setSearchQuery('')} className="hover:text-white">
+                  <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -335,7 +335,7 @@ const AgentLibrary = () => {
               {selectedDomain && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs">
                   Domain: {selectedDomain}
-                  <button onClick={() => setSelectedDomain('')} className="hover:text-white">
+                  <button onClick={() => setSelectedDomain('')} aria-label="Clear domain filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -343,7 +343,7 @@ const AgentLibrary = () => {
               {selectedTool && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-cyan-500/20 text-cyan-400 text-xs">
                   Tool: {selectedTool}
-                  <button onClick={() => setSelectedTool('')} className="hover:text-white">
+                  <button onClick={() => setSelectedTool('')} aria-label="Clear tool filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -351,7 +351,7 @@ const AgentLibrary = () => {
               {selectedStatus && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
                   Status: {selectedStatus}
-                  <button onClick={() => setSelectedStatus('')} className="hover:text-white">
+                  <button onClick={() => setSelectedStatus('')} aria-label="Clear status filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -359,7 +359,7 @@ const AgentLibrary = () => {
               {selectedType && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/20 text-amber-400 text-xs">
                   Type: {selectedType}
-                  <button onClick={() => setSelectedType('')} className="hover:text-white">
+                  <button onClick={() => setSelectedType('')} aria-label="Clear type filter" className="hover:text-white">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -429,6 +429,8 @@ const AgentLibrary = () => {
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => setViewMode('grid')}
+                  aria-label="Grid view"
+                  aria-pressed={viewMode === 'grid'}
                   className={`p-2 rounded transition-colors ${viewMode === 'grid' ? 'bg-unicorn-500' : 'bg-slate-800 hover:bg-slate-700'}`}
                 >
                   <div className="w-4 h-4 grid grid-cols-2 gap-0.5">
@@ -440,6 +442,8 @@ const AgentLibrary = () => {
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
+                  aria-label="List view"
+                  aria-pressed={viewMode === 'list'}
                   className={`p-2 rounded transition-colors ${viewMode === 'list' ? 'bg-unicorn-500' : 'bg-slate-800 hover:bg-slate-700'}`}
                 >
                   <div className="w-4 h-4 flex flex-col gap-1">
