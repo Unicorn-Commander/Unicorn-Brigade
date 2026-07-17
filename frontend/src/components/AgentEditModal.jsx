@@ -3,6 +3,7 @@ import { X, Save, Loader2, ChevronDown, Search } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
 import api from '../services/api';
+import Modal from './ui/Modal';
 
 const FALLBACK_TOOL_IDS = [
   'web_search',
@@ -190,8 +191,15 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
     .map((tool) => tool.name);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <Modal
+      isOpen
+      onClose={onClose}
+      ariaLabel="Edit Agent"
+      showClose={false}
+      closeOnBackdrop={false}
+      size="3xl"
+      panelClassName="bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col focus:outline-none"
+    >
         <div className="flex justify-between items-center p-6 border-b border-slate-700/50">
           <div>
             <h2 className="text-2xl font-bold text-white">Edit Agent</h2>
@@ -499,7 +507,6 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
             )}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
