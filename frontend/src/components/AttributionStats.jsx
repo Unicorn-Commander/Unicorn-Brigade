@@ -88,7 +88,7 @@ const SimpleBarChart = ({ data }) => {
               initial={{ width: 0 }}
               animate={{ width: `${(item.value / maxValue) * 100}%` }}
               transition={{ duration: 0.5, delay: index * 0.05 }}
-              className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"
+              className="h-full bg-gradient-to-r from-unicorn-600 to-unicorn-500 rounded-full"
             />
           </div>
         </div>
@@ -169,12 +169,12 @@ const AttributionStats = ({ statistics }) => {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs text-slate-500 mb-1">Total Lines</p>
-              <p className="text-2xl font-bold text-purple-400">
+              <p className="text-2xl font-bold text-unicorn-400">
                 {(statistics.total_lines || 0).toLocaleString()}
               </p>
             </div>
-            <div className="p-2 bg-purple-500/20 rounded-lg">
-              <FileCode className="w-5 h-5 text-purple-400" />
+            <div className="p-2 bg-unicorn-500/20 rounded-lg">
+              <FileCode className="w-5 h-5 text-unicorn-400" />
             </div>
           </div>
           <div className="flex items-center gap-1 mt-2 text-xs text-emerald-400">
@@ -193,12 +193,12 @@ const AttributionStats = ({ statistics }) => {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs text-slate-500 mb-1">Files Modified</p>
-              <p className="text-2xl font-bold text-pink-400">
+              <p className="text-2xl font-bold text-unicorn-400">
                 {(statistics.total_files || 0).toLocaleString()}
               </p>
             </div>
-            <div className="p-2 bg-pink-500/20 rounded-lg">
-              <FileCode className="w-5 h-5 text-pink-400" />
+            <div className="p-2 bg-unicorn-500/20 rounded-lg">
+              <FileCode className="w-5 h-5 text-unicorn-400" />
             </div>
           </div>
           <div className="flex items-center gap-1 mt-2 text-xs text-slate-500">
@@ -266,7 +266,7 @@ const AttributionStats = ({ statistics }) => {
           className="card"
         >
           <div className="flex items-center gap-2 mb-4">
-            <PieChart className="w-5 h-5 text-purple-400" />
+            <PieChart className="w-5 h-5 text-unicorn-400" />
             <h3 className="text-lg font-semibold text-slate-200">
               Model Usage
             </h3>
@@ -316,7 +316,7 @@ const AttributionStats = ({ statistics }) => {
           className="card"
         >
           <div className="flex items-center gap-2 mb-4">
-            <BarChart3 className="w-5 h-5 text-pink-400" />
+            <BarChart3 className="w-5 h-5 text-unicorn-400" />
             <h3 className="text-lg font-semibold text-slate-200">
               Most Active Agents
             </h3>

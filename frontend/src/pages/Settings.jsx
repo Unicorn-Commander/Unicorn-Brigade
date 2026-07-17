@@ -268,7 +268,7 @@ const Settings = () => {
                           </span>
                         )}
                         {model.quality && (
-                          <span className="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-400">
+                          <span className="text-xs px-2 py-0.5 rounded bg-unicorn-500/20 text-unicorn-400">
                             Quality: {model.quality}/5
                           </span>
                         )}

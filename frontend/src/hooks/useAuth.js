@@ -271,9 +271,9 @@ const useAuth = create((set, get) => ({
     const tierColors = {
       trial: 'bg-slate-100 text-slate-800 border-slate-200',
       starter: 'bg-blue-100 text-blue-800 border-blue-200',
-      professional: 'bg-purple-100 text-purple-800 border-purple-200',
+      professional: 'bg-unicorn-100 text-unicorn-800 border-unicorn-200',
       enterprise: 'bg-amber-100 text-amber-800 border-amber-200',
-      founders: 'bg-gradient-to-r from-purple-500 to-pink-500 text-white border-purple-300'
+      founders: 'bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white border-unicorn-300'
     };
 
     return tierColors[user.tier] || 'bg-gray-100 text-gray-800 border-gray-200';

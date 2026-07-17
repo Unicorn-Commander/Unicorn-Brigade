@@ -151,7 +151,7 @@ const SyntaxHighlightedJSON = ({ data, isError = false }) => {
           tokens.push(
             <span
               key={`${lineIndex}-${tokenIndex++}`}
-              className={isKey ? 'text-purple-400' : isError ? 'text-red-300' : 'text-emerald-400'}
+              className={isKey ? 'text-unicorn-400' : isError ? 'text-red-300' : 'text-emerald-400'}
             >
               {str}
             </span>
@@ -399,7 +399,7 @@ const ToolCallCard = ({ toolCall, compact = false }) => {
                         href={toolCall.result.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-300 transition-colors"
+                        className="flex items-center gap-1 text-[10px] text-unicorn-400 hover:text-unicorn-300 transition-colors"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <ExternalLink className="w-3 h-3" />

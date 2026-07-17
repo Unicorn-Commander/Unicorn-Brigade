@@ -84,10 +84,10 @@ export default function AuthCallback() {
   }, [searchParams, navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-slate-900 to-blue-900">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-unicorn-900 via-slate-900 to-blue-900">
       {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-unicorn-500/20 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
 
@@ -98,7 +98,7 @@ export default function AuthCallback() {
             {/* Status Icon */}
             <div className="flex justify-center mb-6">
               {status === 'processing' && (
-                <Loader2 className="w-16 h-16 text-purple-400 animate-spin" />
+                <Loader2 className="w-16 h-16 text-unicorn-400 animate-spin" />
               )}
               {status === 'success' && (
                 <CheckCircle className="w-16 h-16 text-green-400 animate-bounce" />
@@ -111,7 +111,7 @@ export default function AuthCallback() {
             {/* Title */}
             <h2 className="text-2xl font-bold mb-3">
               {status === 'processing' && (
-                <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-unicorn-400 to-blue-400 bg-clip-text text-transparent">
                   Processing...
                 </span>
               )}
@@ -131,9 +131,9 @@ export default function AuthCallback() {
             {/* Processing animation */}
             {status === 'processing' && (
               <div className="mt-8 flex justify-center space-x-2">
-                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                <div className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
               </div>
             )}
 
@@ -142,7 +142,7 @@ export default function AuthCallback() {
               <div className="mt-8">
                 <button
                   onClick={() => navigate('/login', { replace: true })}
-                  className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition text-sm font-medium"
+                  className="px-6 py-2 bg-unicorn-600 hover:bg-unicorn-500 text-white rounded-lg transition text-sm font-medium"
                 >
                   Return to Login
                 </button>
@@ -154,7 +154,7 @@ export default function AuthCallback() {
         {/* Branding */}
         <div className="mt-6 text-center">
           <p className="text-slate-500 text-xs">
-            <span className="text-purple-400 font-semibold">🦄 Unicorn Brigade</span>
+            <span className="text-unicorn-400 font-semibold">🦄 Unicorn Brigade</span>
             {' '}- AI Agent Infrastructure Platform
           </p>
         </div>

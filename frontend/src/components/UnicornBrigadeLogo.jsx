@@ -25,7 +25,7 @@ export function GeneralAvatar({ size = 64, className = '' }) {
     <img
       src="/The_General_Logo.png"
       alt="The General"
-      className={`rounded-lg shadow-lg shadow-purple-500/20 ${className}`}
+      className={`rounded-lg shadow-lg shadow-unicorn-500/20 ${className}`}
       style={{ width: size, height: size }}
     />
   );
@@ -51,7 +51,7 @@ export function GunnyAvatar({ size = 64, className = '' }) {
 export function AgentAvatar({ emoji = '🦄', size = 40, className = '' }) {
   return (
     <div
-      className={`flex items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 ${className}`}
+      className={`flex items-center justify-center rounded-lg bg-gradient-to-br from-unicorn-600 to-unicorn-500 ${className}`}
       style={{ width: size, height: size }}
     >
       <span style={{ fontSize: size * 0.55 }} role="img" aria-label="Agent">

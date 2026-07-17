@@ -214,7 +214,7 @@ const VoiceCallModal = ({
           className="relative w-full max-w-sm rounded-3xl overflow-hidden"
         >
           {/* Background gradient */}
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-purple-900/30 to-slate-900" />
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-unicorn-900/30 to-slate-900" />
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(139,92,246,0.15),transparent_50%)]" />
 
           {/* Content */}
@@ -238,13 +238,13 @@ const VoiceCallModal = ({
                 {isAgentSpeaking && (
                   <>
                     <motion.div
-                      className="absolute inset-0 rounded-full bg-purple-500/30"
+                      className="absolute inset-0 rounded-full bg-unicorn-500/30"
                       initial={{ scale: 1, opacity: 0.5 }}
                       animate={{ scale: 1.5, opacity: 0 }}
                       transition={{ duration: 1.5, repeat: Infinity }}
                     />
                     <motion.div
-                      className="absolute inset-0 rounded-full bg-purple-500/20"
+                      className="absolute inset-0 rounded-full bg-unicorn-500/20"
                       initial={{ scale: 1, opacity: 0.5 }}
                       animate={{ scale: 1.8, opacity: 0 }}
                       transition={{ duration: 1.5, repeat: Infinity, delay: 0.3 }}
@@ -256,9 +256,9 @@ const VoiceCallModal = ({
                 <motion.div
                   className={`
                     w-28 h-28 rounded-full flex items-center justify-center
-                    bg-gradient-to-br from-purple-500 to-pink-500
-                    shadow-xl shadow-purple-500/25
-                    ${isAgentSpeaking ? 'ring-4 ring-purple-400/50' : ''}
+                    bg-gradient-to-br from-unicorn-600 to-unicorn-500
+                    shadow-xl shadow-unicorn-500/25
+                    ${isAgentSpeaking ? 'ring-4 ring-unicorn-400/50' : ''}
                   `}
                   animate={isAgentSpeaking ? { scale: [1, 1.05, 1] } : {}}
                   transition={{ duration: 0.5, repeat: isAgentSpeaking ? Infinity : 0 }}
@@ -410,7 +410,7 @@ const VoiceCallModal = ({
                       <select
                         value={selectedAudioDevice || ''}
                         onChange={(e) => changeAudioDevice(e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white appearance-none cursor-pointer focus:outline-none focus:border-purple-500"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white appearance-none cursor-pointer focus:outline-none focus:border-unicorn-500"
                       >
                         {audioDevices.map((device) => (
                           <option key={device.deviceId} value={device.deviceId}>

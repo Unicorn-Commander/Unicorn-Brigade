@@ -135,7 +135,7 @@ const Conversations = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
               Conversations
             </h1>
             <p className="text-slate-400 mt-1">
@@ -145,7 +145,7 @@ const Conversations = () => {
 
           <button
             onClick={() => navigate('/chat')}
-            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium transition-all"
+            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-unicorn-600 hover:bg-unicorn-500 text-white font-medium transition-all"
           >
             <MessageSquare className="w-5 h-5" />
             <span>New Chat</span>
@@ -163,7 +163,7 @@ const Conversations = () => {
                 placeholder="Search conversations by title, agent, or model..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all"
+                className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50 transition-all"
               />
             </div>
 
@@ -173,7 +173,7 @@ const Conversations = () => {
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50"
+                className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
               >
                 <option value="newest">Newest First</option>
                 <option value="oldest">Oldest First</option>
@@ -187,7 +187,7 @@ const Conversations = () => {
         {/* Loading State */}
         {loading && (
           <div className="text-center py-16">
-            <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
+            <Loader2 className="w-12 h-12 text-unicorn-400 animate-spin mx-auto mb-4" />
             <p className="text-slate-400">Loading conversations...</p>
           </div>
         )}
@@ -202,7 +202,7 @@ const Conversations = () => {
             <p className="text-slate-400 max-w-md mx-auto mb-6">{error}</p>
             <button
               onClick={loadConversations}
-              className="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white hover:border-purple-500/40 transition-all"
+              className="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white hover:border-unicorn-500/40 transition-all"
             >
               Try Again
             </button>
@@ -212,8 +212,8 @@ const Conversations = () => {
         {/* Empty State */}
         {!loading && !error && conversations.length === 0 && (
           <div className="text-center py-16">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mx-auto mb-6">
-              <MessagesSquare className="w-10 h-10 text-purple-400" />
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 flex items-center justify-center mx-auto mb-6">
+              <MessagesSquare className="w-10 h-10 text-unicorn-400" />
             </div>
             <h3 className="text-2xl font-bold text-white mb-2">No Conversations Yet</h3>
             <p className="text-slate-400 max-w-md mx-auto mb-6">
@@ -221,7 +221,7 @@ const Conversations = () => {
             </p>
             <button
               onClick={() => navigate('/chat')}
-              className="flex items-center space-x-2 px-6 py-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium transition-all mx-auto"
+              className="flex items-center space-x-2 px-6 py-3 rounded-lg bg-unicorn-600 hover:bg-unicorn-500 text-white font-medium transition-all mx-auto"
             >
               <MessageSquare className="w-5 h-5" />
               <span>Start a Conversation</span>
@@ -239,7 +239,7 @@ const Conversations = () => {
             </p>
             <button
               onClick={() => setSearchQuery('')}
-              className="text-purple-400 hover:text-purple-300 text-sm transition-colors"
+              className="text-unicorn-400 hover:text-unicorn-300 text-sm transition-colors"
             >
               Clear search
             </button>
@@ -253,7 +253,7 @@ const Conversations = () => {
               <div
                 key={conv.id}
                 onClick={() => resumeConversation(conv.id)}
-                className="group relative overflow-hidden rounded-xl border border-slate-700/50 bg-slate-900/50 backdrop-blur-xl cursor-pointer transition-all duration-300 hover:border-purple-500/40 hover:shadow-lg hover:shadow-purple-500/10"
+                className="group relative overflow-hidden rounded-xl border border-slate-700/50 bg-slate-900/50 backdrop-blur-xl cursor-pointer transition-all duration-300 hover:border-unicorn-500/40 hover:shadow-lg hover:shadow-unicorn-500/10"
               >
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-4">
@@ -267,7 +267,7 @@ const Conversations = () => {
                       {/* Content */}
                       <div className="flex-1 min-w-0">
                         {/* Title */}
-                        <h3 className="text-base font-semibold text-white group-hover:text-purple-400 transition-colors truncate">
+                        <h3 className="text-base font-semibold text-white group-hover:text-unicorn-400 transition-colors truncate">
                           {conv.title || 'Untitled Conversation'}
                         </h3>
 
@@ -335,7 +335,7 @@ const Conversations = () => {
                 </div>
 
                 {/* Hover glow effect */}
-                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-r from-purple-500/5 to-pink-500/5 pointer-events-none"></div>
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-r from-unicorn-500/5 to-unicorn-500/5 pointer-events-none"></div>
               </div>
             ))}
           </div>

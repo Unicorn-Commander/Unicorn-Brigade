@@ -711,7 +711,7 @@ const AgentChat = () => {
             <div className="relative">
               <button
                 onClick={() => setShowAgentPicker(!showAgentPicker)}
-                className="flex items-center space-x-3 px-4 py-2 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-purple-500/40 transition-all"
+                className="flex items-center space-x-3 px-4 py-2 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-unicorn-500/40 transition-all"
                 disabled={agentsLoading}
               >
                 {agentsLoading ? (
@@ -763,7 +763,7 @@ const AgentChat = () => {
                                 setShowAgentPicker(false);
                               }}
                               className={`w-full flex items-center space-x-3 px-4 py-2.5 hover:bg-slate-700/50 transition-colors ${
-                                selectedAgent?.id === agent.id ? 'bg-purple-500/10' : ''
+                                selectedAgent?.id === agent.id ? 'bg-unicorn-500/10' : ''
                               }`}
                             >
                               <span className="text-xl">{agent.avatar || '🦄'}</span>
@@ -774,7 +774,7 @@ const AgentChat = () => {
                                 <p className="text-xs text-slate-400 truncate">{agent.title || agent.agentType}</p>
                               </div>
                               {selectedAgent?.id === agent.id && (
-                                <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                                <div className="w-2 h-2 rounded-full bg-unicorn-500"></div>
                               )}
                             </button>
                           ))}
@@ -812,8 +812,8 @@ const AgentChat = () => {
                     onClick={() => setShowToolsPanel(!showToolsPanel)}
                     className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all ${
                       showToolsPanel
-                        ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40'
-                        : 'bg-slate-800/60 text-slate-400 border border-slate-700/40 hover:text-white hover:border-purple-500/40'
+                        ? 'bg-unicorn-500/20 text-unicorn-400 border border-unicorn-500/40'
+                        : 'bg-slate-800/60 text-slate-400 border border-slate-700/40 hover:text-white hover:border-unicorn-500/40'
                     }`}
                     title="View available tools"
                   >
@@ -868,9 +868,9 @@ const AgentChat = () => {
             <div className="px-6 py-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
-                  <Wrench className="w-4 h-4 text-purple-400" />
+                  <Wrench className="w-4 h-4 text-unicorn-400" />
                   <span className="text-sm font-medium text-white">Available Tools</span>
-                  <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 text-xs">
+                  <span className="px-2 py-0.5 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
                     {selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0}
                   </span>
                 </div>
@@ -916,7 +916,7 @@ const AgentChat = () => {
       {loadingConversation && (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <Loader2 className="w-10 h-10 text-purple-400 animate-spin mx-auto mb-3" />
+            <Loader2 className="w-10 h-10 text-unicorn-400 animate-spin mx-auto mb-3" />
             <p className="text-slate-400 text-sm">Loading conversation...</p>
           </div>
         </div>
@@ -928,11 +928,11 @@ const AgentChat = () => {
           <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-6">
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 flex items-center justify-center mb-6">
                   {selectedAgent ? (
                     <span className="text-4xl">{selectedAgent.avatar || '🦄'}</span>
                   ) : (
-                    <Sparkles className="w-10 h-10 text-purple-400" />
+                    <Sparkles className="w-10 h-10 text-unicorn-400" />
                   )}
                 </div>
                 <h2 className="text-2xl font-bold text-white mb-2">
@@ -984,7 +984,7 @@ const AgentChat = () => {
                             setInput(prompt);
                             textareaRef.current?.focus();
                           }}
-                          className="px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 text-sm text-slate-300 hover:border-purple-500/40 hover:text-white transition-all"
+                          className="px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 text-sm text-slate-300 hover:border-unicorn-500/40 hover:text-white transition-all"
                         >
                           {prompt}
                         </button>
@@ -1006,7 +1006,7 @@ const AgentChat = () => {
                     {msg.role === 'user' ? (
                       /* User message */
                       <div className="max-w-[80%]">
-                        <div className="px-5 py-3 rounded-2xl rounded-br-md bg-purple-600/80 text-white">
+                        <div className="px-5 py-3 rounded-2xl rounded-br-md bg-unicorn-600/80 text-white">
                           <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                         </div>
                       </div>
@@ -1020,7 +1020,7 @@ const AgentChat = () => {
                           <div className="flex-1 min-w-0">
                             {/* Agent name */}
                             <div className="flex items-center space-x-2 mb-1">
-                              <span className="text-xs font-semibold text-purple-400">
+                              <span className="text-xs font-semibold text-unicorn-400">
                                 {msg.agent?.name || 'Agent'}
                               </span>
                               {msg.model && (
@@ -1052,7 +1052,7 @@ const AgentChat = () => {
                                     code({ node, inline, className, children, ...props }) {
                                       if (inline) {
                                         return (
-                                          <code className="px-1.5 py-0.5 rounded bg-slate-800 text-purple-300 text-xs" {...props}>
+                                          <code className="px-1.5 py-0.5 rounded bg-slate-800 text-unicorn-300 text-xs" {...props}>
                                             {children}
                                           </code>
                                         );
@@ -1081,7 +1081,7 @@ const AgentChat = () => {
                                   {msg.content}
                                 </ReactMarkdown>
                               ) : msg.isStreaming ? (
-                                <span className="inline-block w-1.5 h-4 bg-purple-400 animate-pulse rounded-sm"></span>
+                                <span className="inline-block w-1.5 h-4 bg-unicorn-400 animate-pulse rounded-sm"></span>
                               ) : null}
                             </div>
 
@@ -1166,9 +1166,9 @@ const AgentChat = () => {
                           ) : (
                             <>
                               <div className="flex space-x-1">
-                                <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                                <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                                <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                                <span className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                                <span className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                                <span className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                               </div>
                               <span className="text-xs text-slate-500">
                                 {selectedAgent?.displayName || 'Agent'} is thinking...
@@ -1204,13 +1204,13 @@ const AgentChat = () => {
                 }
                 disabled={!selectedAgent || isStreaming || loadingConversation}
                 rows={1}
-                className="w-full resize-none rounded-xl bg-slate-800/60 border border-slate-700/50 px-4 py-3 pr-12 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20 disabled:opacity-40 transition-all"
+                className="w-full resize-none rounded-xl bg-slate-800/60 border border-slate-700/50 px-4 py-3 pr-12 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-unicorn-500/50 focus:ring-1 focus:ring-unicorn-500/20 disabled:opacity-40 transition-all"
               />
             </div>
             <button
               onClick={sendMessage}
               disabled={!input.trim() || !selectedAgent || isStreaming || loadingConversation}
-              className="flex-shrink-0 w-10 h-10 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:text-slate-500 text-white flex items-center justify-center transition-all disabled:opacity-40"
+              className="flex-shrink-0 w-10 h-10 rounded-xl bg-unicorn-600 hover:bg-unicorn-500 disabled:bg-slate-700 disabled:text-slate-500 text-white flex items-center justify-center transition-all disabled:opacity-40"
             >
               {isStreaming ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

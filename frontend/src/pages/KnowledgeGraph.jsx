@@ -244,7 +244,7 @@ const KnowledgeGraph = () => {
     return (
       <div className="min-h-screen p-8 flex items-center justify-center">
         <div className="text-center">
-          <Network className="w-16 h-16 text-purple-500 animate-pulse mx-auto mb-4" />
+          <Network className="w-16 h-16 text-unicorn-500 animate-pulse mx-auto mb-4" />
           <p className="text-slate-400">Loading Knowledge Graph...</p>
         </div>
       </div>
@@ -452,7 +452,7 @@ const KnowledgeGraph = () => {
                   <span className="text-white font-semibold">{graphData.nodes.length}</span>
                 </div>
                 <div className="flex items-center space-x-1.5">
-                  <div className="w-2 h-2 rounded-full bg-purple-500" />
+                  <div className="w-2 h-2 rounded-full bg-unicorn-500" />
                   <span className="text-slate-400">Links:</span>
                   <span className="text-white font-semibold">{graphData.links.length}</span>
                 </div>
@@ -475,7 +475,7 @@ const KnowledgeGraph = () => {
             {/* Graph Canvas */}
             <div className="absolute inset-0">
               {graphData.nodes.length > 0 ? (
-                <Suspense fallback={<div className="h-full flex items-center justify-center"><Network className="w-8 h-8 text-purple-400 animate-pulse" /></div>}>
+                <Suspense fallback={<div className="h-full flex items-center justify-center"><Network className="w-8 h-8 text-unicorn-400 animate-pulse" /></div>}>
                   <ForceGraph3D
                     ref={fgRef}
                     graphData={graphData}
@@ -599,9 +599,9 @@ const KnowledgeGraph = () => {
                           >
                             <div className="flex items-center space-x-1 text-slate-300">
                               <span className="text-cyan-400">{rel.from?.name}</span>
-                              <ChevronRight className="w-3 h-3 text-purple-400" />
-                              <span className="text-purple-400">{rel.relationship}</span>
-                              <ChevronRight className="w-3 h-3 text-purple-400" />
+                              <ChevronRight className="w-3 h-3 text-unicorn-400" />
+                              <span className="text-unicorn-400">{rel.relationship}</span>
+                              <ChevronRight className="w-3 h-3 text-unicorn-400" />
                               <span className="text-cyan-400">{rel.to?.name}</span>
                             </div>
                           </div>
@@ -628,14 +628,14 @@ const KnowledgeGraph = () => {
             {stats?.relationship_types?.length > 0 && (
               <div className="card glass">
                 <h3 className="flex items-center space-x-2 text-sm font-semibold text-white mb-4">
-                  <Share2 className="w-4 h-4 text-purple-400" />
+                  <Share2 className="w-4 h-4 text-unicorn-400" />
                   <span>Relationship Types</span>
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {stats.relationship_types.map((type) => (
                     <span
                       key={type}
-                      className="px-2 py-1 text-xs rounded-full bg-purple-500/20 text-purple-300"
+                      className="px-2 py-1 text-xs rounded-full bg-unicorn-500/20 text-unicorn-300"
                     >
                       {type}
                     </span>
@@ -730,7 +730,7 @@ const KnowledgeGraph = () => {
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {nodeDetails.relationships.slice(0, 5).map((rel, idx) => (
                     <div key={idx} className="text-[10px] text-slate-400">
-                      {rel.from?.name} <span className="text-purple-400">{rel.relationship}</span> {rel.to?.name}
+                      {rel.from?.name} <span className="text-unicorn-400">{rel.relationship}</span> {rel.to?.name}
                     </div>
                   ))}
                 </div>

@@ -253,8 +253,8 @@ const CodeAttribution = () => {
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <FileCode className="w-8 h-8 text-purple-400" />
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              <FileCode className="w-8 h-8 text-unicorn-400" />
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
                 Code Attribution
               </h1>
             </div>
@@ -361,7 +361,7 @@ const CodeAttribution = () => {
               className={`
                 flex items-center gap-2 px-4 py-3 border-b-2 transition-all
                 ${activeTab === tab.id
-                  ? 'border-purple-500 text-purple-400'
+                  ? 'border-unicorn-500 text-unicorn-400'
                   : 'border-transparent text-slate-500 hover:text-slate-300'
                 }
               `}
@@ -404,7 +404,7 @@ const CodeAttribution = () => {
                         >
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <FileCode className="w-5 h-5 text-purple-400 flex-shrink-0" />
+                              <FileCode className="w-5 h-5 text-unicorn-400 flex-shrink-0" />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium text-slate-200 truncate">
                                   {filePath.split('/').pop()}
@@ -433,7 +433,7 @@ const CodeAttribution = () => {
                         {attrs.length > 3 && (
                           <button
                             onClick={() => handleFileClick(filePath)}
-                            className="w-full mt-3 py-2 text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                            className="w-full mt-3 py-2 text-xs text-unicorn-400 hover:text-unicorn-300 transition-colors"
                           >
                             View all {attrs.length} attributions →
                           </button>
@@ -463,8 +463,8 @@ const CodeAttribution = () => {
                         <div key={agentId} className="card">
                           <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
-                              <div className="p-2 bg-purple-500/20 rounded-lg">
-                                <User className="w-5 h-5 text-purple-400" />
+                              <div className="p-2 bg-unicorn-500/20 rounded-lg">
+                                <User className="w-5 h-5 text-unicorn-400" />
                               </div>
                               <div>
                                 <h3 className="text-lg font-semibold text-slate-200">
@@ -477,13 +477,13 @@ const CodeAttribution = () => {
                             <div className="flex items-center gap-4 text-sm">
                               <div className="text-right">
                                 <p className="text-slate-500">Lines</p>
-                                <p className="font-medium text-purple-400">
+                                <p className="font-medium text-unicorn-400">
                                   {totalLines.toLocaleString()}
                                 </p>
                               </div>
                               <div className="text-right">
                                 <p className="text-slate-500">Files</p>
-                                <p className="font-medium text-pink-400">
+                                <p className="font-medium text-unicorn-400">
                                   {uniqueFiles}
                                 </p>
                               </div>
@@ -523,12 +523,12 @@ const CodeAttribution = () => {
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <Clock className="w-5 h-5 text-purple-400" />
+                      <Clock className="w-5 h-5 text-unicorn-400" />
                       <h2 className="text-lg font-semibold text-slate-200">
                         Recent Activity
                       </h2>
                       {refreshing && (
-                        <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
+                        <Loader2 className="w-4 h-4 text-unicorn-400 animate-spin" />
                       )}
                     </div>
 
@@ -537,7 +537,7 @@ const CodeAttribution = () => {
                         type="checkbox"
                         checked={autoRefresh}
                         onChange={(e) => setAutoRefresh(e.target.checked)}
-                        className="rounded border-slate-700 bg-slate-800 text-purple-500 focus:ring-purple-500"
+                        className="rounded border-slate-700 bg-slate-800 text-unicorn-500 focus:ring-unicorn-500"
                       />
                       <span className="text-slate-400">Auto-refresh (10s)</span>
                     </label>

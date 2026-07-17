@@ -215,7 +215,7 @@ function EditModal({ open, initial, agents, onClose, onSave }) {
           <button
             onClick={submit}
             disabled={saving || !form.name || !form.agentId || !form.cron || !form.prompt}
-            className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded disabled:opacity-50"
+            className="px-4 py-2 bg-unicorn-600 hover:bg-unicorn-500 text-white rounded disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save'}
           </button>
@@ -338,7 +338,7 @@ export default function ScheduledRuns() {
       <Breadcrumbs items={[{ label: 'Scheduled Runs' }]} />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Calendar className="text-purple-400" size={28} />
+          <Calendar className="text-unicorn-400" size={28} />
           <div>
             <h1 className="text-2xl font-bold text-white">Scheduled Runs</h1>
             <p className="text-sm text-zinc-400">
@@ -356,7 +356,7 @@ export default function ScheduledRuns() {
           </button>
           <button
             onClick={create}
-            className="flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded"
+            className="flex items-center gap-2 px-3 py-2 bg-unicorn-600 hover:bg-unicorn-500 text-white rounded"
           >
             <Plus size={16} /> New
           </button>

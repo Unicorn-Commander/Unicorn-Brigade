@@ -53,7 +53,7 @@ const AttributionTimeline = ({ attributions, onItemClick }) => {
           {/* Date Header */}
           <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-sm py-2 mb-4">
             <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-purple-400" />
+              <Calendar className="w-4 h-4 text-unicorn-400" />
               <h3 className="text-sm font-semibold text-slate-200">{date}</h3>
               <span className="text-xs text-slate-500">
                 ({items.length} {items.length === 1 ? 'change' : 'changes'})
@@ -64,7 +64,7 @@ const AttributionTimeline = ({ attributions, onItemClick }) => {
           {/* Timeline Items */}
           <div className="relative pl-8 space-y-4">
             {/* Timeline Line */}
-            <div className="absolute left-2 top-0 bottom-0 w-px bg-gradient-to-b from-purple-500/50 via-purple-500/20 to-transparent" />
+            <div className="absolute left-2 top-0 bottom-0 w-px bg-gradient-to-b from-unicorn-500/50 via-unicorn-500/20 to-transparent" />
 
             {items.map((attr, index) => (
               <motion.div
@@ -76,12 +76,12 @@ const AttributionTimeline = ({ attributions, onItemClick }) => {
               >
                 {/* Timeline Dot */}
                 <div className="absolute left-[-26px] top-3">
-                  <div className="w-3 h-3 rounded-full bg-purple-500 ring-4 ring-slate-900" />
+                  <div className="w-3 h-3 rounded-full bg-unicorn-500 ring-4 ring-slate-900" />
                 </div>
 
                 {/* Timeline Item Card */}
                 <div
-                  className="card p-3 hover:border-purple-500/30 transition-all cursor-pointer group"
+                  className="card p-3 hover:border-unicorn-500/30 transition-all cursor-pointer group"
                   onClick={() => onItemClick && onItemClick(attr)}
                 >
                   {/* Time Badge */}
@@ -97,7 +97,7 @@ const AttributionTimeline = ({ attributions, onItemClick }) => {
 
                   {/* File Path */}
                   <div className="flex items-center gap-2 mb-2">
-                    <FileCode className="w-4 h-4 text-purple-400" />
+                    <FileCode className="w-4 h-4 text-unicorn-400" />
                     <span className="text-sm font-medium text-slate-200">
                       {getFileName(attr.file_path)}
                     </span>

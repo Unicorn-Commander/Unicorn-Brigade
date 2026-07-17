@@ -325,7 +325,7 @@ const AgentLibrary = () => {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="text-xs text-slate-500">Active filters:</span>
               {searchQuery && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-purple-500/20 text-purple-400 text-xs">
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
                   Search: {searchQuery}
                   <button onClick={() => setSearchQuery('')} className="hover:text-white">
                     <X className="w-3 h-3" />
@@ -510,7 +510,7 @@ const AgentLibrary = () => {
                             e.stopPropagation();
                             setEditingAgent(agent);
                           }}
-                          className="flex-1 px-4 py-2 bg-purple-600/20 text-purple-400 rounded-lg hover:bg-purple-600/30 transition-colors flex items-center justify-center space-x-2"
+                          className="flex-1 px-4 py-2 bg-unicorn-600/20 text-unicorn-400 rounded-lg hover:bg-unicorn-600/30 transition-colors flex items-center justify-center space-x-2"
                         >
                           <Edit className="w-4 h-4" />
                           <span>Edit</span>
@@ -533,7 +533,7 @@ const AgentLibrary = () => {
                             e.stopPropagation();
                             navigate(`/chat?agent=${agent.id}`);
                           }}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium shadow-lg transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-unicorn-600 hover:bg-unicorn-500 text-white text-sm font-medium shadow-lg transition-colors"
                         >
                           <MessageSquare className="w-4 h-4" />
                           Chat Now
@@ -661,7 +661,7 @@ const AgentListItem = ({ agent, navigate, onEdit, onDelete }) => {
         {/* Quick Chat button */}
         <button
           onClick={handleChatClick}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors text-sm flex-shrink-0"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-unicorn-500/20 text-unicorn-400 hover:bg-unicorn-500/30 transition-colors text-sm flex-shrink-0"
           title="Start chat"
         >
           <MessageSquare className="w-4 h-4" />
@@ -673,7 +673,7 @@ const AgentListItem = ({ agent, navigate, onEdit, onDelete }) => {
             e.stopPropagation();
             onEdit();
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 transition-colors text-sm flex-shrink-0"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-unicorn-600/20 text-unicorn-400 hover:bg-unicorn-600/30 transition-colors text-sm flex-shrink-0"
           title="Edit agent"
         >
           <Edit className="w-4 h-4" />

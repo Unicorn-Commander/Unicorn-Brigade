@@ -790,11 +790,11 @@ What would you like to create today?`
       {/* Deploy Confirmation Panel */}
       {showConfirmation && parsedAgentConfig && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg mx-4 rounded-2xl border border-slate-700/50 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-purple-500/10 overflow-hidden">
+          <div className="w-full max-w-lg mx-4 rounded-2xl border border-slate-700/50 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-unicorn-500/10 overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 bg-gradient-to-r from-purple-500/10 to-pink-500/10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 bg-gradient-to-r from-unicorn-500/10 to-unicorn-500/10">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
                   <Rocket className="w-5 h-5 text-white" />
                 </div>
                 <div>
@@ -830,7 +830,7 @@ What would you like to create today?`
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Domain</label>
                     <div className="flex items-center space-x-2">
-                      <Shield className="w-4 h-4 text-purple-400" />
+                      <Shield className="w-4 h-4 text-unicorn-400" />
                       <span className="text-sm text-slate-200 capitalize">{parsedAgentConfig.domain}</span>
                     </div>
                   </div>
@@ -854,7 +854,7 @@ What would you like to create today?`
                     {parsedAgentConfig.capabilities.map((cap, idx) => (
                       <span
                         key={idx}
-                        className="px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-300 text-xs border border-purple-500/20"
+                        className="px-2.5 py-1 rounded-lg bg-unicorn-500/10 text-unicorn-300 text-xs border border-unicorn-500/20"
                       >
                         {cap}
                       </span>
@@ -913,7 +913,7 @@ What would you like to create today?`
               <button
                 onClick={handleDeployAgent}
                 disabled={isDeploying}
-                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-purple-500/20"
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-unicorn-600 to-unicorn-500 hover:from-unicorn-500 hover:to-unicorn-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-unicorn-500/20"
               >
                 {isDeploying ? (
                   <>

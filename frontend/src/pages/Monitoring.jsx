@@ -375,7 +375,7 @@ const Monitoring = () => {
 
             <div className="p-4 bg-slate-800/50 rounded-lg">
               <div className="flex items-center space-x-3 mb-3">
-                <HardDrive className="w-6 h-6 text-purple-400" />
+                <HardDrive className="w-6 h-6 text-unicorn-400" />
                 <h3 className="font-semibold text-white">Memory Usage</h3>
               </div>
               <div className="space-y-2">
@@ -384,7 +384,7 @@ const Monitoring = () => {
                   <span className="text-white font-semibold">{resources.memory_percent?.toFixed(1) || 0}%</span>
                 </div>
                 <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-700" style={{ width: `${resources.memory_percent || 0}%` }}></div>
+                  <div className="h-full bg-gradient-to-r from-unicorn-600 to-unicorn-500 transition-all duration-700" style={{ width: `${resources.memory_percent || 0}%` }}></div>
                 </div>
               </div>
             </div>

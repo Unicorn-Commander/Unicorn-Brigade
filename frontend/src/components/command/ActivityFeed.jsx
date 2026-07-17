@@ -3,7 +3,7 @@ import AgentAvatar from '../AgentAvatar';
 
 // Per event-type accent (dot + action text colour).
 const KIND = {
-  agent_invocation: { dot: 'bg-purple-400', text: 'text-purple-200' },
+  agent_invocation: { dot: 'bg-unicorn-400', text: 'text-unicorn-200' },
   tool_call: { dot: 'bg-cyan-400', text: 'text-cyan-200' },
   tool_result: { dot: 'bg-cyan-400/70', text: 'text-cyan-200/80' },
   agent_responding: { dot: 'bg-emerald-400', text: 'text-emerald-200' },
@@ -22,7 +22,7 @@ function actionText(ev) {
   const tool = ev.detail || ev.data?.name || ev.data?.tool;
   switch (ev.type) {
     case 'agent_invocation':
-      return <>delegated to <span className="text-purple-100">{ev.data?.toAgentName || ev.data?.toAgent || 'an agent'}</span></>;
+      return <>delegated to <span className="text-unicorn-100">{ev.data?.toAgentName || ev.data?.toAgent || 'an agent'}</span></>;
     case 'tool_call':
       return tool ? <>called <Tool name={tool} /></> : 'called a tool';
     case 'tool_result':

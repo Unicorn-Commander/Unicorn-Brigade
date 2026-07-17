@@ -372,8 +372,8 @@ const OrchestrationDemo = () => {
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30">
-                <Sparkles className="w-8 h-8 text-purple-400" />
+              <div className="p-3 rounded-xl bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 border border-unicorn-500/30">
+                <Sparkles className="w-8 h-8 text-unicorn-400" />
               </div>
               <div>
                 <h1 className="text-4xl font-bold text-white mb-2">
@@ -437,7 +437,7 @@ const OrchestrationDemo = () => {
               {WORKFLOWS.map((wf, i) => (
                 <div
                   key={wf.id}
-                  className="px-3 py-1 rounded-full bg-purple-500/20 text-purple-400 text-xs border border-purple-500/30"
+                  className="px-3 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs border border-unicorn-500/30"
                 >
                   {wf.domain}
                 </div>
@@ -485,7 +485,7 @@ const OrchestrationDemo = () => {
           transition={{ delay: 0.2 }}
           className={isFullscreen ? 'fixed inset-0 z-50 p-6' : ''}
         >
-          <Suspense fallback={<div className="h-[600px] flex items-center justify-center"><Network className="w-8 h-8 text-purple-400 animate-pulse" /></div>}>
+          <Suspense fallback={<div className="h-[600px] flex items-center justify-center"><Network className="w-8 h-8 text-unicorn-400 animate-pulse" /></div>}>
             <WorkflowVisualization3D
               ref={fgRef}
               agents={agents}
@@ -513,7 +513,7 @@ const OrchestrationDemo = () => {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <div className="flex items-center space-x-2 mb-2">
-                    <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                    <div className="w-3 h-3 rounded-full bg-unicorn-500"></div>
                     <span className="text-sm text-slate-300">Delegation (Outward)</span>
                   </div>
                   <p className="text-xs text-slate-500 ml-5">

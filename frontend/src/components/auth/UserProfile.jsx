@@ -106,7 +106,7 @@ const UserProfile = ({
         className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors w-full"
       >
         {/* Avatar */}
-        <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white font-semibold text-sm">
+        <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center text-white font-semibold text-sm">
           {initials}
         </div>
 

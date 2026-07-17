@@ -347,7 +347,7 @@ const Orchestration = () => {
     return (
       <div className="min-h-screen p-8 flex items-center justify-center">
         <div className="text-center">
-          <Network className="w-16 h-16 text-purple-500 animate-pulse mx-auto mb-4" />
+          <Network className="w-16 h-16 text-unicorn-500 animate-pulse mx-auto mb-4" />
           <p className="text-slate-400">Initializing Command View...</p>
         </div>
       </div>
@@ -367,11 +367,11 @@ const Orchestration = () => {
             <Breadcrumbs />
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30">
-                  <Globe className="w-8 h-8 text-purple-400" />
+                <div className="p-3 rounded-xl bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 border border-unicorn-500/30">
+                  <Globe className="w-8 h-8 text-unicorn-400" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-400 via-unicorn-400 to-unicorn-400 bg-clip-text text-transparent">
                     Orchestration Command
                   </h1>
                   <p className="text-slate-400">
@@ -456,7 +456,7 @@ const Orchestration = () => {
                 placeholder="Search agents..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                className="w-full pl-10 pr-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-unicorn-500"
               />
             </div>
 
@@ -465,7 +465,7 @@ const Orchestration = () => {
               <select
                 value={filterDomain}
                 onChange={(e) => setFilterDomain(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 focus:outline-none focus:border-purple-500"
+                className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 focus:outline-none focus:border-unicorn-500"
               >
                 {domains.map((domain) => (
                   <option key={domain} value={domain}>
@@ -487,7 +487,7 @@ const Orchestration = () => {
           transition={{ delay: 0.3 }}
           className={isFullscreen ? 'fixed inset-0 z-50' : 'col-span-3'}
         >
-          <Suspense fallback={<div className="h-[600px] flex items-center justify-center"><Network className="w-8 h-8 text-purple-400 animate-pulse" /></div>}>
+          <Suspense fallback={<div className="h-[600px] flex items-center justify-center"><Network className="w-8 h-8 text-unicorn-400 animate-pulse" /></div>}>
             <WorkflowVisualization3D
               agents={filteredAgents}
               connections={filteredConnections}
@@ -551,11 +551,11 @@ const Orchestration = () => {
                       <div className="mb-2">
                         <div className="flex items-center justify-between text-xs mb-1">
                           <span className="text-slate-500">Progress</span>
-                          <span className="text-purple-400">{mission.progress}%</span>
+                          <span className="text-unicorn-400">{mission.progress}%</span>
                         </div>
                         <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
                           <motion.div
-                            className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
+                            className="h-full bg-gradient-to-r from-unicorn-600 to-unicorn-500"
                             initial={{ width: 0 }}
                             animate={{ width: `${mission.progress}%` }}
                             transition={{ duration: 0.5 }}
@@ -578,14 +578,14 @@ const Orchestration = () => {
             {/* Quick Actions */}
             <div className="card glass">
               <h3 className="flex items-center space-x-2 text-sm font-semibold text-white mb-4">
-                <Zap className="w-4 h-4 text-purple-400" />
+                <Zap className="w-4 h-4 text-unicorn-400" />
                 <span>Quick Actions</span>
               </h3>
 
               <div className="space-y-2">
                 <button
                   onClick={() => setShowMissionForm(true)}
-                  className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:border-purple-500/50 hover:bg-purple-500/10 transition-all text-left"
+                  className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:border-unicorn-500/50 hover:bg-unicorn-500/10 transition-all text-left"
                 >
                   <div className="flex items-center space-x-2">
                     <Play className="w-4 h-4 text-green-400" />
@@ -647,7 +647,7 @@ const Orchestration = () => {
                           event.type === 'agent_started' ? 'bg-green-400' :
                           event.type === 'tool_call' ? 'bg-yellow-400' :
                           event.type === 'tool_result' ? 'bg-blue-400' :
-                          event.type === 'agent_completed' ? 'bg-purple-400' :
+                          event.type === 'agent_completed' ? 'bg-unicorn-400' :
                           'bg-slate-400'
                         }`} />
                         <div className="flex-1 min-w-0">
@@ -714,7 +714,7 @@ const Orchestration = () => {
                     placeholder="e.g. Market Research"
                     disabled={creatingMission}
                     autoFocus
-                    className="w-full px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    className="w-full px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-unicorn-500"
                   />
                 </div>
 
@@ -729,7 +729,7 @@ const Orchestration = () => {
                     placeholder="Describe what this mission should accomplish..."
                     rows={4}
                     disabled={creatingMission}
-                    className="w-full px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500 resize-none"
+                    className="w-full px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-unicorn-500 resize-none"
                   />
                 </div>
 
@@ -749,7 +749,7 @@ const Orchestration = () => {
                   <button
                     type="submit"
                     disabled={creatingMission || !missionForm.name.trim() || !missionForm.task.trim()}
-                    className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {creatingMission ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
@@ -788,7 +788,7 @@ const Orchestration = () => {
                   <h2 className="text-xl font-bold text-white">
                     {selectedAgent.displayName || selectedAgent.name}
                   </h2>
-                  <p className="text-sm text-purple-400 capitalize">{selectedAgent.domain}</p>
+                  <p className="text-sm text-unicorn-400 capitalize">{selectedAgent.domain}</p>
                   <p className="text-sm text-slate-400 mt-2">
                     {selectedAgent.bio || selectedAgent.title}
                   </p>
@@ -802,7 +802,7 @@ const Orchestration = () => {
                     {selectedAgent.capabilities.map((cap) => (
                       <span
                         key={cap}
-                        className="px-2 py-1 text-xs rounded-full bg-purple-500/20 text-purple-300"
+                        className="px-2 py-1 text-xs rounded-full bg-unicorn-500/20 text-unicorn-300"
                       >
                         {cap}
                       </span>
@@ -836,7 +836,7 @@ const Orchestration = () => {
                 </button>
                 <button
                   onClick={() => navigate(`/chat?agent=${encodeURIComponent(selectedAgent.id)}`)}
-                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90 transition-all"
+                  className="px-4 py-2 rounded-lg bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white hover:opacity-90 transition-all"
                 >
                   Chat with Agent
                 </button>

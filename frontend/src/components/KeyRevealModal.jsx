@@ -115,7 +115,7 @@ const KeyRevealModal = ({ apiKey, onClose }) => {
             <label className="block text-xs font-medium text-slate-400 mb-2">Usage Example</label>
             <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
               <code className="text-xs font-mono text-slate-400">
-                <span className="text-purple-400">curl</span>{' '}
+                <span className="text-unicorn-400">curl</span>{' '}
                 <span className="text-emerald-400">-X POST</span>{' '}
                 <span className="text-slate-300">https://api.unicornbrigade.com/agents/invoke</span> \<br />
                 {'  '}<span className="text-emerald-400">-H</span>{' '}

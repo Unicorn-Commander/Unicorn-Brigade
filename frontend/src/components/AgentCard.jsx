@@ -12,14 +12,14 @@ import {
 const domainGradients = {
   financial: 'from-amber-500 to-yellow-600',
   legal: 'from-blue-500 to-indigo-600',
-  medical: 'from-red-500 to-pink-600',
+  medical: 'from-red-500 to-unicorn-600',
   technology: 'from-cyan-500 to-blue-600',
-  cybersecurity: 'from-purple-500 to-violet-600',
-  orchestration: 'from-pink-500 to-rose-600',
+  cybersecurity: 'from-unicorn-500 to-violet-600',
+  orchestration: 'from-unicorn-500 to-rose-600',
   investigation: 'from-amber-500 to-orange-600',
-  intelligence: 'from-indigo-500 to-purple-600',
+  intelligence: 'from-indigo-500 to-unicorn-600',
   meta: 'from-orange-500 to-red-600',
-  default: 'from-purple-500 to-pink-500'
+  default: 'from-unicorn-600 to-unicorn-500'
 };
 
 // Model icons

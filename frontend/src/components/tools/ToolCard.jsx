@@ -20,7 +20,7 @@ const ToolCard = ({ tool, onUpgrade, onSelect, selected = false }) => {
   const categoryColors = {
     common: 'bg-green-100 text-green-800',
     advanced: 'bg-blue-100 text-blue-800',
-    premium: 'bg-purple-100 text-purple-800',
+    premium: 'bg-unicorn-100 text-unicorn-800',
     admin: 'bg-red-100 text-red-800'
   };
 
@@ -37,8 +37,8 @@ const ToolCard = ({ tool, onUpgrade, onSelect, selected = false }) => {
         ${locked
           ? 'border-gray-300 bg-gray-50 opacity-75'
           : selected
-            ? 'border-purple-500 bg-purple-50 shadow-md'
-            : 'border-gray-200 bg-white hover:border-purple-300 hover:shadow-md'
+            ? 'border-unicorn-500 bg-unicorn-50 shadow-md'
+            : 'border-gray-200 bg-white hover:border-unicorn-300 hover:shadow-md'
         }
         ${!locked && onSelect ? 'cursor-pointer' : ''}
       `}
@@ -56,7 +56,7 @@ const ToolCard = ({ tool, onUpgrade, onSelect, selected = false }) => {
       {/* Selection Indicator */}
       {selected && !locked && (
         <div className="absolute top-2 left-2 z-10">
-          <div className="bg-purple-600 text-white p-1 rounded-full">
+          <div className="bg-unicorn-600 text-white p-1 rounded-full">
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
             </svg>
@@ -100,7 +100,7 @@ const ToolCard = ({ tool, onUpgrade, onSelect, selected = false }) => {
                 <ul className="text-xs text-gray-600 space-y-1">
                   {unlockRequirements.map((req, idx) => (
                     <li key={idx} className="flex items-start gap-1">
-                      <span className="text-purple-600">•</span>
+                      <span className="text-unicorn-600">•</span>
                       <span>{req.message}</span>
                     </li>
                   ))}
@@ -114,7 +114,7 @@ const ToolCard = ({ tool, onUpgrade, onSelect, selected = false }) => {
                   e.stopPropagation();
                   onUpgrade(tool);
                 }}
-                className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm font-medium rounded-md hover:from-purple-700 hover:to-pink-700 transition-colors"
+                className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white text-sm font-medium rounded-md hover:from-unicorn-600 hover:to-unicorn-500 transition-colors"
               >
                 <TrendingUp size={14} />
                 Upgrade to Unlock

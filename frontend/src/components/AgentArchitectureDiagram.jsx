@@ -100,7 +100,7 @@ const AgentArchitectureDiagram = ({ agent }) => {
           label: 'System Prompt',
           icon: <FileText className="w-6 h-6" />,
           details: [agent.systemPrompt ? agent.systemPrompt.substring(0, 40) + '...' : 'No prompt set'],
-          className: 'bg-gradient-to-br from-purple-500 to-violet-500 border-purple-400',
+          className: 'bg-gradient-to-br from-unicorn-500 to-violet-500 border-unicorn-400',
         },
       },
       {
@@ -115,7 +115,7 @@ const AgentArchitectureDiagram = ({ agent }) => {
             `Max Tokens: ${agent.maxTokens || 4096}`,
           ],
           large: true,
-          className: 'bg-gradient-to-br from-pink-500 to-purple-600 border-pink-400',
+          className: 'bg-gradient-to-br from-unicorn-500 to-unicorn-600 border-unicorn-400',
         },
       },
       {
@@ -298,14 +298,14 @@ const AgentArchitectureDiagram = ({ agent }) => {
           </div>
         </div>
         <div className="flex items-center space-x-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-purple-500 to-violet-500"></div>
+          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-unicorn-500 to-violet-500"></div>
           <div>
             <p className="text-sm font-medium">System Prompt</p>
             <p className="text-xs text-slate-400">Agent instructions</p>
           </div>
         </div>
         <div className="flex items-center space-x-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-pink-500 to-purple-600"></div>
+          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-unicorn-500 to-unicorn-600"></div>
           <div>
             <p className="text-sm font-medium">Model</p>
             <p className="text-xs text-slate-400">AI processing core</p>

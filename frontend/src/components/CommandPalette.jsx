@@ -184,7 +184,7 @@ export default function CommandPalette() {
                             onMouseEnter={() => setSelectedIndex(idx)}
                             className={`w-full flex items-center space-x-3 px-4 py-2.5 text-left transition-colors ${
                               selectedIndex === idx
-                                ? 'bg-purple-500/15 text-white'
+                                ? 'bg-unicorn-500/15 text-white'
                                 : 'text-slate-300 hover:bg-slate-700/50'
                             }`}
                           >
@@ -200,7 +200,7 @@ export default function CommandPalette() {
                               )}
                             </div>
                             {selectedIndex === idx && (
-                              <ArrowRight className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                              <ArrowRight className="w-4 h-4 text-unicorn-400 flex-shrink-0" />
                             )}
                           </button>
                         );

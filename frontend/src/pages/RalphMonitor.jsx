@@ -135,7 +135,7 @@ const RalphMonitor = () => {
       <div className="max-w-7xl mx-auto mb-8">
         <Breadcrumbs />
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
             <Zap className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -173,9 +173,9 @@ const RalphMonitor = () => {
               <div
                 key={execution.execution_id}
                 onClick={() => loadExecutionDetails(execution.execution_id)}
-                className={`backdrop-blur-xl bg-slate-900/50 border rounded-xl p-4 cursor-pointer transition-all hover:border-purple-500/50 ${
+                className={`backdrop-blur-xl bg-slate-900/50 border rounded-xl p-4 cursor-pointer transition-all hover:border-unicorn-500/50 ${
                   selectedExecution?.execution_id === execution.execution_id
-                    ? 'border-purple-500'
+                    ? 'border-unicorn-500'
                     : 'border-slate-700/50'
                 }`}
               >
@@ -194,7 +194,7 @@ const RalphMonitor = () => {
                 {/* Progress Bar */}
                 <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mb-2">
                   <div
-                    className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
+                    className="h-full bg-gradient-to-r from-unicorn-600 to-unicorn-500 transition-all"
                     style={{ width: `${execution.progress_percent}%` }}
                   />
                 </div>
@@ -295,12 +295,12 @@ const RalphMonitor = () => {
                       onChange={(e) => setGuidanceInput(e.target.value)}
                       placeholder="Enter guidance or additional context..."
                       rows={3}
-                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-colors resize-none"
+                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-unicorn-500 transition-colors resize-none"
                     />
                     <button
                       onClick={handleInjectGuidance}
                       disabled={!guidanceInput.trim() || submittingGuidance}
-                      className="w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {submittingGuidance ? (
                         <>

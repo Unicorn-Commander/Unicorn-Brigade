@@ -86,14 +86,14 @@ const ToolLibrary = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
               Tool Library
             </h1>
             <p className="text-slate-400 mt-1">
               {filteredTools.length} of {tools.length} tools available
             </p>
           </div>
-          <button className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center space-x-2">
+          <button className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center space-x-2">
             <Plus className="w-5 h-5" />
             <span>Add Custom Tool</span>
           </button>
@@ -110,7 +110,7 @@ const ToolLibrary = () => {
                 placeholder="Search tools..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent"
               />
             </div>
 
@@ -118,7 +118,7 @@ const ToolLibrary = () => {
             <select
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
-              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent"
             >
               <option value="">All Types</option>
               {toolTypes.map(type => (
@@ -130,7 +130,7 @@ const ToolLibrary = () => {
             <select
               value={selectedDomain}
               onChange={(e) => setSelectedDomain(e.target.value)}
-              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent"
             >
               <option value="">All Domains</option>
               {domains.map(domain => (
@@ -148,21 +148,21 @@ const ToolLibrary = () => {
             filteredTools.map(tool => (
               <div
                 key={tool.id}
-                className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 hover:border-purple-500/50 transition-all cursor-pointer group"
+                className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 hover:border-unicorn-500/50 transition-all cursor-pointer group"
                 onClick={() => setSelectedTool(tool)}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center space-x-3">
                     <div className="text-3xl">{tool.icon}</div>
                     <div>
-                      <h3 className="font-semibold text-white group-hover:text-purple-400 transition-colors">
+                      <h3 className="font-semibold text-white group-hover:text-unicorn-400 transition-colors">
                         {tool.name}
                       </h3>
                       <p className="text-xs text-slate-400">{tool.provider}</p>
                     </div>
                   </div>
                   <span className={`px-2 py-1 rounded text-xs ${
-                    tool.type === 'MCP' ? 'bg-purple-500/20 text-purple-400' :
+                    tool.type === 'MCP' ? 'bg-unicorn-500/20 text-unicorn-400' :
                     tool.type === 'Python' ? 'bg-blue-500/20 text-blue-400' :
                     'bg-emerald-500/20 text-emerald-400'
                   }`}>
@@ -192,7 +192,7 @@ const ToolLibrary = () => {
                     <CheckCircle className="w-3 h-3" />
                     <span>{tool.status === 'active' ? 'Ready' : 'Beta'}</span>
                   </span>
-                  <ArrowRight className="w-4 h-4 text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <ArrowRight className="w-4 h-4 text-unicorn-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
               </div>
             ))
@@ -243,7 +243,7 @@ const ToolLibrary = () => {
                 <div>
                   <p className="text-sm text-slate-400 mb-2">Type</p>
                   <span className={`inline-block px-3 py-1 rounded ${
-                    selectedTool.type === 'MCP' ? 'bg-purple-500/20 text-purple-400' :
+                    selectedTool.type === 'MCP' ? 'bg-unicorn-500/20 text-unicorn-400' :
                     selectedTool.type === 'Python' ? 'bg-blue-500/20 text-blue-400' :
                     'bg-emerald-500/20 text-emerald-400'
                   }`}>
@@ -276,7 +276,7 @@ const ToolLibrary = () => {
                 <div className="bg-slate-800/50 rounded-lg p-4 font-mono text-sm">
                   {selectedTool.parameters.map((param, idx) => (
                     <div key={idx} className="text-slate-300">
-                      <span className="text-purple-400">{param}</span>
+                      <span className="text-unicorn-400">{param}</span>
                       {idx < selectedTool.parameters.length - 1 && <span className="text-slate-500">,</span>}
                     </div>
                   ))}
@@ -301,7 +301,7 @@ const ToolLibrary = () => {
 
               {/* Actions */}
               <div className="flex space-x-3">
-                <button className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors">
+                <button className="flex-1 px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors">
                   Add to Agent
                 </button>
                 <button className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors flex items-center space-x-2">

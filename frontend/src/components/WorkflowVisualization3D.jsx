@@ -607,7 +607,7 @@ const WorkflowVisualization3D = ({
       <div className="absolute top-4 right-4 z-10 p-3 rounded-lg bg-slate-800/80 backdrop-blur-sm border border-slate-700/50">
         <div className="flex items-center space-x-4 text-xs">
           <div className="flex items-center space-x-1.5">
-            <div className="w-2 h-2 rounded-full bg-purple-500" />
+            <div className="w-2 h-2 rounded-full bg-unicorn-500" />
             <span className="text-slate-400">Agents:</span>
             <span className="text-white font-semibold">{graphData.nodes.length}</span>
           </div>
@@ -647,7 +647,7 @@ const WorkflowVisualization3D = ({
           <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Connection Types</p>
           <div className="space-y-1">
             <div className="flex items-center space-x-1.5">
-              <div className="w-2 h-2 rounded-full bg-purple-500" />
+              <div className="w-2 h-2 rounded-full bg-unicorn-500" />
               <span className="text-[10px] text-slate-400">Hierarchical</span>
             </div>
             <div className="flex items-center space-x-1.5">
@@ -704,7 +704,7 @@ const WorkflowVisualization3D = ({
                 <h3 className="text-sm font-semibold text-white truncate">
                   {selectedNode.displayName || selectedNode.name}
                 </h3>
-                <p className="text-xs text-purple-400 capitalize">{selectedNode.domain}</p>
+                <p className="text-xs text-unicorn-400 capitalize">{selectedNode.domain}</p>
                 <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">
                   {selectedNode.bio || selectedNode.title}
                 </p>
@@ -778,8 +778,8 @@ const WorkflowVisualization3D = ({
           <p className="text-xs text-slate-400 flex items-center space-x-2">
             <Eye className="w-3 h-3" />
             <span>The General's Command View</span>
-            <span className="text-purple-400">|</span>
-            <span className="text-purple-400">{viewMode.toUpperCase()}</span>
+            <span className="text-unicorn-400">|</span>
+            <span className="text-unicorn-400">{viewMode.toUpperCase()}</span>
           </p>
         </div>
       </div>

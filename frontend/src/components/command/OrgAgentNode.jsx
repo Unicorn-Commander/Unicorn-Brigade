@@ -20,12 +20,12 @@ const domainRing = {
   orchestration: 'ring-yellow-300/80',
   investigation: 'ring-orange-400/70',
   intelligence: 'ring-indigo-400/70',
-  meta: 'ring-fuchsia-400/70',
+  meta: 'ring-unicorn-400/70',
   sales: 'ring-emerald-400/70',
   data: 'ring-sky-400/70',
   knowledge: 'ring-violet-400/70',
   productivity: 'ring-teal-400/70',
-  support: 'ring-pink-400/70',
+  support: 'ring-unicorn-400/70',
   default: 'ring-slate-500/60',
 };
 
