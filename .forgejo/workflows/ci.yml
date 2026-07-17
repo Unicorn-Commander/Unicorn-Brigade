@@ -1,0 +1,112 @@
+# Unicorn Brigade — CI
+#
+# Forgejo Actions (Gitea-Actions syntax). Runs on the self-hosted act_runner
+# registered to git.unicorncommander.ai. See docs/CI.md for the full rationale
+# and the build->tag->deploy promotion runbook.
+#
+# Jobs:
+#   backend   — ruff (gate) + mypy/ruff-full (advisory) + pytest (tests + app/tests)
+#   frontend  — npm ci && npm run build
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "swarm/**"]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save runner time.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # requirements-prod.txt mirrors the Dockerfile's runtime deps
+          # (fastapi, langgraph/langchain, slack_sdk, asyncssh, openai, ...).
+          # This installs the optional deps that used to cause bare-import
+          # collection errors, so those suites now collect. graphiti-core is
+          # intentionally NOT installed here (matches prod image, which layers
+          # it separately with a patch); the memory manager degrades to
+          # GRAPHITI_AVAILABLE=False when it is absent.
+          pip install -r requirements-prod.txt
+          # Test + lint tooling (kept out of the prod image).
+          pip install pytest==8.3.3 pytest-asyncio==0.24.0 pytest-cov==5.0.0 \
+                      ruff==0.7.0 mypy==1.13.0
+
+      - name: Ruff (gate — real breakage only)
+        # E9 = syntax errors, F63 = invalid comparisons, F7 = statement misuse.
+        # This subset is currently GREEN across app/ + tests/ and blocks the PR
+        # if new code breaks it. The broader config lives in pyproject.toml.
+        run: ruff check --select E9,F63,F7 app tests
+
+      - name: Ruff (advisory — full config)
+        # Non-blocking: surfaces the ~5k pre-existing style/lint backlog
+        # (incl. 4 known F821/F823 undefined-name findings) without failing CI.
+        # Promote to a gate once the backlog is burned down.
+        continue-on-error: true
+        run: ruff check .
+
+      - name: Mypy (advisory — type baseline)
+        continue-on-error: true
+        run: mypy app || true
+
+      - name: Pytest (tests/ + app/tests/)
+        # testpaths in pytest.ini already covers both suites.
+        # --continue-on-collection-errors: a module that fails to import (e.g.
+        # the memory-import guard on branches that predate the BR-1.x fix, or a
+        # genuinely missing optional dep) is reported as an ERROR and the run
+        # continues collecting + executing every other test. Real test FAILURES
+        # still fail the job — nothing is masked; collection errors stay visible
+        # in the log. See docs/CI.md.
+        env:
+          OPENAI_API_KEY: sk-test-key-for-ci
+          ENVIRONMENT: test
+        run: |
+          pytest -q --continue-on-collection-errors \
+                 -rE --maxfail=0 \
+                 --junitxml=pytest-report.xml
+
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: pytest-report
+          path: pytest-report.xml
+          if-no-files-found: ignore
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
