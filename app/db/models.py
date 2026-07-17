@@ -211,6 +211,75 @@ class OrgMembership(Base):
         Index("ix_org_memberships_org_id", "org_id"),
     )
 
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "orgId": str(self.org_id),
+            "userId": str(self.user_id),
+            "role": self.role,
+            "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
+        }
+
+
+class Invitation(Base):
+    """BR-2.1 invite-by-email: a bearer-token invitation to join an organization.
+
+    The ``token`` is the capability — whoever holds it and is authenticated can
+    accept, minting an ``OrgMembership`` for the accepting user (idempotent,
+    expiry-checked). Invitations carry ``org_id`` and are RLS-isolated exactly
+    like the tenant data tables (ENABLE + FORCE, ``org_id = current_org_id()``),
+    so create/list/revoke on the RLS-subject request session only ever touch the
+    caller's active org. ACCEPT is the one inherently cross-tenant step (the
+    invitee is not yet a member of the org, so their GUC is bound elsewhere) and
+    runs on the RLS-exempt ``admin_session`` — the same precedent the scheduler
+    uses for its cross-org enumeration. The ``current_org_id()`` server_default
+    mirrors the data tables so a request-session INSERT that omits org_id
+    auto-tags the caller's active org and passes WITH CHECK.
+    """
+    __tablename__ = "invitations"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid,
+                server_default=text("gen_random_uuid()"))
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
+                    nullable=False, server_default=text("current_org_id()"))
+    email = Column(String(255), nullable=False)
+    # Role granted on acceptance. owner is never invitable (an org has exactly the
+    # owner who created it); the service clamps anything unexpected to 'member'.
+    role = Column(String(50), nullable=False, server_default="member", default="member")
+    token = Column(String(255), nullable=False, unique=True)
+    # pending | accepted | revoked | expired
+    status = Column(String(50), nullable=False, server_default="pending", default="pending")
+    invited_by = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    accepted_by = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    accepted_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_invitations_org_id", "org_id"),
+        Index("ix_invitations_email", "email"),
+    )
+
+    def to_dict(self, include_token=False):
+        d = {
+            "id": str(self.id),
+            "orgId": str(self.org_id),
+            "email": self.email,
+            "role": self.role,
+            "status": self.status,
+            "invitedBy": str(self.invited_by) if self.invited_by else None,
+            "acceptedBy": str(self.accepted_by) if self.accepted_by else None,
+            "expiresAt": self.expires_at.isoformat() + "Z" if self.expires_at else None,
+            "acceptedAt": self.accepted_at.isoformat() + "Z" if self.accepted_at else None,
+            "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
+        }
+        # The token is a secret capability. Only returned to the owner/admin who
+        # created the invite (so they can hand it to the invitee out-of-band).
+        if include_token:
+            d["token"] = self.token
+        return d
+
 
 class Conversation(Base):
     __tablename__ = "conversations"

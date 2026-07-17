@@ -38,6 +38,7 @@ from app.api.slack_routes import router as slack_router, init_slack_routes
 from app.api.knowledge_routes import router as knowledge_router, init_knowledge_routes
 from app.api.mcp_registry_routes import router as mcp_registry_router
 from app.api.user_routes import router as user_router
+from app.api.org_routes import router as org_router
 from app.api.support_routes import router as support_router, init_support_routes
 from app.api.github_routes import router as github_router, shutdown_github_routes
 from app.api.document_routes import router as document_router
@@ -276,6 +277,7 @@ if not FEDERATION_ONLY:
     app.include_router(knowledge_router, prefix="/api/v1", tags=["knowledge"])
     app.include_router(mcp_registry_router, prefix="/api/v1", tags=["mcp-registry"])
     app.include_router(user_router, prefix="/api/v1", tags=["users"])
+    app.include_router(org_router, prefix="/api/v1", tags=["orgs"])
     app.include_router(support_router, prefix="/api/v1", tags=["support"])
     app.include_router(github_router, prefix="/api/v1", tags=["github"])
     app.include_router(document_router, prefix="/api/v1", tags=["documents"])

@@ -295,6 +295,22 @@ async def register_user(
     user = await repo.create(user_data)
     logger.info(f"New user registered: {user['email']} (ID: {user['id']})")
 
+    # BR-2.1 founder-default: give the new account its own personal org (owner) at
+    # signup, so it lands in its OWN tenant space rather than the shared
+    # early-access org. Idempotent + best-effort — a provisioning hiccup must not
+    # fail the registration (the middleware also ensures a personal org lazily on
+    # first authenticated request).
+    try:
+        from app.db.org_service import ensure_personal_org
+        await ensure_personal_org(
+            session, user["id"], name=user.get("name"), email=user.get("email")
+        )
+        await session.commit()
+    except Exception as exc:  # noqa: BLE001
+        await session.rollback()
+        logger.warning("BR-2.1 personal-org provisioning failed for %s: %s",
+                       user.get("email"), exc)
+
     return UserResponse(**user)
 
 

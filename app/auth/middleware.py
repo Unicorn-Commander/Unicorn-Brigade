@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 
 from app.db.database import get_session
-from app.db.models import ApiKey, UserApiKey, User, Organization, OrgMembership
+from app.db.models import ApiKey, UserApiKey, User, Organization
 from app.auth.roles import (
     UserRole,
     is_admin_path,
@@ -80,6 +80,12 @@ class AuthUser:
     user_id: Optional[str] = None  # User ID if authenticated via user API key
     email: Optional[str] = None  # User email if authenticated via user API key
     org_id: Optional[str] = None
+    # BR-2.1 per-org role (owner | admin | member) in the ACTIVE org bound above.
+    # Populated by _bind_org_context for a resolved human; None for keyless/service
+    # identities on the shared fallback org. This is the per-org authz layer that
+    # sits ON TOP OF the global ``role`` (UserRole) — a user can be a global
+    # operator yet the owner of their org, or a member of someone else's.
+    org_role: Optional[str] = None
     auth_source: str = "api_key"  # api_key | keycloak | session | bypass | public
     # Legacy pre-BR-1.1 identity key: the Keycloak ``sub``. BR-1.1 made
     # ``user_id`` the canonical local users.id, but per-user AGENT MEMORY groups
@@ -372,6 +378,16 @@ async def resolve_canonical_user_id(session, kc_sub, email, derived_apps, realm_
     if kc_sub and kc_sub != local_id:
         await _remap_user_rows(session, kc_sub, local_id)
 
+    # BR-2.1 founder-default: an SSO principal on first login gets a personal org
+    # (owner). Idempotent — a returning user (already has a membership) is left
+    # untouched. Runs on the admin session (this whole function does), which is
+    # RLS-exempt; organizations/org_memberships carry no RLS anyway.
+    try:
+        from app.db.org_service import ensure_personal_org
+        await ensure_personal_org(session, local_id, name=user.name, email=user.email)
+    except Exception as exc:  # noqa: BLE001 — never break auth on provisioning
+        logger.warning("BR-2.1 personal-org provisioning failed for %s: %s", email_norm, exc)
+
     await session.commit()
     return local_id
 
@@ -468,6 +484,18 @@ def _extract_bearer_token(request: Request, creds: Optional[HTTPAuthorizationCre
     return None
 
 
+# Header a caller sends to act under a specific org they belong to (BR-2.1
+# active-org selection). Validated against membership in _bind_org_context.
+ORG_HEADER = "X-Org-Id"
+
+
+def _extract_requested_org_id(request: Request) -> Optional[str]:
+    """Read the requested active org from the ``X-Org-Id`` header, if present."""
+    val = request.headers.get(ORG_HEADER) or request.headers.get(ORG_HEADER.lower())
+    val = (val or "").strip()
+    return val or None
+
+
 def _allowed_early_access_emails() -> set[str]:
     raw = os.getenv("BRIGADE_ALLOWED_EMAILS", "")
     return {email.strip().lower() for email in raw.split(",") if email.strip()}
@@ -560,24 +588,36 @@ async def _default_org_id(session: AsyncSession) -> str:
     return str(org.id)
 
 
-async def _bind_org_context(user: AuthUser, session: AsyncSession) -> None:
-    """Resolve the user's active org and bind it into the Postgres RLS GUC
+async def _bind_org_context(
+    user: AuthUser,
+    session: AsyncSession,
+    requested_org_id: Optional[str] = None,
+) -> None:
+    """Resolve the user's ACTIVE org and bind it into the Postgres RLS GUC
     (``app.current_org_id``) that every org-isolation policy filters on.
 
-    BR-1.1 alignment (the whole point of building on feat/br-1.1): ``user.user_id``
-    is the CANONICAL local ``users.id`` — resolved, claimed, and provisioned by
-    ``resolve_canonical_user_id`` during auth — NOT a raw Keycloak sub. So we key
-    org membership on that canonical id and NEVER auto-provision a user row here.
-    The stale substrate looked up by email-first and minted a second
-    ``NOLOGIN-SSO-ONLY`` user on a miss, which would re-fork a human's identity by
-    auth method — exactly the bug BR-1.1 fixed. Provisioning is BR-1.1's job; this
-    function only reads the already-canonical user and maps it to an org.
+    BR-1.1 alignment: ``user.user_id`` is the CANONICAL local ``users.id`` —
+    resolved, claimed, and provisioned by ``resolve_canonical_user_id`` during
+    auth — NOT a raw Keycloak sub. We key org membership on that canonical id and
+    NEVER auto-provision a *user* row here (that is BR-1.1's job).
 
-    Tenant model (Phase 2b): existing users were backfilled into the shared
-    ``early-access`` org by migration 20260626_01; a genuinely new user with no
-    membership yet gets a personal free org. Callers with no bound human
-    (agent/admin/service keys, or a degraded keycloak fallback whose sub matches no
-    row) fall back to the early-access org.
+    BR-2.1 org resolution (this is the change from the early-access default):
+      * A resolved human is auto-guaranteed a PERSONAL org (owner) via
+        ``ensure_personal_org`` — a new user gets one on first bind; an existing
+        user backfilled into 'early-access' keeps that as their home (we don't
+        mint a second org that would hide their data).
+      * ACTIVE-org selection: when the request carries a valid ``X-Org-Id`` for an
+        org the user BELONGS TO, we act under that org; anything they don't belong
+        to is refused (403). With no header we default to their home org
+        (personal-preferred, else earliest membership).
+      * ``user.org_role`` is set to the caller's per-org role in the bound org.
+
+    Fallback (documented): a caller with NO bound human — the master-admin key
+    ("admin"), agent SERVICE keys, or a degraded keycloak token whose sub matches
+    no users row — has no personal org, so it binds the shared 'early-access' org
+    (``_default_org_id``). These identities are trusted service/bootstrap callers,
+    not tenants; per-service-key org scoping is BR-2.4's job. An ``X-Org-Id`` from
+    such a caller is ignored (there is no membership to validate it against).
     """
     if user.auth_source == "public":
         return
@@ -595,33 +635,55 @@ async def _bind_org_context(user: AuthUser, session: AsyncSession) -> None:
         local_user = result.scalar_one_or_none()
 
     if local_user is None:
+        # Keyless/service/admin/degraded identity → shared bootstrap org.
         org_id = await _default_org_id(session)
+        org_role = None
     else:
-        result = await session.execute(
-            select(OrgMembership)
-            .where(OrgMembership.user_id == local_user.id)
-            .order_by(OrgMembership.created_at.asc())
-            .limit(1)
+        from app.db.org_service import (
+            ensure_personal_org,
+            get_membership_role,
+            resolve_home_org,
         )
-        membership = result.scalar_one_or_none()
-        if membership is None:
-            org = Organization(
-                name=f"{local_user.name or local_user.email}'s Brigade",
-                slug=f"personal-{local_user.id}",
-                plan_tier="free",
-                api_calls_limit=0,
-                metadata_={"personal": True},
-            )
-            session.add(org)
-            await session.flush()
-            membership = OrgMembership(org_id=org.id, user_id=local_user.id, role="owner")
-            session.add(membership)
-            await session.commit()
-            org_id = str(org.id)
+        # Founder-default: guarantee a personal org exists (idempotent).
+        await ensure_personal_org(
+            session, str(local_user.id),
+            name=local_user.name, email=local_user.email,
+        )
+
+        if requested_org_id:
+            # Active-org selection — validate the caller actually belongs to it.
+            # Guard the UUID shape first so a malformed header is a clean 400, not
+            # an asyncpg cast 500 deep in the membership query.
+            from uuid import UUID as _UUID
+            try:
+                _UUID(str(requested_org_id))
+            except (ValueError, TypeError):
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Malformed X-Org-Id (expected a UUID)",
+                )
+            org_role = await get_membership_role(session, str(local_user.id), requested_org_id)
+            if org_role is None:
+                await session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You are not a member of the requested organization (X-Org-Id)",
+                )
+            org_id = requested_org_id
         else:
-            org_id = str(membership.org_id)
+            home = await resolve_home_org(session, str(local_user.id))
+            # ensure_personal_org guarantees at least one membership, so home is
+            # non-None here; the guard keeps us honest if that ever changes.
+            if home is None:
+                org_id = await _default_org_id(session)
+                org_role = None
+            else:
+                org_id, org_role = home
+        await session.commit()
 
     user.org_id = org_id
+    user.org_role = org_role
     await session.execute(
         text("SELECT set_config('app.current_org_id', :org_id, false)"),
         {"org_id": org_id},
@@ -664,7 +726,7 @@ async def get_current_user(
         )
 
     _enforce_early_access(user, path)
-    await _bind_org_context(user, session)
+    await _bind_org_context(user, session, _extract_requested_org_id(request))
 
     # Check role authorization
     required_role = get_minimum_role_for_method(path, method)
@@ -705,7 +767,7 @@ async def get_current_user_optional(
 
     user = await _resolve_user(request, api_key, creds, session)
     if user is not None:
-        await _bind_org_context(user, session)
+        await _bind_org_context(user, session, _extract_requested_org_id(request))
     return user
 
 

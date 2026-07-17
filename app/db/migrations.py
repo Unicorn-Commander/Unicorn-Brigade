@@ -464,6 +464,59 @@ MIGRATIONS = [
             """,
         ],
     ),
+    (
+        "20260717_01_org_invitations",
+        "BR-2.1: invitations table (invite-by-email) with org-isolation RLS",
+        # Invite-by-email substrate for multi-user orgs. Same tenancy shape as the
+        # data tables: org_id defaults to current_org_id(), ENABLE + FORCE RLS, and
+        # a plain org-isolation policy so create/list/revoke on the RLS-subject
+        # request session only ever see the caller's active org. ACCEPT is the one
+        # cross-tenant step (the invitee is not yet a member) and runs on the
+        # RLS-exempt admin_session — the scheduler's documented precedent.
+        #
+        # create_all builds this table on a FRESH install (from the ORM model)
+        # BEFORE this migration runs; every statement here is IF NOT EXISTS /
+        # idempotent so it is a safe no-op there and the real DDL on a deployed DB.
+        [
+            """
+            CREATE TABLE IF NOT EXISTS invitations (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                email varchar(255) NOT NULL,
+                role varchar(50) NOT NULL DEFAULT 'member',
+                token varchar(255) NOT NULL UNIQUE,
+                status varchar(50) NOT NULL DEFAULT 'pending',
+                invited_by uuid REFERENCES users(id) ON DELETE SET NULL,
+                accepted_by uuid REFERENCES users(id) ON DELETE SET NULL,
+                expires_at timestamptz,
+                accepted_at timestamptz,
+                created_at timestamptz NOT NULL DEFAULT now(),
+                updated_at timestamptz NOT NULL DEFAULT now()
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_invitations_org_id ON invitations(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_invitations_email ON invitations(email)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_invitations_token ON invitations(token)",
+            # Auto-tag org_id with the caller's active org on a request-session
+            # INSERT that omits it (mirrors conversations/messages/agents).
+            "ALTER TABLE invitations ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE invitations ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE invitations FORCE ROW LEVEL SECURITY",
+            "DROP POLICY IF EXISTS invitations_org_isolation ON invitations",
+            "CREATE POLICY invitations_org_isolation ON invitations USING (org_id = current_org_id()) WITH CHECK (org_id = current_org_id())",
+            # New table created after 20260626_01's blanket GRANT — grant explicitly
+            # (guarded on the role existing; ALTER DEFAULT PRIVILEGES also covers it
+            # for owner-created objects, but this is belt-and-suspenders + idempotent).
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'brigade_app') THEN
+                    GRANT SELECT, INSERT, UPDATE, DELETE ON invitations TO brigade_app;
+                END IF;
+            END $$;
+            """,
+        ],
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.

@@ -142,6 +142,14 @@ def get_minimum_role_for_method(path: str, method: str) -> UserRole:
     if is_admin_path(path):
         return UserRole.ADMIN
 
+    # Org lifecycle (BR-2.1): the GLOBAL gate only requires authentication — the
+    # real authorization is the PER-ORG role (owner/admin/member) enforced inside
+    # app/api/org_routes against org_memberships. Without this, the default
+    # POST->OPERATOR rule below would block a global-VIEWER invitee from ever
+    # accepting an invite or creating their own org.
+    if path.startswith("/api/v1/orgs"):
+        return UserRole.VIEWER
+
     # Agent routes
     if "/agents" in path:
         if method in ("DELETE", "PUT"):
