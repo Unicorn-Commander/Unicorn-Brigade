@@ -132,18 +132,18 @@ const ModelSelector = ({
       {selectedModel && (
         <div className="flex items-center space-x-4 text-xs text-slate-400 bg-slate-800/30 rounded-lg p-2 border border-slate-700/50">
           <div className="flex items-center space-x-1">
-            <span className="text-slate-500">Provider:</span>
+            <span className="text-slate-400">Provider:</span>
             <span className="text-unicorn-400 font-medium">{selectedModel.provider || 'Unknown'}</span>
           </div>
           {selectedModel.contextWindow && (
             <div className="flex items-center space-x-1">
-              <span className="text-slate-500">Context:</span>
+              <span className="text-slate-400">Context:</span>
               <span className="text-cyan-400 font-medium">{selectedModel.contextWindow}</span>
             </div>
           )}
           {selectedModel.pricing && (
             <div className="flex items-center space-x-1">
-              <span className="text-slate-500">Cost:</span>
+              <span className="text-slate-400">Cost:</span>
               <span className="text-emerald-400 font-medium">{selectedModel.pricing}/1M tokens</span>
             </div>
           )}

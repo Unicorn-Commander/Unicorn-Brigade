@@ -82,7 +82,7 @@ export default function ActivityFeed({ events = [], agents = [], onOpen }) {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-3" aria-live="polite">
         {events.length === 0 ? (
-          <p className="px-2 pt-6 text-center text-[12px] text-slate-500">
+          <p className="px-2 pt-6 text-center text-[12px] text-slate-400">
             No activity yet — open a chat or run a mission and it streams here.
           </p>
         ) : (
@@ -106,7 +106,7 @@ export default function ActivityFeed({ events = [], agents = [], onOpen }) {
                   <span className="font-semibold text-white">{name}</span>{' '}
                   <span className={kind.text}>{actionText(ev)}</span>
                 </span>
-                <span className="shrink-0 pt-0.5 text-[10px] tabular-nums text-slate-500">{relTime(ev.ts)}</span>
+                <span className="shrink-0 pt-0.5 text-[10px] tabular-nums text-slate-400">{relTime(ev.ts)}</span>
               </button>
             );
           })

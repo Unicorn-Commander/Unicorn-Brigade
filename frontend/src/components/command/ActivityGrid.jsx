@@ -39,7 +39,7 @@ const Tile = memo(function Tile({ agent, status, detail, onOpen }) {
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold text-white">{name}</div>
         <div className="truncate text-[11px] text-slate-300">{agent.title || agent.rank}</div>
-        <div className={`mt-0.5 truncate text-[11px] ${active ? 'text-slate-200' : 'text-slate-500'}`}>
+        <div className={`mt-0.5 truncate text-[11px] ${active ? 'text-slate-200' : 'text-slate-400'}`}>
           {s.label}
           {active && detail ? ` · ${detail}` : ''}
         </div>

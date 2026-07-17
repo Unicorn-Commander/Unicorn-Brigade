@@ -130,7 +130,7 @@ function OrgAgentNodeBase({ data }) {
         </div>
         {agent.model && (
           <div className="mt-2 text-[11px]">
-            <span className="text-slate-500">Model: </span>
+            <span className="text-slate-400">Model: </span>
             <span className="text-cyan-300">{agent.model}</span>
             <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] leading-none ${tierChip}`}>{tier}</span>
           </div>

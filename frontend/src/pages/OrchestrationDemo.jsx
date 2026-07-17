@@ -26,7 +26,7 @@ const WorkflowVisualization3D = lazy(() =>
         <div className="text-center p-8">
           <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
           <p className="text-slate-300 font-medium">3D visualization unavailable</p>
-          <p className="text-sm text-slate-500 mt-1">WebGL is required for the demo view</p>
+          <p className="text-sm text-slate-400 mt-1">WebGL is required for the demo view</p>
         </div>
       </div>
     ),
@@ -188,7 +188,7 @@ const StatCard = ({ label, value, icon: Icon, color = 'purple' }) => (
       </div>
       <div>
         <p className="text-2xl font-bold text-white">{value.toLocaleString()}</p>
-        <p className="text-xs text-slate-500">{label}</p>
+        <p className="text-xs text-slate-400">{label}</p>
       </div>
     </div>
   </div>
@@ -445,7 +445,7 @@ const OrchestrationDemo = () => {
             </div>
           </div>
 
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-slate-400">
             Continuous Operation • All workflows running simultaneously
           </div>
         </div>
@@ -516,7 +516,7 @@ const OrchestrationDemo = () => {
                     <div className="w-3 h-3 rounded-full bg-unicorn-500"></div>
                     <span className="text-sm text-slate-300">Delegation (Outward)</span>
                   </div>
-                  <p className="text-xs text-slate-500 ml-5">
+                  <p className="text-xs text-slate-400 ml-5">
                     The General → Team Lead → Workers
                   </p>
                 </div>
@@ -525,7 +525,7 @@ const OrchestrationDemo = () => {
                     <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
                     <span className="text-sm text-slate-300">Peer Communication</span>
                   </div>
-                  <p className="text-xs text-slate-500 ml-5">
+                  <p className="text-xs text-slate-400 ml-5">
                     Workers ↔ Data Sources
                   </p>
                 </div>
@@ -534,7 +534,7 @@ const OrchestrationDemo = () => {
                     <div className="w-3 h-3 rounded-full bg-green-500"></div>
                     <span className="text-sm text-slate-300">Results (Return)</span>
                   </div>
-                  <p className="text-xs text-slate-500 ml-5">
+                  <p className="text-xs text-slate-400 ml-5">
                     Workers → Team Lead → The General
                   </p>
                 </div>

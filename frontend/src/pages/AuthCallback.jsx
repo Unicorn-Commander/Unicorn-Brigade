@@ -153,7 +153,7 @@ export default function AuthCallback() {
 
         {/* Branding */}
         <div className="mt-6 text-center">
-          <p className="text-slate-500 text-xs">
+          <p className="text-slate-400 text-xs">
             <span className="text-unicorn-400 font-semibold">🦄 Unicorn Brigade</span>
             {' '}- AI Agent Infrastructure Platform
           </p>

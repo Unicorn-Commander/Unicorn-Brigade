@@ -386,9 +386,9 @@ const VoiceCallModal = ({
             {/* Local audio indicator */}
             {isConnected && !isMuted && (
               <div className="flex items-center justify-center mt-4 space-x-2">
-                <Volume2 className="w-4 h-4 text-slate-500" />
+                <Volume2 className="w-4 h-4 text-slate-400" />
                 <AudioVisualizer level={localAudioLevel} isActive={!isMuted} />
-                <span className="text-xs text-slate-500">Your microphone</span>
+                <span className="text-xs text-slate-400">Your microphone</span>
               </div>
             )}
 

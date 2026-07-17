@@ -260,7 +260,7 @@ const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
             ) : (
               <div className="text-center py-8">
                 <p className="text-slate-400">No tools assigned yet</p>
-                <p className="text-sm text-slate-500 mt-1">Add tools from the left panel</p>
+                <p className="text-sm text-slate-400 mt-1">Add tools from the left panel</p>
               </div>
             )}
           </div>

@@ -91,7 +91,7 @@ const StepNode = ({ data }) => {
         <div className="text-xs text-slate-400 mb-2">{data.description}</div>
       )}
       {data.executor && (
-        <div className="text-xs text-slate-500 font-mono">{data.executor}</div>
+        <div className="text-xs text-slate-400 font-mono">{data.executor}</div>
       )}
       {data.outputs && data.outputs.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">

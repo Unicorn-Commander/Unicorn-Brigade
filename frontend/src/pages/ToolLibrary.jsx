@@ -277,7 +277,7 @@ const ToolLibrary = () => {
                   {selectedTool.parameters.map((param, idx) => (
                     <div key={idx} className="text-slate-300">
                       <span className="text-unicorn-400">{param}</span>
-                      {idx < selectedTool.parameters.length - 1 && <span className="text-slate-500">,</span>}
+                      {idx < selectedTool.parameters.length - 1 && <span className="text-slate-400">,</span>}
                     </div>
                   ))}
                 </div>

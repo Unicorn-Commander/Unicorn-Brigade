@@ -55,7 +55,7 @@ const AttributionTimeline = ({ attributions, onItemClick }) => {
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-unicorn-400" />
               <h3 className="text-sm font-semibold text-slate-200">{date}</h3>
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-slate-400">
                 ({items.length} {items.length === 1 ? 'change' : 'changes'})
               </span>
             </div>
@@ -86,7 +86,7 @@ const AttributionTimeline = ({ attributions, onItemClick }) => {
                 >
                   {/* Time Badge */}
                   <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
                       <Clock className="w-3 h-3" />
                       {formatTime(attr.timestamp)}
                     </div>
@@ -126,7 +126,7 @@ const AttributionTimeline = ({ attributions, onItemClick }) => {
 
                   {/* Line Range */}
                   {attr.start_line && attr.end_line && (
-                    <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
+                    <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
                       <GitCommit className="w-3 h-3" />
                       <span>Lines {attr.start_line}-{attr.end_line}</span>
                     </div>
@@ -142,7 +142,7 @@ const AttributionTimeline = ({ attributions, onItemClick }) => {
       {Object.keys(groupedByDate).length === 0 && (
         <div className="text-center py-12">
           <Calendar className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-          <p className="text-slate-500">No activity in this time period</p>
+          <p className="text-slate-400">No activity in this time period</p>
         </div>
       )}
     </div>

@@ -133,7 +133,7 @@ const MiniWorkflowDiagram = ({ workflow, height = '120px' }) => {
         className="flex items-center justify-center bg-slate-900/50 rounded-lg border border-slate-700/50"
         style={{ height }}
       >
-        <div className="text-xs text-slate-500">No workflow steps</div>
+        <div className="text-xs text-slate-400">No workflow steps</div>
       </div>
     );
   }
@@ -169,7 +169,7 @@ const MiniWorkflowDiagram = ({ workflow, height = '120px' }) => {
         />
       </ReactFlow>
       {workflow.steps.length > 6 && (
-        <div className="absolute bottom-1 right-2 text-[10px] text-slate-500 bg-slate-900/80 px-1.5 py-0.5 rounded">
+        <div className="absolute bottom-1 right-2 text-[10px] text-slate-400 bg-slate-900/80 px-1.5 py-0.5 rounded">
           +{workflow.steps.length - 6} more
         </div>
       )}

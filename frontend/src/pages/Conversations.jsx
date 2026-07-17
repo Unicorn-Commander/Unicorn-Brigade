@@ -279,7 +279,7 @@ const Conversations = () => {
                         {/* Meta Info */}
                         <div className="flex flex-wrap items-center gap-3 mt-2.5">
                           {/* Message Count */}
-                          <div className="flex items-center space-x-1.5 text-xs text-slate-500">
+                          <div className="flex items-center space-x-1.5 text-xs text-slate-400">
                             <Hash className="w-3 h-3" />
                             <span>{conv.message_count || 0} messages</span>
                           </div>
@@ -301,7 +301,7 @@ const Conversations = () => {
 
                           {/* Tokens */}
                           {conv.total_tokens > 0 && (
-                            <div className="flex items-center space-x-1 text-xs text-slate-500">
+                            <div className="flex items-center space-x-1 text-xs text-slate-400">
                               <span>{conv.total_tokens.toLocaleString()} tokens</span>
                             </div>
                           )}
@@ -312,7 +312,7 @@ const Conversations = () => {
                     {/* Right: Timestamp + Actions */}
                     <div className="flex flex-col items-end space-y-2 flex-shrink-0">
                       {/* Timestamp */}
-                      <div className="flex items-center space-x-1.5 text-xs text-slate-500">
+                      <div className="flex items-center space-x-1.5 text-xs text-slate-400">
                         <Clock className="w-3 h-3" />
                         <span>{formatTimestamp(conv.updated_at || conv.created_at)}</span>
                       </div>

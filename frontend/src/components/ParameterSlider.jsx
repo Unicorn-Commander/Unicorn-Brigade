@@ -87,7 +87,7 @@ const ParameterSlider = ({
       </div>
 
       {(leftLabel || rightLabel) && (
-        <div className="flex items-center justify-between text-xs text-slate-500">
+        <div className="flex items-center justify-between text-xs text-slate-400">
           <span>{leftLabel}</span>
           <span>{rightLabel}</span>
         </div>

@@ -184,7 +184,7 @@ const Navigation = () => {
               <h1 className="text-lg font-bold text-gradient">
                 Unicorn Brigade
               </h1>
-              <p className="text-xs text-slate-500">Agent Infrastructure</p>
+              <p className="text-xs text-slate-400">Agent Infrastructure</p>
             </div>
           </div>
           {import.meta.env.DEV && (
@@ -488,7 +488,7 @@ const Navigation = () => {
                   <div className={`w-2 h-2 rounded-full ${s.dot}`}></div>
                   <div>
                     <p className={`text-sm font-medium ${s.text}`}>{s.label}</p>
-                    <p className="text-xs text-slate-500">{s.detail}</p>
+                    <p className="text-xs text-slate-400">{s.detail}</p>
                   </div>
                 </div>
               </div>

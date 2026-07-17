@@ -39,7 +39,7 @@ const WorkflowVisualization3D = lazy(() =>
         <div className="text-center p-8">
           <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
           <p className="text-slate-300 font-medium">3D visualization unavailable</p>
-          <p className="text-sm text-slate-500 mt-1">WebGL is required for the 3D command view</p>
+          <p className="text-sm text-slate-400 mt-1">WebGL is required for the 3D command view</p>
         </div>
       </div>
     ),
@@ -435,7 +435,7 @@ const Orchestration = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-white">{stat.value}</p>
-                    <p className="text-xs text-slate-500">{stat.label}</p>
+                    <p className="text-xs text-slate-400">{stat.label}</p>
                   </div>
                 </div>
               </div>
@@ -450,7 +450,7 @@ const Orchestration = () => {
             className="flex items-center space-x-4 mb-6"
           >
             <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search agents..."
@@ -461,7 +461,7 @@ const Orchestration = () => {
             </div>
 
             <div className="flex items-center space-x-2">
-              <Filter className="w-4 h-4 text-slate-500" />
+              <Filter className="w-4 h-4 text-slate-400" />
               <select
                 value={filterDomain}
                 onChange={(e) => setFilterDomain(e.target.value)}
@@ -520,7 +520,7 @@ const Orchestration = () => {
 
               <div className="space-y-3">
                 {missions.length === 0 && (
-                  <p className="text-xs text-slate-500 text-center py-4">
+                  <p className="text-xs text-slate-400 text-center py-4">
                     No active missions. Start one from Quick Actions below.
                   </p>
                 )}
@@ -534,7 +534,7 @@ const Orchestration = () => {
                         <p className="text-sm font-medium text-white truncate">
                           {mission.name}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-slate-400">
                           {mission.createdAt ? new Date(mission.createdAt).toLocaleString() : ''}
                         </p>
                       </div>
@@ -550,7 +550,7 @@ const Orchestration = () => {
                     {mission.status === 'active' && (
                       <div className="mb-2">
                         <div className="flex items-center justify-between text-xs mb-1">
-                          <span className="text-slate-500">Progress</span>
+                          <span className="text-slate-400">Progress</span>
                           <span className="text-unicorn-400">{mission.progress}%</span>
                         </div>
                         <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
@@ -565,8 +565,8 @@ const Orchestration = () => {
                     )}
 
                     <div className="flex items-center space-x-1">
-                      <Users className="w-3 h-3 text-slate-500" />
-                      <span className="text-[10px] text-slate-500">
+                      <Users className="w-3 h-3 text-slate-400" />
+                      <span className="text-[10px] text-slate-400">
                         {mission.agents?.length || 0} agents
                       </span>
                     </div>
@@ -591,7 +591,7 @@ const Orchestration = () => {
                     <Play className="w-4 h-4 text-green-400" />
                     <span className="text-sm text-slate-300">Start New Mission</span>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-slate-500" />
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
                 </button>
               </div>
             </div>
@@ -610,7 +610,7 @@ const Orchestration = () => {
 
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {events.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-4">
+                  <p className="text-xs text-slate-400 text-center py-4">
                     No activity yet. Start chatting with an agent to see real-time events.
                   </p>
                 ) : (
@@ -652,7 +652,7 @@ const Orchestration = () => {
                         }`} />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs text-slate-300 truncate">
-                            <span className="text-slate-500">{event.agentName || event.agentId}:</span>{' '}
+                            <span className="text-slate-400">{event.agentName || event.agentId}:</span>{' '}
                             {event.message || event.type.replace(/_/g, ' ')}
                           </p>
                           <p className="text-[10px] text-slate-600">
@@ -703,7 +703,7 @@ const Orchestration = () => {
 
               <form onSubmit={handleCreateMission} className="space-y-4">
                 <div>
-                  <label htmlFor="mission-name" className="block text-xs text-slate-500 uppercase tracking-wider mb-1">
+                  <label htmlFor="mission-name" className="block text-xs text-slate-400 uppercase tracking-wider mb-1">
                     Mission Name
                   </label>
                   <input
@@ -719,7 +719,7 @@ const Orchestration = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="mission-task" className="block text-xs text-slate-500 uppercase tracking-wider mb-1">
+                  <label htmlFor="mission-task" className="block text-xs text-slate-400 uppercase tracking-wider mb-1">
                     Task
                   </label>
                   <textarea
@@ -733,7 +733,7 @@ const Orchestration = () => {
                   />
                 </div>
 
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-400">
                   The General will automatically assign the best agents for this task.
                 </p>
 
@@ -797,7 +797,7 @@ const Orchestration = () => {
 
               {selectedAgent.capabilities && (
                 <div className="mt-4">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Capabilities</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Capabilities</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedAgent.capabilities.map((cap) => (
                       <span
@@ -813,7 +813,7 @@ const Orchestration = () => {
 
               {selectedAgent.tools && selectedAgent.tools.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Tools</p>
+                  <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Tools</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedAgent.tools.map((tool) => (
                       <span

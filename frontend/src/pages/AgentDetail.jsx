@@ -390,7 +390,7 @@ const AgentDetail = () => {
                     <Key className="w-8 h-8 text-slate-600" />
                   </div>
                   <p className="text-slate-400 mb-2">No API keys generated yet</p>
-                  <p className="text-sm text-slate-500">Create your first API key to get started</p>
+                  <p className="text-sm text-slate-400">Create your first API key to get started</p>
                 </div>
               )}
             </div>

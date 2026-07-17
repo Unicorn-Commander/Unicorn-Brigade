@@ -23,7 +23,7 @@ const ChatMessage = ({ message }) => {
 
         <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
           {!isUser && message.agent && (
-            <span className="text-xs text-slate-500 mb-1">{message.agent.name}</span>
+            <span className="text-xs text-slate-400 mb-1">{message.agent.name}</span>
           )}
 
           <div className={`rounded-lg px-4 py-3 ${

@@ -286,7 +286,7 @@ const CodeAttribution = () => {
           <div className="flex flex-col lg:flex-row gap-4">
             {/* Search Bar */}
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 value={searchQuery}
@@ -301,7 +301,7 @@ const CodeAttribution = () => {
                     setSearchQuery('');
                     loadData();
                   }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -310,7 +310,7 @@ const CodeAttribution = () => {
 
             {/* Date Range Filter */}
             <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-slate-500" />
+              <Calendar className="w-4 h-4 text-slate-400" />
               <select
                 value={dateRange}
                 onChange={(e) => setDateRange(e.target.value)}
@@ -326,7 +326,7 @@ const CodeAttribution = () => {
             {/* Agent Filter */}
             {agentList.length > 0 && (
               <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-slate-500" />
+                <User className="w-4 h-4 text-slate-400" />
                 <select
                   value={selectedAgent || ''}
                   onChange={(e) => setSelectedAgent(e.target.value || null)}
@@ -362,7 +362,7 @@ const CodeAttribution = () => {
                 flex items-center gap-2 px-4 py-3 border-b-2 transition-all
                 ${activeTab === tab.id
                   ? 'border-unicorn-500 text-unicorn-400'
-                  : 'border-transparent text-slate-500 hover:text-slate-300'
+                  : 'border-transparent text-slate-400 hover:text-slate-300'
                 }
               `}
             >
@@ -409,7 +409,7 @@ const CodeAttribution = () => {
                                 <p className="text-sm font-medium text-slate-200 truncate">
                                   {filePath.split('/').pop()}
                                 </p>
-                                <p className="text-xs text-slate-500 truncate">
+                                <p className="text-xs text-slate-400 truncate">
                                   {filePath}
                                 </p>
                               </div>
@@ -443,7 +443,7 @@ const CodeAttribution = () => {
                   ) : (
                     <div className="card text-center py-12">
                       <FileCode className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-                      <p className="text-slate-500">No attributed files found</p>
+                      <p className="text-slate-400">No attributed files found</p>
                     </div>
                   )}
                 </div>
@@ -470,19 +470,19 @@ const CodeAttribution = () => {
                                 <h3 className="text-lg font-semibold text-slate-200">
                                   {agentData.name}
                                 </h3>
-                                <p className="text-xs text-slate-500">{agentId}</p>
+                                <p className="text-xs text-slate-400">{agentId}</p>
                               </div>
                             </div>
 
                             <div className="flex items-center gap-4 text-sm">
                               <div className="text-right">
-                                <p className="text-slate-500">Lines</p>
+                                <p className="text-slate-400">Lines</p>
                                 <p className="font-medium text-unicorn-400">
                                   {totalLines.toLocaleString()}
                                 </p>
                               </div>
                               <div className="text-right">
-                                <p className="text-slate-500">Files</p>
+                                <p className="text-slate-400">Files</p>
                                 <p className="font-medium text-unicorn-400">
                                   {uniqueFiles}
                                 </p>
@@ -502,7 +502,7 @@ const CodeAttribution = () => {
                           </div>
 
                           {agentData.attributions.length > 4 && (
-                            <p className="text-xs text-slate-500 mt-3 text-center">
+                            <p className="text-xs text-slate-400 mt-3 text-center">
                               + {agentData.attributions.length - 4} more attributions
                             </p>
                           )}
@@ -512,7 +512,7 @@ const CodeAttribution = () => {
                   ) : (
                     <div className="card text-center py-12">
                       <User className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-                      <p className="text-slate-500">No agents found</p>
+                      <p className="text-slate-400">No agents found</p>
                     </div>
                   )}
                 </div>

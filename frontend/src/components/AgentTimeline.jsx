@@ -9,7 +9,7 @@ const AgentTimeline = ({ session, agentName }) => {
     return (
       <div className="text-center py-12">
         <div className="w-16 h-16 rounded-full bg-slate-800/50 border border-slate-700 flex items-center justify-center mx-auto mb-4">
-          <Clock className="w-8 h-8 text-slate-500" />
+          <Clock className="w-8 h-8 text-slate-400" />
         </div>
         <h3 className="text-lg font-semibold text-slate-300 mb-2">No Build History Available</h3>
         <p className="text-slate-400">This agent was created manually or the build session is not available.</p>
@@ -122,7 +122,7 @@ const TimelineStep = ({ phase, index, isExpanded, onToggle, isLast }) => {
           </div>
           <div className="flex items-center space-x-2">
             {phase.timestamp && (
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-slate-400">
                 {new Date(phase.timestamp).toLocaleTimeString()}
               </span>
             )}
@@ -180,7 +180,7 @@ const MessageBubble = ({ message }) => {
             {isUser ? 'You' : isSystem ? 'System' : 'The General'}
           </span>
           {message.timestamp && (
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-slate-400">
               {new Date(message.timestamp).toLocaleTimeString()}
             </span>
           )}

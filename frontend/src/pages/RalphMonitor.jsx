@@ -165,7 +165,7 @@ const RalphMonitor = () => {
             <ListSkeleton rows={6} />
           ) : executions.length === 0 ? (
             <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-8 text-center">
-              <AlertCircle className="w-12 h-12 text-slate-500 mx-auto mb-3" />
+              <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
               <p className="text-slate-400">No executions running</p>
             </div>
           ) : (
@@ -185,7 +185,7 @@ const RalphMonitor = () => {
                     {getStatusIcon(execution.status)}
                     {execution.status}
                   </span>
-                  <span className="text-xs text-slate-500">Iteration {execution.iteration}/{execution.max_iterations}</span>
+                  <span className="text-xs text-slate-400">Iteration {execution.iteration}/{execution.max_iterations}</span>
                 </div>
 
                 {/* Workflow ID */}
@@ -235,19 +235,19 @@ const RalphMonitor = () => {
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="bg-slate-800/40 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1">Iteration</div>
+                    <div className="text-xs text-slate-400 mb-1">Iteration</div>
                     <div className="text-lg font-semibold text-white">{selectedExecution.iteration}/{selectedExecution.max_iterations}</div>
                   </div>
                   <div className="bg-slate-800/40 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1">Progress</div>
+                    <div className="text-xs text-slate-400 mb-1">Progress</div>
                     <div className="text-lg font-semibold text-white">{selectedExecution.progress_percent}%</div>
                   </div>
                   <div className="bg-slate-800/40 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1">Completed</div>
+                    <div className="text-xs text-slate-400 mb-1">Completed</div>
                     <div className="text-lg font-semibold text-emerald-400">{selectedExecution.tasks.completed}</div>
                   </div>
                   <div className="bg-slate-800/40 rounded-lg p-3">
-                    <div className="text-xs text-slate-500 mb-1">Failed</div>
+                    <div className="text-xs text-slate-400 mb-1">Failed</div>
                     <div className="text-lg font-semibold text-red-400">{selectedExecution.tasks.failed}</div>
                   </div>
                 </div>
@@ -322,7 +322,7 @@ const RalphMonitor = () => {
             <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-12 text-center">
               <TrendingUp className="w-16 h-16 text-slate-600 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-slate-400 mb-2">No Execution Selected</h3>
-              <p className="text-slate-500">Select an execution from the list to view details</p>
+              <p className="text-slate-400">Select an execution from the list to view details</p>
             </div>
           )}
         </div>

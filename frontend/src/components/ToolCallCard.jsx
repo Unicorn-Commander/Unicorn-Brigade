@@ -128,7 +128,7 @@ const getToolIcon = (toolName) => {
 const SyntaxHighlightedJSON = ({ data, isError = false }) => {
   const highlighted = useMemo(() => {
     if (data === null || data === undefined) {
-      return <span className="text-slate-500">null</span>;
+      return <span className="text-slate-400">null</span>;
     }
 
     const jsonString = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
@@ -188,7 +188,7 @@ const SyntaxHighlightedJSON = ({ data, isError = false }) => {
         const punctMatch = remaining.match(/^([{}\[\]:,])/);
         if (punctMatch) {
           tokens.push(
-            <span key={`${lineIndex}-${tokenIndex++}`} className="text-slate-500">
+            <span key={`${lineIndex}-${tokenIndex++}`} className="text-slate-400">
               {punctMatch[1]}
             </span>
           );
@@ -319,7 +319,7 @@ const ToolCallCard = ({ toolCall, compact = false }) => {
 
           {/* Compact preview of arguments */}
           {!expanded && toolCall.arguments && (
-            <p className="text-[11px] text-slate-500 truncate mt-0.5">
+            <p className="text-[11px] text-slate-400 truncate mt-0.5">
               {Object.entries(toolCall.arguments).slice(0, 2).map(([k, v]) =>
                 `${k}: ${typeof v === 'string' ? v.slice(0, 30) : JSON.stringify(v).slice(0, 30)}`
               ).join(', ')}
@@ -338,7 +338,7 @@ const ToolCallCard = ({ toolCall, compact = false }) => {
           )}
           <ChevronRight
             className={`
-              w-4 h-4 text-slate-500 transition-transform duration-200
+              w-4 h-4 text-slate-400 transition-transform duration-200
               ${expanded ? 'rotate-90' : ''}
             `}
           />
@@ -359,12 +359,12 @@ const ToolCallCard = ({ toolCall, compact = false }) => {
               {/* Arguments Section */}
               <div className="pt-3">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                     Arguments
                   </span>
                   <button
                     onClick={copyToClipboard}
-                    className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+                    className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-300 transition-colors"
                   >
                     {copied ? (
                       <>
@@ -390,7 +390,7 @@ const ToolCallCard = ({ toolCall, compact = false }) => {
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className={`
                       text-[10px] font-semibold uppercase tracking-wider
-                      ${isError ? 'text-red-500' : 'text-slate-500'}
+                      ${isError ? 'text-red-500' : 'text-slate-400'}
                     `}>
                       {isError ? 'Error' : 'Result'}
                     </span>
@@ -424,7 +424,7 @@ const ToolCallCard = ({ toolCall, compact = false }) => {
 
               {/* Loading indicator for result */}
               {isLoading && (
-                <div className="flex items-center gap-2 py-2 text-slate-500">
+                <div className="flex items-center gap-2 py-2 text-slate-400">
                   <div className="flex gap-1">
                     <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />

@@ -254,7 +254,7 @@ export default function CommandCenter() {
             </button>
           </div>
         ) : loading && !agents.length ? (
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-400">
             <Loader2 className="h-5 w-5 animate-spin" /> Loading the Brigade…
           </div>
         ) : view === 'chart' ? (
@@ -293,7 +293,7 @@ export default function CommandCenter() {
         ) : view === 'graph3d' ? (
           <Suspense
             fallback={
-              <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+              <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-400">
                 <Loader2 className="h-5 w-5 animate-spin" /> Loading 3D comms graph…
               </div>
             }

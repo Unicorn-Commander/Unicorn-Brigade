@@ -93,7 +93,7 @@ const LiveKitRoom = ({ isVideoEnabled, isAudioEnabled, agentName }) => {
                   </span>
                 </div>
                 <p className="text-slate-400">Voice Call Active</p>
-                <p className="text-sm text-slate-500 mt-1">with {agentName}</p>
+                <p className="text-sm text-slate-400 mt-1">with {agentName}</p>
               </div>
             </div>
           )}
@@ -121,7 +121,7 @@ const LiveKitFallback = ({ isVideoEnabled, isAudioEnabled, agentName }) => {
             <p className="text-slate-300">
               {isVideoEnabled ? 'Video' : 'Voice'} Call Simulation
             </p>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-sm text-slate-400 mt-1">
               LiveKit server not connected
             </p>
           </>

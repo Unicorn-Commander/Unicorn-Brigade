@@ -770,12 +770,12 @@ npx my-custom-server`}
 
                 {endpoint.params && endpoint.params.length > 0 && (
                   <div className="mb-3">
-                    <p className="text-xs text-slate-500 mb-2">Path Parameters:</p>
+                    <p className="text-xs text-slate-400 mb-2">Path Parameters:</p>
                     <div className="space-y-1">
                       {endpoint.params.map((param, pidx) => (
                         <div key={pidx} className="text-xs">
                           <code className="text-unicorn-400">{param.name}</code>
-                          <span className="text-slate-500"> - {param.description}</span>
+                          <span className="text-slate-400"> - {param.description}</span>
                         </div>
                       ))}
                     </div>
@@ -784,7 +784,7 @@ npx my-custom-server`}
 
                 {endpoint.body && (
                   <div>
-                    <p className="text-xs text-slate-500 mb-2">Request Body:</p>
+                    <p className="text-xs text-slate-400 mb-2">Request Body:</p>
                     <div className="bg-slate-900/50 rounded p-2 font-mono text-xs">
                       <pre className="text-slate-300">
 {JSON.stringify(Object.fromEntries(

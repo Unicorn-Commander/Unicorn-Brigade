@@ -628,7 +628,7 @@ const WorkflowVisualization3D = ({
       <div className="absolute bottom-4 left-4 z-10 p-3 rounded-lg bg-slate-800/80 backdrop-blur-sm border border-slate-700/50 space-y-3">
         {/* Domains */}
         <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Domains</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Domains</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             {[...new Set(agents.map((a) => a.domain).filter(Boolean))].sort().map((domain) => (
               <div key={domain} className="flex items-center space-x-1.5">
@@ -644,7 +644,7 @@ const WorkflowVisualization3D = ({
 
         {/* Connection Types */}
         <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Connection Types</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Connection Types</p>
           <div className="space-y-1">
             <div className="flex items-center space-x-1.5">
               <div className="w-2 h-2 rounded-full bg-unicorn-500" />
@@ -667,7 +667,7 @@ const WorkflowVisualization3D = ({
 
         {/* Agent Types */}
         <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Agent Types</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Agent Types</p>
           <div className="space-y-1">
             <div className="flex items-center space-x-1.5">
               <div className="w-3 h-3 rounded-full border-2 border-white/40" />
@@ -722,7 +722,7 @@ const WorkflowVisualization3D = ({
             </div>
             <button
               onClick={() => setSelectedNode(null)}
-              className="absolute top-2 right-2 text-slate-500 hover:text-white"
+              className="absolute top-2 right-2 text-slate-400 hover:text-white"
             >
               &times;
             </button>
@@ -766,7 +766,7 @@ const WorkflowVisualization3D = ({
             <div className="text-center">
               <Layers className="w-16 h-16 text-slate-600 mx-auto mb-4" />
               <p className="text-slate-400">No agents to visualize</p>
-              <p className="text-sm text-slate-500">Add agents to see the workflow graph</p>
+              <p className="text-sm text-slate-400">Add agents to see the workflow graph</p>
             </div>
           </div>
         )}

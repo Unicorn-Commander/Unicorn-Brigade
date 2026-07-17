@@ -814,7 +814,7 @@ print(response.json())`
                         <div key={idx} className="p-3 bg-slate-800/50 rounded-lg">
                           <div className="flex items-center space-x-2 mb-1">
                             <code className="text-unicorn-400">{param.name}</code>
-                            <span className="text-xs text-slate-500">{param.type}</span>
+                            <span className="text-xs text-slate-400">{param.type}</span>
                             {param.required && (
                               <span className="text-xs text-red-400">required</span>
                             )}
@@ -835,7 +835,7 @@ print(response.json())`
                         <div key={idx} className="p-3 bg-slate-800/50 rounded-lg">
                           <div className="flex items-center space-x-2 mb-1">
                             <code className="text-unicorn-400">{param.name}</code>
-                            <span className="text-xs text-slate-500">{param.type}</span>
+                            <span className="text-xs text-slate-400">{param.type}</span>
                             {param.required && (
                               <span className="text-xs text-red-400">required</span>
                             )}
@@ -856,7 +856,7 @@ print(response.json())`
                         <div key={key} className="p-3 bg-slate-800/50 rounded-lg">
                           <div className="flex items-center space-x-2 mb-1">
                             <code className="text-unicorn-400">{key}</code>
-                            <span className="text-xs text-slate-500">{value.type}</span>
+                            <span className="text-xs text-slate-400">{value.type}</span>
                             {value.required && (
                               <span className="text-xs text-red-400">required</span>
                             )}

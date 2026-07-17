@@ -601,7 +601,7 @@ const Workflows = () => {
                             <td className="px-6 py-4">
                               <div>
                                 <p className="font-medium text-white">{execution.workflow_name || execution.workflow_id}</p>
-                                <p className="text-xs text-slate-500 font-mono">{execution.id.slice(0, 8)}...</p>
+                                <p className="text-xs text-slate-400 font-mono">{execution.id.slice(0, 8)}...</p>
                               </div>
                             </td>
                             <td className="px-6 py-4">
@@ -618,7 +618,7 @@ const Workflows = () => {
                               <div>
                                 <p>{formatDate(execution.started_at)}</p>
                                 {execution.completed_at && (
-                                  <p className="text-xs text-slate-500">
+                                  <p className="text-xs text-slate-400">
                                     Completed: {formatDate(execution.completed_at)}
                                   </p>
                                 )}
@@ -700,7 +700,7 @@ const Workflows = () => {
                             <p className="font-medium text-white">
                               {execution.workflow_name || execution.workflow_id}
                             </p>
-                            <p className="text-xs text-slate-500 font-mono">{execution.id.slice(0, 8)}...</p>
+                            <p className="text-xs text-slate-400 font-mono">{execution.id.slice(0, 8)}...</p>
                           </div>
                           <span className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg ${status.bg}`}>
                             {isActive ? (
@@ -850,7 +850,7 @@ const Workflows = () => {
                         </div>
                       </div>
                       {lead.workers && lead.workers.length > 0 && (
-                        <p className="text-xs text-slate-500 mt-2">
+                        <p className="text-xs text-slate-400 mt-2">
                           {lead.workers.length} workers available
                         </p>
                       )}
@@ -905,7 +905,7 @@ const Workflows = () => {
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <h4 className="font-medium text-white">{step.name}</h4>
-                          <span className="text-xs text-slate-500 font-mono">{step.executor}</span>
+                          <span className="text-xs text-slate-400 font-mono">{step.executor}</span>
                         </div>
                         <p className="text-sm text-slate-400 mt-1">{step.description}</p>
                         {step.outputs && step.outputs.length > 0 && (
@@ -1067,7 +1067,7 @@ const Workflows = () => {
                           <span className="font-medium text-white">{stepId}</span>
                         </div>
                         {result.model_used && (
-                          <span className="text-xs text-slate-500 font-mono">{result.model_used}</span>
+                          <span className="text-xs text-slate-400 font-mono">{result.model_used}</span>
                         )}
                       </div>
                       <div className="bg-slate-900 rounded p-3 overflow-x-auto">

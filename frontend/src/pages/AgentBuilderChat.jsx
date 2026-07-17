@@ -814,7 +814,7 @@ What would you like to create today?`
             <div className="px-6 py-5 space-y-4 max-h-[60vh] overflow-y-auto">
               {/* Name & Display Name */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Agent Name</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Agent Name</label>
                 <p className="text-white font-medium text-lg">
                   {parsedAgentConfig.avatar && <span className="mr-2">{parsedAgentConfig.avatar}</span>}
                   {parsedAgentConfig.displayName || parsedAgentConfig.name || 'Unnamed Agent'}
@@ -828,7 +828,7 @@ What would you like to create today?`
               <div className="grid grid-cols-2 gap-4">
                 {parsedAgentConfig.domain && (
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Domain</label>
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Domain</label>
                     <div className="flex items-center space-x-2">
                       <Shield className="w-4 h-4 text-unicorn-400" />
                       <span className="text-sm text-slate-200 capitalize">{parsedAgentConfig.domain}</span>
@@ -837,7 +837,7 @@ What would you like to create today?`
                 )}
                 {(parsedAgentConfig.model || agentPreview.model) && (
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Model</label>
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Model</label>
                     <div className="flex items-center space-x-2">
                       <Cpu className="w-4 h-4 text-cyan-400" />
                       <span className="text-sm text-slate-200">{(parsedAgentConfig.model || agentPreview.model || 'gpt-4-turbo').split('/').pop()}</span>
@@ -849,7 +849,7 @@ What would you like to create today?`
               {/* Capabilities */}
               {parsedAgentConfig.capabilities && parsedAgentConfig.capabilities.length > 0 && (
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Capabilities</label>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Capabilities</label>
                   <div className="flex flex-wrap gap-1.5">
                     {parsedAgentConfig.capabilities.map((cap, idx) => (
                       <span
@@ -866,7 +866,7 @@ What would you like to create today?`
               {/* Tools */}
               {parsedAgentConfig.tools && parsedAgentConfig.tools.length > 0 && (
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tools</label>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tools</label>
                   <div className="space-y-1.5">
                     {parsedAgentConfig.tools.map((tool, idx) => (
                       <div key={idx} className="flex items-center space-x-2 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/30">
@@ -881,11 +881,11 @@ What would you like to create today?`
               {/* Parameters */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Temperature</label>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Temperature</label>
                   <p className="text-sm text-slate-200">{parsedAgentConfig.temperature ?? agentPreview.temperature ?? 0.7}</p>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Max Tokens</label>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Max Tokens</label>
                   <p className="text-sm text-slate-200">{(parsedAgentConfig.maxTokens || agentPreview.maxTokens || 4096).toLocaleString()}</p>
                 </div>
               </div>
@@ -893,7 +893,7 @@ What would you like to create today?`
               {/* System Prompt Preview */}
               {parsedAgentConfig.systemPrompt && (
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">System Prompt</label>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">System Prompt</label>
                   <div className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/30 max-h-24 overflow-y-auto">
                     <p className="text-xs text-slate-400 leading-relaxed">{parsedAgentConfig.systemPrompt}</p>
                   </div>

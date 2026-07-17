@@ -166,7 +166,7 @@ export default function CommandPalette() {
               {/* Results */}
               <div className="max-h-80 overflow-y-auto py-2">
                 {results.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-slate-500">
+                  <div className="px-4 py-8 text-center text-sm text-slate-400">
                     No results found
                   </div>
                 ) : (
@@ -196,7 +196,7 @@ export default function CommandPalette() {
                             <div className="flex-1 min-w-0">
                               <span className="text-sm font-medium truncate block">{item.name}</span>
                               {item.subtitle && (
-                                <span className="text-xs text-slate-500">{item.subtitle}</span>
+                                <span className="text-xs text-slate-400">{item.subtitle}</span>
                               )}
                             </div>
                             {selectedIndex === idx && (

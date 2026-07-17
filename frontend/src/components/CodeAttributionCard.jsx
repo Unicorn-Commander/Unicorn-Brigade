@@ -77,7 +77,7 @@ const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
               <p className="text-sm font-medium text-slate-200 truncate">
                 {getFileName(attribution.file_path)}
               </p>
-              <p className="text-xs text-slate-500 truncate">
+              <p className="text-xs text-slate-400 truncate">
                 {getFilePath(attribution.file_path)}
               </p>
             </div>
@@ -101,7 +101,7 @@ const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
           <span className="badge badge-purple text-xs">
             {attribution.lines_count} lines
           </span>
-          <div className="flex items-center gap-1 text-xs text-slate-500">
+          <div className="flex items-center gap-1 text-xs text-slate-400">
             <Clock className="w-3 h-3" />
             {formatTime(attribution.timestamp)}
           </div>
@@ -111,7 +111,7 @@ const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
       {!compact && (
         <>
           {/* Date */}
-          <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-500">
+          <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-400">
             <Calendar className="w-3 h-3" />
             {formatDate(attribution.timestamp)}
           </div>
@@ -128,7 +128,7 @@ const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
           {/* Line Range */}
           {attribution.start_line && attribution.end_line && (
             <div className="flex items-center gap-2 mt-3 text-xs">
-              <GitCommit className="w-3 h-3 text-slate-500" />
+              <GitCommit className="w-3 h-3 text-slate-400" />
               <span className="text-slate-400">
                 Lines {attribution.start_line}-{attribution.end_line}
               </span>

@@ -322,7 +322,7 @@ const Monitoring = () => {
                     <span className={`px-2 py-0.5 rounded-full text-xs ${runStatusBadge(run.lastStatus)}`}>
                       {run.lastStatus || 'never run'}
                     </span>
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-slate-400 mt-1">
                       {run.lastRunAt ? new Date(run.lastRunAt).toLocaleString() : '—'}
                     </p>
                   </div>
@@ -336,7 +336,7 @@ const Monitoring = () => {
         <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-white">Resource Utilization</h2>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-slate-400">
               Live · sampled every 15s{resourceHistory.length > 1 ? ` · ${resourceHistory.length} points` : ''}
             </span>
           </div>

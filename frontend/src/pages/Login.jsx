@@ -210,7 +210,7 @@ export default function Login() {
 
               {/* SSO Providers */}
               <div className="mt-6 text-center">
-                <p className="text-slate-500 text-sm mb-3">Sign in with</p>
+                <p className="text-slate-400 text-sm mb-3">Sign in with</p>
                 <div className="flex items-center justify-center space-x-4 text-slate-400">
                   <div className="flex items-center space-x-1">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -360,7 +360,7 @@ export default function Login() {
 
           {/* Footer */}
           <div className="mt-8 pt-6 border-t border-slate-700/50 text-center">
-            <p className="text-slate-500 text-xs">
+            <p className="text-slate-400 text-xs">
               Part of{' '}
               <span className="text-unicorn-400 font-semibold">
                 Unicorn Commander Ecosystem
@@ -373,7 +373,7 @@ export default function Login() {
         </div>
 
         {/* Platform Info */}
-        <div className="mt-6 text-center text-slate-500 text-xs">
+        <div className="mt-6 text-center text-slate-400 text-xs">
           <p>Magic Unicorn Unconventional Technology & Stuff Inc</p>
           <p className="mt-1">
             <a href="https://unicorncommander.com" target="_blank" rel="noopener noreferrer" className="text-unicorn-400 hover:text-unicorn-300 transition">

@@ -40,7 +40,7 @@ const ForceGraph3D = lazy(() =>
         <div className="text-center p-8">
           <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
           <p className="text-slate-300 font-medium">3D graph unavailable</p>
-          <p className="text-sm text-slate-500 mt-1">WebGL required for knowledge graph visualization</p>
+          <p className="text-sm text-slate-400 mt-1">WebGL required for knowledge graph visualization</p>
         </div>
       </div>
     ),
@@ -322,7 +322,7 @@ const KnowledgeGraph = () => {
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-white">{stat.value}</p>
-                    <p className="text-xs text-slate-500">{stat.label}</p>
+                    <p className="text-xs text-slate-400">{stat.label}</p>
                   </div>
                 </div>
               </div>
@@ -337,7 +337,7 @@ const KnowledgeGraph = () => {
             className="flex items-center space-x-4 mb-6"
           >
             <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search entities..."
@@ -348,7 +348,7 @@ const KnowledgeGraph = () => {
             </form>
 
             <div className="flex items-center space-x-2">
-              <Filter className="w-4 h-4 text-slate-500" />
+              <Filter className="w-4 h-4 text-slate-400" />
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
@@ -461,7 +461,7 @@ const KnowledgeGraph = () => {
 
             {/* Entity type legend */}
             <div className="absolute bottom-4 left-4 z-10 p-3 rounded-lg bg-slate-800/80 backdrop-blur-sm border border-slate-700/50">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Entity Types</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Entity Types</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {Object.entries(entityTypeColors).slice(0, 6).map(([type, color]) => (
                   <div key={type} className="flex items-center space-x-1.5">
@@ -513,7 +513,7 @@ const KnowledgeGraph = () => {
                       <>
                         <Database className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
                         <p className="text-slate-400">FalkorDB not connected</p>
-                        <p className="text-sm text-slate-500 mt-2">
+                        <p className="text-sm text-slate-400 mt-2">
                           Enable FalkorDB in your environment to use the knowledge graph
                         </p>
                         <p className="text-xs text-slate-600 mt-1">
@@ -524,7 +524,7 @@ const KnowledgeGraph = () => {
                       <>
                         <Layers className="w-16 h-16 text-slate-600 mx-auto mb-4" />
                         <p className="text-slate-400">No entities in knowledge graph</p>
-                        <p className="text-sm text-slate-500 mt-2">
+                        <p className="text-sm text-slate-400 mt-2">
                           Use agents with knowledge tools to populate the graph
                         </p>
                       </>
@@ -572,7 +572,7 @@ const KnowledgeGraph = () => {
 
                   {nodeDetails.entity?.created_at && (
                     <div>
-                      <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Created</p>
+                      <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Created</p>
                       <p className="text-sm text-slate-300">
                         {new Date(nodeDetails.entity.created_at).toLocaleString()}
                       </p>
@@ -581,14 +581,14 @@ const KnowledgeGraph = () => {
 
                   {nodeDetails.entity?.created_by && (
                     <div>
-                      <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Created By</p>
+                      <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Created By</p>
                       <p className="text-sm text-slate-300">{nodeDetails.entity.created_by}</p>
                     </div>
                   )}
 
                   {nodeDetails.relationships?.length > 0 && (
                     <div>
-                      <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">
+                      <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">
                         Relationships ({nodeDetails.relationships.length})
                       </p>
                       <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -618,7 +618,7 @@ const KnowledgeGraph = () => {
                   </button>
                 </div>
               ) : (
-                <p className="text-sm text-slate-500 text-center py-4">
+                <p className="text-sm text-slate-400 text-center py-4">
                   Click on a node to view details
                 </p>
               )}
@@ -675,7 +675,7 @@ const KnowledgeGraph = () => {
 
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-300">Enabled</span>
-                  <span className={`text-sm ${stats?.enabled ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  <span className={`text-sm ${stats?.enabled ? 'text-emerald-400' : 'text-slate-400'}`}>
                     {stats?.enabled ? 'Yes' : 'No'}
                   </span>
                 </div>
@@ -716,7 +716,7 @@ const KnowledgeGraph = () => {
               </div>
               <button
                 onClick={() => { setSelectedNode(null); setNodeDetails(null); }}
-                className="text-slate-500 hover:text-white"
+                className="text-slate-400 hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -724,7 +724,7 @@ const KnowledgeGraph = () => {
 
             {nodeDetails?.relationships?.length > 0 && (
               <div className="mt-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">
                   Relationships ({nodeDetails.relationships.length})
                 </p>
                 <div className="space-y-1 max-h-32 overflow-y-auto">

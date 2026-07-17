@@ -125,7 +125,7 @@ const AgentCard = ({ agent, onClick }) => {
         {/* Rank Stars */}
         {agent.rank && (
           <div className="flex items-center space-x-2">
-            <span className="text-xs text-slate-500 font-medium">{agent.rank}</span>
+            <span className="text-xs text-slate-400 font-medium">{agent.rank}</span>
             <StarRating rank={agent.rank} />
           </div>
         )}
@@ -135,7 +135,7 @@ const AgentCard = ({ agent, onClick }) => {
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <div className="h-px flex-1 bg-slate-800"></div>
-              <span className="text-xs text-slate-500 font-medium">Capabilities</span>
+              <span className="text-xs text-slate-400 font-medium">Capabilities</span>
               <div className="h-px flex-1 bg-slate-800"></div>
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -161,7 +161,7 @@ const AgentCard = ({ agent, onClick }) => {
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <div className="h-px flex-1 bg-slate-800"></div>
-              <span className="text-xs text-slate-500 font-medium">Tools</span>
+              <span className="text-xs text-slate-400 font-medium">Tools</span>
               <div className="h-px flex-1 bg-slate-800"></div>
             </div>
             <div className="space-y-1">
@@ -182,7 +182,7 @@ const AgentCard = ({ agent, onClick }) => {
                 );
               })}
               {toolNames.length > 2 && (
-                <div className="text-xs text-slate-500 pl-5">
+                <div className="text-xs text-slate-400 pl-5">
                   +{toolNames.length - 2} more tools
                 </div>
               )}

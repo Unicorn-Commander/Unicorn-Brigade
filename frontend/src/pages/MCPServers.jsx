@@ -279,7 +279,7 @@ const MCPServers = () => {
           {/* Active Filters Display */}
           {(searchQuery || selectedCategory || selectedStatus) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-500">Active filters:</span>
+              <span className="text-xs text-slate-400">Active filters:</span>
               {searchQuery && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
                   Search: {searchQuery}

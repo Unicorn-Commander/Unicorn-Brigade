@@ -87,7 +87,7 @@ const AgentPreview = ({ preview, onConfirm, onReset }) => {
           </div>
           <span className="text-sm font-medium text-white w-8">{preview.temperature.toFixed(1)}</span>
         </div>
-        <div className="flex justify-between text-xs text-slate-500">
+        <div className="flex justify-between text-xs text-slate-400">
           <span>Precise</span>
           <span>Creative</span>
         </div>
@@ -121,7 +121,7 @@ const AgentPreview = ({ preview, onConfirm, onReset }) => {
             ))}
           </div>
         ) : (
-          <div className="text-sm text-slate-500 italic">No tools specified yet</div>
+          <div className="text-sm text-slate-400 italic">No tools specified yet</div>
         )}
       </div>
 
@@ -193,10 +193,10 @@ const PreviewField = ({ label, value, status, icon }) => (
         : 'bg-slate-800/50 border-slate-700'
     }`}>
       <div className="flex items-center space-x-2">
-        <div className={status === 'complete' ? 'text-emerald-400' : 'text-slate-500'}>
+        <div className={status === 'complete' ? 'text-emerald-400' : 'text-slate-400'}>
           {icon}
         </div>
-        <span className={`text-sm flex-1 ${status === 'complete' ? 'text-white font-medium' : 'text-slate-500'}`}>
+        <span className={`text-sm flex-1 ${status === 'complete' ? 'text-white font-medium' : 'text-slate-400'}`}>
           {value || <span className="italic">Pending...</span>}
         </span>
         {status === 'complete' && (

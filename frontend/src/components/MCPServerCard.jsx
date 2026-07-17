@@ -87,7 +87,7 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
             <h3 className="font-semibold text-white group-hover:text-unicorn-400 transition-colors">
               {server.display_name}
             </h3>
-            <p className="text-xs text-slate-500">{server.name}</p>
+            <p className="text-xs text-slate-400">{server.name}</p>
           </div>
         </div>
 
@@ -127,7 +127,7 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
       </div>
 
       {/* Declared tool count (from the registry; discovered live once started) */}
-      <div className="flex items-center space-x-2 mb-4 text-slate-500 text-sm">
+      <div className="flex items-center space-x-2 mb-4 text-slate-400 text-sm">
         <Package className="w-4 h-4" />
         <span>{server.capabilities?.length || 0} declared tools</span>
       </div>
@@ -141,12 +141,12 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
           </div>
           <div className="flex flex-wrap gap-1">
             {server.env_vars.slice(0, 3).map((env, idx) => (
-              <span key={idx} className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-500 text-xs font-mono">
+              <span key={idx} className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-400 text-xs font-mono">
                 {env}
               </span>
             ))}
             {server.env_vars.length > 3 && (
-              <span className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-500 text-xs">
+              <span className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-400 text-xs">
                 +{server.env_vars.length - 3}
               </span>
             )}

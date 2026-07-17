@@ -208,7 +208,7 @@ const GenerateApiKeyModal = ({ agentId, onSuccess, onClose }) => {
                 </option>
               ))}
             </select>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-400 mt-1">
               Keys can be manually revoked at any time
             </p>
           </div>

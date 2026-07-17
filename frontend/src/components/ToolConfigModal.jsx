@@ -130,7 +130,7 @@ const ToolConfigModal = ({ tool, config, onSave, onClose }) => {
                 </label>
                 {renderField(key, field)}
                 {field.help && (
-                  <p className="text-xs text-slate-500 mt-1">{field.help}</p>
+                  <p className="text-xs text-slate-400 mt-1">{field.help}</p>
                 )}
               </div>
             ))

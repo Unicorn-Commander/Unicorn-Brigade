@@ -16,7 +16,7 @@ const WebGLFallbackPage = () => (
   <div className="min-h-screen flex items-center justify-center bg-slate-900">
     <div className="text-center p-8">
       <p className="text-xl text-slate-300 font-medium mb-2">3D Visualization Unavailable</p>
-      <p className="text-slate-500">This page requires WebGL support in your browser.</p>
+      <p className="text-slate-400">This page requires WebGL support in your browser.</p>
     </div>
   </div>
 );

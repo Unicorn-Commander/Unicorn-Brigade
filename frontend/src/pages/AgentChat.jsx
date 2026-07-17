@@ -752,7 +752,7 @@ const AgentChat = () => {
                     ) : (
                       Object.entries(agentsByDomain).map(([domain, domainAgents]) => (
                         <div key={domain}>
-                          <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-slate-500 uppercase">
+                          <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-slate-400 uppercase">
                             {domain}
                           </p>
                           {domainAgents.map((agent) => (
@@ -896,7 +896,7 @@ const AgentChat = () => {
                   );
                 })}
               </div>
-              <p className="mt-3 text-xs text-slate-500">
+              <p className="mt-3 text-xs text-slate-400">
                 These tools will be automatically used when relevant to your questions.
               </p>
             </div>
@@ -966,7 +966,7 @@ const AgentChat = () => {
                         );
                       })}
                       {(selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0) > 5 && (
-                        <span className="px-2 py-0.5 rounded bg-slate-700/50 text-xs text-slate-500">
+                        <span className="px-2 py-0.5 rounded bg-slate-700/50 text-xs text-slate-400">
                           +{(selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0) - 5} more
                         </span>
                       )}
@@ -1024,7 +1024,7 @@ const AgentChat = () => {
                                 {msg.agent?.name || 'Agent'}
                               </span>
                               {msg.model && (
-                                <span className="flex items-center space-x-1 px-1.5 py-0.5 rounded bg-slate-800/60 text-[10px] text-slate-500">
+                                <span className="flex items-center space-x-1 px-1.5 py-0.5 rounded bg-slate-800/60 text-[10px] text-slate-400">
                                   <Zap className="w-2.5 h-2.5" />
                                   <span>{msg.model.split('/').pop()}</span>
                                 </span>
@@ -1111,7 +1111,7 @@ const AgentChat = () => {
                               <div className="mt-2 flex items-center space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   onClick={() => copyToClipboard(msg.content, msg.id)}
-                                  className="flex items-center space-x-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                                  className="flex items-center space-x-1 text-xs text-slate-400 hover:text-slate-300 transition-colors"
                                 >
                                   {copiedId === msg.id ? (
                                     <>
@@ -1170,7 +1170,7 @@ const AgentChat = () => {
                                 <span className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
                                 <span className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                               </div>
-                              <span className="text-xs text-slate-500">
+                              <span className="text-xs text-slate-400">
                                 {selectedAgent?.displayName || 'Agent'} is thinking...
                               </span>
                             </>
@@ -1210,7 +1210,7 @@ const AgentChat = () => {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || !selectedAgent || isStreaming || loadingConversation}
-              className="flex-shrink-0 w-10 h-10 rounded-xl bg-unicorn-600 hover:bg-unicorn-500 disabled:bg-slate-700 disabled:text-slate-500 text-white flex items-center justify-center transition-all disabled:opacity-40"
+              className="flex-shrink-0 w-10 h-10 rounded-xl bg-unicorn-600 hover:bg-unicorn-500 disabled:bg-slate-700 disabled:text-slate-400 text-white flex items-center justify-center transition-all disabled:opacity-40"
             >
               {isStreaming ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

@@ -135,7 +135,7 @@ const KeyRevealModal = ({ apiKey, onClose }) => {
           >
             I've Saved It
           </button>
-          <p className="text-xs text-center text-slate-500 mt-3">
+          <p className="text-xs text-center text-slate-400 mt-3">
             You can manage this key in the API Keys tab
           </p>
         </div>

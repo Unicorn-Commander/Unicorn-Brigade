@@ -36,7 +36,7 @@ const SyntaxHighlightedCode = ({ code, language = 'javascript' }) => {
     highlighted = highlighted.replace(/(["'`])(.*?)\1/g, '<span class="text-emerald-400">$1$2$1</span>');
 
     // Comments
-    highlighted = highlighted.replace(/(\/\/.*$)/g, '<span class="text-slate-500">$1</span>');
+    highlighted = highlighted.replace(/(\/\/.*$)/g, '<span class="text-slate-400">$1</span>');
 
     // Numbers
     highlighted = highlighted.replace(/\b(\d+)\b/g, '<span class="text-amber-400">$1</span>');
@@ -125,7 +125,7 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
                   {getFileName(filePath)}
                 </h1>
               </div>
-              <p className="text-sm text-slate-500">{filePath}</p>
+              <p className="text-sm text-slate-400">{filePath}</p>
             </div>
 
             <div className="flex items-center gap-3">
@@ -208,17 +208,17 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
                 </h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Total Lines:</span>
+                    <span className="text-slate-400">Total Lines:</span>
                     <span className="text-slate-200 font-medium">{codeLines.length}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">AI-Generated:</span>
+                    <span className="text-slate-400">AI-Generated:</span>
                     <span className="text-unicorn-400 font-medium">
                       {Object.keys(lineAttributions).length}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Agents:</span>
+                    <span className="text-slate-400">Agents:</span>
                     <span className="text-slate-200 font-medium">
                       {new Set(attributions.map(a => a.agent_id)).size}
                     </span>
@@ -241,7 +241,7 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
                       </h3>
                       <button
                         onClick={() => setSelectedAttribution(null)}
-                        className="text-slate-500 hover:text-slate-300"
+                        className="text-slate-400 hover:text-slate-300"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -250,10 +250,10 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
                     <div className="space-y-3">
                       {/* Lines */}
                       <div>
-                        <p className="text-xs text-slate-500 mb-1">Lines</p>
+                        <p className="text-xs text-slate-400 mb-1">Lines</p>
                         <p className="text-sm text-slate-200">
                           {selectedAttribution.start_line}-{selectedAttribution.end_line}
-                          <span className="text-slate-500 ml-2">
+                          <span className="text-slate-400 ml-2">
                             ({selectedAttribution.lines_count} lines)
                           </span>
                         </p>
@@ -261,7 +261,7 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
 
                       {/* Agent */}
                       <div>
-                        <p className="text-xs text-slate-500 mb-1">Agent</p>
+                        <p className="text-xs text-slate-400 mb-1">Agent</p>
                         <div className="flex items-center gap-2">
                           <User className="w-3 h-3 text-unicorn-400" />
                           <p className="text-sm text-slate-200">
@@ -272,7 +272,7 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
 
                       {/* Model */}
                       <div>
-                        <p className="text-xs text-slate-500 mb-1">Model</p>
+                        <p className="text-xs text-slate-400 mb-1">Model</p>
                         <div className="flex items-center gap-2">
                           <Sparkles className="w-3 h-3 text-unicorn-400" />
                           <p className="text-sm text-slate-200">
@@ -283,7 +283,7 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
 
                       {/* Date */}
                       <div>
-                        <p className="text-xs text-slate-500 mb-1">Generated</p>
+                        <p className="text-xs text-slate-400 mb-1">Generated</p>
                         <div className="flex items-center gap-2">
                           <Calendar className="w-3 h-3 text-unicorn-400" />
                           <p className="text-sm text-slate-200">
@@ -295,7 +295,7 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
                       {/* Prompt */}
                       {selectedAttribution.prompt && (
                         <div>
-                          <p className="text-xs text-slate-500 mb-1">Original Prompt</p>
+                          <p className="text-xs text-slate-400 mb-1">Original Prompt</p>
                           <div className="flex items-start gap-2">
                             <MessageSquare className="w-3 h-3 text-unicorn-400 mt-1 flex-shrink-0" />
                             <p className="text-xs text-slate-300 leading-relaxed">
@@ -331,7 +331,7 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
                         <span className="text-xs text-slate-400">
                           Lines {attr.start_line}-{attr.end_line}
                         </span>
-                        <span className="text-xs text-slate-500">
+                        <span className="text-xs text-slate-400">
                           {attr.lines_count} lines
                         </span>
                       </div>

@@ -249,6 +249,7 @@ const Dashboard = () => {
               onClick={handleRefresh}
               disabled={refreshing}
               className="p-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+              aria-label="Refresh dashboard"
               title="Refresh dashboard"
             >
               <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
@@ -392,6 +393,7 @@ const Dashboard = () => {
                 <button
                   onClick={checkSystemHealth}
                   className="p-1 rounded hover:bg-slate-700/50 text-slate-400 hover:text-white transition-colors"
+                  aria-label="Refresh health status"
                   title="Refresh health status"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
@@ -525,10 +527,10 @@ const Dashboard = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-slate-400">
                         {conv.updated_at ? new Date(conv.updated_at).toLocaleDateString() : ''}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-unicorn-400 transition-colors" />
+                      <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-unicorn-400 transition-colors" />
                     </div>
                   </div>
                 ))}
@@ -595,6 +597,7 @@ const Dashboard = () => {
                           navigate(`/chat?agent=${agent.id}`);
                         }}
                         className="p-1.5 rounded bg-unicorn-500/20 text-unicorn-400 hover:bg-unicorn-500/30 opacity-0 group-hover:opacity-100 transition-all"
+                        aria-label="Chat with agent"
                         title="Chat with agent"
                       >
                         <MessageSquare className="w-3.5 h-3.5" />

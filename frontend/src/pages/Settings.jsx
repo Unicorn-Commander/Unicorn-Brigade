@@ -181,7 +181,7 @@ const Settings = () => {
                     </span>
                   )}
                   {typeof provider.latency_ms === 'number' && (
-                    <span className="text-xs text-slate-500 ml-2">
+                    <span className="text-xs text-slate-400 ml-2">
                       {provider.latency_ms} ms
                     </span>
                   )}
@@ -189,7 +189,7 @@ const Settings = () => {
               </div>
             ))}
             {providers.length === 0 && !loading && (
-              <p className="text-slate-500 text-center py-4">No providers configured</p>
+              <p className="text-slate-400 text-center py-4">No providers configured</p>
             )}
           </div>
         </div>
@@ -205,7 +205,7 @@ const Settings = () => {
             The full key value is shown only once, at creation.
           </p>
           {keysError ? (
-            <p className="text-slate-500 text-center py-4">{keysError}</p>
+            <p className="text-slate-400 text-center py-4">{keysError}</p>
           ) : (
             <>
               <div className="flex items-center space-x-2 mb-4">
@@ -226,7 +226,7 @@ const Settings = () => {
                 </button>
               </div>
               {keysLoading ? (
-                <p className="text-slate-500 text-center py-4">Loading keys…</p>
+                <p className="text-slate-400 text-center py-4">Loading keys…</p>
               ) : apiKeys.length > 0 ? (
                 <div className="space-y-3">
                   {apiKeys.map((key) => (
@@ -234,7 +234,7 @@ const Settings = () => {
                   ))}
                 </div>
               ) : (
-                <p className="text-slate-500 text-center py-4">No API keys yet — create one above.</p>
+                <p className="text-slate-400 text-center py-4">No API keys yet — create one above.</p>
               )}
             </>
           )}
@@ -258,7 +258,7 @@ const Settings = () => {
                       <div>
                         <p className="text-sm text-white font-medium">{model.name || model.id}</p>
                         {model.provider && (
-                          <p className="text-xs text-slate-500">{model.provider}</p>
+                          <p className="text-xs text-slate-400">{model.provider}</p>
                         )}
                       </div>
                       <div className="flex items-center space-x-2">
@@ -277,7 +277,7 @@ const Settings = () => {
                   ))}
                 </div>
                 {categoryModels.length > 6 && (
-                  <p className="text-xs text-slate-500 mt-1">+ {categoryModels.length - 6} more</p>
+                  <p className="text-xs text-slate-400 mt-1">+ {categoryModels.length - 6} more</p>
                 )}
               </div>
             ))}

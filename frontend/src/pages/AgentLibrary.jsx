@@ -323,7 +323,7 @@ const AgentLibrary = () => {
           {/* Active filters display */}
           {(selectedDomain || selectedStatus || selectedType || selectedTool || searchQuery) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-500">Active filters:</span>
+              <span className="text-xs text-slate-400">Active filters:</span>
               {searchQuery && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
                   Search: {searchQuery}
@@ -628,17 +628,17 @@ const AgentListItem = ({ agent, navigate, onEdit, onDelete }) => {
             );
           })}
           {toolCount > 3 && (
-            <span className="px-2 py-1 rounded bg-slate-800/50 text-xs text-slate-500">
+            <span className="px-2 py-1 rounded bg-slate-800/50 text-xs text-slate-400">
               +{toolCount - 3}
             </span>
           )}
           {toolCount === 0 && (
-            <span className="text-xs text-slate-500">No tools</span>
+            <span className="text-xs text-slate-400">No tools</span>
           )}
         </div>
 
         {/* Capability summary */}
-        <div className="hidden lg:flex items-center gap-2 text-xs text-slate-500 flex-shrink-0">
+        <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400 flex-shrink-0">
           <div className="flex items-center gap-1">
             <Wrench className="w-3 h-3" />
             <span>{toolCount}</span>

@@ -166,30 +166,30 @@ const WorkflowCard = ({
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-2 mb-4">
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/40">
-            <FileText className="w-3.5 h-3.5 text-slate-500" />
+            <FileText className="w-3.5 h-3.5 text-slate-400" />
             <div>
-              <div className="text-xs text-slate-500">Inputs</div>
+              <div className="text-xs text-slate-400">Inputs</div>
               <div className="text-sm font-medium text-white">{inputCount}</div>
             </div>
           </div>
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/40">
-            <PauseCircle className="w-3.5 h-3.5 text-slate-500" />
+            <PauseCircle className="w-3.5 h-3.5 text-slate-400" />
             <div>
-              <div className="text-xs text-slate-500">Checkpoints</div>
+              <div className="text-xs text-slate-400">Checkpoints</div>
               <div className="text-sm font-medium text-white">{checkpointCount}</div>
             </div>
           </div>
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/40">
-            <Users className="w-3.5 h-3.5 text-slate-500" />
+            <Users className="w-3.5 h-3.5 text-slate-400" />
             <div>
-              <div className="text-xs text-slate-500">Team Leads</div>
+              <div className="text-xs text-slate-400">Team Leads</div>
               <div className="text-sm font-medium text-white">{teamLeadCount}</div>
             </div>
           </div>
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/40">
             <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
             <div>
-              <div className="text-xs text-slate-500">Est. Cost</div>
+              <div className="text-xs text-slate-400">Est. Cost</div>
               <div className="text-sm font-medium text-emerald-400">{costInfo.estimate}</div>
             </div>
           </div>

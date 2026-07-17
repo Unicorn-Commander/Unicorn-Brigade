@@ -106,7 +106,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
                     {/* Parameters */}
                     {tool.inputSchema?.properties && (
                       <div className="mt-2">
-                        <p className="text-xs text-slate-500 mb-1">Parameters:</p>
+                        <p className="text-xs text-slate-400 mb-1">Parameters:</p>
                         <div className="flex flex-wrap gap-1">
                           {Object.keys(tool.inputSchema.properties).slice(0, 5).map((param, pidx) => (
                             <span
@@ -120,7 +120,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
                             </span>
                           ))}
                           {Object.keys(tool.inputSchema.properties).length > 5 && (
-                            <span className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-500 text-xs">
+                            <span className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-400 text-xs">
                               +{Object.keys(tool.inputSchema.properties).length - 5}
                             </span>
                           )}
@@ -147,7 +147,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
 
         {/* Footer */}
         <div className="mt-6 pt-6 border-t border-slate-700/50 flex justify-between items-center">
-          <div className="text-sm text-slate-500">
+          <div className="text-sm text-slate-400">
             {server.category} • Phase {server.phase}
           </div>
           <button
