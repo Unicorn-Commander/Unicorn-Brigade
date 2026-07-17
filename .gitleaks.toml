@@ -1,0 +1,58 @@
+# Unicorn Brigade — gitleaks config (SEC-1)
+#
+# Models the fleet "leak-guard" baseline (secret-rotation-toolkit/leak-guard).
+# Extends the built-in gitleaks ruleset and allowlists ONLY vetted, self-evident
+# placeholders / test fixtures — by VALUE where possible so a real secret with a
+# different value still trips. Paths are allowlisted ONLY for *.example/*.sample/
+# *.template files, which exist to hold placeholders.
+#
+# Used by:
+#   * pre-commit hook          — gitleaks on staged changes (see .pre-commit-config.yaml)
+#   * CI secrets gate          — .forgejo/workflows/ci.yml (scans the pushed range)
+#   * local / best-effort scan — `gitleaks detect --no-git -c .gitleaks.toml`
+#
+# DO NOT allowlist a real secret to make CI green. If a live value is found,
+# remove/scrub it (and rotation is owned separately). See docs/CI.md.
+title = "unicorn-brigade-secrets-guard"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Vetted fixtures / placeholders only — real values must still trip"
+
+# Placeholder / template FILES (by definition hold fake values).
+paths = [
+  '''.*\.example$''',
+  '''.*\.sample$''',
+  '''.*\.template$''',
+  '''(^|/)\.env\.example$''',
+  '''(^|/)\.env\..*\.example$''',
+]
+
+# Placeholder VALUES. Default regexTarget is the matched secret, so these fire
+# only when the *secret itself* is one of these obvious placeholders.
+regexes = [
+  # Generic doc/template placeholders
+  '''EXAMPLE''',                                   # AWS AKIA0000000000000000 et al.
+  '''YOUR_[A-Z0-9_]+''',                           # YOUR_BRIGADE_ADMIN_KEY, YOUR_API_KEY
+  '''(?i)your[-_][a-z0-9][a-z0-9_-]+''',           # Your-client-secret, your-secret-key
+  '''\$\{?[A-Za-z_][A-Za-z0-9_]*\}?''',            # ${apiKey}, $BRIGADE_ADMIN_KEY (doc curl)
+  '''<[A-Za-z0-9_. /-]{1,40}>''',                  # <token>, <your-key>
+  '''(?i)(changeme|change-me|placeholder|dummy|redacted|sample|x{4,}|test[_-]?key|your[_-]?secret)''',
+  # Vetted dev sentinel — self-evident, and the app REFUSES it in prod
+  # (app/voice/livekit_agent.py::assert_livekit_creds_safe + tests).
+  '''REMOVED''',
+  # Ellipsis key placeholders used throughout the docs/README
+  '''sk-(or-v1|ant|proj|lf)-\.\.\.''',             # sk-or-v1-000000000000000000000000000000000000 / sk-ant-... / sk-lf-...
+  '''pk[-_]lf-\.\.\.''',                            # pk-lf-...
+  # Stripe test/webhook placeholders (NOT live whsec_ values)
+  '''whsec_(your_webhook_secret|abcdef1234)''',
+  '''sk_test_[A-Za-z0-9]+''',
+  '''pk_test_[A-Za-z0-9]+''',
+  # CI's throwaway OpenAI test key (see .forgejo/workflows/ci.yml)
+  '''sk-test-key-for-ci''',
+  # Comment prose that lists env-var NAMES (not values) — docker-compose.yml
+  # header comment. The phrase never appears inside a real secret value.
+  '''REMOVED''',
+]

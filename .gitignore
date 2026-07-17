@@ -66,3 +66,46 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+
+# ===== BEGIN unicorn secrets-guard (managed — keep in sync with leak-guard) =====
+# Real secret-bearing files. Commit ONLY *.example / *.sample / *.template variants.
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.sample
+!.env.template
+# The gap that leaked Contact-Ops: .bak variants of env files
+*.env.bak
+*.env.bak.*
+.env.bak
+.env.bak.*
+*.bak.env
+# Auth material
+*.pem
+*.key
+!*.pub.key
+*.p12
+*.pfx
+*.p8
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.keystore
+*.jks
+# Provider / infra credential dumps
+*credentials*.json
+!*credentials*.example.json
+*service-account*.json
+!*service-account*.example.json
+*.tfstate
+*.tfstate.*
+kubeconfig
+*.kubeconfig
+# Vaults / dotfiles that hold live values
+secrets.y*ml
+!secrets.example.y*ml
+vault.y*ml
+!vault.example.y*ml
+# ===== END unicorn secrets-guard =====

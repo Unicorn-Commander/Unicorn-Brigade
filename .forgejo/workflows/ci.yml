@@ -5,8 +5,10 @@
 # and the build->tag->deploy promotion runbook.
 #
 # Jobs:
-#   backend   — ruff (gate) + mypy/ruff-full (advisory) + pytest (tests + app/tests)
+#   backend   — ruff (2 gates: real-breakage subset tree-wide + full config on
+#               changed files) + mypy/ruff-full (advisory) + pytest (tests + app/tests)
 #   frontend  — npm ci && npm run build
+#   secrets   — gitleaks gate on the pushed commit range (SEC-1); see docs/CI.md
 name: CI
 
 on:
@@ -26,6 +28,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history so the changed-files ruff gate can diff against origin/main.
+          fetch-depth: 0
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -53,6 +58,32 @@ jobs:
         # This subset is currently GREEN across app/ + tests/ and blocks the PR
         # if new code breaks it. The broader config lives in pyproject.toml.
         run: ruff check --select E9,F63,F7 app tests
+
+      - name: Ruff (gate — full config on CHANGED files only)
+        # Promotes the full [tool.ruff] config to a HARD gate for NEW/changed
+        # code while grandfathering the ~5k legacy backlog: it lints only the
+        # Python files that differ from origin/main. New code must be clean; the
+        # untouched legacy tree is exempt. If you touch a legacy file, ruff lints
+        # the whole file — clean it or split the change. See docs/CI.md.
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main >/dev/null 2>&1 \
+            || git fetch --no-tags origin main >/dev/null 2>&1 || true
+          BASE="$(git merge-base origin/main HEAD 2>/dev/null || git merge-base FETCH_HEAD HEAD 2>/dev/null || true)"
+          if [ -z "${BASE}" ]; then
+            echo "Could not resolve merge-base with origin/main — skipping changed-files ruff gate."
+            exit 0
+          fi
+          FILES="$(git diff --name-only --diff-filter=ACMR "${BASE}" HEAD -- '*.py' \
+                   | grep -vE '^(frontend/|alembic/versions/|migrations/)' || true)"
+          if [ -z "${FILES}" ]; then
+            echo "No changed Python files vs origin/main — changed-files ruff gate skipped."
+            exit 0
+          fi
+          echo "Ruff (full config) on changed files:"
+          echo "${FILES}"
+          # No --select: uses the full [tool.ruff] config from pyproject.toml.
+          ruff check ${FILES}
 
       - name: Ruff (advisory — full config)
         # Non-blocking: surfaces the ~5k pre-existing style/lint backlog
@@ -110,3 +141,49 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  secrets:
+    # SEC-1 — gitleaks secret-scan GATE.
+    # Scoped to the commits this push/PR introduces (origin/main..HEAD), NOT the
+    # full history: the tree still carries pre-existing findings owed to the
+    # Security-Ops repo scan + rotation, so a whole-history gate would be red on
+    # day one (same rationale as the ruff two-tier design). This blocks any NEW
+    # secret. Allowlist of vetted placeholders/fixtures lives in .gitleaks.toml.
+    # A FULL-history repo scan is owed to the Security-Ops gitleaks engine.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for range scan)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          GL_VERSION=8.30.1
+          ok=0
+          for arch in linux_x64 linux_amd64; do
+            url="https://github.com/gitleaks/gitleaks/releases/download/v${GL_VERSION}/gitleaks_${GL_VERSION}_${arch}.tar.gz"
+            if curl -fsSL "$url" -o /tmp/gitleaks.tgz; then ok=1; break; fi
+          done
+          [ "$ok" = "1" ] || { echo "Could not download gitleaks ${GL_VERSION}"; exit 1; }
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: gitleaks (gate — scan pushed range; legacy history grandfathered)
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main >/dev/null 2>&1 \
+            || git fetch --no-tags origin main >/dev/null 2>&1 || true
+          BASE="$(git merge-base origin/main HEAD 2>/dev/null || git merge-base FETCH_HEAD HEAD 2>/dev/null || true)"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ -z "${BASE}" ] || [ "${BASE}" = "${HEAD_SHA}" ]; then
+            echo "No new commits vs origin/main — nothing to scan (grandfathered)."
+            exit 0
+          fi
+          echo "gitleaks: scanning range ${BASE}..${HEAD_SHA}"
+          gitleaks git . \
+            --config .gitleaks.toml \
+            --log-opts="${BASE}..${HEAD_SHA}" \
+            --redact --no-banner --exit-code 1
