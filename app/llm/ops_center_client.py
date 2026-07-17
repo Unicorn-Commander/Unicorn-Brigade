@@ -205,6 +205,12 @@ MIDBOY1_LLM_URL = os.getenv("MIDBOY1_LLM_URL", "http://192.168.10.68:8087")
 UC_GATEWAY_URL = os.getenv("UC_GATEWAY_URL", "")
 UC_GATEWAY_KEY = os.getenv("UC_GATEWAY_KEY", "")
 
+# Optional Bearer key for the OPS_CENTER_LLM_ENDPOINT "direct" route. A keyless
+# local router (llama.cpp, a dev vLLM) needs none, but a shared LiteLLM/gateway
+# (e.g. uchub-litellm) rejects unauthenticated POSTs with 401. Send it when set;
+# stays inert (no header) when unset, preserving the keyless-local behavior.
+LITELLM_DIRECT_KEY = os.getenv("LITELLM_KEY", "") or os.getenv("OPS_CENTER_LLM_KEY", "")
+
 # Brigade service key for authentication.
 # No hardcoded fallback: an unset key must fail auth upstream rather than
 # silently ship a known-public default secret.
@@ -384,6 +390,8 @@ class OpsCenterLLMClient:
             elif route_type == "direct":
                 # Direct endpoint override (OPS_CENTER_LLM_ENDPOINT)
                 headers = {"Content-Type": "application/json"}
+                if LITELLM_DIRECT_KEY:
+                    headers["Authorization"] = f"Bearer {LITELLM_DIRECT_KEY}"
                 endpoint = target_url
                 logger.info(f"Sending chat completion DIRECT to {endpoint}: {resolved_model}")
             elif route_type == "openrouter":
