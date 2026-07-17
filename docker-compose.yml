@@ -9,6 +9,11 @@ services:
     container_name: brigade-api
     ports:
       - "8100:8100"
+    # Load the full .env so documented keys (BRIGADE_ADMIN_KEY, REMOVED
+    # settings, integration tokens, etc.) actually reach the container. The
+    # explicit `environment:` entries below override .env where both are set.
+    env_file:
+      - .env
     environment:
       - ENVIRONMENT=production
       - API_HOST=0.0.0.0
