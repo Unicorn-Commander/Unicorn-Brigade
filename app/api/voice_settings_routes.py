@@ -18,9 +18,9 @@ Endpoints:
 import io
 import logging
 import tempfile
-from typing import Optional, List, Dict, Any
+from typing import Annotated, Optional, List, Dict, Any
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Depends
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -34,6 +34,7 @@ from app.voice.providers.registry import (
     VoiceProviderRegistry,
     register_builtin_providers,
 )
+from app.auth.middleware import require_operator, require_admin, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -220,7 +221,10 @@ async def get_settings():
 
 
 @router.put("/voice/settings", response_model=VoiceSettingsResponse)
-async def update_settings(request: VoiceSettingsRequest):
+async def update_settings(
+    request: VoiceSettingsRequest,
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+):
     """
     Update voice configuration.
 
@@ -276,7 +280,9 @@ async def update_settings(request: VoiceSettingsRequest):
 
 
 @router.post("/voice/settings/reset", response_model=VoiceSettingsResponse)
-async def reset_settings():
+async def reset_settings(
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+):
     """
     Reset voice configuration to defaults from environment.
     """
@@ -410,6 +416,7 @@ async def test_stt(
     file: UploadFile = File(..., description="Audio file to transcribe"),
     language: Optional[str] = Query("en", description="Language code"),
     provider: Optional[str] = Query(None, description="STT provider to use"),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Test STT (Speech-to-Text) with an audio file upload.
@@ -468,7 +475,10 @@ async def test_stt(
 
 
 @router.post("/voice/test/tts")
-async def test_tts(request: TTSTestRequest):
+async def test_tts(
+    request: TTSTestRequest,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Test TTS (Text-to-Speech) with text input.
 

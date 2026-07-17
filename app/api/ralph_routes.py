@@ -5,11 +5,11 @@ Endpoints for managing self-correcting workflows with iterative improvement.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Annotated, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 
 from app.workflows.ralph_engine import (
@@ -19,6 +19,7 @@ from app.workflows.ralph_engine import (
     IterationOutcome,
 )
 from app.workflows import get_workflow
+from app.auth.middleware import require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ralph", tags=["ralph"])
@@ -84,7 +85,8 @@ class RalphResultResponse(BaseModel):
 @router.post("/execute", response_model=RalphExecutionResponse)
 async def execute_workflow_with_ralph(
     request: RalphExecutionRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ) -> RalphExecutionResponse:
     """
     Execute a workflow with Ralph self-correction.
@@ -212,7 +214,11 @@ async def get_execution_result(execution_id: str) -> RalphResultResponse:
 
 
 @router.post("/executions/{execution_id}/guidance", response_model=RalphExecutionResponse)
-async def inject_guidance(execution_id: str, request: RalphGuidanceRequest) -> RalphExecutionResponse:
+async def inject_guidance(
+    execution_id: str,
+    request: RalphGuidanceRequest,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+) -> RalphExecutionResponse:
     """
     Inject guidance mid-execution (without restart).
 
@@ -267,7 +273,10 @@ async def list_executions() -> list:
 
 
 @router.delete("/executions/{execution_id}")
-async def cancel_execution(execution_id: str) -> Dict[str, str]:
+async def cancel_execution(
+    execution_id: str,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+) -> Dict[str, str]:
     """
     Cancel a running Ralph workflow execution.
 

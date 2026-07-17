@@ -9,9 +9,9 @@ Provides API endpoints for:
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, HTTPException, Header, Request, BackgroundTasks, status
+from fastapi import APIRouter, HTTPException, Header, Request, BackgroundTasks, status, Depends
 from pydantic import BaseModel, Field
 
 from app.agents.code_reviewer import (
@@ -20,6 +20,10 @@ from app.agents.code_reviewer import (
     create_code_reviewer,
     CODE_REVIEW_ENABLED,
 )
+# Import the module (not the value) so the fail-closed webhook check below reads
+# the LIVE GITHUB_WEBHOOK_SECRET at call time, matching verify_webhook_signature.
+from app.agents import code_reviewer as code_reviewer_mod
+from app.auth.middleware import require_api_key, require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/github", tags=["github"])
@@ -102,7 +106,11 @@ async def github_health_check():
 
 
 @router.post("/review", response_model=ReviewResponse)
-async def trigger_pr_review(request: ReviewRequest, background_tasks: BackgroundTasks):
+async def trigger_pr_review(
+    request: ReviewRequest,
+    background_tasks: BackgroundTasks,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Trigger a PR review.
 
@@ -166,7 +174,10 @@ async def trigger_pr_review(request: ReviewRequest, background_tasks: Background
 
 
 @router.get("/reviews", response_model=ReviewListResponse)
-async def list_recent_reviews(limit: int = 10):
+async def list_recent_reviews(
+    limit: int = 10,
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """
     List recent PR reviews.
 
@@ -206,7 +217,11 @@ async def list_recent_reviews(limit: int = 10):
 
 
 @router.get("/reviews/{repo:path}/{pr_number}", response_model=ReviewResponse)
-async def get_review(repo: str, pr_number: int):
+async def get_review(
+    repo: str,
+    pr_number: int,
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """
     Get a specific PR review.
 
@@ -288,14 +303,26 @@ async def github_webhook(
     # Get raw body for signature verification
     body = await request.body()
 
-    # Verify signature if secret is configured
+    # Verify signature — FAIL CLOSED. The prior logic only verified when the
+    # X-Hub-Signature-256 header was present, so an attacker could bypass
+    # verification entirely by simply omitting the header. When a webhook secret
+    # is configured, EVERY request must carry a valid signature or it is rejected.
     reviewer = get_code_reviewer()
-    if x_hub_signature_256:
-        if not CodeReviewer.verify_webhook_signature(body, x_hub_signature_256):
+    if code_reviewer_mod.GITHUB_WEBHOOK_SECRET:
+        if not x_hub_signature_256 or not CodeReviewer.verify_webhook_signature(
+            body, x_hub_signature_256
+        ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid webhook signature",
+                detail="Invalid or missing webhook signature",
             )
+    elif x_hub_signature_256:
+        # A signature was presented but no secret is configured to verify it —
+        # reject rather than silently trust an unverifiable signature.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Webhook signature presented but no secret is configured",
+        )
 
     # Parse payload
     try:

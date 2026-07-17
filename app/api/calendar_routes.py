@@ -16,10 +16,10 @@ Endpoints:
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field, field_validator
 
 from app.agents.meeting_scheduler import (
@@ -33,6 +33,7 @@ from app.agents.meeting_scheduler import (
     reschedule_meeting,
 )
 from app.integrations import google_calendar
+from app.auth.middleware import require_api_key, require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +303,10 @@ async def calendar_health():
 
 
 @router.post("/schedule", response_model=ScheduleMeetingResponse)
-async def api_schedule_meeting(request: ScheduleMeetingRequest):
+async def api_schedule_meeting(
+    request: ScheduleMeetingRequest,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Schedule a meeting from natural language.
 
@@ -333,7 +337,10 @@ async def api_schedule_meeting(request: ScheduleMeetingRequest):
 
 
 @router.post("/parse", response_model=ParseResponse)
-async def api_parse_request(request: ParseRequest):
+async def api_parse_request(
+    request: ParseRequest,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Parse a meeting request without creating it.
 
@@ -357,6 +364,7 @@ async def api_check_availability(
     date_start: Optional[str] = Query(default=None),
     date_end: Optional[str] = Query(default=None),
     timezone: str = Query(default="America/Los_Angeles"),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Check availability for a list of attendees.
@@ -394,7 +402,10 @@ async def api_check_availability(
 
 
 @router.post("/availability", response_model=AvailabilityResponse)
-async def api_check_availability_post(request: AvailabilityRequest):
+async def api_check_availability_post(
+    request: AvailabilityRequest,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Check availability for a list of attendees (POST version).
 
@@ -424,7 +435,10 @@ async def api_check_availability_post(request: AvailabilityRequest):
 
 
 @router.post("/find-slots", response_model=FindSlotsResponse)
-async def api_find_slots(request: FindSlotsRequest):
+async def api_find_slots(
+    request: FindSlotsRequest,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Find available time slots for a meeting.
 
@@ -456,7 +470,10 @@ async def api_find_slots(request: FindSlotsRequest):
 
 
 @router.post("/reschedule", response_model=RescheduleResponse)
-async def api_reschedule_meeting(request: RescheduleRequest):
+async def api_reschedule_meeting(
+    request: RescheduleRequest,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Reschedule an existing meeting.
 
@@ -480,6 +497,7 @@ async def api_reschedule_meeting(request: RescheduleRequest):
 async def api_cancel_meeting(
     event_id: str,
     send_notifications: bool = Query(default=True),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Cancel a scheduled meeting.
@@ -504,6 +522,7 @@ async def api_cancel_meeting(
 async def api_get_meeting(
     event_id: str,
     calendar_id: str = Query(default="primary"),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Get details of a specific meeting.
@@ -528,6 +547,7 @@ async def api_list_events(
     max_results: int = Query(default=10, ge=1, le=100),
     calendar_id: str = Query(default="primary"),
     query: Optional[str] = Query(default=None),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     List calendar events.
@@ -551,7 +571,10 @@ async def api_list_events(
 
 
 @router.post("/events", response_model=ScheduleMeetingResponse)
-async def api_create_event(request: CreateEventRequest):
+async def api_create_event(
+    request: CreateEventRequest,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Create a calendar event directly.
 

@@ -12,7 +12,7 @@ Provides endpoints for:
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends, BackgroundTasks
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Annotated, Optional, List, Dict, Any
 from datetime import datetime
 import asyncio
 import logging
@@ -38,6 +38,7 @@ from app.agents.monitoring_agent import (
     MetricThreshold,
     WebhookConfig,
 )
+from app.auth.middleware import require_api_key, require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/monitoring", tags=["monitoring"])
@@ -496,7 +497,9 @@ async def get_system_health(
 
 
 @router.get("/services", response_model=ServiceListResponse)
-async def get_services_status():
+async def get_services_status(
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """
     Get real health status of the platform's core services.
 
@@ -531,6 +534,7 @@ async def get_services_status():
 async def trigger_health_check(
     request: TriggerCheckRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Trigger an immediate health check.
@@ -554,6 +558,7 @@ async def trigger_health_check(
 async def register_service_check(
     request: ServiceCheckRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Register a new service health check.
@@ -588,6 +593,7 @@ async def register_service_check(
 @router.get("/services/list")
 async def list_service_checks(
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """List all registered service checks."""
     return {"checks": agent.list_service_checks(), "count": len(agent.list_service_checks())}
@@ -597,6 +603,7 @@ async def list_service_checks(
 async def remove_service_check(
     name: str,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Remove a service check."""
     if agent.remove_service_check(name):
@@ -611,6 +618,7 @@ async def remove_service_check(
 async def check_single_service(
     name: str,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Check a specific service immediately."""
     result = await agent.check_service(name)
@@ -628,6 +636,7 @@ async def check_single_service(
 async def list_active_alerts(
     severity: Optional[str] = Query(None, description="Filter by severity"),
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     List all active alerts.
@@ -652,6 +661,7 @@ async def list_active_alerts(
 async def get_alert(
     alert_id: str,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get details of a specific alert."""
     alert = agent.get_alert(alert_id)
@@ -668,6 +678,7 @@ async def acknowledge_alert(
     alert_id: str,
     request: AlertActionRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Acknowledge an active alert.
@@ -693,6 +704,7 @@ async def resolve_alert(
     alert_id: str,
     request: AlertActionRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Resolve an alert.
@@ -720,6 +732,7 @@ async def get_metrics(
     name: Optional[str] = Query(None, description="Filter by metric name"),
     limit: int = Query(100, description="Maximum metrics to return"),
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Get collected metrics.
@@ -734,6 +747,7 @@ async def get_metrics(
 async def record_metric(
     request: MetricRecordRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Record a custom metric value.
@@ -760,6 +774,7 @@ async def record_metric(
 async def check_metric_anomaly(
     request: AnomalyCheckRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Check if a metric value is anomalous.
@@ -783,6 +798,7 @@ async def check_metric_anomaly(
 async def set_threshold(
     request: ThresholdRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Set or update alert thresholds for a metric.
@@ -806,6 +822,7 @@ async def set_threshold(
 @router.get("/thresholds", response_model=ThresholdResponse)
 async def list_thresholds(
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """List all configured thresholds."""
     thresholds = agent.list_thresholds()
@@ -816,6 +833,7 @@ async def list_thresholds(
 async def remove_threshold(
     metric_name: str,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Remove a threshold configuration."""
     if agent.remove_threshold(metric_name):
@@ -832,6 +850,7 @@ async def remove_threshold(
 async def list_incidents(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status"),
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     List all incidents.
@@ -856,6 +875,7 @@ async def list_incidents(
 async def create_incident(
     request: IncidentRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Create a new incident.
@@ -885,6 +905,7 @@ async def create_incident(
 async def get_incident(
     incident_id: str,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get details of a specific incident."""
     incident = agent.get_incident(incident_id)
@@ -901,6 +922,7 @@ async def update_incident_status(
     incident_id: str,
     request: IncidentUpdateRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Update incident status.
@@ -936,6 +958,7 @@ async def add_alert_to_incident(
     incident_id: str,
     alert_id: str,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Add an alert to an existing incident."""
     incident = agent.add_incident_alert(incident_id, alert_id)
@@ -953,6 +976,7 @@ async def add_alert_to_incident(
 async def configure_webhook(
     request: WebhookRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Configure an alert webhook.
@@ -985,6 +1009,7 @@ async def configure_webhook(
 @router.get("/webhooks", response_model=WebhookListResponse)
 async def list_webhooks(
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """List all configured webhooks."""
     webhooks = agent.list_webhooks()
@@ -995,6 +1020,7 @@ async def list_webhooks(
 async def remove_webhook(
     webhook_id: str,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Remove a webhook configuration."""
     if agent.remove_webhook(webhook_id):
@@ -1011,6 +1037,7 @@ async def remove_webhook(
 async def analyze_log_line(
     request: LogAnalysisRequest,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Analyze a log line for error patterns.
@@ -1031,6 +1058,7 @@ async def analyze_log_line(
 @router.get("/logs/error-rates")
 async def get_error_rates(
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get current error rates for all detected patterns."""
     return {"error_rates": agent.get_error_rates()}
@@ -1043,6 +1071,7 @@ async def start_scheduled_checks(
     interval_seconds: int = Query(30, description="Interval between check cycles"),
     background_tasks: BackgroundTasks = None,
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Start background scheduled health checks.
@@ -1056,6 +1085,7 @@ async def start_scheduled_checks(
 @router.post("/scheduled/stop")
 async def stop_scheduled_checks(
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Stop background scheduled health checks."""
     await agent.stop_scheduled_checks()
@@ -1067,6 +1097,7 @@ async def stop_scheduled_checks(
 @router.get("/status", response_model=MonitoringStatusResponse)
 async def get_monitoring_status(
     agent: MonitoringAgent = Depends(get_monitoring_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get status of the monitoring agent and metrics."""
     status_info = agent.get_status()

@@ -100,6 +100,33 @@ PUBLIC_PATHS: Set[str] = {
     "/api/v1/slack/events",
     "/api/v1/slack/interactions",
     "/api/v1/slack/commands",
+
+    # ---- audit2 auth-surface pass ----
+    # Health checks + static capability/reference lists for the feature routers
+    # hardened in the audit2 pass. These handlers carry NO auth dependency and are
+    # intentionally public; they are listed here so the public surface is EXPLICIT
+    # (and stays public if a global auth gate is ever added). Everything else on
+    # these routers now requires api_key/operator/admin per-route.
+    "/api/v1/medical/health",
+    "/api/v1/medical/models",           # static model/capability catalog
+    "/api/v1/monitoring/health",
+    "/api/v1/calendar/health",
+    "/api/v1/crisis/health",
+    "/api/v1/github/health",
+    "/api/v1/ralph/health",
+    "/api/v1/benchmarks/health",
+    "/api/v1/benchmarks/configs",       # static model-config catalog
+    "/api/v1/benchmarks/workflows",     # static workflow catalog
+    "/api/v1/benchmarks/leaderboard",   # public leaderboard
+    "/api/v1/documents/templates",      # static extraction-template catalog
+    "/api/v1/documents/supported-types",  # static supported-file-type list
+    "/api/v1/finance/categories",       # static expense-category enum
+    "/api/v1/finance/currencies",       # static currency list
+    "/api/v1/finance/transaction-types",  # static transaction-type enum
+    "/api/v1/voice/providers",          # static STT/TTS provider catalog
+    "/api/v1/voice/providers/stt",
+    "/api/v1/voice/providers/tts",
+    "/api/v1/voice/voices",             # available-voices list
 }
 
 

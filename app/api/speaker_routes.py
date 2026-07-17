@@ -15,7 +15,7 @@ from app.db.repositories import SpeakerProfileRepository
 # BR-1.4: speaker_profiles is FORCE-RLS + org-scoped. Bind the caller's org so
 # reads/writes resolve to their org (unbound = zero rows / rejected INSERT under
 # the prod app role). Optional = no new 401 for the voice client / dev.
-from app.auth.middleware import get_current_user_optional, AuthUser
+from app.auth.middleware import get_current_user_optional, require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,7 +51,7 @@ async def list_speakers(
 async def enroll_speaker(
     request: SpeakerEnrollRequest,
     session: AsyncSession = Depends(get_session),
-    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Create or update a speaker profile from voice enrollment.
 
@@ -107,7 +107,7 @@ async def update_speaker(
     profile_id: str,
     request: SpeakerUpdateRequest,
     session: AsyncSession = Depends(get_session),
-    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Update speaker name, preferences, or re-enroll with new embedding."""
     repo = SpeakerProfileRepository(session)
@@ -125,7 +125,7 @@ async def update_speaker(
 async def delete_speaker(
     profile_id: str,
     session: AsyncSession = Depends(get_session),
-    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Remove a speaker profile."""
     repo = SpeakerProfileRepository(session)

@@ -13,7 +13,7 @@ API endpoints for medical AI analysis using HuggingFace models:
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any
+from typing import Annotated, Dict, List, Optional, Any
 from enum import Enum
 import logging
 
@@ -384,6 +384,7 @@ async def list_available_models(
 async def extract_medical_entities(
     request: ExtractEntitiesRequest,
     analyzer: MedicalAnalyzer = Depends(get_analyzer),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Extract medical entities from clinical text.
@@ -434,6 +435,7 @@ async def analyze_medical_image(
     ),
     model: Optional[str] = Form(None, description="Optional model override"),
     analyzer: MedicalAnalyzer = Depends(get_analyzer),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Analyze a medical image.
@@ -496,6 +498,7 @@ async def analyze_medical_image(
 async def summarize_clinical_notes(
     request: SummarizeNotesRequest,
     analyzer: MedicalAnalyzer = Depends(get_analyzer),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Summarize clinical documentation.
@@ -542,6 +545,7 @@ async def summarize_clinical_notes(
 async def check_drug_interactions(
     request: DrugInteractionsRequest,
     analyzer: MedicalAnalyzer = Depends(get_analyzer),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Check for potential drug interactions.
@@ -581,6 +585,7 @@ async def check_drug_interactions(
 async def generate_icd_codes(
     request: ICDCodesRequest,
     analyzer: MedicalAnalyzer = Depends(get_analyzer),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Suggest ICD-10 codes for diagnoses.
@@ -618,6 +623,7 @@ async def generate_icd_codes(
 async def answer_medical_question(
     request: MedicalQuestionRequest,
     analyzer: MedicalAnalyzer = Depends(get_analyzer),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Answer a medical question.
@@ -659,6 +665,7 @@ async def answer_medical_question(
 async def generate_medical_text(
     request: TextGenerationRequest,
     analyzer: MedicalAnalyzer = Depends(get_analyzer),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Generate medical text using medical LLMs.
@@ -700,6 +707,7 @@ async def generate_medical_text(
 async def get_medical_embeddings(
     request: EmbeddingsRequest,
     analyzer: MedicalAnalyzer = Depends(get_analyzer),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Generate medical text embeddings.
@@ -739,6 +747,7 @@ async def classify_medical_text(
     text: str = Form(..., description="Text to classify"),
     model: str = Form("BioBERT-ChemProt", description="Classification model"),
     analyzer: MedicalAnalyzer = Depends(get_analyzer),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Classify medical text.

@@ -890,32 +890,59 @@ class MonitoringAgent(BaseAgent):
         return result
 
     async def _check_http(self, check: ServiceCheck, result: Dict, start_time: float) -> Dict[str, Any]:
-        """Perform HTTP health check"""
-        client = await self._get_http_client()
+        """Perform HTTP health check.
+
+        SSRF hardening (audit2): ``check.target`` is a caller-supplied URL
+        (registered via the monitoring API). Resolve + validate the host ONCE and
+        pin the connection to the validated IP before probing, so a registered
+        check can never make the server reach loopback / private / link-local
+        addresses (127.0.0.1, the 169.254.169.254 cloud-metadata endpoint, or
+        RFC-1918 internal hosts) and cannot be DNS-rebound at connect time. Reuses
+        the same egress guard as the http_request tool (app/llm/builtin_tools).
+
+        NOTE: this intentionally rejects HTTP checks whose target resolves to a
+        private/internal address — such targets now report UNHEALTHY with an
+        "SSRF guard" error instead of being probed.
+        """
+        from app.llm.builtin_tools import build_egress_guarded_transport
+
+        transport, block_reason = build_egress_guarded_transport(check.target)
+        if transport is None:
+            result["status"] = ServiceStatus.UNHEALTHY.value
+            result["error"] = f"Blocked by SSRF guard: {block_reason}"
+            result["latency_ms"] = round((time.time() - start_time) * 1000, 2)
+            return result
 
         try:
-            response = await client.get(
-                check.target,
-                headers=check.headers,
+            # Per-probe client carrying the URL's IP pin (the shared client can't
+            # hold a per-target pin). follow_redirects=False so a redirect cannot
+            # bounce the probe to an unvalidated internal host.
+            async with httpx.AsyncClient(
                 timeout=check.timeout_seconds,
-            )
+                follow_redirects=False,
+                transport=transport,
+            ) as client:
+                response = await client.get(
+                    check.target,
+                    headers=check.headers,
+                )
 
-            result["latency_ms"] = round((time.time() - start_time) * 1000, 2)
-            result["status_code"] = response.status_code
+                result["latency_ms"] = round((time.time() - start_time) * 1000, 2)
+                result["status_code"] = response.status_code
 
-            if response.status_code in check.expected_status_codes:
-                if check.expected_body_contains:
-                    body = response.text
-                    if check.expected_body_contains in body:
-                        result["status"] = ServiceStatus.HEALTHY.value
+                if response.status_code in check.expected_status_codes:
+                    if check.expected_body_contains:
+                        body = response.text
+                        if check.expected_body_contains in body:
+                            result["status"] = ServiceStatus.HEALTHY.value
+                        else:
+                            result["status"] = ServiceStatus.UNHEALTHY.value
+                            result["error"] = "Expected body content not found"
                     else:
-                        result["status"] = ServiceStatus.UNHEALTHY.value
-                        result["error"] = "Expected body content not found"
+                        result["status"] = ServiceStatus.HEALTHY.value
                 else:
-                    result["status"] = ServiceStatus.HEALTHY.value
-            else:
-                result["status"] = ServiceStatus.UNHEALTHY.value
-                result["error"] = f"Unexpected status code: {response.status_code}"
+                    result["status"] = ServiceStatus.UNHEALTHY.value
+                    result["error"] = f"Unexpected status code: {response.status_code}"
 
         except httpx.TimeoutException:
             result["status"] = ServiceStatus.UNHEALTHY.value

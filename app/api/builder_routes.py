@@ -17,7 +17,7 @@ from app.db.repositories import AgentRepository, BuilderSessionRepository
 # unbound session sees zero rows and can't INSERT (org_id default = current_org_id()
 # would be NULL). get_current_user_optional binds the caller's org when present
 # without forcing a 401 on anonymous/dev callers.
-from app.auth.middleware import get_current_user_optional, AuthUser
+from app.auth.middleware import get_current_user_optional, require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -177,7 +177,7 @@ async def get_builder_info(
 async def builder_chat(
     request: BuilderChatRequest,
     session: AsyncSession = Depends(get_session),
-    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Chat with Gunny to build an agent."""
     repo = BuilderSessionRepository(session)
