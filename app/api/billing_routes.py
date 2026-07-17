@@ -37,10 +37,15 @@ router = APIRouter(prefix="/billing", tags=["billing"])
 
 
 def _ops_center_base() -> str:
-    """Base URL of Ops-Center (where checkout / plans live)."""
+    """PUBLIC, browser-reachable base URL of Ops-Center (where checkout / plans live).
+
+    Deliberately does NOT fall back to ``OPS_CENTER_URL`` — that is the
+    server-to-server URL (e.g. an internal ``http://ops-center-direct:8084``) a
+    customer's browser cannot reach. The upgrade CTA must be a public URL, so we
+    use ``OPS_CENTER_PUBLIC_URL`` when set and otherwise the public marketing host.
+    """
     return (
         os.getenv("OPS_CENTER_PUBLIC_URL")
-        or os.getenv("OPS_CENTER_URL")
         or "https://unicorncommander.ai"
     ).rstrip("/")
 
