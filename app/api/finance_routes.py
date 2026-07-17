@@ -11,7 +11,7 @@ Provides endpoints for:
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Annotated, Optional, List, Dict, Any
 from datetime import datetime
 import logging
 
@@ -29,6 +29,7 @@ from app.agents.financial_analysis import (
 )
 from app.memory.manager import MemoryManager
 from app.llm.ops_center_client import OpsCenterLLMClient
+from app.auth.middleware import require_api_key, require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/finance", tags=["finance"])
@@ -190,6 +191,7 @@ class FinanceStatusResponse(BaseModel):
 async def record_transaction(
     request: RecordTransactionRequest,
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Record a new financial transaction.
@@ -238,6 +240,7 @@ async def list_transactions(
     limit: int = Query(100, description="Maximum transactions to return", le=1000),
     offset: int = Query(0, description="Offset for pagination"),
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     List transactions with optional filters.
@@ -290,6 +293,7 @@ async def list_transactions(
 async def get_transaction(
     transaction_id: str,
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get details of a specific transaction by ID."""
     transaction = agent.get_transaction(transaction_id)
@@ -311,6 +315,7 @@ async def get_spend_analysis(
     user_id: Optional[str] = Query(None, description="Filter by user"),
     currency: str = Query("USD", description="Output currency"),
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Get comprehensive spend analysis for a period.
@@ -349,6 +354,7 @@ async def get_forecast(
     user_id: Optional[str] = Query(None, description="Filter by user"),
     currency: str = Query("USD", description="Output currency"),
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Generate financial forecast based on historical data.
@@ -389,6 +395,7 @@ async def get_cost_cutting_opportunities(
     user_id: Optional[str] = Query(None, description="Filter by user"),
     currency: str = Query("USD", description="Output currency"),
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Identify cost-cutting opportunities using AI analysis.
@@ -418,6 +425,7 @@ async def get_cost_cutting_opportunities(
 async def set_budget(
     request: SetBudgetRequest,
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Set a budget limit for a category or total spend.
@@ -467,6 +475,7 @@ async def set_budget(
 async def get_budget_status(
     user_id: Optional[str] = Query(None, description="Filter by user"),
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Check status of all budgets and get current spending vs limits.
@@ -493,6 +502,7 @@ async def get_budget_status(
 async def list_budgets(
     user_id: Optional[str] = Query(None, description="Filter by user"),
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """List all budgets."""
     budgets = agent.list_budgets(user_id=user_id)
@@ -506,6 +516,7 @@ async def list_budgets(
 async def get_budget(
     budget_id: str,
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get a specific budget by ID."""
     budget = agent.get_budget(budget_id)
@@ -526,6 +537,7 @@ async def get_alerts(
     severity: Optional[str] = Query(None, description="Filter by severity (info, warning, critical)"),
     limit: int = Query(50, description="Maximum alerts to return"),
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Get budget alerts.
@@ -557,6 +569,7 @@ async def get_alerts(
 async def acknowledge_alert(
     alert_id: str,
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Acknowledge a budget alert."""
     alert = agent.acknowledge_alert(alert_id)
@@ -583,6 +596,7 @@ async def generate_report(
     currency: str = Query("USD", description="Output currency"),
     include_recommendations: bool = Query(True, description="Include cost-cutting recommendations"),
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Generate a comprehensive financial report.
@@ -621,6 +635,7 @@ async def generate_report(
 async def list_reports(
     limit: int = Query(10, description="Maximum reports to return"),
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """List recent financial reports."""
     reports = agent.list_reports(limit=limit)
@@ -634,6 +649,7 @@ async def list_reports(
 async def get_report(
     report_id: str,
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get a specific report by ID."""
     report = agent.get_report(report_id)
@@ -651,6 +667,7 @@ async def get_report(
 @router.get("/status", response_model=FinanceStatusResponse)
 async def get_finance_status(
     agent: FinancialAnalysisAgent = Depends(get_finance_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get status of the finance agent and metrics."""
     status_info = agent.get_status()

@@ -8,9 +8,9 @@ Provides endpoints for A/B testing and benchmarking hierarchical workflows:
 - Access leaderboard data
 """
 
-from fastapi import APIRouter, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, status, Query, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List, Union
+from typing import Annotated, Optional, Dict, Any, List, Union
 from datetime import datetime
 import logging
 
@@ -23,6 +23,7 @@ from app.workflows.benchmark import (
     get_benchmark_engine,
 )
 from app.workflows.templates import get_workflow, list_workflows, ALL_WORKFLOWS
+from app.auth.middleware import require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/benchmarks", tags=["benchmarks"])
@@ -120,6 +121,7 @@ class ModelConfigResponse(BaseModel):
 async def run_benchmark_comparison(
     request: BenchmarkCompareRequest,
     background_tasks: BackgroundTasks,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Run A/B test comparing multiple model configurations.
@@ -198,7 +200,10 @@ async def run_benchmark_comparison(
 
 
 @router.post("/run", response_model=BenchmarkRunResponse)
-async def run_single_benchmark(request: BenchmarkRunRequest):
+async def run_single_benchmark(
+    request: BenchmarkRunRequest,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Run a single benchmark with a specific model configuration.
 
@@ -442,6 +447,7 @@ async def score_output_quality(
     task_description: str = Query(..., description="Task description"),
     inputs: Dict[str, Any] = None,
     output: Dict[str, Any] = None,
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Manually score output quality using LLM-as-judge.

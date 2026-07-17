@@ -10,7 +10,7 @@ Provides endpoints for:
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Annotated, Optional, List, Dict, Any
 from datetime import datetime
 import logging
 
@@ -24,6 +24,7 @@ from app.agents.customer_support import (
 )
 from app.memory.manager import MemoryManager
 from app.llm.ops_center_client import OpsCenterLLMClient
+from app.auth.middleware import require_api_key, require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/support", tags=["support"])
@@ -172,6 +173,7 @@ class SupportStatusResponse(BaseModel):
 async def create_support_ticket(
     request: CreateTicketRequest,
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Create a new support ticket and get an initial response.
@@ -227,6 +229,7 @@ async def send_message_to_ticket(
     request: SendMessageRequest,
     ticket_id: str = Query(..., description="Ticket ID to send message to"),
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Send a follow-up message to an existing ticket.
@@ -277,6 +280,7 @@ async def list_tickets(
     customer_id: Optional[str] = Query(None, description="Filter by customer ID"),
     limit: int = Query(50, description="Maximum tickets to return"),
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     List support tickets with optional filters.
@@ -327,6 +331,7 @@ async def list_tickets(
 async def get_ticket(
     ticket_id: str,
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get details of a specific ticket including full message history."""
     ticket = agent.get_ticket(ticket_id)
@@ -344,6 +349,7 @@ async def update_ticket_status(
     ticket_id: str,
     request: UpdateTicketStatusRequest,
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Update the status of a ticket.
@@ -385,6 +391,7 @@ async def escalate_ticket(
     ticket_id: str,
     reason: str = Query(..., description="Reason for escalation"),
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Manually escalate a ticket to human agents.
@@ -418,6 +425,7 @@ async def escalate_ticket(
 async def add_faq_entry(
     request: AddFAQRequest,
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Add a new FAQ entry to the knowledge base.
@@ -458,6 +466,7 @@ async def list_faqs(
     category: Optional[str] = Query(None, description="Filter by category"),
     limit: int = Query(50, description="Maximum FAQs to return"),
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """List FAQ entries with optional category filter."""
     faqs = agent.list_faqs(category=category, limit=limit)
@@ -474,6 +483,7 @@ async def search_faqs(
     category: Optional[str] = Query(None, description="Filter by category"),
     limit: int = Query(10, description="Maximum results"),
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Search FAQs using semantic search.
@@ -511,6 +521,7 @@ async def search_faqs(
 async def get_faq(
     faq_id: str,
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get a specific FAQ entry by ID."""
     faq = agent.get_faq(faq_id)
@@ -535,6 +546,7 @@ async def get_faq(
 async def delete_faq(
     faq_id: str,
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Delete a FAQ entry."""
     success = agent.delete_faq(faq_id)
@@ -552,6 +564,7 @@ async def delete_faq(
 @router.get("/status", response_model=SupportStatusResponse)
 async def get_support_status(
     agent: CustomerSupportAgent = Depends(get_support_agent),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """Get status of the support agent and metrics."""
     status_info = agent.get_status()

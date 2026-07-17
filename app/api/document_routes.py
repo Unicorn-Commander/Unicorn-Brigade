@@ -10,9 +10,9 @@ import logging
 import os
 import tempfile
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -24,6 +24,7 @@ from app.agents.document_processor import (
     RECEIPT_TEMPLATE,
     TEMPLATES,
 )
+from app.auth.middleware import require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -156,6 +157,7 @@ async def process_document(
     file: UploadFile = File(..., description="Document file to process"),
     doc_type: str = Form(default="invoice", description="Document type"),
     model: Optional[str] = Form(default=None, description="Optional model override"),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Process an uploaded document and extract structured data."""
     # Validate doc_type
@@ -264,6 +266,7 @@ async def extract_with_template(
     file: UploadFile = File(..., description="Document file to process"),
     template: str = Form(..., description="JSON template defining extraction fields"),
     model: Optional[str] = Form(default=None, description="Optional model override"),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Extract data from document using a custom template."""
     # Parse template JSON
@@ -437,6 +440,7 @@ async def get_supported_types():
 async def analyze_document(
     file: UploadFile = File(..., description="Document file to analyze"),
     model: Optional[str] = Form(default=None, description="Optional model override"),
+    user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """Analyze a document and return general information."""
     if not file.filename:
