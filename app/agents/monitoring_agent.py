@@ -24,11 +24,12 @@ import time
 import logging
 import os
 import platform
-from typing import Dict, Any, Optional, List, Callable, Union
+from typing import Dict, Any, Optional, List, Callable, Union, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from collections import deque
+from urllib.parse import urlparse
 import uuid
 
 import httpx
@@ -42,6 +43,56 @@ except ImportError:
 from app.agents.base import BaseAgent
 
 logger = logging.getLogger(__name__)
+
+
+# Emitted at most once per process so the permissive-default warning below does
+# not spam the log on every alert send.
+_WEBHOOK_ALLOWLIST_PERMISSIVE_WARNED = False
+
+
+def _webhook_egress_allowed(url: str) -> Tuple[bool, str]:
+    """Decide whether an alert webhook may POST to ``url``.
+
+    SSRF consideration: ``WebhookConfig.url`` is operator-supplied via the
+    monitoring API, so ``_send_webhook_alert`` is an authenticated outbound-POST
+    primitive. Unlike the ``http_request`` tool we do NOT hard-block RFC-1918 /
+    loopback here, because alert webhooks legitimately target INTERNAL alerting
+    infra (an on-cluster Alertmanager, a private PagerDuty relay, etc.). Instead
+    egress is governed by an OPTIONAL allowlist env ``MONITORING_WEBHOOK_ALLOWLIST``
+    (comma-separated hostnames; an entry also matches its subdomains):
+
+      * UNSET (default)  -> permissive: every host allowed, with a one-time WARNING
+        documenting that alert-webhook egress is unrestricted. Set the allowlist in
+        production to constrain it.
+      * SET              -> only URLs whose host equals a listed entry (or is a
+        subdomain of one) may be POSTed to; everything else is blocked.
+
+    Returns ``(allowed, reason)``; ``reason`` is populated only when blocked.
+    """
+    global _WEBHOOK_ALLOWLIST_PERMISSIVE_WARNED
+
+    raw = os.getenv("MONITORING_WEBHOOK_ALLOWLIST", "").strip()
+    if not raw:
+        if not _WEBHOOK_ALLOWLIST_PERMISSIVE_WARNED:
+            logger.warning(
+                "MONITORING_WEBHOOK_ALLOWLIST is unset - alert webhook egress is "
+                "UNRESTRICTED (SSRF consideration: webhook.url is operator-supplied). "
+                "Set MONITORING_WEBHOOK_ALLOWLIST to a comma-separated host allowlist "
+                "to constrain outbound alert POSTs in production."
+            )
+            _WEBHOOK_ALLOWLIST_PERMISSIVE_WARNED = True
+        return True, ""
+
+    allow = [e.strip().lower() for e in raw.split(",") if e.strip()]
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return False, f"could not parse a host from webhook url {url!r}"
+    for entry in allow:
+        if host == entry or host.endswith("." + entry):
+            return True, ""
+    return False, (
+        f"host {host!r} is not in MONITORING_WEBHOOK_ALLOWLIST ({', '.join(allow)})"
+    )
 
 
 # ============== Enums ==============
@@ -1338,7 +1389,23 @@ class MonitoringAgent(BaseAgent):
         )
 
     async def _send_webhook_alert(self, webhook: WebhookConfig, alert: Alert):
-        """Send alert to webhook endpoint"""
+        """Send alert to webhook endpoint.
+
+        SSRF note: ``webhook.url`` is operator-supplied, making this an
+        authenticated outbound-POST primitive. Egress is gated by
+        ``_webhook_egress_allowed`` (optional ``MONITORING_WEBHOOK_ALLOWLIST``,
+        permissive-by-default so internal alerting targets keep working) and every
+        request carries an explicit 10s timeout to bound slow/hung endpoints.
+        """
+        allowed, block_reason = _webhook_egress_allowed(webhook.url)
+        if not allowed:
+            logger.error(
+                "Webhook alert to %s blocked by egress allowlist: %s",
+                webhook.name,
+                block_reason,
+            )
+            return
+
         client = await self._get_http_client()
 
         payload = {

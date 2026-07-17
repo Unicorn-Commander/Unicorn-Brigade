@@ -19,7 +19,7 @@ from app.workflows.ralph_engine import (
     IterationOutcome,
 )
 from app.workflows import get_workflow
-from app.auth.middleware import require_operator, AuthUser
+from app.auth.middleware import require_api_key, require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ralph", tags=["ralph"])
@@ -155,12 +155,19 @@ async def execute_workflow_with_ralph(
 
 
 @router.get("/executions/{execution_id}", response_model=RalphProgressResponse)
-async def get_execution_progress(execution_id: str) -> RalphProgressResponse:
+async def get_execution_progress(
+    execution_id: str,
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+) -> RalphProgressResponse:
     """
     Get current progress of a Ralph workflow execution.
 
     Returns task breakdown with completion status, current iteration,
     and overall progress percentage.
+
+    Requires authentication (S7 audit): execution progress can expose workflow
+    ids, task counts and state; reads are gated behind a valid API key / token,
+    matching the require_operator gate already on the mutating Ralph routes.
     """
     ralph_engine = _active_executions.get(execution_id)
     if not ralph_engine:
@@ -181,7 +188,10 @@ async def get_execution_progress(execution_id: str) -> RalphProgressResponse:
 
 
 @router.get("/executions/{execution_id}/result", response_model=RalphResultResponse)
-async def get_execution_result(execution_id: str) -> RalphResultResponse:
+async def get_execution_result(
+    execution_id: str,
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+) -> RalphResultResponse:
     """
     Get final result and complete history of a Ralph workflow execution.
 
@@ -190,6 +200,9 @@ async def get_execution_result(execution_id: str) -> RalphResultResponse:
     - Iteration history with error summaries
     - Guidance injection history
     - Overall outcome
+
+    Requires authentication (S7 audit): results carry full task output and error
+    history — gated behind a valid API key / token like the other Ralph routes.
     """
     ralph_engine = _active_executions.get(execution_id)
     if not ralph_engine:
@@ -249,11 +262,16 @@ async def inject_guidance(
 
 
 @router.get("/executions", response_model=list)
-async def list_executions() -> list:
+async def list_executions(
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+) -> list:
     """
     List all active Ralph workflow executions.
 
     Returns summary of each execution with current status.
+
+    Requires authentication (S7 audit): enumerating executions leaks workflow ids
+    and progress across the instance — gated behind a valid API key / token.
     """
     executions = []
     for execution_id, ralph_engine in _active_executions.items():
