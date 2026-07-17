@@ -31,7 +31,7 @@ const STATUS_COLOR = {
   error: 'text-rose-400',
   timeout: 'text-orange-400',
   running: 'text-sky-400',
-  skipped: 'text-zinc-400',
+  skipped: 'text-slate-400',
 };
 
 function fmtTime(iso) {
@@ -111,25 +111,25 @@ function EditModal({ open, initial, agents, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg max-w-2xl w-full p-6 space-y-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full p-6 space-y-4">
         <h2 className="text-xl font-semibold text-white">
           {initial?.id ? 'Edit scheduled run' : 'New scheduled run'}
         </h2>
 
         <div className="grid grid-cols-2 gap-4">
           <label className="block col-span-2">
-            <span className="text-sm text-zinc-400">Name</span>
+            <span className="text-sm text-slate-400">Name</span>
             <input
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
           </label>
 
           <label className="block">
-            <span className="text-sm text-zinc-400">Agent</span>
+            <span className="text-sm text-slate-400">Agent</span>
             <select
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white"
               value={form.agentId}
               onChange={(e) => setForm({ ...form, agentId: e.target.value })}
             >
@@ -143,9 +143,9 @@ function EditModal({ open, initial, agents, onClose, onSave }) {
           </label>
 
           <label className="block">
-            <span className="text-sm text-zinc-400">Owner user id (optional)</span>
+            <span className="text-sm text-slate-400">Owner user id (optional)</span>
             <input
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white font-mono text-xs"
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white font-mono text-xs"
               value={form.ownerUserId || ''}
               placeholder="UUID — used for per-user JWT propagation"
               onChange={(e) => setForm({ ...form, ownerUserId: e.target.value })}
@@ -153,19 +153,19 @@ function EditModal({ open, initial, agents, onClose, onSave }) {
           </label>
 
           <label className="block col-span-2">
-            <span className="text-sm text-zinc-400">Prompt</span>
+            <span className="text-sm text-slate-400">Prompt</span>
             <textarea
               rows={4}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white"
               value={form.prompt}
               onChange={(e) => setForm({ ...form, prompt: e.target.value })}
             />
           </label>
 
           <label className="block">
-            <span className="text-sm text-zinc-400">Cron (5 fields)</span>
+            <span className="text-sm text-slate-400">Cron (5 fields)</span>
             <input
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white font-mono"
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white font-mono"
               value={form.cron}
               onChange={(e) => setForm({ ...form, cron: e.target.value })}
               placeholder="m h dom mon dow"
@@ -173,21 +173,21 @@ function EditModal({ open, initial, agents, onClose, onSave }) {
           </label>
 
           <label className="block">
-            <span className="text-sm text-zinc-400">Timezone</span>
+            <span className="text-sm text-slate-400">Timezone</span>
             <input
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white"
               value={form.timezone}
               onChange={(e) => setForm({ ...form, timezone: e.target.value })}
             />
           </label>
 
           <label className="block">
-            <span className="text-sm text-zinc-400">Max runtime (seconds)</span>
+            <span className="text-sm text-slate-400">Max runtime (seconds)</span>
             <input
               type="number"
               min={5}
               max={3600}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white"
               value={form.maxRuntimeSeconds}
               onChange={(e) =>
                 setForm({ ...form, maxRuntimeSeconds: Number(e.target.value) })
@@ -201,14 +201,14 @@ function EditModal({ open, initial, agents, onClose, onSave }) {
               checked={!!form.enabled}
               onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
             />
-            <span className="text-sm text-zinc-300">Enabled</span>
+            <span className="text-sm text-slate-300">Enabled</span>
           </label>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 border border-zinc-700 text-zinc-300 rounded hover:bg-zinc-800"
+            className="px-4 py-2 border border-slate-700 text-slate-300 rounded hover:bg-slate-800"
           >
             Cancel
           </button>
@@ -341,7 +341,7 @@ export default function ScheduledRuns() {
           <Calendar className="text-unicorn-400" size={28} />
           <div>
             <h1 className="text-2xl font-bold text-white">Scheduled Runs</h1>
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-slate-400">
               Cron-based agent invocations. Survives container restarts.
             </p>
           </div>
@@ -349,7 +349,7 @@ export default function ScheduledRuns() {
         <div className="flex gap-2">
           <button
             onClick={reload}
-            className="flex items-center gap-2 px-3 py-2 border border-zinc-700 text-zinc-300 rounded hover:bg-zinc-800"
+            className="flex items-center gap-2 px-3 py-2 border border-slate-700 text-slate-300 rounded hover:bg-slate-800"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             Refresh
@@ -363,9 +363,9 @@ export default function ScheduledRuns() {
         </div>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-zinc-950 text-zinc-400 text-left text-xs uppercase">
+          <thead className="bg-slate-950 text-slate-400 text-left text-xs uppercase">
             <tr>
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Agent</th>
@@ -379,20 +379,20 @@ export default function ScheduledRuns() {
           <tbody>
             {items.length === 0 && !loading && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                   No scheduled runs yet.
                 </td>
               </tr>
             )}
             {items.map((row) => {
               const Icon = STATUS_ICON[row.lastStatus] || Clock;
-              const color = STATUS_COLOR[row.lastStatus] || 'text-zinc-500';
+              const color = STATUS_COLOR[row.lastStatus] || 'text-slate-400';
               const open = expandedId === row.id;
               return (
                 <>
                   <tr
                     key={row.id}
-                    className="border-t border-zinc-800 hover:bg-zinc-800/40"
+                    className="border-t border-slate-800 hover:bg-slate-800/40"
                   >
                     <td className="px-4 py-3 text-white">
                       <button
@@ -402,12 +402,12 @@ export default function ScheduledRuns() {
                         {row.name}
                       </button>
                     </td>
-                    <td className="px-4 py-3 text-zinc-300 font-mono text-xs">
+                    <td className="px-4 py-3 text-slate-300 font-mono text-xs">
                       {row.agentId}
                     </td>
-                    <td className="px-4 py-3 text-zinc-300 font-mono text-xs">
+                    <td className="px-4 py-3 text-slate-300 font-mono text-xs">
                       {row.cron}{' '}
-                      <span className="text-zinc-500">({row.timezone})</span>
+                      <span className="text-slate-400">({row.timezone})</span>
                     </td>
                     <td className="px-4 py-3">
                       <button
@@ -415,13 +415,13 @@ export default function ScheduledRuns() {
                         className={`px-2 py-1 rounded text-xs ${
                           row.enabled
                             ? 'bg-emerald-900/40 text-emerald-300'
-                            : 'bg-zinc-800 text-zinc-500'
+                            : 'bg-slate-800 text-slate-400'
                         }`}
                       >
                         {row.enabled ? 'on' : 'off'}
                       </button>
                     </td>
-                    <td className="px-4 py-3 text-zinc-400 text-xs">
+                    <td className="px-4 py-3 text-slate-400 text-xs">
                       {fmtTime(row.lastRunAt)}
                     </td>
                     <td className={`px-4 py-3 ${color}`}>
@@ -435,21 +435,21 @@ export default function ScheduledRuns() {
                         <button
                           onClick={() => runNow(row)}
                           title="Run now"
-                          className="p-1 text-emerald-400 hover:bg-zinc-800 rounded"
+                          className="p-1 text-emerald-400 hover:bg-slate-800 rounded"
                         >
                           <Play size={16} />
                         </button>
                         <button
                           onClick={() => edit(row)}
                           title="Edit"
-                          className="p-1 text-sky-400 hover:bg-zinc-800 rounded"
+                          className="p-1 text-sky-400 hover:bg-slate-800 rounded"
                         >
                           <Pencil size={16} />
                         </button>
                         <button
                           onClick={() => remove(row)}
                           title="Delete"
-                          className="p-1 text-rose-400 hover:bg-zinc-800 rounded"
+                          className="p-1 text-rose-400 hover:bg-slate-800 rounded"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -458,32 +458,32 @@ export default function ScheduledRuns() {
                   </tr>
                   {open && (
                     <tr>
-                      <td colSpan={7} className="bg-zinc-950/60 px-4 py-3">
-                        <div className="text-xs text-zinc-400 mb-2">
+                      <td colSpan={7} className="bg-slate-950/60 px-4 py-3">
+                        <div className="text-xs text-slate-400 mb-2">
                           Recent history (most recent first):
                         </div>
                         <div className="space-y-1">
                           {(history[row.id] || []).length === 0 && (
-                            <div className="text-zinc-500 text-xs">
+                            <div className="text-slate-400 text-xs">
                               No runs yet.
                             </div>
                           )}
                           {(history[row.id] || []).map((h) => {
                             const HIcon = STATUS_ICON[h.status] || Clock;
-                            const hColor = STATUS_COLOR[h.status] || 'text-zinc-500';
+                            const hColor = STATUS_COLOR[h.status] || 'text-slate-400';
                             return (
                               <div
                                 key={h.id}
-                                className="flex items-start gap-3 text-xs border-l-2 border-zinc-800 pl-2"
+                                className="flex items-start gap-3 text-xs border-l-2 border-slate-800 pl-2"
                               >
                                 <HIcon size={14} className={`${hColor} mt-0.5`} />
-                                <div className="text-zinc-400 w-44 shrink-0">
+                                <div className="text-slate-400 w-44 shrink-0">
                                   {fmtTime(h.startedAt)}
                                 </div>
                                 <div className={`${hColor} w-20 shrink-0`}>
                                   {h.status}
                                 </div>
-                                <div className="text-zinc-300 truncate">
+                                <div className="text-slate-300 truncate">
                                   {h.error
                                     ? `error: ${h.error}`
                                     : h.outputSummary || '(no output)'}
