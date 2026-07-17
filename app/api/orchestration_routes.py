@@ -196,6 +196,24 @@ async def get_orchestration_state(
     # Get state from event bus
     state = event_bus.get_state_snapshot()
 
+    # S4 (MED) tenancy: this snapshot must not leak another tenant's activity.
+    # M4 stamps every orchestration EVENT with the org that owns the emitting
+    # work, so we filter ``recentEvents`` to the caller's own org using the SAME
+    # visibility rule the SSE stream (stream_events) applies — no weakening of
+    # that stream filter.
+    subscriber_org_id = getattr(user, "org_id", None)
+    state["recentEvents"] = [
+        e for e in state.get("recentEvents", [])
+        if event_visible_to_org(e.get("orgId"), subscriber_org_id)
+    ]
+    # RESIDUAL (documented): ``missions`` and ``agentStates`` in the snapshot come
+    # from ActiveMission / AgentState, which carry NO org_id field in
+    # app/orchestration/event_bus.py, so they cannot be org-scoped here. Fully
+    # closing this requires stamping those dataclasses with the owning org at
+    # creation (mirroring publish()/current_org_id_var) — a change to event_bus.py
+    # that is out of scope for this route-level fix. ``activeAgentCount`` /
+    # ``activeMissionCount`` are likewise global counts. Flagged in the audit.
+
     # Add agent info from database
     repo = AgentRepository(session)
     agents = await repo.list_all()
@@ -217,7 +235,14 @@ async def get_orchestration_state(
 async def get_active_agents(
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
-    """Get currently active agents"""
+    """Get currently active agents.
+
+    S4 RESIDUAL (documented): authentication is enforced (require_api_key), but
+    ``AgentState`` (app/orchestration/event_bus.py) carries no org_id, so the
+    returned agent states cannot be scoped to the caller's org at this layer.
+    Closing this requires stamping AgentState with its owning org in the event
+    bus (out of scope for this route-level fix). Flagged in the audit report.
+    """
     return {
         "agents": [s.to_dict() for s in event_bus.get_active_agents()]
     }
@@ -240,7 +265,14 @@ async def get_missions(
     status: Optional[str] = Query(None, description="Filter by status (active, completed, failed)"),
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
-    """Get all missions"""
+    """Get all missions.
+
+    S4 RESIDUAL (documented): authentication is enforced (require_api_key), but
+    ``ActiveMission`` (app/orchestration/event_bus.py) carries no org_id, so the
+    returned missions cannot be scoped to the caller's org at this layer. Closing
+    this requires stamping ActiveMission with its owning org in the event bus
+    (out of scope for this route-level fix). Flagged in the audit report.
+    """
     missions = event_bus.get_all_missions()
 
     if status:
@@ -256,7 +288,14 @@ async def get_mission(
     mission_id: str,
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
-    """Get mission details"""
+    """Get mission details.
+
+    S4 RESIDUAL (documented): authentication is enforced (require_api_key), but
+    ``ActiveMission`` carries no org_id (see get_missions), so a caller who knows
+    a mission id can still read another org's mission. Closing this requires org
+    attribution on ActiveMission in the event bus (out of scope here). Flagged in
+    the audit report.
+    """
     mission = event_bus.get_mission(mission_id)
     if not mission:
         raise HTTPException(status_code=404, detail="Mission not found")

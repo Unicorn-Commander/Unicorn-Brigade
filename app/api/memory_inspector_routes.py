@@ -1,7 +1,9 @@
 """Memory inspector endpoints — customer-facing view of what agents remember."""
 
 from typing import List, Optional
+import hmac
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
@@ -23,14 +25,31 @@ def init_memory_routes(mm):
 
 
 def _verify_admin_key(x_api_key: Optional[str], authorization: Optional[str]) -> None:
-    import os
-    admin_key = os.getenv("BRIGADE_ADMIN_KEY", "")
+    """Admin gate for the memory inspector (RLS-exempt cross-tenant read/delete).
+
+    S2 (HIGH) fix — FAIL CLOSED. These endpoints run on the RLS-exempt
+    ``admin_session`` and can enumerate/read/delete ANY tenant's memory, so an
+    unconfigured gate must never be an open door. When ``BRIGADE_ADMIN_KEY`` is
+    unset we now refuse with 503 (mirroring
+    ``app/api/admin_keys_routes.py::require_service_key``) instead of returning
+    (which previously allowed the request through). The header comparison uses
+    ``hmac.compare_digest`` on the encoded bytes for constant-time matching (no
+    timing side-channel, and no ASCII-only TypeError on odd input).
+    """
+    admin_key = os.getenv("BRIGADE_ADMIN_KEY", "") or ""
     if not admin_key:
-        return
+        logger.error(
+            "BRIGADE_ADMIN_KEY is not configured; refusing memory-inspector "
+            "requests (fail closed)"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Memory inspection is not configured on this Brigade instance",
+        )
     provided = x_api_key
     if not provided and authorization and authorization.startswith("Bearer "):
         provided = authorization[len("Bearer "):]
-    if provided != admin_key:
+    if not provided or not hmac.compare_digest(provided.encode(), admin_key.encode()):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 

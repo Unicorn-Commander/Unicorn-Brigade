@@ -10,12 +10,17 @@ Provides REST endpoints for Langflow visual workflow integration:
 - GET /api/v1/langflow/health - Langflow service health
 """
 
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Annotated
 import logging
 import json
 
+# S7 (MED) fix — Langflow routes were fully unauthenticated (no Depends at all),
+# so anyone could run/import/create/update/delete flows (arbitrary exec). Mutating
+# and flow-execution routes now require OPERATOR; read-only GETs require any valid
+# API key/bearer (VIEWER+). ``/langflow/health`` stays public via roles.PUBLIC_PATHS.
+from app.auth.middleware import require_api_key, require_operator, AuthUser
 from app.integrations.langflow import (
     LangflowClient,
     LangflowFlow,
@@ -145,6 +150,11 @@ async def langflow_health():
     Check Langflow service health.
 
     Returns connection status and version information.
+
+    NOTE: ``/api/v1/langflow/health`` is intentionally in
+    ``app.auth.roles.PUBLIC_PATHS`` (monitoring), so no auth dependency is added
+    — a public path short-circuits ``get_current_user``. Every other langflow
+    route below IS authenticated.
     """
     if not LANGFLOW_ENABLED:
         return HealthResponse(
@@ -179,6 +189,7 @@ async def langflow_health():
 async def list_flows(
     folder_id: Optional[str] = Query(None, description="Filter by folder ID"),
     components_only: bool = Query(False, description="Only return component flows"),
+    _user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     List available Langflow flows.
@@ -223,7 +234,10 @@ async def list_flows(
 
 
 @router.get("/flows/{flow_id}", response_model=FlowDetailResponse)
-async def get_flow(flow_id: str):
+async def get_flow(
+    flow_id: str,
+    _user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """
     Get detailed information about a specific flow.
 
@@ -292,6 +306,7 @@ async def get_flow(flow_id: str):
 async def run_flow(
     flow_id: str,
     request: RunFlowRequest,
+    _user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
     """
     Execute a Langflow flow.
@@ -343,7 +358,10 @@ async def run_flow(
 # ============================================================================
 
 @router.post("/flows/import", response_model=FlowResponse)
-async def import_flow(request: ImportFlowRequest):
+async def import_flow(
+    request: ImportFlowRequest,
+    _user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Import a flow from JSON data.
 
@@ -380,7 +398,10 @@ async def import_flow(request: ImportFlowRequest):
 
 
 @router.get("/flows/{flow_id}/export")
-async def export_flow(flow_id: str):
+async def export_flow(
+    flow_id: str,
+    _user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """
     Export a flow as JSON.
 
@@ -410,7 +431,10 @@ async def export_flow(flow_id: str):
 # ============================================================================
 
 @router.get("/flows/{flow_id}/convert", response_model=WorkflowConversionResponse)
-async def convert_flow_to_workflow(flow_id: str):
+async def convert_flow_to_workflow(
+    flow_id: str,
+    _user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
     """
     Convert a Langflow flow to Unicorn Brigade workflow format.
 
@@ -444,6 +468,11 @@ async def convert_flow_to_workflow(flow_id: str):
 @router.post("/workflows/convert-to-langflow")
 async def convert_workflow_to_langflow(
     workflow: Dict[str, Any] = Body(..., description="Brigade workflow definition"),
+    # require_api_key (VIEWER+), not require_operator: this is a pure, stateless
+    # transform — it neither executes a flow nor mutates any Langflow state — so
+    # an authenticated caller is the right floor. The auth dep still closes the
+    # unauthenticated-access hole.
+    _user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """
     Convert a Unicorn Brigade workflow to Langflow format.
@@ -491,7 +520,10 @@ class UpdateFlowRequest(BaseModel):
 
 
 @router.post("/flows", response_model=FlowResponse)
-async def create_flow(request: CreateFlowRequest):
+async def create_flow(
+    request: CreateFlowRequest,
+    _user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Create a new Langflow flow.
     """
@@ -528,7 +560,11 @@ async def create_flow(request: CreateFlowRequest):
 
 
 @router.patch("/flows/{flow_id}", response_model=FlowResponse)
-async def update_flow(flow_id: str, request: UpdateFlowRequest):
+async def update_flow(
+    flow_id: str,
+    request: UpdateFlowRequest,
+    _user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Update an existing Langflow flow.
     """
@@ -565,7 +601,10 @@ async def update_flow(flow_id: str, request: UpdateFlowRequest):
 
 
 @router.delete("/flows/{flow_id}")
-async def delete_flow(flow_id: str):
+async def delete_flow(
+    flow_id: str,
+    _user: Annotated[AuthUser, Depends(require_operator)] = None,
+):
     """
     Delete a Langflow flow.
     """
