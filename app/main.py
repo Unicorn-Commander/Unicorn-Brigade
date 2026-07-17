@@ -189,6 +189,26 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error("Brigade scheduler failed to start: %s", e)
 
+        # ══════════════ BR-4 DURABLE STATE: rehydrate in-flight executions ══════════════
+        # Workflow/Ralph execution + HITL-checkpoint state now persists to Postgres
+        # (workflow_executions / ralph_executions). On startup, reload the in-flight
+        # (non-terminal) set back into the in-memory engines so an execution — and any
+        # pending human-approval checkpoint — survives a process restart and is
+        # reachable on a fresh replica. Best-effort: a failure here never blocks boot.
+        try:
+            from app.workflows.engine import get_workflow_engine
+            from app.api.ralph_routes import rehydrate_active_executions
+
+            n_wf = await get_workflow_engine().rehydrate()
+            n_ralph = await rehydrate_active_executions()
+            logger.info(
+                "BR-4 durable state: rehydrated %d workflow + %d ralph in-flight execution(s)",
+                n_wf, n_ralph,
+            )
+        except Exception as e:
+            logger.error("BR-4 durable-state rehydration failed: %s", e)
+        # ════════════════════════════════════════════════════════════════════════════════
+
     yield
 
     # Cleanup
