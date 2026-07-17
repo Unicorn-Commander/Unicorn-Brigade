@@ -82,6 +82,21 @@ class AgentRepository:
         if not agent:
             return None
 
+        # Tenancy hardening (audit-2 F1): org assignment + primary key are INTERNAL
+        # concerns, never client-settable through an update payload. A shared
+        # (NULL-org) agent is mutated via the RLS-EXEMPT owner session (see
+        # ``app.api.agent_routes._agent_writer``), which has NO ``WITH CHECK`` to
+        # stop an org_id reassignment — so a raw ``org_id`` (or its camelCase alias
+        # ``orgId``) in the payload could relocate/claim any of the shared seed
+        # agents fleet-wide, and an ``id`` could re-map the primary key. Strip all
+        # three here UNCONDITIONALLY (defense in depth beneath the route-level
+        # import whitelist). Org assignment happens only at ``create()`` — via the
+        # DB default ``current_org_id()`` or the explicit admin shared-agent path.
+        updates = {
+            k: v for k, v in updates.items()
+            if k not in ("org_id", "orgId", "id")
+        }
+
         field_map = {
             "displayName": "display_name", "systemPrompt": "system_prompt",
             "avatarUrl": "avatar_url",

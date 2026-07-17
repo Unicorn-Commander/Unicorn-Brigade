@@ -209,7 +209,15 @@ class OrchestrationEventBus:
 
         # State tracking
         self._missions: Dict[str, ActiveMission] = {}
-        self._agent_states: Dict[str, AgentState] = {}
+        # S4/audit-2 F2: agent state is keyed by (org_id, agent_id), NOT agent_id
+        # alone. A SHARED agent (gunny, col-finance) is one agent_id across every
+        # tenant; keying by agent_id alone made it a single AgentState object whose
+        # current_task/current_mission the last writer (any org) overwrote — and
+        # because the singleton kept the FIRST writer's org stamp, that org then
+        # read another org's task text through /state + /agents/active. Segregating
+        # by (org_id, agent_id) gives each tenant its own state for the same shared
+        # agent, so activity never crosses orgs.
+        self._agent_states: Dict[tuple, AgentState] = {}
         self._recent_events: List[OrchestrationEvent] = []
         self._max_recent_events = 100
 
@@ -259,16 +267,27 @@ class OrchestrationEventBus:
         logger.debug(f"Published event: {event.type.value} from {event.agent_id}")
 
     def _update_agent_state(self, event: OrchestrationEvent):
-        """Update agent state based on event"""
-        agent_id = event.agent_id
+        """Update agent state based on event.
 
-        if agent_id not in self._agent_states:
-            self._agent_states[agent_id] = AgentState(
+        Audit-2 F2: state is keyed per (org_id, agent_id). ``event.org_id`` is
+        already stamped by ``publish()`` (from ``current_org_id_var``) before this
+        runs, so a shared agent driven by two orgs gets two SEGREGATED AgentState
+        objects instead of one shared object whose task/mission the last writer
+        clobbers. The owning org is set explicitly on the state so it always
+        matches its key (even if an event ever carried an explicit org_id).
+        """
+        agent_id = event.agent_id
+        org_id = event.org_id
+        key = (org_id, agent_id)
+
+        if key not in self._agent_states:
+            self._agent_states[key] = AgentState(
                 agent_id=agent_id,
-                agent_name=event.agent_name or agent_id
+                agent_name=event.agent_name or agent_id,
+                org_id=org_id,
             )
 
-        state = self._agent_states[agent_id]
+        state = self._agent_states[key]
         state.last_activity = event.timestamp
         state.current_mission = event.mission_id
 
@@ -375,8 +394,19 @@ class OrchestrationEventBus:
 
     # Agent state
 
-    def get_agent_state(self, agent_id: str) -> Optional[AgentState]:
-        return self._agent_states.get(agent_id)
+    def get_agent_state(
+        self, agent_id: str, org_id: Optional[str] = None
+    ) -> Optional[AgentState]:
+        """State for ``agent_id`` within ``org_id``.
+
+        Audit-2 F2: states are keyed by (org_id, agent_id), so a caller must name
+        the org whose view it wants (a shared agent has one state per active org).
+        ``org_id`` defaults to None, which resolves the unattributed/system entry —
+        never another tenant's. The ``.values()``-based readers below are unchanged
+        by the re-keying: each returned AgentState still carries its own ``org_id``
+        for the route-level ``event_visible_to_org`` filter to scope on.
+        """
+        return self._agent_states.get((org_id, agent_id))
 
     def get_active_agents(self) -> List[AgentState]:
         return [s for s in self._agent_states.values() if s.status != "idle"]
