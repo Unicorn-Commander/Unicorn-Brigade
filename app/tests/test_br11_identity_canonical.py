@@ -26,13 +26,23 @@ import tempfile
 import uuid
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.database import Base
 from app.db.models import BuilderSession, Conversation, User
 from app.db.migrations import remap_forked_keycloak_rows
 from app.auth.middleware import resolve_canonical_user_id
+
+# BR-1.2 added ``org_id NOT NULL DEFAULT current_org_id()`` to conversations /
+# builder_sessions (and friends). ``current_org_id()`` is a Postgres function
+# (reads the app.current_org_id RLS GUC); SQLite has no such function, so building
+# this test's throwaway schema from the real models and inserting a row would fail
+# with "unknown function: current_org_id()". Register a stub on every SQLite
+# connection that returns a fixed uuid — enough to satisfy the server-default +
+# NOT NULL. This test is about user_id remapping, not org isolation, so the actual
+# org_id value is irrelevant.
+_STUB_ORG_ID = "00000000-0000-0000-0000-000000000000"
 
 
 async def _fresh_db():
@@ -41,6 +51,11 @@ async def _fresh_db():
     fd, path = tempfile.mkstemp(prefix="br11_scratch_", suffix=".sqlite")
     os.close(fd)
     engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _register_current_org_id(dbapi_connection, _record):
+        dbapi_connection.create_function("current_org_id", 0, lambda: _STUB_ORG_ID)
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     return engine, async_sessionmaker(engine, expire_on_commit=False), path
