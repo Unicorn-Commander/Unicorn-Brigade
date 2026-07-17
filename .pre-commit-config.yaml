@@ -1,0 +1,31 @@
+# Unicorn Brigade — pre-commit secrets guard (SEC-1)
+#
+# Blocks secrets BEFORE they enter git history. Modeled on the fleet leak-guard
+# baseline (secret-rotation-toolkit/leak-guard).
+#
+# One-time setup (per clone):
+#   pip install pre-commit        # or: brew install pre-commit
+#   pre-commit install            # wires .git/hooks/pre-commit
+#
+# The gitleaks hook uses the repo's .gitleaks.toml automatically, so the same
+# allowlist governs the hook, CI, and local scans.
+#
+# Bypass only in a genuine emergency:  git commit --no-verify
+#
+# NOTE: intentionally scoped to secret/hygiene hooks that do NOT rewrite files —
+# whitespace/EOF fixers are omitted so this stays non-disruptive on the large
+# pre-existing tree. Add them later if desired.
+minimum_pre_commit_version: "3.5.0"
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        name: gitleaks (block staged secrets)
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=5000"]
