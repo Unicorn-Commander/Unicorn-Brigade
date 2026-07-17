@@ -70,6 +70,15 @@ from app.observability import flush as langfuse_flush, shutdown as langfuse_shut
 from app.observability import configure_logging, request_id_middleware
 from app.config import FEDERATION_ONLY, INTERNAL_AGENTS_ENABLED
 
+# ── BR-6 security hardening ────────────────────────────────────────────────
+# Response-headers / body-size / per-identity-rate-limit middleware + the
+# fail-closed AUTH_BYPASS boot guard. Self-contained (starlette + stdlib only).
+from app.security.headers import SecurityHeadersMiddleware
+from app.security.limits import RequestSizeLimitMiddleware
+from app.security.ratelimit import RateLimitMiddleware
+from app.security.bootstrap import assert_auth_bypass_safe
+# ───────────────────────────────────────────────────────────────────────────
+
 # Load environment variables
 load_dotenv()
 
@@ -89,6 +98,10 @@ async def lifespan(app: FastAPI):
     global memory_manager, workflow_manager, llm_client
 
     logger.info("Starting Unicorn Brigade...")
+
+    # BR-6 security hardening: fail closed on a dangerous auth misconfiguration.
+    # Refuses to boot (raises) if AUTH_BYPASS=true in a production-like env.
+    assert_auth_bypass_safe()
 
     # Initialize memory manager (Graphiti + FalkorDB)
     memory_manager = GraphitiMemoryManager()
@@ -245,6 +258,20 @@ app.middleware("http")(metrics_middleware)
 # metrics/handler log line for the request carries the same request_id.
 app.middleware("http")(request_id_middleware)
 app.add_api_route("/metrics", metrics_endpoint, methods=["GET"], include_in_schema=False)
+
+# ══════════════════════ BR-6 SECURITY HARDENING (additive) ══════════════════
+# Registered LAST so they wrap OUTERMOST (Starlette applies middleware in reverse
+# registration order): SecurityHeaders → RateLimit → RequestSizeLimit → (existing
+# request_id → metrics → CORS) → app. Effect: 413/429 rejections and every error
+# response still receive the security headers, and floods/oversized bodies are
+# rejected before the request touches the app. All knobs are env-configurable
+# (SECURITY_* vars) with safe defaults, so existing deploys need no env change.
+# NOTE: the rate limiter is PER-PROCESS in-memory; a Redis-backed shared limiter
+# is the multi-replica follow-up (see app/security/ratelimit.py).
+app.add_middleware(RequestSizeLimitMiddleware)  # 413 on oversized Content-Length
+app.add_middleware(RateLimitMiddleware)          # 429 per-identity on sensitive routes
+app.add_middleware(SecurityHeadersMiddleware)    # outermost: stamps security headers
+# ════════════════════════════════════════════════════════════════════════════
 
 # Federation broker surface — always mounted, customer-facing on prod.
 # /.well-known/jwks.json is unauthenticated (RS256 public keys);
