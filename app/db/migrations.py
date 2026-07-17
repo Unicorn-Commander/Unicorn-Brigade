@@ -645,6 +645,97 @@ MIGRATIONS = [
             """,
         ],
     ),
+    (
+        "20260720_01_billing_usage_ledger",
+        "BR-3.1/3.4/3.6/3.8: usage_events (per-org RLS ledger) + org_billing_config (per-org caps)",
+        # BR-3 billing core. Two additive tables:
+        #
+        #  * usage_events — the durable, write-through per-ORG usage ledger every
+        #    metered execution path appends to (see app/db/usage_ledger.py). This
+        #    is what moves the cost-control ledger OFF the best-effort in-memory /
+        #    fire-and-forget Lago-only path and INTO Postgres (BR-3.8), mirroring
+        #    the BR-4 execution_store durable-state pattern. It is the source of
+        #    truth for per-org usage AND the substrate the per-org cap preflight
+        #    (BR-3.6) sums. org_id is the billing subject (BR-3.1).
+        #
+        #    Unlike the BR-4 system-bookkeeping tables, this IS tenant data (org A's
+        #    spend must be invisible to org B), so it carries FULL RLS exactly like
+        #    conversations / messages / tool_executions: ENABLE + FORCE + an
+        #    org-isolation policy (org_id = current_org_id() both ways). Writes come
+        #    from the RLS-exempt admin_session with an explicit org_id (metering can
+        #    run in a background task with no bound request org), while the policy
+        #    guarantees a request-session reader only ever sees its own org — this
+        #    is the isolation the BR-3 billing proof asserts. Because it is a NEW,
+        #    separate table, it does NOT touch the existing 8-table RLS proof (still
+        #    44/0).
+        #
+        #  * org_billing_config — per-org caps the preflight enforces (BR-3.6). NO
+        #    RLS (a config/pointer table keyed BY org, read by admin_session in the
+        #    preflight by arbitrary id), like organizations / api_keys.
+        #
+        # create_all already builds both tables from the ORM models on a FRESH
+        # install BEFORE this migration runs; every statement here is CREATE ... IF
+        # NOT EXISTS / idempotent so it is a safe no-op there and the real DDL on a
+        # deployed DB.
+        [
+            """
+            CREATE TABLE IF NOT EXISTS usage_events (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                external_customer_id varchar(255),
+                user_id varchar(255),
+                event_type varchar(50) NOT NULL DEFAULT 'ai_api_call',
+                source varchar(50) NOT NULL DEFAULT 'unknown',
+                agent_id varchar(255),
+                model varchar(255),
+                tokens integer NOT NULL DEFAULT 0,
+                cost double precision NOT NULL DEFAULT 0.0,
+                rate_tier varchar(50),
+                rate_multiplier double precision NOT NULL DEFAULT 1.0,
+                outcome varchar(32),
+                transaction_id varchar(255),
+                meta json,
+                created_at timestamptz NOT NULL DEFAULT now()
+            )
+            """,
+            "ALTER TABLE usage_events ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "CREATE INDEX IF NOT EXISTS ix_usage_events_org_id ON usage_events(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_usage_events_org_created ON usage_events(org_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_usage_events_event_type ON usage_events(event_type)",
+            "CREATE INDEX IF NOT EXISTS ix_usage_events_created_at ON usage_events(created_at)",
+            # Tenant data → same RLS shape as conversations/messages/tool_executions.
+            "ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE usage_events FORCE ROW LEVEL SECURITY",
+            "DROP POLICY IF EXISTS usage_events_org_isolation ON usage_events",
+            "CREATE POLICY usage_events_org_isolation ON usage_events USING (org_id = current_org_id()) WITH CHECK (org_id = current_org_id())",
+            # Per-org caps (BR-3.6). No RLS — config keyed by org, read by admin_session.
+            """
+            CREATE TABLE IF NOT EXISTS org_billing_config (
+                org_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+                monthly_token_cap bigint,
+                monthly_cost_cap double precision,
+                hard_stop boolean NOT NULL DEFAULT true,
+                notes text,
+                created_at timestamptz NOT NULL DEFAULT now(),
+                updated_at timestamptz NOT NULL DEFAULT now()
+            )
+            """,
+            # New tables created after 20260626_01's blanket GRANT — grant the app
+            # role explicitly (guarded on the role existing; idempotent, mirrors the
+            # invitations / durable-state migrations). usage_events is written via
+            # the owner admin_session, but a request-session reader (usage UI) needs
+            # SELECT, and the BR-3 proof drives the app role to assert RLS isolation.
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'brigade_app') THEN
+                    GRANT SELECT, INSERT, UPDATE, DELETE ON usage_events TO brigade_app;
+                    GRANT SELECT, INSERT, UPDATE, DELETE ON org_billing_config TO brigade_app;
+                END IF;
+            END $$;
+            """,
+        ],
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.

@@ -132,11 +132,14 @@ def _now_ts() -> int:
     return int(datetime.utcnow().timestamp())
 
 
-def _envelope(code: str, user: str, properties: dict, transaction_id: str) -> dict:
+def _envelope(code: str, external_customer_id: str, properties: dict, transaction_id: str) -> dict:
+    """Build a Lago event envelope. ``external_customer_id`` is the BILLING
+    SUBJECT — as of BR-3.1 that is the ORG (``org_id``), not the user. The user
+    is still carried inside ``properties["user"]`` for per-user attribution."""
     return {
         "event": {
             "transaction_id": transaction_id,
-            "external_customer_id": user,
+            "external_customer_id": external_customer_id,
             "code": code,
             "timestamp": _now_ts(),
             "properties": properties,
@@ -252,12 +255,18 @@ async def emit_ai_api_call(
     used_rag: bool = False,
     rate_tier: Optional[str] = None,
     rate_multiplier: Optional[float] = None,
+    org_id: Optional[str] = None,
 ) -> bool:
     """Emit the LLM-cost (COGS) ``ai_api_call`` event and trigger credit
     deduction. Billing behavior is unchanged — still only the local-GPU token
     cost, still mirrored to the deduction webhook. The optional value dimensions
     (agent_id, tools_used, rag_used, rate_tier, ...) are added to ``properties``
     for visibility/analytics and are backward-compatible.
+
+    BR-3.1: when ``org_id`` is supplied it becomes the event's
+    ``external_customer_id`` (the billing subject is the ORG, not the user). The
+    user stays in ``properties["user"]`` for per-user attribution. Falls back to
+    ``user`` as the subject only when no org is known (legacy callers).
     """
     if not user or tokens <= 0:
         return False
@@ -268,11 +277,14 @@ async def emit_ai_api_call(
         "cost": f"{cost:.8f}",
         "user": user,
     }
+    if org_id:
+        props["org_id"] = str(org_id)
     if byok:
         props["byok"] = True
     props.update(_value_dims(agent_id, agent_name, agent_domain, tools_used,
                              used_rag, rate_tier, rate_multiplier))
-    return await _post_event(_envelope("ai_api_call", user, props, tx), mirror=True)
+    subject = str(org_id) if org_id else user
+    return await _post_event(_envelope("ai_api_call", subject, props, tx), mirror=True)
 
 
 async def emit_agent_work(
@@ -288,12 +300,17 @@ async def emit_agent_work(
     rate_tier: str = "standard",
     rate_multiplier: float = 1.0,
     transaction_id: Optional[str] = None,
+    org_id: Optional[str] = None,
 ) -> bool:
     """Emit the per-agent VALUE event — the unit a customer is billed for: the
     work an agent delivered, not raw LLM tokens. Carries user + agent + tools +
     rag + outcome so usage is attributable per-agent AND per-user — notably for
     ``uc/``-gateway routes, where the LLM-cost path is skipped and the end user
     would otherwise be invisible.
+
+    BR-3.1: the billing subject is the ORG (``org_id``) when known; the user
+    stays in ``properties["user"]``. Falls back to ``user`` as the subject only
+    when no org is known (legacy callers).
 
     Recorded to Lago for visibility/aggregation but deliberately NOT mirrored to
     the immediate-deduction webhook: this event charges nothing until a Lago
@@ -310,6 +327,9 @@ async def emit_agent_work(
         "tokens": str(tokens),
         "outcome": outcome,
     }
+    if org_id:
+        props["org_id"] = str(org_id)
     props.update(_value_dims(None, agent_name, agent_domain, tools_used,
                              used_rag, rate_tier, rate_multiplier))
-    return await _post_event(_envelope("agent_work", user, props, tx), mirror=False)
+    subject = str(org_id) if org_id else user
+    return await _post_event(_envelope("agent_work", subject, props, tx), mirror=False)

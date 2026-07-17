@@ -19,6 +19,7 @@ import json
 
 from app.db.database import get_session
 from app.db.repositories import AgentRepository
+from app.integrations.metering import meter_usage
 from app.auth.middleware import (
     require_api_key,
     require_operator,
@@ -349,6 +350,23 @@ Select the best agents for this mission. Return a JSON object:
 
             content = extract_content(response)
 
+            # BR-3.4: meter The General's auto-assign LLM call against the caller's
+            # org (orchestration missions were previously unmetered).
+            try:
+                _u = (response.get("usage") if isinstance(response, dict) else {}) or {}
+                await meter_usage(
+                    org_id=getattr(user, "org_id", None),
+                    user=(getattr(user, "email", "") or "").lower() or None,
+                    source="orchestration",
+                    model=(response.get("model") if isinstance(response, dict) else None) or "openai/gpt-4o-mini",
+                    tokens=int(_u.get("total_tokens") or (_u.get("prompt_tokens") or 0) + (_u.get("completion_tokens") or 0) or 0),
+                    provider=response.get("provider") if isinstance(response, dict) else None,
+                    agent_id="the-general",
+                    agent_name="The General",
+                )
+            except Exception as _me:
+                logger.debug(f"mission meter skipped: {_me}")
+
             # Parse response
             import re
             json_match = re.search(r'\{[\s\S]*\}', content)
@@ -452,6 +470,23 @@ Be strategic and efficient. Delegate appropriately."""
         )
 
         content = extract_content(response)
+
+        # BR-3.4: meter The General's command LLM call against the caller's org
+        # (orchestration commands were previously unmetered).
+        try:
+            _u = (response.get("usage") if isinstance(response, dict) else {}) or {}
+            await meter_usage(
+                org_id=getattr(user, "org_id", None),
+                user=(getattr(user, "email", "") or "").lower() or None,
+                source="orchestration",
+                model=(response.get("model") if isinstance(response, dict) else None) or "openai/gpt-4o",
+                tokens=int(_u.get("total_tokens") or (_u.get("prompt_tokens") or 0) + (_u.get("completion_tokens") or 0) or 0),
+                provider=response.get("provider") if isinstance(response, dict) else None,
+                agent_id="the-general",
+                agent_name="The General",
+            )
+        except Exception as _me:
+            logger.debug(f"command meter skipped: {_me}")
 
         # Parse The General's response
         result = {"response": content, "actions": []}

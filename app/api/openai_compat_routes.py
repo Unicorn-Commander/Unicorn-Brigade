@@ -350,9 +350,12 @@ async def _passthrough_chat(
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
 
     # --- Phase 7: billing preflight + user_attrs (for paid_only policies) ---
-    from app.api.agent_routes import _fetch_user_attrs, _enforce_billing_or_402
+    from app.api.agent_routes import (
+        _fetch_user_attrs, _enforce_billing_or_402, _enforce_org_cap_or_402,
+    )
     _user_attrs, _billing_state = await _fetch_user_attrs(auth_user)
     _enforce_billing_or_402(auth_user, _billing_state)
+    await _enforce_org_cap_or_402(auth_user)  # BR-3.6 per-org cap
 
     # --- Per-agent RBAC policy (with audit) ---
     from app.auth.roles import evaluate_agent_access, derive_user_tier
@@ -548,7 +551,8 @@ async def _passthrough_chat(
             "provider": route_type,
             "usage": _usage,
         }
-        await _meter(_user_email, resolved_model, _meter_payload)
+        await _meter(_user_email, resolved_model, _meter_payload,
+                     org_id=getattr(auth_user, "org_id", None))
     except Exception as _meter_err:
         logger.debug(f"passthrough meter skipped: {_meter_err}")
 
@@ -627,6 +631,7 @@ async def _dual_layer_chat(
     from app.api.agent_routes import (
         _fetch_user_attrs,
         _enforce_billing_or_402,
+        _enforce_org_cap_or_402,
         _log_rbac_denial as _audit_denial,
         _meter_chat_to_lago,
     )
@@ -687,6 +692,7 @@ async def _dual_layer_chat(
     # --- Phase 7: billing preflight + user_attrs ---
     _user_attrs, _billing_state = await _fetch_user_attrs(auth_user)
     _enforce_billing_or_402(auth_user, _billing_state)
+    await _enforce_org_cap_or_402(auth_user)  # BR-3.6 per-org cap
 
     # --- Per-agent RBAC policy (with audit) ---
     _email = (getattr(auth_user, "email", "") or "") or ""
@@ -882,6 +888,7 @@ async def _dual_layer_chat(
                 await _meter_chat_to_lago(
                     _user_email, raw.get("model"),
                     {"model": raw.get("model"), "provider": _route_hint, "usage": _usage},
+                    org_id=getattr(auth_user, "org_id", None),
                 )
             except Exception as _me:
                 logger.debug(f"dual-layer meter skipped: {_me}")
@@ -915,6 +922,7 @@ async def _dual_layer_chat(
                 await _meter_chat_to_lago(
                     _user_email, raw.get("model"),
                     {"model": raw.get("model"), "provider": _route_hint, "usage": _usage},
+                    org_id=getattr(auth_user, "org_id", None),
                 )
             except Exception as _me:
                 logger.debug(f"dual-layer meter skipped: {_me}")
@@ -998,6 +1006,38 @@ async def _enhanced_stream_chat(
     agent = await repo.get(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    # --- BR-3.5: route the streaming shim through the SAME gates as the
+    # non-streaming path (which it previously BYPASSED entirely): billing
+    # preflight (402), per-org cap (402), and per-agent RBAC (403) — all BEFORE
+    # a single token streams. Metering is applied after the stream completes,
+    # below. Mirrors the passthrough/dual-layer preflight exactly. ---
+    from app.api.agent_routes import (
+        _fetch_user_attrs, _enforce_billing_or_402, _enforce_org_cap_or_402,
+        _meter_chat_to_lago, _log_rbac_denial as _audit_denial,
+    )
+    from app.auth.roles import evaluate_agent_access, derive_user_tier
+    _user_attrs, _billing_state = await _fetch_user_attrs(auth_user)
+    _enforce_billing_or_402(auth_user, _billing_state)
+    await _enforce_org_cap_or_402(auth_user)
+    _rbac_email = (getattr(auth_user, "email", "") or "")
+    _rbac_tier = derive_user_tier(_rbac_email, auth_user.role)
+    _allowed, _reason = evaluate_agent_access(
+        user_email=_rbac_email,
+        user_role=auth_user.role,
+        user_tier=_rbac_tier,
+        access_policy=agent.get("accessPolicy"),
+        user_attrs=_user_attrs,
+    )
+    if not _allowed:
+        try:
+            await _audit_denial(
+                session, auth_user, agent_id, _reason, agent.get("accessPolicy"),
+                request_path=f"POST /api/v1/openai/v1/chat/completions [stream {agent_id}]",
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=403, detail=f"Agent '{agent_id}' is restricted")
 
     # Identity + memory isolation
     effective_user_id = request.user
@@ -1098,6 +1138,9 @@ async def _enhanced_stream_chat(
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": True,
+        # BR-3.5: ask the upstream for a final usage tail so metering bills REAL
+        # tokens; we fall back to a ~4-chars/token estimate if it's absent.
+        "stream_options": {"include_usage": True},
     }
     if _agent_tool_defs:
         payload["tools"] = _agent_tool_defs
@@ -1105,6 +1148,10 @@ async def _enhanced_stream_chat(
     chat_id = f"chatcmpl-brigade-{_uuid.uuid4().hex[:12]}"
     created = int(_time.time())
     full_text_buffer: list[str] = []  # for memory store after stream completes
+    # BR-3.5 metering accumulators: real usage (from the include_usage tail) and
+    # the set of server-side tools invoked across tool-loop iterations.
+    stream_usage: dict = {}
+    tools_invoked: list = []
     MAX_TOOL_ITERATIONS = 8
 
     async def _gen():
@@ -1190,6 +1237,10 @@ async def _enhanced_stream_chat(
                             upstream = _json.loads(data_str)
                         except Exception:
                             continue
+                        # BR-3.5: the include_usage tail is an empty-choices chunk
+                        # carrying the real token counts — capture for metering.
+                        if upstream.get("usage"):
+                            stream_usage.update(upstream["usage"] or {})
                         choice = (upstream.get("choices") or [{}])[0]
                         delta = choice.get("delta") or {}
 
@@ -1247,6 +1298,7 @@ async def _enhanced_stream_chat(
 
                     for tc in assembled_calls:
                         fn_name = tc["function"]["name"]
+                        tools_invoked.append(fn_name)  # BR-3.5 metering attribution
                         try:
                             fn_args = _json.loads(tc["function"]["arguments"] or "{}")
                         except Exception:
@@ -1298,6 +1350,30 @@ async def _enhanced_stream_chat(
                 "id": chat_id, "object": "chat.completion.chunk", "created": created, "model": agent_id,
                 "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
             }) + "\n\n"
+            # BR-3.5: meter the streamed turn BEFORE [DONE] (the streaming shim
+            # previously recorded NOTHING — no durable ledger, no Lago, so streamed
+            # usage was invisible + uncapped). Prefer the real include_usage tail;
+            # fall back to a ~4-chars/token estimate. Keyed on the caller's ORG and
+            # routed through the SAME _meter_chat_to_lago as every other path.
+            try:
+                _stream_total = int(
+                    stream_usage.get("total_tokens")
+                    or (stream_usage.get("prompt_tokens") or 0) + (stream_usage.get("completion_tokens") or 0)
+                    or 0
+                )
+                if _stream_total <= 0:
+                    _prompt_chars = sum(len((m or {}).get("content", "") or "") for m in llm_messages)
+                    _stream_total = max(1, (_prompt_chars + len("".join(full_text_buffer))) // 4)
+                await _meter_chat_to_lago(
+                    (getattr(auth_user, "email", "") or "").lower(),
+                    model,
+                    {"model": resolved_model, "provider": route_type, "usage": {"total_tokens": _stream_total}},
+                    agent=agent,
+                    tools_called=tools_invoked,
+                    org_id=getattr(auth_user, "org_id", None),
+                )
+            except Exception as _meter_err:
+                logger.debug(f"stream meter skipped: {_meter_err}")
             yield "data: [DONE]\n\n"
 
             # Background memory store of the final exchange

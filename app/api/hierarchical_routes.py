@@ -17,6 +17,7 @@ from typing import Optional, List, Dict, Any, Annotated
 import logging
 
 from app.auth.middleware import require_api_key, require_operator, require_admin, AuthUser
+from app.integrations.metering import meter_usage
 from app.workflows import (
     WorkflowEngine,
     WorkflowExecutionState,
@@ -249,11 +250,44 @@ async def execute_workflow(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    # BR-3.4: capture the caller's org/user so a background (async) workflow can
+    # still be metered against the right tenant once it finishes.
+    _wf_org_id = getattr(user, "org_id", None)
+    _wf_user = (getattr(user, "email", "") or "").lower() or None
+
+    async def _meter_workflow(execution):
+        """Meter a finished hierarchical workflow against the caller's org. Records
+        the engine's own token/cost tally to the durable ledger (org attribution +
+        per-org cap visibility); no Lago COGS emit — the per-tier model calls are
+        tallied by the engine and cloud tiers meter themselves upstream, so this
+        avoids double-charging. Best-effort."""
+        try:
+            _mcfg = getattr(execution, "model_config_used", None)
+            await meter_usage(
+                org_id=_wf_org_id,
+                user=_wf_user,
+                source="hierarchical",
+                event_type="workflow",
+                model=(_mcfg or {}).get("orchestrator_model") if isinstance(_mcfg, dict) else None,
+                tokens=int(getattr(execution, "total_tokens", 0) or 0),
+                cost=float(getattr(execution, "total_cost", 0.0) or 0.0),
+                is_local=False,
+                emit_value=False,
+                meta={
+                    "workflow_id": workflow.id,
+                    "execution_id": getattr(execution, "id", None),
+                    "state": getattr(getattr(execution, "state", None), "value", None),
+                },
+            )
+        except Exception as _me:
+            logger.debug(f"workflow meter skipped: {_me}")
+
     if request.async_execution:
         # Run in background
         async def run_workflow():
             try:
-                await engine.execute_workflow(workflow, request.inputs, model_config=model_config)
+                _exec = await engine.execute_workflow(workflow, request.inputs, model_config=model_config)
+                await _meter_workflow(_exec)
             except Exception as e:
                 logger.error(f"Background workflow execution failed: {e}")
 
@@ -270,6 +304,7 @@ async def execute_workflow(
     else:
         # Synchronous execution
         execution = await engine.execute_workflow(workflow, request.inputs, model_config=model_config)
+        await _meter_workflow(execution)  # BR-3.4
 
         return ExecuteWorkflowResponse(
             execution_id=execution.id,

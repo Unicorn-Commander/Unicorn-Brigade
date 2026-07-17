@@ -46,6 +46,11 @@ from app.integrations.lago import (
     rag_used,
     classify_rate_tier,
 )
+from app.integrations.metering import meter_usage
+# BR-3.6: the per-org cap preflight lives in the dependency-light metering module
+# (importable without agent_routes' heavy deps); re-exported under the historical
+# private name so callers (this module + openai_compat_routes) resolve it here.
+from app.integrations.metering import enforce_org_cap_or_402 as _enforce_org_cap_or_402
 from app.integrations.ops_center_billing import get_billing_state
 import asyncio
 
@@ -370,23 +375,22 @@ async def _meter_chat_to_lago(
     agent: Optional[dict] = None,
     tools_called: Optional[list] = None,
     outcome: str = "success",
+    org_id: Optional[str] = None,
 ) -> None:
-    """Meter a completed chat with TWO independent best-effort events:
+    """Meter a completed chat. As of BR-3.1/3.4/3.8 this writes ONE durable,
+    per-ORG ``usage_events`` row (the cap-authoritative record) AND emits the two
+    best-effort Lago events, now keyed on the org — all via the shared
+    ``meter_usage`` primitive:
 
-      * ``ai_api_call`` (LLM COGS) — unchanged behavior: only local-GPU routes,
-        mirrored to the credit-deduction webhook. Cloud/gateway routes are
-        skipped (they meter themselves). Now also carries the value dims for
-        analytics.
-      * ``agent_work`` (per-agent VALUE) — emitted for EVERY chat that has a
-        user + agent, on ALL routes, carrying agent/user/tools/rag/outcome.
-        This is what makes usage attributable per-agent AND per-user even on
-        ``uc/`` routes, and is the basis for value-based billing. It charges
-        nothing until a Lago plan is configured for it.
+      * durable ledger row (source of truth for the BR-3.6 per-org cap);
+      * ``ai_api_call`` (LLM COGS) — unchanged conditions (local-GPU routes,
+        tokens > 0), still mirrored to the credit-deduction webhook;
+      * ``agent_work`` (per-agent VALUE) — every chat with a user + agent, all
+        routes; charges nothing until a Lago plan is configured for it.
 
+    ``org_id`` is the billing subject (BR-3.1); callers pass ``user.org_id``.
     Never raises.
     """
-    if not user_email:
-        return
     response_dict = response_dict or {}
     provider = response_dict.get("provider")
     usage = response_dict.get("usage") or {}
@@ -407,43 +411,22 @@ async def _meter_chat_to_lago(
         rate_multiplier = 1.0
     agent_name = agent.get("displayName") or agent.get("name")
 
-    # 1) LLM COGS — unchanged conditions (local-GPU routes, tokens > 0).
-    if total_tokens > 0 and is_local_route(provider, model_used):
-        try:
-            await emit_ai_api_call(
-                user=user_email,
-                model=model_used or "unknown",
-                tokens=total_tokens,
-                cost=estimate_local_cost(total_tokens),
-                agent_id=agent_id,
-                agent_name=agent_name,
-                agent_domain=agent.get("domain"),
-                tools_used=tools_used or None,
-                used_rag=used_rag,
-                rate_tier=rate_tier,
-                rate_multiplier=rate_multiplier,
-            )
-        except Exception as e:
-            logger.debug(f"Lago COGS emission failed (ignored): {e}")
-
-    # 2) Per-agent VALUE event — every chat with a user + agent, ALL routes.
-    if agent_id:
-        try:
-            await emit_agent_work(
-                user=user_email,
-                agent_id=agent_id,
-                model=model_used or model,
-                tokens=total_tokens,
-                outcome=outcome,
-                agent_name=agent_name,
-                agent_domain=agent.get("domain"),
-                tools_used=tools_used or None,
-                used_rag=used_rag,
-                rate_tier=rate_tier,
-                rate_multiplier=rate_multiplier,
-            )
-        except Exception as e:
-            logger.debug(f"Lago agent_work emission failed (ignored): {e}")
+    await meter_usage(
+        org_id=org_id,
+        user=user_email,
+        source="agent_chat",
+        model=model_used,
+        tokens=total_tokens,
+        provider=provider,
+        agent_id=agent_id,
+        agent_name=agent_name,
+        agent_domain=agent.get("domain"),
+        tools_used=tools_used or None,
+        used_rag=used_rag,
+        rate_tier=rate_tier,
+        rate_multiplier=rate_multiplier,
+        outcome=outcome,
+    )
 
 
 # ---- Pydantic Models ----
@@ -971,6 +954,8 @@ async def chat_with_agent(
     # and carry the paid signal into per-agent RBAC.
     user_attrs, billing_state = await _fetch_user_attrs(user)
     _enforce_billing_or_402(user, billing_state)
+    # BR-3.6: also 402 when the caller's ORG is over its monthly usage ceiling.
+    await _enforce_org_cap_or_402(user)
 
     # Memory isolation: non-admin users cannot spoof user_id. Force it to their
     # authenticated identity. Admins may pass user_id explicitly (for delegation,
@@ -1325,6 +1310,7 @@ async def chat_with_agent(
             agent=agent,
             tools_called=[t.get("name") for t in (tool_calls_log or [])],
             outcome=_chat_outcome(tool_calls_log),
+            org_id=getattr(user, "org_id", None),
         )
 
         try:
@@ -1498,6 +1484,7 @@ async def _stream_chat(
                 agent=agent,
                 tools_called=[t.get("name") for t in (tool_calls_log or [])],
                 outcome=_chat_outcome(tool_calls_log),
+                org_id=getattr(user, "org_id", None),
             )
 
             yield "data: [DONE]\n\n"
@@ -1553,19 +1540,20 @@ async def _stream_chat(
                     or real_usage.get("completion_tokens")
                     or real_usage.get("prompt_tokens")
                 ):
-                    meter_usage = real_usage
+                    meter_usage_payload = real_usage
                 else:
                     prompt_chars = sum(len((m or {}).get("content", "") or "") for m in (messages or []))
                     est_tokens = max(1, (prompt_chars + len(accumulated)) // 4)
-                    meter_usage = {"total_tokens": est_tokens}
+                    meter_usage_payload = {"total_tokens": est_tokens}
                 await _meter_chat_to_lago(
                     user_email, model, {
                         "model": model,
                         "provider": None,
-                        "usage": meter_usage,
+                        "usage": meter_usage_payload,
                     },
                     agent=agent,
                     tools_called=[],
+                    org_id=getattr(user, "org_id", None),
                 )
             except Exception as _meter_err:
                 logger.debug(f"Stream meter failed: {_meter_err}")
@@ -1801,6 +1789,8 @@ async def chat_with_agent_local(
     # without a billing check free users could burn GPU indefinitely).
     user_attrs, billing_state = await _fetch_user_attrs(user)
     _enforce_billing_or_402(user, billing_state)
+    # BR-3.6: also 402 when the caller's ORG is over its monthly usage ceiling.
+    await _enforce_org_cap_or_402(user)
 
     repo = AgentRepository(session)
     agent = await repo.get(agent_id)
@@ -1897,7 +1887,11 @@ async def chat_with_agent_local(
 
         # Phase 7: MLX is always a local path — meter to Lago.
         _mlx_user_email = (getattr(user, "email", "") or "").lower()
-        await _meter_chat_to_lago(_mlx_user_email, request.model, result)
+        await _meter_chat_to_lago(
+            _mlx_user_email, request.model, result,
+            agent=agent,
+            org_id=getattr(user, "org_id", None),
+        )
 
         return result
 
