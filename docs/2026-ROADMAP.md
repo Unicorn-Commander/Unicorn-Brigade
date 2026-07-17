@@ -21,7 +21,7 @@ The AI agent landscape in January 2026 has matured significantly:
 - ✅ A2A and MCP protocol support (fully operational)
 - ✅ 17 production agents across 12 domains
 - ✅ PostgreSQL-backed persistence
-- ✅ 46 MCP servers with ~1,360 tools
+- ✅ 11 real, npx-runnable MCP servers (tools discovered at runtime)
 - ✅ 25 hierarchical workflow templates
 - ✅ Visual workflow builder (@xyflow/react)
 - ✅ Ralph self-correction engine
@@ -72,8 +72,8 @@ The AI agent landscape in January 2026 has matured significantly:
 - ✅ Slack MCP server
 - ✅ Google Calendar (via MCP)
 - ✅ Document ingestion (PDF, DOCX)
-- ✅ 46 MCP servers total (10 baseline + 36 expansion)
-- ✅ ~1,360 total tools available
+- ✅ 11 real, npx-runnable MCP servers in the registry
+- ✅ Tool lists discovered at runtime per server
 
 ### ✅ Phase 5: Voice & Multimodal (COMPLETE)
 - ✅ LiveKit voice agent integration
@@ -126,10 +126,12 @@ The AI agent landscape in January 2026 has matured significantly:
 
 ## Recent Achievements (January 2026)
 
-### MCP Server Expansion (9 Phases Complete)
-- **46 MCP servers** deployed across 9 phases
-- **~1,360 total tools** available to agents
-- **Domain coverage**: Analytics, CRM, e-commerce, marketing automation, project management, customer support, SEO, workflow automation, document management
+### MCP Server Registry
+- **11 real, npx-runnable MCP servers** in the registry (`app/mcp/registry.py`)
+- **Tool lists discovered at runtime** when a server starts
+- **Servers**: GitHub, Filesystem, PostgreSQL, Playwright, Slack, Memory, Brave Search, Google Drive, Puppeteer, Stripe, Notion
+
+> Historical note: earlier drafts described a fabricated "9-phase / 46-server / ~1,360-tool" expansion. Those entries were never real and have been corrected.
 
 **Phase Breakdown:**
 - Phase 1: Stripe, Linear, Git, Notion (88 tools)
@@ -263,7 +265,7 @@ The AI agent landscape in January 2026 has matured significantly:
 ### Agents & Tools
 - **17 production agents** (11 core + 6 expansion)
 - **23 working tools** (7 built-in + 9 extended + 8 advanced)
-- **46 MCP servers** (~1,360 tools)
+- **11 real, npx-runnable MCP servers** (tools discovered at runtime)
 - **25 workflow templates**
 - **40 hierarchical workers**
 
