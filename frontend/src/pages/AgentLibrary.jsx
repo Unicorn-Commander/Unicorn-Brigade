@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Plus, Bot, ExternalLink, Eye, Edit, Trash2, Star, TrendingUp, MessageSquare, Shield, DollarSign, ArrowUpDown, Wrench, Zap, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { Search, Filter, Plus, Bot, ExternalLink, Eye, Edit, Trash2, Star, TrendingUp, MessageSquare, Shield, DollarSign, ArrowUpDown, Wrench, Zap, CheckCircle, AlertCircle, X, Scale, Stethoscope, Code2, Target, Award } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../services/http';
@@ -21,16 +21,16 @@ const agentToolList = (agent) => {
 const agentCapabilityList = (agent) =>
   Array.isArray(agent?.capabilities) ? agent.capabilities : [];
 
-// Domain Icons and Colors
+// Domain → lucide mark + accent color (replaces the decorative emoji glyphs).
 const domainConfig = {
-  financial: { icon: '💰', color: 'emerald', emoji: '💰' },
-  legal: { icon: '⚖️', color: 'blue', emoji: '⚖️' },
-  medical: { icon: '🏥', color: 'red', emoji: '🏥' },
-  technology: { icon: '💻', color: 'purple', emoji: '💻' },
-  investigation: { icon: '🔍', color: 'amber', emoji: '🔍' },
-  orchestration: { icon: '🎯', color: 'cyan', emoji: '🎯' },
-  meta: { icon: '🎖️', color: 'orange', emoji: '🎖️' },
-  intelligence: { icon: '🕵️', color: 'indigo', emoji: '🕵️' }
+  financial: { Icon: DollarSign, color: 'emerald' },
+  legal: { Icon: Scale, color: 'blue' },
+  medical: { Icon: Stethoscope, color: 'red' },
+  technology: { Icon: Code2, color: 'purple' },
+  investigation: { Icon: Search, color: 'amber' },
+  orchestration: { Icon: Target, color: 'cyan' },
+  meta: { Icon: Award, color: 'orange' },
+  intelligence: { Icon: Eye, color: 'indigo' }
 };
 
 // Status Icons
@@ -197,7 +197,7 @@ const AgentLibrary = () => {
   };
 
   const getDomainConfig = (domain) => {
-    return domainConfig[domain] || { icon: '🤖', color: 'slate', emoji: '🤖' };
+    return domainConfig[domain] || { Icon: Bot, color: 'slate' };
   };
 
   const getStatusConfig = (status) => {
@@ -486,13 +486,16 @@ const AgentLibrary = () => {
 
         {!loading && !filterLoading && Object.keys(groupedAgents).map(domain => {
           const config = getDomainConfig(domain);
+          const DomainIcon = config.Icon;
           const domainAgents = groupedAgents[domain];
 
           return (
             <div key={domain} className="space-y-4">
               {/* Domain Header */}
               <div className="flex items-center space-x-3">
-                <span className="text-3xl">{config.emoji}</span>
+                <span className="p-2 rounded-lg bg-slate-800/60 text-slate-300">
+                  <DomainIcon className="w-6 h-6" aria-hidden="true" />
+                </span>
                 <div>
                   <h2 className="text-xl font-bold capitalize">{domain}</h2>
                   <p className="text-sm text-slate-400">{domainAgents.length} agents</p>

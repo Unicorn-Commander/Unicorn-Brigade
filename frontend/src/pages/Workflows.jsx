@@ -63,18 +63,6 @@ const tagColors = {
   documentation: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
 };
 
-// Domain icons
-const domainIcons = {
-  research: '🔍',
-  finance: '💰',
-  content: '📝',
-  sales: '💼',
-  devops: '⚙️',
-  legal: '⚖️',
-  medical: '🏥',
-  investigation: '🕵️',
-};
-
 // Status colors and icons
 const statusConfig = {
   pending: { color: 'text-slate-400', bg: 'bg-slate-500/20', icon: Clock },
