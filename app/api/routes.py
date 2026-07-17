@@ -10,6 +10,7 @@ import asyncio
 from datetime import datetime
 import time
 
+from app import __version__  # BR-0.10: single source of truth for the app version
 from app.api.models import TaskRequest, TaskResponse, SystemStatus, AgentStatus, MemoryQuery, MemoryResponse
 from app.auth.middleware import require_operator, AuthUser
 from app.graph.workflow import WorkflowManager
@@ -58,7 +59,7 @@ async def system_status():
 
         return SystemStatus(
             status="operational",
-            version="1.0.0",
+            version=__version__,  # BR-0.10: single-sourced from app/__init__.py
             memory=memory_stats,
             agents=agent_statuses,
             uptime=time.time() - start_time,

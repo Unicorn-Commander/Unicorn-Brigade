@@ -70,6 +70,7 @@ from app.db.init_db import seed_agents
 from app.observability import flush as langfuse_flush, shutdown as langfuse_shutdown
 from app.observability import configure_logging, request_id_middleware
 from app.config import FEDERATION_ONLY, INTERNAL_AGENTS_ENABLED
+from app import __version__  # BR-0.10: single source of truth for the app version
 
 # ── BR-6 security hardening ────────────────────────────────────────────────
 # Response-headers / body-size / per-identity-rate-limit middleware + the
@@ -260,7 +261,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title=os.getenv("API_TITLE", "Unicorn Brigade API"),
-    version=os.getenv("API_VERSION", "1.17.0"),
+    version=os.getenv("API_VERSION", __version__),  # BR-0.10: single-sourced from app/__init__.py
     description="Multi-Agent Orchestration System with LangGraph + Graphiti/FalkorDB",
     lifespan=lifespan,
     # BR-0.9: disable interactive API docs on internet-reachable prod (see
@@ -400,7 +401,7 @@ async def root():
     """Root endpoint"""
     return {
         "name": "Unicorn Brigade API",
-        "version": "1.13.0",
+        "version": __version__,
         "status": "operational",
         "endpoints": {
             "health": "/api/v1/health",

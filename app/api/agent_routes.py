@@ -783,8 +783,17 @@ async def create_agent(
     visible to every org) is ADMIN-ONLY and must run on the owner/admin session,
     because the RLS-subject app role can never satisfy WITH CHECK for a NULL row.
     """
+    from sqlalchemy.exc import IntegrityError
+
     data = request.model_dump(exclude_none=True)
     wants_shared = bool(data.pop("shared", False))
+    # BR-0.10 item 4: a duplicate agent id/name must be a 409 (client already
+    # exists), not a 500. The id defaults to a slug of the name, so two "Gunny"
+    # creates collide on the PK — surface that cleanly on BOTH create paths.
+    _dup = HTTPException(
+        status_code=409,
+        detail=f"An agent with id/name '{data.get('id') or data.get('name')}' already exists",
+    )
 
     if wants_shared:
         # Shared (global) agent: gate to admins, then insert a NULL-org row via
@@ -797,8 +806,11 @@ async def create_agent(
             )
         from app.db.database import admin_session
         data["org_id"] = None  # explicit NULL = global; overrides the org default
-        async with admin_session() as owner_sess:
-            agent = await AgentRepository(owner_sess).create(data)
+        try:
+            async with admin_session() as owner_sess:
+                agent = await AgentRepository(owner_sess).create(data)
+        except IntegrityError:
+            raise _dup
         return agent
 
     # Per-org agent: leave org_id unset so the DB default (current_org_id()) tags
@@ -806,7 +818,10 @@ async def create_agent(
     # another org even if a caller tried to force one.
     data.pop("org_id", None)
     repo = AgentRepository(session)
-    agent = await repo.create(data)
+    try:
+        agent = await repo.create(data)
+    except IntegrityError:
+        raise _dup
     return agent
 
 
