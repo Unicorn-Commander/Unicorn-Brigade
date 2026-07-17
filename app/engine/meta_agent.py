@@ -61,15 +61,9 @@ Given a description of what the agent should do, create a complete agent definit
 - email, file, code, text, image, database, notify, qrcode, agentic_rag
 - browser, code_sandbox, screenshot, pdf_extract, doc_generate, data_analyze, url_preview, knowledge_graph
 
-**MCP Servers (46 servers, ~1,360 tools)**:
-- Infrastructure: GitHub, Vercel, Cloudflare, Supabase, Git, Playwright, Puppeteer
-- CRM: Salesforce, HubSpot, Zendesk, Intercom
-- Marketing: Mailchimp, ActiveCampaign, Ahrefs, SEMrush, Calendly, DocuSign
-- Analytics: Amplitude, Mixpanel, Segment, PostHog, Heap, Pendo, FullStory, Hotjar
-- Productivity: Notion, Linear, Stripe, Jira, Asana, Trello, QuickBooks
-- Database: PostgreSQL, MongoDB
-- Communications: Slack, Twilio
-- E-commerce: Shopify
+**MCP Servers (11 real, npx-runnable; tools discovered at runtime)**:
+- GitHub, Filesystem, PostgreSQL, Playwright, Slack, Memory,
+  Brave Search, Google Drive, Puppeteer, Stripe, Notion
 - Monitoring: Sentry
 - Search: Brave Search
 - Storage: Google Drive, Filesystem

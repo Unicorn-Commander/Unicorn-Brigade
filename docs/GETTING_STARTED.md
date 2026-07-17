@@ -79,8 +79,8 @@ Only needed if using cloud voice providers (self-hosted alternatives available):
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/unicorn-brigade.git
-cd unicorn-brigade
+git clone https://git.unicorncommander.ai/UnicornCommander/Unicorn-Brigade.git
+cd Unicorn-Brigade
 ```
 
 ### Step 2: Create Environment File
@@ -187,9 +187,15 @@ curl -H "X-API-Key: YOUR_BRIGADE_ADMIN_KEY" http://localhost:8100/api/v1/agents
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MEMORY_PROVIDER` | Memory backend: `mem0` or `zep` | `mem0` |
+| `MEMORY_PROVIDER` | Vector memory backend (`mem0`) | `mem0` |
 | `QDRANT_URL` | Qdrant vector DB URL | `http://brigade-qdrant:6333` |
 | `QDRANT_COLLECTION` | Qdrant collection name | `brigade_memories` |
+| `FALKORDB_ENABLED` | Enable Graphiti + FalkorDB temporal knowledge graph | `true` |
+| `FALKORDB_HOST` / `FALKORDB_PORT` | FalkorDB graph backend | `brigade-falkordb` / `6380` |
+
+> The advanced temporal-memory tier is **Graphiti over FalkorDB**
+> (`app/memory/graphiti_manager.py`). mem0 + Qdrant remains the lightweight
+> default vector store.
 
 ### Optional Integrations
 
@@ -286,7 +292,10 @@ LANGFUSE_PUBLIC_KEY=pk-lf-your-public-key
 LANGFUSE_SECRET_KEY=sk-lf-your-secret-key
 ```
 
-### Enabling Knowledge Graph (FalkorDB)
+### Enabling the Knowledge Graph / Temporal Memory (FalkorDB + Graphiti)
+
+FalkorDB is the graph backend for both the knowledge-graph tools and the
+Graphiti temporal-memory tier.
 
 ```bash
 # Start with FalkorDB
@@ -298,14 +307,29 @@ FALKORDB_HOST=brigade-falkordb
 FALKORDB_PORT=6380
 ```
 
+### Compose Overlay Matrix
+
+Brigade ships several compose overlays. Layer the ones you need on top of the
+base `docker-compose.yml`:
+
+| Overlay file | Status | Purpose |
+| ------------ | ------ | ------- |
+| `docker-compose.yml` | **Required** | Base stack: API, frontend, Postgres, Redis, Qdrant |
+| `docker-compose.falkordb.yml` | Optional | FalkorDB graph backend for knowledge graph + Graphiti memory |
+| `docker-compose.livekit.yml` | Optional | LiveKit server for voice agents |
+| `docker-compose.langflow.yml` | Optional | Langflow visual workflow builder |
+| `docker-compose.langfuse.yml` | Optional | Langfuse LLM observability |
+| `docker-compose.guardrails.yml` | Optional | Presidio / Llama Guard / Guardrails AI |
+| `docker-compose.mcp.yml` | Optional | Code sandbox + browser automation for MCP servers |
+| `docker-compose.zep.yml` | **Dead** | Legacy Zep memory — superseded by Graphiti + FalkorDB; do not use |
+
 ### Full Stack Deployment
 
-To run all optional services:
+To run the common optional services:
 
 ```bash
 docker compose -f docker-compose.yml \
   -f docker-compose.langfuse.yml \
-  -f docker-compose.zep.yml \
   -f docker-compose.falkordb.yml \
   -f docker-compose.livekit.yml \
   -f docker-compose.langflow.yml up -d

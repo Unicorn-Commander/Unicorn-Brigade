@@ -15,7 +15,7 @@
 
 [![A2A Protocol](https://img.shields.io/badge/A2A-Protocol-green?style=for-the-badge)](https://github.com/a2aproject/A2A)
 [![MCP](https://img.shields.io/badge/MCP-Anthropic-orange?style=for-the-badge)](https://modelcontextprotocol.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-purple?style=for-the-badge)](LICENSE)
 
 **[Quick Start](#-quick-start)** |
 **[How It Works](#-how-it-works)** |
@@ -27,7 +27,7 @@
 
 **Production Status: 94/100** 🚀
 
-**17 Production Agents** | **23 Working Tools** | **46 MCP Servers** | **~1,360 Tools** | **25 Workflow Templates** | **4 Protocols** | **Voice Agents** | **Self-Correction**
+**17 Production Agents** | **23 Working Tools** | **11 MCP Servers** | **25 Workflow Templates** | **4 Protocols** | **Voice Agents** | **Self-Correction**
 
 </div>
 
@@ -53,10 +53,10 @@ Think of it as **Mission Control for AI Agents**:
 **Frameworks require you to write code.** Unicorn Brigade gives you:
 - ✅ **Pre-built agents** that work today (email, search, code execution, browser automation)
 - ✅ **The General** orchestrates multi-agent operations automatically
-- ✅ **46 MCP servers** (~1,360 enterprise tools) plug-and-play ready
+- ✅ **11 real, npx-runnable MCP servers** (credential-gated; tools discovered at runtime)
 - ✅ **Voice agents** with LiveKit WebRTC + self-hosted STT/TTS
 - ✅ **3D visualization** (Three.js) shows your agent swarm in action
-- ✅ **Conversation memory** (Zep temporal knowledge graph) that agents actually remember
+- ✅ **Conversation memory** (Graphiti + FalkorDB temporal knowledge graph) that agents actually remember
 - ✅ **Code attribution** (Agent Trace) for compliance and auditing
 
 ### 🦄 Unicorn Commander: The Complete Platform
@@ -249,7 +249,7 @@ POST /api/v1/a2a/agents/col-finance/invoke
 - Resource reading (files, databases, APIs) with URI schemes
 
 **Implementation**:
-- ✅ **46 MCP servers** running (~1,360 tools)
+- ✅ **11 real, npx-runnable MCP servers** (declared capabilities; tools discovered at runtime)
 - ✅ **Subprocess lifecycle management** (start/stop/restart)
 - ✅ **JSON-RPC tool invocation** via STDIO transport
 - ✅ **HTTP/SSE transport** for remote servers
@@ -259,7 +259,7 @@ POST /api/v1/a2a/agents/col-finance/invoke
 ```bash
 # List all available MCP tools
 GET /api/v1/mcp/tools
-# Returns: 1,360 tools from Stripe, Salesforce, GitHub, Slack, etc.
+# Returns Brigade's registered tools; MCP-server tool lists are discovered at runtime.
 
 # Invoke tool directly
 POST /api/v1/mcp/tools/stripe_create_payment_intent/invoke
@@ -368,7 +368,7 @@ Tools are what make agents useful. Unicorn Brigade comes with 23 **working, test
 | **calculator** | Safe mathematical expressions | Python eval (sandboxed) |
 | **datetime** | Time manipulation, timezone conversion | Python datetime |
 | **json** | Parse, validate, transform JSON | Python json |
-| **memory** | Store/retrieve conversation context | Qdrant + mem0 (default) or Zep (temporal graph) |
+| **memory** | Store/retrieve conversation context | Qdrant + mem0 (default) or Graphiti + FalkorDB (temporal graph) |
 | **shell** | Execute shell commands safely | Docker sandbox |
 
 </details>
@@ -418,28 +418,31 @@ Tools are what make agents useful. Unicorn Brigade comes with 23 **working, test
 
 ---
 
-## 🔌 46 MCP Servers (~1,360 Enterprise Tools)
+## 🔌 MCP Servers
 
-MCP servers provide **plug-and-play enterprise integrations**:
+Brigade ships a registry of **11 real, npx-runnable MCP servers**
+(`app/mcp/registry.py`). Each is a genuinely-published package, credential-gated,
+with its actual tool list discovered at runtime when the server starts:
 
-**Baseline (10 servers)**:
-GitHub, Playwright, Slack, PostgreSQL, Filesystem, Memory, HTTP Fetch, Brave Search, Google Drive, Puppeteer
+| Server | Package / Config | Notes |
+| ------ | ---------------- | ----- |
+| GitHub | `GITHUB_TOKEN` | repos, issues, PRs, code search |
+| Filesystem | `WORKSPACE_PATH` | read/write/list/search files |
+| PostgreSQL | `DATABASE_URL` | query, list/describe tables |
+| Playwright | built-in | browser navigate/click/fill/snapshot |
+| Slack | `SLACK_BOT_TOKEN` | history, search, reactions |
+| Memory | built-in | store/retrieve/list/delete |
+| Brave Search | `BRAVE_API_KEY` | web + local search |
+| Google Drive | `GOOGLE_APPLICATION_CREDENTIALS` | search/get/download files |
+| Puppeteer | built-in | navigate, screenshot, click, fill |
+| Stripe | `@stripe/mcp` | payments API tools |
+| Notion | `@notionhq/notion-mcp-server` | Notion workspace tools |
 
-**Business Operations (9 servers)**:
-Stripe (29 tools), Linear (24), Git (20), Notion (15), Airtable (19), Vercel (25), Cloudflare (30), Supabase (25), MongoDB (22)
+> Add new servers only with verified-published packages. Register more via the
+> MCP registry API (`POST /api/v1/mcp/registry/servers`).
 
-**Communications & CRM (8 servers)**:
-Twilio (25), Sentry (21), HubSpot (35), Shopify (37), Salesforce (43), Intercom (35), Zendesk (37), Slack (integrated)
-
-**Project Management (6 servers)**:
-Jira (34), Asana (36), Trello (35), Linear (24), Monday.com (integrated), ClickUp (planned)
-
-**Marketing & Analytics (12 servers)**:
-Mailchimp (38), ActiveCampaign (51), Calendly (30), Ahrefs (35), SEMrush (40), Zapier (47), Make (42), Amplitude (44), Mixpanel (54), Segment (55), PostHog (60), Heap (42)
-
-**More**: DocuSign (40), QuickBooks (44), Pendo (47), FullStory (41), Hotjar (33)
-
-**Total**: **46 servers, ~1,360 tools across 21 business domains**
+See [docs/one-key-mcp.md](docs/one-key-mcp.md) to expose these over MCP to
+external clients with a single key.
 
 ---
 
@@ -661,13 +664,15 @@ data: {"type": "workflow_complete", "iterations": 3, "success": true}
 
 ---
 
-## 🧠 Zep Memory System (Temporal Knowledge Graph)
+## 🧠 Memory System (Graphiti + FalkorDB Temporal Knowledge Graph)
 
 **Memory Architecture Options**:
 - **mem0** (default) - Lightweight vector memory with Qdrant backend
-- **Zep + Graphiti** (advanced) - Temporal knowledge graph with entity relationships
+- **Graphiti + FalkorDB** (advanced) - Temporal knowledge graph with entity relationships
 
-**Zep** is an optional upgrade that replaces basic vector memory with **temporal knowledge graph** (Graphiti):
+The advanced tier replaces basic vector memory with a **temporal knowledge
+graph** built on [Graphiti](https://github.com/getzep/graphiti) over a
+**FalkorDB** graph backend (`app/memory/graphiti_manager.py`).
 
 ### What Makes It Special
 
@@ -677,7 +682,7 @@ data: {"type": "workflow_complete", "iterations": 3, "success": true}
 - No relationships
 - Query: "What did user say about X?"
 
-**Zep Memory (Graphiti)**:
+**Graphiti Memory**:
 - Vector embeddings + **knowledge graph**
 - **Temporal awareness** ("What did user prefer last month vs today?")
 - **Entity relationships** ("User's favorite tool connects to their primary use case")
@@ -688,29 +693,26 @@ data: {"type": "workflow_complete", "iterations": 3, "success": true}
 
 ```
 ┌─────────────────────────────────────────────────┐
-│           Zep Memory System                     │
+│        Graphiti Temporal Memory                 │
 ├─────────────────────────────────────────────────┤
 │                                                 │
 │  ┌──────────────┐        ┌──────────────┐      │
-│  │   Vector     │◄──────►│  Knowledge   │      │
-│  │  Embeddings  │        │    Graph     │      │
-│  │  (Qdrant)    │        │  (Graphiti)  │      │
+│  │  Embeddings  │◄──────►│  Knowledge   │      │
+│  │  (bge-m3 via │        │    Graph     │      │
+│  │   gateway)   │        │  (FalkorDB)  │      │
 │  └──────────────┘        └──────────────┘      │
 │         │                       │               │
 │         │  Hybrid Retrieval     │               │
 │         └───────────┬───────────┘               │
 │                     │                           │
 │              ┌──────▼──────┐                    │
-│              │  Facts DB   │                    │
+│              │  Facts      │                    │
 │              │  Entities   │                    │
 │              │  Relations  │                    │
 │              │  Timeline   │                    │
 │              └─────────────┘                    │
 │                                                 │
 └─────────────────────────────────────────────────┘
-
-Performance: Sub-200ms context retrieval
-Accuracy: 94.8% fact recall (vs 75% vector-only)
 ```
 
 ### Example
@@ -719,7 +721,7 @@ Accuracy: 94.8% fact recall (vs 75% vector-only)
 # Conversation 1 (January):
 User: "I prefer using PostgreSQL for all my projects"
 Assistant: "Noted. I'll remember your PostgreSQL preference."
-# Zep stores:
+# Graphiti stores:
 # - Entity: "User"
 # - Fact: "prefers PostgreSQL"
 # - Timestamp: 2026-01-15
@@ -728,7 +730,7 @@ Assistant: "Noted. I'll remember your PostgreSQL preference."
 # Conversation 2 (February):
 User: "Actually, I'm migrating everything to MongoDB"
 Assistant: "I see you've changed from PostgreSQL to MongoDB."
-# Zep stores:
+# Graphiti stores:
 # - Fact: "now prefers MongoDB" (2026-02-01)
 # - Temporal edge: PostgreSQL preference ENDED at 2026-02-01
 # - Relationship: User -[PREFERS]-> MongoDB (active)
@@ -736,11 +738,11 @@ Assistant: "I see you've changed from PostgreSQL to MongoDB."
 
 # Later query:
 "What database does user prefer?"
-# Zep returns: MongoDB (with context: "Changed from PostgreSQL on 2026-02-01")
+# Returns: MongoDB (with context: "Changed from PostgreSQL on 2026-02-01")
 
 # Historical query:
 "What did user prefer in January?"
-# Zep returns: PostgreSQL (temporal query to 2026-01-15)
+# Returns: PostgreSQL (temporal query to 2026-01-15)
 ```
 
 **Why It Matters**: Agents remember **what, when, and why** - not just embeddings.
@@ -770,7 +772,7 @@ Assistant: "I see you've changed from PostgreSQL to MongoDB."
     │   ┌──────────────────────────────────────────────┐  │
     │   │         Agent Coordination Layer             │  │
     │   │  ┌────────┐ ┌────────┐ ┌────────┐           │  │
-    │   │  │  17    │ │  46    │ │  Ralph │           │  │
+    │   │  │  17    │ │  11    │ │  Ralph │           │  │
     │   │  │ Agents │ │  MCP   │ │  Loop  │           │  │
     │   │  │        │ │Servers │ │ Engine │           │  │
     │   │  └────────┘ └────────┘ └────────┘           │  │
@@ -785,7 +787,7 @@ Assistant: "I see you've changed from PostgreSQL to MongoDB."
     │   └──────────────────────────────────────────────┘  │
     │                                                      │
     │   ┌───────┐  ┌───────┐  ┌────────┐  ┌────────┐    │
-    │   │Postgre│  │Qdrant │  │  Zep   │  │FalkorDB│    │
+    │   │Postgre│  │Qdrant │  │Graphiti│  │FalkorDB│    │
     │   │  SQL  │  │Vector │  │Memory  │  │ Graph  │    │
     │   └───────┘  └───────┘  └────────┘  └────────┘    │
     │                                                      │
@@ -804,7 +806,7 @@ Assistant: "I see you've changed from PostgreSQL to MongoDB."
 | **Frontend** | React 18, Vite 6, Tailwind 4, Three.js | 3D visualization, responsive UI |
 | **Backend** | FastAPI 0.115, Python 3.12 | Async API, protocol servers |
 | **Agents** | PostgreSQL 16 | Agent configs, conversation history |
-| **Memory** | Zep + Graphiti + Qdrant | Temporal knowledge graph |
+| **Memory** | Graphiti + FalkorDB (advanced) or mem0 + Qdrant (default) | Temporal knowledge graph |
 | **Knowledge** | FalkorDB | AI-native graph for entities/relations |
 | **LLM Routing** | Ops-Center | Multi-provider routing (OpenRouter, Anthropic) |
 | **Observability** | Langfuse (self-hosted) | Tracing, cost tracking, evaluation |
@@ -867,7 +869,6 @@ docker-compose up -d
 # With all advanced features
 docker-compose -f docker-compose.yml \
   -f docker-compose.langfuse.yml \
-  -f docker-compose.zep.yml \
   -f docker-compose.falkordb.yml \
   -f docker-compose.livekit.yml up -d
 ```
@@ -959,11 +960,11 @@ GET  /api/v1/trace/report?format=csv
 | **Real-Time Coordination** | ✅ SSE streaming | ❌ | ❌ | ❌ |
 | **3D Visualization** | ✅ Three.js | ❌ | ❌ | ❌ |
 | **A2A Protocol** | ✅ Full support | ❌ | ❌ | ❌ |
-| **MCP Protocol** | ✅ 46 servers | ⚠️ Partial | ❌ | ❌ |
+| **MCP Protocol** | ✅ 11 servers | ⚠️ Partial | ❌ | ❌ |
 | **UCP Protocol** | ✅ Commerce layer | ❌ | ❌ | ❌ |
 | **Agent Trace** | ✅ Code attribution | ❌ | ❌ | ❌ |
 | **Ralph Loops** | ✅ Self-correction | ❌ | ❌ | ❌ |
-| **Zep Memory** | ✅ Temporal graph | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic |
+| **Temporal Memory** | ✅ Graphiti + FalkorDB | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic |
 | **Voice Agents** | ✅ LiveKit + self-hosted | ❌ | ❌ | ❌ |
 | **Hierarchical Workflows** | ✅ 3-tier cost-optimized | ❌ | ⚠️ Basic | ⚠️ Basic |
 | **Per-Agent Models** | ✅ Different LLM per agent | ⚠️ Global only | ⚠️ Global only | ⚠️ Global only |
@@ -990,15 +991,15 @@ Test these features right now:
 | **SSE Event Streaming** | ✅ Live | `GET /api/v1/orchestration/events` |
 | **Hierarchical Workflows** | ✅ Live | `POST /api/v1/hierarchical/execute` |
 | **The General Commands** | ✅ Live | `POST /api/v1/orchestration/command` |
-| **46 MCP Servers** | ✅ Live | 12 running, 34 ready to deploy |
+| **MCP Servers** | ✅ Live | 11 real npx-runnable servers in the registry |
 | **Guardrails** | 🚧 Q1 2026 | On Ops-Center (NeMo + LLM Guard) |
 
 ### ✅ Completed (January 2026)
 - The General real-time orchestration
 - 4 protocols (A2A, MCP, UCP, Agent Trace)
-- 46 MCP servers (~1,360 tools)
+- 11 real npx-runnable MCP servers
 - Ralph self-correction loops
-- Zep temporal memory
+- Graphiti + FalkorDB temporal memory
 - LiveKit voice agents
 - 3-tier hierarchical workflows
 - Visual workflow builder
@@ -1020,10 +1021,9 @@ Test these features right now:
 ## 🤝 Contributing
 
 ```bash
-pip install -r requirements-dev.txt
-pytest
+pip install -r requirements.txt
 ruff check .
-black .
+python -m pytest
 ```
 
 PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
@@ -1032,13 +1032,16 @@ PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE)
+Apache License 2.0 - see [LICENSE](LICENSE)
 
 ---
 
 ## 💬 Support
 
-- **Documentation**: [docs/](docs/)
+- **Documentation**: [docs/](docs/) · [Getting Started](docs/GETTING_STARTED.md)
+- **Consumer / partner docs**: [One-Key MCP](docs/one-key-mcp.md) · [OpenAI-Compatible API](docs/openai-compat.md) · [Self-Host SSO](docs/self-host-sso.md)
+- **Security**: [SECURITY.md](SECURITY.md) · report privately to security@unicorncommander.ai
+- **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Roadmap**: [docs/2026-ROADMAP.md](docs/2026-ROADMAP.md)
 - **Issues**: [Forgejo Issues](https://git.unicorncommander.ai/UnicornCommander/Unicorn-Brigade/issues)
 - **Email**: support@magicunicorn.tech
@@ -1053,7 +1056,7 @@ MIT License - see [LICENSE](LICENSE)
 
 **Production Status: 94/100** 🚀
 
-**17 Agents** | **23 Tools** | **46 MCP Servers** | **4 Protocols** | **Voice** | **Self-Correction** | **Real-Time Orchestration**
+**17 Agents** | **23 Tools** | **11 MCP Servers** | **4 Protocols** | **Voice** | **Self-Correction** | **Real-Time Orchestration**
 
 Last Updated: February 1, 2026
 

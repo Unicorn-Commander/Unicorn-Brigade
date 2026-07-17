@@ -11,13 +11,10 @@ langsmith==0.3.45
 langchain-openai==0.3.3
 langchain-community==0.3.25
 
-# Memory
+# Memory (vector store)
 qdrant-client==1.12.0
-# Zep - temporal knowledge graph memory (alternative to mem0)
-# Set MEMORY_PROVIDER=zep in .env to use
-zep-python>=2.0.0
 
-# Knowledge Graph (FalkorDB)
+# Temporal knowledge-graph memory (Graphiti over FalkorDB)
 falkordb>=1.4.0
 graphiti-core[falkordb]>=0.28.0
 
