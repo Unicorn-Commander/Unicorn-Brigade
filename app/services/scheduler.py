@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -40,11 +41,12 @@ from sqlalchemy import select, text
 # before writing history so each write is attributed to the correct org and the
 # same set_config path is exercised. Requires the admin role to be superuser or
 # BYPASSRLS (it is the owner/migration role).
-from app.db.database import admin_session
+from app.db.database import admin_session, MIGRATION_DATABASE_URL
 from app.db.models import Agent, ScheduledRun, ScheduledRunHistory
 from app.llm.tool_resolver import get_tools_for_agent
 from app.llm.ops_center_client import DEFAULT_MODEL
 from app.observability.metrics import scheduled_run_total
+from app.services.leader_election import PgAdvisoryLeaderLock, lock_key_from_name
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,16 @@ logger = logging.getLogger(__name__)
 DEFAULT_SCHEDULER_MAX_RUNTIME_SECONDS: int = int(
     os.getenv("SCHEDULER_MAX_RUNTIME_SECONDS", "300") or 300
 )
+
+# BR-4 leader election. With >1 replica the in-process APScheduler would
+# double-fire, so only the replica that holds the Postgres advisory lock
+# registers + fires jobs. Followers keep an EMPTY scheduler running (so /readyz
+# stays green) and take over automatically if the leader dies (its session lock
+# is released by Postgres). All knobs env-tunable; defaults suit single- and
+# multi-replica alike (a lone replica just wins the lock and behaves as before).
+SCHEDULER_LEADER_LOCK_NAME: str = os.getenv("SCHEDULER_LEADER_LOCK_NAME", "brigade_scheduler")
+SCHEDULER_LEADER_POLL_SECONDS: int = int(os.getenv("SCHEDULER_LEADER_POLL_SECONDS", "15") or 15)
+SCHEDULER_LEADER_RELOAD_SECONDS: int = int(os.getenv("SCHEDULER_LEADER_RELOAD_SECONDS", "60") or 60)
 
 
 async def _bind_org(session, org_id) -> None:
@@ -141,6 +153,18 @@ class BrigadeScheduler:
     def __init__(self, llm_client):
         self.llm_client = llm_client
         self.scheduler: Optional[AsyncIOScheduler] = None
+        # BR-4 leader election state.
+        self._leader: Optional[PgAdvisoryLeaderLock] = None
+        self._is_leader: bool = False
+        self._leader_task: Optional[asyncio.Task] = None
+        self._last_reload_monotonic: float = 0.0
+        self._stopping: bool = False
+
+    @property
+    def is_leader(self) -> bool:
+        """True iff THIS replica currently holds the scheduler leadership lock and
+        is therefore the one registering + firing cron jobs."""
+        return self._is_leader
 
     # ── lifecycle ──────────────────────────────────────────────
 
@@ -149,24 +173,116 @@ class BrigadeScheduler:
             return
         self.scheduler = AsyncIOScheduler(timezone="UTC")
         self.scheduler.start()
-        await self.reload_all()
-        logger.info("BrigadeScheduler started")
+        self._stopping = False
+        # BR-4: only the leader registers/fires. Acquire the advisory lock first;
+        # reload_all() is gated on leadership so a follower registers ZERO jobs.
+        self._leader = PgAdvisoryLeaderLock(
+            MIGRATION_DATABASE_URL, lock_key_from_name(SCHEDULER_LEADER_LOCK_NAME)
+        )
+        await self._acquire_and_sync()
+        # Background loop keeps trying to acquire (follower → leader takeover) and,
+        # while leader, periodically re-reads the DB to pick up rows created on
+        # other replicas.
+        self._leader_task = asyncio.create_task(self._leader_loop())
+        logger.info("BrigadeScheduler started (leader=%s)", self._is_leader)
 
     async def shutdown(self) -> None:
+        self._stopping = True
+        # Stop the leadership loop first so it can't re-acquire mid-teardown.
+        if self._leader_task is not None:
+            self._leader_task.cancel()
+            try:
+                await self._leader_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:  # pragma: no cover - defensive
+                logger.debug("leader loop join error: %s", e)
+            self._leader_task = None
+        if self.scheduler is not None:
+            try:
+                self.scheduler.shutdown(wait=False)
+            except Exception as e:
+                logger.warning("Scheduler shutdown error: %s", e)
+            self.scheduler = None
+        # BR-4: release the advisory lock so a standby replica takes over at once
+        # (a hard crash needs no release — Postgres drops the session lock).
+        if self._leader is not None:
+            try:
+                await self._leader.release()
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning("leader release error: %s", e)
+            self._leader = None
+        self._is_leader = False
+        logger.info("BrigadeScheduler stopped")
+
+    # ── BR-4 leadership ────────────────────────────────────────
+
+    async def _acquire_and_sync(self) -> bool:
+        """(Re)attempt to acquire leadership; on a fresh WIN, register all jobs; on
+        a fresh LOSS, clear them. Returns current leadership. Never raises."""
+        was_leader = self._is_leader
+        try:
+            self._is_leader = bool(self._leader and await self._leader.try_acquire())
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("scheduler leadership check failed: %s", e)
+            self._is_leader = False
+
+        if self._is_leader and not was_leader:
+            logger.info("BrigadeScheduler ACQUIRED leadership — registering jobs")
+            try:
+                await self.reload_all()
+            except Exception as e:  # pragma: no cover - defensive
+                logger.error("scheduler reload after acquiring leadership failed: %s", e)
+            self._last_reload_monotonic = time.monotonic()
+        elif not self._is_leader and was_leader:
+            logger.warning("BrigadeScheduler LOST leadership — clearing jobs (standby)")
+            self._clear_jobs()
+        return self._is_leader
+
+    def _clear_jobs(self) -> None:
+        """Remove all registered jobs (used when this replica stops being leader)."""
         if self.scheduler is None:
             return
         try:
-            self.scheduler.shutdown(wait=False)
-        except Exception as e:
-            logger.warning("Scheduler shutdown error: %s", e)
-        self.scheduler = None
-        logger.info("BrigadeScheduler stopped")
+            self.scheduler.remove_all_jobs()
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+    async def _leader_loop(self) -> None:
+        """Standby/takeover + periodic-resync loop.
+
+        Followers poll to acquire (taking over on leader death); the leader
+        periodically re-reads the DB so a schedule created/edited on ANOTHER
+        replica is picked up within SCHEDULER_LEADER_RELOAD_SECONDS."""
+        poll = max(1, SCHEDULER_LEADER_POLL_SECONDS)
+        while not self._stopping:
+            try:
+                await asyncio.sleep(poll)
+                if self._stopping:
+                    break
+                if not self._is_leader:
+                    await self._acquire_and_sync()
+                elif time.monotonic() - self._last_reload_monotonic >= max(
+                    5, SCHEDULER_LEADER_RELOAD_SECONDS
+                ):
+                    await self.reload_all()
+                    self._last_reload_monotonic = time.monotonic()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning("scheduler leader loop error: %s", e)
 
     # ── job registration ──────────────────────────────────────
 
     async def reload_all(self) -> int:
-        """Read every enabled ScheduledRun and (re)register it. Returns count."""
+        """Read every enabled ScheduledRun and (re)register it. Returns count.
+
+        BR-4: a NO-OP for a non-leader replica (returns 0 without registering any
+        job) so only the leader ever fires cron jobs."""
         if self.scheduler is None:
+            return 0
+        if not self._is_leader:
+            logger.debug("reload_all: not leader — standing by, 0 jobs registered")
             return 0
         async with admin_session() as session:
             rows = (
@@ -201,8 +317,12 @@ class BrigadeScheduler:
         )
 
     def upsert(self, run: ScheduledRun) -> None:
-        """Sync the scheduler with a single row's current state."""
-        if self.scheduler is None:
+        """Sync the scheduler with a single row's current state.
+
+        BR-4: a NO-OP on a non-leader replica — the DB row is the source of truth
+        and the leader picks the change up on its next periodic reload, so a
+        follower never registers (and thus never fires) a job."""
+        if self.scheduler is None or not self._is_leader:
             return
         run_id = str(run.id)
         if run.enabled:
@@ -214,7 +334,8 @@ class BrigadeScheduler:
                 pass
 
     def remove(self, run_id: str) -> None:
-        if self.scheduler is None:
+        # BR-4: no-op on a non-leader replica (see upsert).
+        if self.scheduler is None or not self._is_leader:
             return
         try:
             self.scheduler.remove_job(str(run_id))

@@ -169,12 +169,23 @@ class RalphWorkflowEngine:
         # Initialize or resume
         self.execution_id = execution_id or self._generate_execution_id()
 
+        # Resume order: local disk cache first (fast, unchanged), then the BR-4
+        # durable Postgres mirror (survives a restart / a fresh replica with no
+        # local .ralph file), else start fresh.
         if not self._load_state():
-            self._initialize_state(inputs)
+            if not await self.load_db():
+                self._initialize_state(inputs)
+
+        # BR-4: persist the starting snapshot so the run is durable + visible to
+        # other replicas from its first moment.
+        await self.persist_db()
 
         # Main self-correction loop
         while not self.state.is_complete and self.state.current_iteration < self.state.max_iterations:
             iteration_result = await self._run_iteration()
+            # BR-4: durably mirror the state at every iteration boundary (covers
+            # RETRY / NEEDS_GUIDANCE / SUCCESS / FAILED before we act on it).
+            await self.persist_db()
 
             if iteration_result.outcome == IterationOutcome.SUCCESS:
                 self.state.is_complete = True
@@ -199,8 +210,9 @@ class RalphWorkflowEngine:
                 self.state.final_outcome = "failed"
                 break
 
-        # Save final state
+        # Save final state (local disk + BR-4 durable Postgres mirror).
         self._save_state()
+        await self.persist_db()
 
         # Build result
         return self._build_result()
@@ -425,6 +437,51 @@ class RalphWorkflowEngine:
             state_data = json.load(f)
             self.state = RalphWorkflowState(**state_data)
 
+        return True
+
+    # ── BR-4 durable state (Postgres) ──────────────────────────────────────
+    # The disk _save_state/_load_state above stay AS-IS (a fast local cache and
+    # what the unit tests exercise). These async methods add the shared, durable,
+    # replica-safe Postgres mirror. Imports are LAZY to avoid the
+    # persistence → ralph_engine import cycle (persistence imports
+    # RalphWorkflowState from this module). Both are best-effort + never raise.
+
+    async def persist_db(self) -> None:
+        """Write-through this execution's RalphWorkflowState to Postgres."""
+        if self.state is None:
+            return
+        from app.db.execution_store import save_ralph_execution
+
+        org_id = None
+        try:
+            from app.orchestration.event_bus import current_org_id_var
+            org_id = current_org_id_var.get() or None
+        except Exception:
+            org_id = None
+
+        await save_ralph_execution(
+            execution_id=self.state.execution_id,
+            workflow_id=self.state.workflow_id,
+            is_complete=bool(self.state.is_complete),
+            is_paused=bool(self.state.is_paused),
+            final_outcome=self.state.final_outcome,
+            data=json.loads(self.state.model_dump_json()),
+            org_id=org_id,
+        )
+
+    async def load_db(self) -> bool:
+        """Load this execution's state from the Postgres durable mirror.
+
+        Returns True if a snapshot for ``self.execution_id`` was found + loaded
+        (used as the restart/other-replica resume fallback in ``execute`` and by
+        the routes' rehydration path)."""
+        if not self.execution_id:
+            return False
+        from app.db.execution_store import load_ralph_execution_data
+        data = await load_ralph_execution_data(self.execution_id)
+        if data is None:
+            return False
+        self.state = RalphWorkflowState.model_validate(data)
         return True
 
     def _generate_execution_id(self) -> str:

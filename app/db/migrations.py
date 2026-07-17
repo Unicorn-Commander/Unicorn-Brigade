@@ -567,6 +567,84 @@ MIGRATIONS = [
             """,
         ],
     ),
+    (
+        "20260719_01_durable_workflow_state",
+        "BR-4 durability: workflow_executions + ralph_executions (persist in-flight state)",
+        # Closes the BR-4 durability gap: hierarchical WorkflowExecutions (incl.
+        # HITL checkpoint state) and Ralph self-correction state were in-memory /
+        # per-process-disk only — LOST on restart, WRONG with 2 replicas. These two
+        # tables are the write-through durable mirror the engines upsert into and
+        # rehydrate from on startup (see app/db/execution_store.py).
+        #
+        # create_all already builds these tables from the ORM models
+        # (WorkflowExecutionRecord / RalphExecutionRecord) on a FRESH install BEFORE
+        # this migration runs; every statement here is CREATE ... IF NOT EXISTS /
+        # idempotent so it is a safe no-op there and the real DDL on a deployed DB.
+        #
+        # NO RLS — deliberately, and unlike the 8 tenant data tables. The workflow /
+        # Ralph engines are trusted cross-org SYSTEM components (the scheduler's
+        # documented precedent): they read via the RLS-exempt admin_session and
+        # intentionally return executions globally (the routes never filtered by
+        # org, so adding RLS would silently hide rows from the admin path with an
+        # empty GUC and CHANGE behaviour). org_id is a best-effort attribution
+        # POINTER here, exactly like api_keys / users / organizations, which also
+        # carry no RLS. Because there is no RLS, this migration does NOT touch the
+        # 8-table RLS proof (still 44/0).
+        [
+            """
+            CREATE TABLE IF NOT EXISTS workflow_executions (
+                id varchar(64) PRIMARY KEY,
+                workflow_id varchar(255) NOT NULL,
+                workflow_name varchar(500),
+                org_id uuid REFERENCES organizations(id) ON DELETE CASCADE,
+                state varchar(50) NOT NULL DEFAULT 'pending',
+                current_step varchar(255),
+                pending_checkpoint varchar(255),
+                mission_id varchar(255),
+                data json NOT NULL,
+                started_at timestamptz,
+                completed_at timestamptz,
+                created_at timestamptz NOT NULL DEFAULT now(),
+                updated_at timestamptz NOT NULL DEFAULT now()
+            )
+            """,
+            "ALTER TABLE workflow_executions ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "CREATE INDEX IF NOT EXISTS ix_workflow_executions_state ON workflow_executions(state)",
+            "CREATE INDEX IF NOT EXISTS ix_workflow_executions_workflow_id ON workflow_executions(workflow_id)",
+            "CREATE INDEX IF NOT EXISTS ix_workflow_executions_org_id ON workflow_executions(org_id)",
+            """
+            CREATE TABLE IF NOT EXISTS ralph_executions (
+                execution_id varchar(255) PRIMARY KEY,
+                workflow_id varchar(255) NOT NULL,
+                org_id uuid REFERENCES organizations(id) ON DELETE CASCADE,
+                is_complete boolean NOT NULL DEFAULT false,
+                is_paused boolean NOT NULL DEFAULT false,
+                final_outcome varchar(50),
+                data json NOT NULL,
+                created_at timestamptz NOT NULL DEFAULT now(),
+                updated_at timestamptz NOT NULL DEFAULT now()
+            )
+            """,
+            "ALTER TABLE ralph_executions ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "CREATE INDEX IF NOT EXISTS ix_ralph_executions_is_complete ON ralph_executions(is_complete)",
+            "CREATE INDEX IF NOT EXISTS ix_ralph_executions_workflow_id ON ralph_executions(workflow_id)",
+            "CREATE INDEX IF NOT EXISTS ix_ralph_executions_org_id ON ralph_executions(org_id)",
+            # New tables created after 20260626_01's blanket GRANT — grant the app
+            # role explicitly (guarded on the role existing; belt-and-suspenders +
+            # idempotent, mirrors the invitations migration). The engines use the
+            # owner admin_session, so this grant is not strictly required, but keeps
+            # the app role consistent with every other table.
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'brigade_app') THEN
+                    GRANT SELECT, INSERT, UPDATE, DELETE ON workflow_executions TO brigade_app;
+                    GRANT SELECT, INSERT, UPDATE, DELETE ON ralph_executions TO brigade_app;
+                END IF;
+            END $$;
+            """,
+        ],
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.

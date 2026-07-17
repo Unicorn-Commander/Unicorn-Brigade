@@ -45,6 +45,24 @@ from app.workflows.model_config import (
     ModelRegistry,
     COST_OPTIMIZED_CONFIG,
 )
+# BR-4 durable state: write-through persistence of WorkflowExecution (incl. HITL
+# checkpoint state) so an in-flight execution survives a restart / is rehydratable.
+# execution_store is model-agnostic (dict in/out) + dependency-light (app.db
+# only); this engine owns the pydantic (de)serialisation via model_dump_json /
+# model_validate.
+from app.db.execution_store import (
+    save_workflow_execution,
+    load_inflight_workflow_execution_data,
+)
+
+
+def _current_org_id() -> Optional[str]:
+    """Best-effort read of the bound org for BR-4 execution attribution."""
+    try:
+        from app.orchestration.event_bus import current_org_id_var
+        return current_org_id_var.get() or None
+    except Exception:
+        return None
 from app.llm.ops_center_client import OpsCenterLLMClient, ModelUnavailableError
 from app.llm.tool_resolver import get_tools_by_names
 from app.orchestration import (
@@ -125,6 +143,55 @@ class WorkflowEngine:
         logger.info(f"Model configuration updated: orchestrator={config.orchestrator_model}")
 
     # =========================================================================
+    # BR-4 Durable State
+    # =========================================================================
+
+    async def _persist(self, execution: WorkflowExecution) -> None:
+        """Write-through the execution snapshot to Postgres (best-effort + loud).
+
+        Called on every meaningful state transition so an in-flight execution
+        (and any pending human-approval checkpoint) is durable across a process
+        restart. ``save_workflow_execution`` never raises."""
+        state = execution.state.value if hasattr(execution.state, "value") else str(execution.state)
+        await save_workflow_execution(
+            id=execution.id,
+            workflow_id=execution.workflow_id,
+            workflow_name=execution.workflow_name,
+            state=state,
+            data=json.loads(execution.model_dump_json()),
+            current_step=execution.current_step,
+            pending_checkpoint=execution.pending_checkpoint,
+            mission_id=execution.mission_id,
+            started_at=execution.started_at,
+            completed_at=execution.completed_at,
+            org_id=_current_org_id(),
+        )
+
+    async def rehydrate(self) -> int:
+        """Reload in-flight executions from Postgres into the in-memory cache.
+
+        Run once at startup (app.main lifespan). After a restart or on a fresh
+        replica this repopulates ``_executions`` so ``get_execution`` /
+        ``list_executions`` (kept SYNC, cache-backed, so the API contract and the
+        unit tests are unchanged) see executions that were running before the
+        restart — including any WAITING_CHECKPOINT execution a human still has to
+        approve. Never clobbers a live in-memory execution on this replica.
+        Returns the number of executions rehydrated."""
+        count = 0
+        for data in await load_inflight_workflow_execution_data():
+            try:
+                ex = WorkflowExecution.model_validate(data)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.error("BR-4 rehydrate: skipping unreadable workflow row: %s", e)
+                continue
+            if ex.id not in self._executions:
+                self._executions[ex.id] = ex
+                count += 1
+        if count:
+            logger.info("WorkflowEngine rehydrated %d in-flight execution(s) from DB", count)
+        return count
+
+    # =========================================================================
     # Main Execution
     # =========================================================================
 
@@ -173,6 +240,9 @@ class WorkflowEngine:
             lead_agent="the-general",
         )
         execution.mission_id = mission.id
+        # BR-4: persist the initial RUNNING snapshot so the execution is durable
+        # from the very first moment (survives a restart mid-run).
+        await self._persist(execution)
 
         try:
             # Emit workflow start
@@ -192,6 +262,9 @@ class WorkflowEngine:
                 if checkpoint and checkpoint.type == CheckpointType.HUMAN_APPROVAL:
                     execution.state = WorkflowExecutionState.WAITING_CHECKPOINT
                     execution.pending_checkpoint = checkpoint.id
+                    # BR-4: persist the WAITING_CHECKPOINT state so a pending
+                    # human-approval gate survives a restart and is resumable.
+                    await self._persist(execution)
                     if on_checkpoint:
                         response = await on_checkpoint(checkpoint, step_outputs)
                         execution.checkpoint_responses[checkpoint.id] = response
@@ -229,6 +302,10 @@ class WorkflowEngine:
                 # Store outputs
                 step_outputs[step.id] = step_exec.outputs
 
+                # BR-4: persist after each completed step so a restart mid-run
+                # keeps everything done so far (state, per-step results, cost).
+                await self._persist(execution)
+
                 # Callback
                 if on_step_complete:
                     await on_step_complete(step, step_exec)
@@ -261,6 +338,8 @@ class WorkflowEngine:
                         continue
                     execution.state = WorkflowExecutionState.WAITING_CHECKPOINT
                     execution.pending_checkpoint = checkpoint.id
+                    # BR-4: durably record the end-of-flow approval gate too.
+                    await self._persist(execution)
                     if on_checkpoint:
                         response = await on_checkpoint(checkpoint, step_outputs)
                         execution.checkpoint_responses[checkpoint.id] = response
@@ -280,6 +359,9 @@ class WorkflowEngine:
 
             execution.completed_at = datetime.utcnow()
 
+            # BR-4: persist the terminal snapshot (completed / cancelled).
+            await self._persist(execution)
+
             # Emit completion
             await emit_agent_completed(
                 agent_id="the-general",
@@ -295,6 +377,8 @@ class WorkflowEngine:
             execution.state = WorkflowExecutionState.FAILED
             execution.error = str(e)
             execution.completed_at = datetime.utcnow()
+            # BR-4: persist the failed terminal snapshot too.
+            await self._persist(execution)
             return execution
 
     async def _execute_step(
@@ -1085,6 +1169,7 @@ Respond with valid JSON matching the output schema."""
         if execution and execution.state == WorkflowExecutionState.RUNNING:
             execution.state = WorkflowExecutionState.CANCELLED
             execution.completed_at = datetime.utcnow()
+            await self._persist(execution)  # BR-4: durable cancel
             return True
         return False
 
@@ -1103,6 +1188,7 @@ Respond with valid JSON matching the output schema."""
             execution.pending_checkpoint = None
             execution.state = WorkflowExecutionState.RUNNING
             # Continue execution...
+            await self._persist(execution)  # BR-4: durable checkpoint response
 
         return execution
 

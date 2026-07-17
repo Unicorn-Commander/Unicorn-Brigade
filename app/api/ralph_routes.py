@@ -19,13 +19,89 @@ from app.workflows.ralph_engine import (
     IterationOutcome,
 )
 from app.workflows import get_workflow
+from app.db.execution_store import (
+    load_ralph_execution_data,
+    load_inflight_ralph_execution_data,
+)
 from app.auth.middleware import require_api_key, require_operator, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ralph", tags=["ralph"])
 
-# In-memory registry of active Ralph executions
+# In-memory registry of active Ralph executions. BR-4: this is now just a hot
+# cache over the durable ralph_executions table — _get_or_load() transparently
+# rebuilds a missing engine from the persisted state, and rehydrate_active_
+# executions() repopulates it on startup, so an execution survives a restart and
+# is reachable on any replica.
 _active_executions: Dict[str, RalphWorkflowEngine] = {}
+
+
+def _rebuild_engine_from_state(state) -> RalphWorkflowEngine:
+    """Reconstruct a RalphWorkflowEngine around a persisted RalphWorkflowState.
+
+    The workflow definition is re-derived from the template id stored on the
+    state (Brigade Ralph runs are always launched from a template), so a
+    rehydrated engine is fully functional for progress/result/guidance/cancel."""
+    workflow_def = get_workflow(state.workflow_id)
+    if workflow_def is not None:
+        definition = workflow_def.model_dump() if hasattr(workflow_def, "model_dump") else workflow_def.dict()
+    else:
+        definition = {"id": state.workflow_id, "steps": []}
+    engine = RalphWorkflowEngine(
+        workflow_id=state.workflow_id,
+        workflow_definition=definition,
+        state_dir=Path(".ralph"),
+    )
+    engine.execution_id = state.execution_id
+    engine.state = state
+    return engine
+
+
+async def _get_or_load(execution_id: str) -> Optional[RalphWorkflowEngine]:
+    """Return the active engine, else rebuild it from the BR-4 durable mirror.
+
+    After a restart (empty in-memory registry) or on a replica that never ran
+    this execution, this rebuilds the engine from the persisted state so every
+    GET / guidance / cancel keeps working. Returns None only when the execution
+    is unknown to BOTH the in-memory cache and Postgres."""
+    engine = _active_executions.get(execution_id)
+    if engine is not None:
+        return engine
+    data = await load_ralph_execution_data(execution_id)
+    if data is None:
+        return None
+    try:
+        state = RalphWorkflowState.model_validate(data)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.error("Ralph load: unreadable state for %s: %s", execution_id, e)
+        return None
+    engine = _rebuild_engine_from_state(state)
+    _active_executions[execution_id] = engine
+    return engine
+
+
+async def rehydrate_active_executions() -> int:
+    """BR-4: reload every non-complete Ralph execution from Postgres on startup.
+
+    Repopulates the in-memory registry so a restart (or a fresh replica) does not
+    lose in-flight self-correction runs. Best-effort — a bad row is skipped, not
+    fatal. Returns the number of executions rehydrated."""
+    count = 0
+    for data in await load_inflight_ralph_execution_data():
+        try:
+            state = RalphWorkflowState.model_validate(data)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.error("Ralph rehydrate: skipping unreadable row: %s", e)
+            continue
+        if state.execution_id not in _active_executions:
+            try:
+                _active_executions[state.execution_id] = _rebuild_engine_from_state(state)
+                count += 1
+            except Exception as e:  # pragma: no cover - defensive
+                logger.error("Ralph rehydrate: failed to rebuild %s: %s", state.execution_id, e)
+    if count:
+        logger.info("Ralph rehydrated %d active execution(s) from DB", count)
+    return count
 
 
 # ===================================================================
@@ -169,7 +245,7 @@ async def get_execution_progress(
     ids, task counts and state; reads are gated behind a valid API key / token,
     matching the require_operator gate already on the mutating Ralph routes.
     """
-    ralph_engine = _active_executions.get(execution_id)
+    ralph_engine = await _get_or_load(execution_id)
     if not ralph_engine:
         raise HTTPException(status_code=404, detail=f"Execution '{execution_id}' not found")
 
@@ -204,7 +280,7 @@ async def get_execution_result(
     Requires authentication (S7 audit): results carry full task output and error
     history — gated behind a valid API key / token like the other Ralph routes.
     """
-    ralph_engine = _active_executions.get(execution_id)
+    ralph_engine = await _get_or_load(execution_id)
     if not ralph_engine:
         raise HTTPException(status_code=404, detail=f"Execution '{execution_id}' not found")
 
@@ -247,11 +323,14 @@ async def inject_guidance(
     }
     ```
     """
-    ralph_engine = _active_executions.get(execution_id)
+    ralph_engine = await _get_or_load(execution_id)
     if not ralph_engine:
         raise HTTPException(status_code=404, detail=f"Execution '{execution_id}' not found")
 
     ralph_engine.inject_guidance(request.guidance)
+    # BR-4: durably record the injected guidance immediately (inject_guidance is
+    # sync/disk-only) so it survives a restart even before the next iteration.
+    await ralph_engine.persist_db()
 
     return RalphExecutionResponse(
         execution_id=execution_id,
@@ -273,6 +352,11 @@ async def list_executions(
     Requires authentication (S7 audit): enumerating executions leaks workflow ids
     and progress across the instance — gated behind a valid API key / token.
     """
+    # BR-4: fold in any non-complete executions that live only in the durable
+    # mirror (started on another replica, or not yet rehydrated) so the list is
+    # correct across restarts + replicas, not just what this process ran.
+    await rehydrate_active_executions()
+
     executions = []
     for execution_id, ralph_engine in _active_executions.items():
         progress = ralph_engine.get_progress()
@@ -301,19 +385,20 @@ async def cancel_execution(
     Note: This removes the execution from the active registry.
     State files are preserved in .ralph/ directory.
     """
-    if execution_id not in _active_executions:
+    ralph_engine = await _get_or_load(execution_id)
+    if ralph_engine is None:
         raise HTTPException(status_code=404, detail=f"Execution '{execution_id}' not found")
-
-    ralph_engine = _active_executions[execution_id]
 
     # Mark as cancelled if still running
     if ralph_engine.state and not ralph_engine.state.is_complete:
         ralph_engine.state.is_complete = True
         ralph_engine.state.final_outcome = "cancelled"
         ralph_engine._save_state()
+        # BR-4: mark the durable mirror complete too, so it stops being rehydrated.
+        await ralph_engine.persist_db()
 
     # Remove from active executions
-    del _active_executions[execution_id]
+    _active_executions.pop(execution_id, None)
 
     return {
         "status": "success",

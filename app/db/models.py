@@ -730,6 +730,92 @@ class ScheduledRun(Base):
         }
 
 
+class WorkflowExecutionRecord(Base):
+    """BR-4 durable state: persisted snapshot of a hierarchical WorkflowExecution.
+
+    The 3-tier workflow engine (app/workflows/engine.py) kept every
+    ``WorkflowExecution`` — including HITL checkpoint state — only in an
+    in-memory ``dict``, so an execution (and any pending human-approval
+    checkpoint) was LOST on process restart and INVISIBLE to a second replica.
+    This table is the write-through durable mirror: the engine upserts the full
+    ``WorkflowExecution`` (as JSON) on each state transition and rehydrates
+    in-flight rows on startup. The indexed columns (``state``, ``workflow_id``)
+    are denormalised from ``data`` purely so rehydration can cheaply select the
+    non-terminal set without deserialising every blob.
+
+    Tenancy note (mirrors the scheduler / api_keys precedent): the workflow
+    engine is a trusted cross-org SYSTEM component that reads via the
+    RLS-exempt ``admin_session`` and intentionally exposes executions globally
+    (preserving the pre-existing in-memory behaviour — the routes never filtered
+    by org). ``org_id`` here is therefore a best-effort attribution POINTER, not
+    an RLS isolation boundary, so this table deliberately carries NO RLS (like
+    api_keys / users / organizations). Nullable because a background-task
+    execution may have lost the request's org ContextVar.
+    """
+    __tablename__ = "workflow_executions"
+
+    id = Column(String(64), primary_key=True)
+    # Indexes are declared once, in __table_args__ below (not via index= on the
+    # column) — declaring both would emit a duplicate CREATE INDEX in create_all.
+    workflow_id = Column(String(255), nullable=False)
+    workflow_name = Column(String(500))
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
+                    nullable=True, server_default=text("current_org_id()"))
+    # pending | running | waiting_checkpoint | paused | completed | failed | cancelled
+    state = Column(String(50), nullable=False, default="pending")
+    current_step = Column(String(255), nullable=True)
+    pending_checkpoint = Column(String(255), nullable=True)
+    mission_id = Column(String(255), nullable=True)
+    # Full WorkflowExecution.model_dump(mode="json") — the source of truth used
+    # to reconstruct the pydantic object on rehydrate (WorkflowExecution
+    # .model_validate(data)).
+    data = Column(JSON, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_workflow_executions_state", "state"),
+        Index("ix_workflow_executions_workflow_id", "workflow_id"),
+        Index("ix_workflow_executions_org_id", "org_id"),
+    )
+
+
+class RalphExecutionRecord(Base):
+    """BR-4 durable state: persisted snapshot of a Ralph self-correction run.
+
+    ``RalphWorkflowState`` was persisted only to a per-process ``.ralph/*.json``
+    file (local disk), so it was WRONG with two replicas (each has its own disk)
+    and the in-memory ``_active_executions`` registry was LOST on restart. This
+    table is the shared, durable store: the Ralph engine upserts its state (as
+    JSON) at every iteration boundary and the routes rehydrate the active
+    (non-complete) set on startup. Same tenancy posture as
+    ``workflow_executions`` above — cross-org system bookkeeping via
+    ``admin_session``, ``org_id`` a best-effort pointer, NO RLS.
+    """
+    __tablename__ = "ralph_executions"
+
+    execution_id = Column(String(255), primary_key=True)
+    # Indexes declared once, in __table_args__ below (see WorkflowExecutionRecord).
+    workflow_id = Column(String(255), nullable=False)
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
+                    nullable=True, server_default=text("current_org_id()"))
+    is_complete = Column(Boolean, nullable=False, default=False)
+    is_paused = Column(Boolean, nullable=False, default=False)
+    final_outcome = Column(String(50), nullable=True)
+    # Full RalphWorkflowState.model_dump(mode="json").
+    data = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_ralph_executions_is_complete", "is_complete"),
+        Index("ix_ralph_executions_workflow_id", "workflow_id"),
+        Index("ix_ralph_executions_org_id", "org_id"),
+    )
+
+
 class ScheduledRunHistory(Base):
     """One row per fired execution of a ScheduledRun."""
     __tablename__ = "scheduled_run_history"
