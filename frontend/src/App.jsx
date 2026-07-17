@@ -38,6 +38,7 @@ const CodeAttribution = lazy(() => import('./pages/CodeAttribution'));
 const Monitoring = lazy(() => import('./pages/Monitoring'));
 const RalphMonitor = lazy(() => import('./pages/RalphMonitor'));
 const ScheduledRuns = lazy(() => import('./pages/ScheduledRuns'));
+const Organization = lazy(() => import('./pages/Organization'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
@@ -316,6 +317,14 @@ function App() {
               <ProtectedRoute>
                 <AppLayout>
                   <ScheduledRuns />
+                </AppLayout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/organization" element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Organization />
                 </AppLayout>
               </ProtectedRoute>
             } />

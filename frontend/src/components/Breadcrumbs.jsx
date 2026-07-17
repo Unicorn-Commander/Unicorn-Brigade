@@ -19,6 +19,8 @@ const ROUTE_NAMES = {
   docs: 'API Documentation',
   'code-attribution': 'Code Attribution',
   monitoring: 'Monitoring',
+  'scheduled-runs': 'Scheduled Runs',
+  organization: 'Organization',
   settings: 'Settings',
 };
 

@@ -16,6 +16,20 @@ const API_URL = API_BASE;
 const JWT_KEY = 'brigade_jwt';
 const JWT_EXPIRES_AT_KEY = 'brigade_jwt_expires_at';
 const LEGACY_API_KEY = 'apiKey';
+// BR-2.2: the active organization the user is acting under. The backend honors
+// X-Org-Id to bind the RLS org context; when unset it falls back to the user's
+// default home org. Persisted here so every request through the unified client
+// (http.js apiFetch/apiJson + api.js) is tenant-scoped uniformly.
+export const ACTIVE_ORG_KEY = 'brigade_active_org';
+
+/** The active org id the user is acting under, or null. */
+export function getActiveOrgId() {
+  try {
+    return localStorage.getItem(ACTIVE_ORG_KEY) || null;
+  } catch {
+    return null;
+  }
+}
 
 function jwtIsValid() {
   const token = localStorage.getItem(JWT_KEY);
@@ -35,6 +49,11 @@ export function buildAuthHeaders(extraHeaders = {}) {
   if (jwt) headers.Authorization = `Bearer ${jwt}`;
   const apiKey = localStorage.getItem(LEGACY_API_KEY);
   if (apiKey && !headers['X-API-Key']) headers['X-API-Key'] = apiKey;
+  // BR-2.2: bind the active org so tenant-scoped reads/writes hit the right org.
+  // A caller may override by passing its own X-Org-Id (e.g. managing a specific
+  // org); otherwise we attach the persisted active org when one is selected.
+  const orgId = getActiveOrgId();
+  if (orgId && !headers['X-Org-Id']) headers['X-Org-Id'] = orgId;
   return headers;
 }
 
