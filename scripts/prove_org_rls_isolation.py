@@ -106,11 +106,16 @@ async def main():
             print(f"    {r[0]:<24} enabled={r[1]!s:<5} force={r[2]}")
         check("all 8 data tables ENABLE+FORCE RLS",
               len(rls) == 8 and all(r[1] and r[2] for r in rls))
-        # agents should NOT have RLS (deferred to BR-1.4)
+        # BR-1.4: agents now carries RLS + FORCE (shared-catalog policy). The
+        # BR-1.2 proof asserted the opposite ("deferred to BR-1.4"); this is the
+        # flip that migration 20260716_02_tenancy_extend delivers.
         ag = (await oc.execute(text(
-            "SELECT relrowsecurity FROM pg_class WHERE relname='agents'"
-        ))).scalar()
-        check("agents has NO RLS (deferred to BR-1.4)", ag is False, f"agents.relrowsecurity={ag}")
+            "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname='agents'"
+        ))).first()
+        check("BR-1.4: agents has RLS ENABLED", bool(ag) and ag[0] is True,
+              f"agents.relrowsecurity={ag[0] if ag else None}")
+        check("BR-1.4: agents has RLS FORCED", bool(ag) and ag[1] is True,
+              f"agents.relforcerowsecurity={ag[1] if ag else None}")
 
     print("\n" + "=" * 78)
     print("PHASE 1 — Seed org A + org B; write org A data AS THE APP ROLE")
@@ -285,6 +290,97 @@ async def main():
     print(f"app-role EMPTY GUC sees {n_empty} scheduled_runs; admin/owner sees {n_admin}→{n_admin2} across orgs")
     check("app-role with empty GUC sees 0 scheduled_runs (would break a naive scheduler)", n_empty == 0, f"n={n_empty}")
     check("admin/owner session enumerates scheduled_runs across BOTH orgs (n>=2)", n_admin2 >= 2, f"n={n_admin2}")
+
+    print("\n" + "=" * 78)
+    print("PHASE 3 — BR-1.4 agents SHARED-CATALOG isolation")
+    print("=" * 78)
+    # Seed via the OWNER (agents is FORCE-RLS; the owner is not subject to it, and
+    # it is the ONLY sanctioned path for a NULL-org shared agent). agent-a (org A)
+    # was already inserted in Phase 1; add agent-b (org B) and a global one.
+    async with migration_engine.begin() as oc:
+        await oc.execute(text(
+            "INSERT INTO agents (id,name,org_id) VALUES ('agent-b','Agent B',:o)"
+        ), {"o": ORG_B})
+        await oc.execute(text(
+            "INSERT INTO agents (id,name,org_id) VALUES ('agent-global','Shared Agent',NULL)"
+        ))
+    print("seeded (owner): agent-a=orgA, agent-b=orgB, agent-global=NULL(shared)")
+
+    # (a) org A sees its own private agent + the shared one, but NOT org B's.
+    async with engine.connect() as ac:
+        await set_org(ac, ORG_A)
+        ids = set((await ac.execute(text("SELECT id FROM agents ORDER BY id"))).scalars().all())
+        check("org A sees its private agent-a", "agent-a" in ids, str(ids))
+        check("org A sees the shared agent-global", "agent-global" in ids, str(ids))
+        check("org A does NOT see org B's private agent-b", "agent-b" not in ids, str(ids))
+
+    # (b) org B sees its own + shared, not A's. Shared agent visible to BOTH orgs.
+    async with engine.connect() as ac:
+        await set_org(ac, ORG_B)
+        ids = set((await ac.execute(text("SELECT id FROM agents ORDER BY id"))).scalars().all())
+        check("org B sees its private agent-b", "agent-b" in ids, str(ids))
+        check("org B sees the shared agent-global (visible to BOTH)", "agent-global" in ids, str(ids))
+        check("org B does NOT see org A's private agent-a", "agent-a" not in ids, str(ids))
+
+    # (c) An UNBOUND session (empty GUC — e.g. public A2A discovery) sees ONLY the
+    #     shared/global roster, never any tenant's private agents. This is what
+    #     keeps the intentionally-public federation endpoints safe by construction.
+    async with engine.connect() as ac:
+        await ac.execute(text("SELECT set_config('app.current_org_id','',false)"))
+        ids = set((await ac.execute(text("SELECT id FROM agents"))).scalars().all())
+        check("unbound app role sees ONLY shared agents (global catalog)",
+              ids == {"agent-global"}, str(ids))
+
+    # (d) WITH CHECK: org B cannot write an agent tagged org A.
+    async with engine.connect() as ac:
+        await set_org(ac, ORG_B)
+        sql("INSERT agent tagged ORG A while bound to ORG B (expect WITH CHECK violation)",
+            "INSERT INTO agents (id,name,org_id) VALUES ('evil-a','Evil',ORG_A) -- under GUC=ORG_B")
+        try:
+            await ac.execute(text(
+                "INSERT INTO agents (id,name,org_id) VALUES ('evil-a','Evil',:o)"
+            ), {"o": ORG_A})
+            await ac.commit()
+            check("cross-org agent INSERT (org A row under org B) rejected", False, "INSERT SUCCEEDED (LEAK!)")
+        except Exception as e:
+            await ac.rollback()
+            check("cross-org agent INSERT (org A row under org B) rejected by WITH CHECK",
+                  "row-level security" in str(e).lower() or "violates" in str(e).lower(),
+                  type(e).__name__ + ": " + str(e).splitlines()[0][:120])
+
+    # (e) WITH CHECK: a tenant cannot create a NULL-org SHARED agent (admin-only).
+    async with engine.connect() as ac:
+        await set_org(ac, ORG_A)
+        sql("INSERT NULL-org shared agent as a tenant (expect WITH CHECK violation — admin-only)",
+            "INSERT INTO agents (id,name,org_id) VALUES ('sneaky-global','X',NULL) -- under GUC=ORG_A")
+        try:
+            await ac.execute(text(
+                "INSERT INTO agents (id,name,org_id) VALUES ('sneaky-global','X',NULL)"
+            ))
+            await ac.commit()
+            check("tenant creating a NULL-org shared agent rejected", False, "INSERT SUCCEEDED (LEAK!)")
+        except Exception as e:
+            await ac.rollback()
+            check("tenant creating a NULL-org shared agent rejected by WITH CHECK",
+                  "row-level security" in str(e).lower() or "violates" in str(e).lower(),
+                  type(e).__name__ + ": " + str(e).splitlines()[0][:120])
+
+    # (f) The org_id DEFAULT path: a tenant INSERT that omits org_id is auto-tagged
+    #     with the caller's org (server_default current_org_id()) and passes WITH
+    #     CHECK — this is why create_agent/import/dynamic paths need no per-site edit.
+    async with engine.connect() as ac:
+        await set_org(ac, ORG_A)
+        await ac.execute(text(
+            "INSERT INTO agents (id,name) VALUES ('agent-a-default','A default')"
+        ))
+        await ac.commit()
+        row_org = await scalar(ac, "SELECT org_id FROM agents WHERE id='agent-a-default'")
+        check("tenant INSERT without org_id defaults to caller's org", str(row_org) == ORG_A,
+              f"org_id={row_org} expected {ORG_A}")
+    async with engine.connect() as ac:
+        await set_org(ac, ORG_B)
+        seen = await scalar(ac, "SELECT count(*) FROM agents WHERE id='agent-a-default'")
+        check("org B cannot see org A's defaulted agent", seen == 0, f"count={seen}")
 
     print("\n" + "=" * 78)
     print(f"RESULT: {len(PASSES)} passed, {len(FAILURES)} failed")
