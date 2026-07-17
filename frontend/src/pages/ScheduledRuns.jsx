@@ -13,6 +13,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import { buildAuthHeaders, handleUnauthorized } from '../services/authHeaders';
 import Breadcrumbs from '../components/Breadcrumbs';
 
@@ -275,13 +276,13 @@ export default function ScheduledRuns() {
         method: 'PUT',
         body: JSON.stringify(body),
       });
-      toast.success('Updated');
+      notify.success('Updated');
     } else {
       await api('/scheduled-runs', {
         method: 'POST',
         body: JSON.stringify(body),
       });
-      toast.success('Created');
+      notify.success('Created');
     }
     await reload();
   };
@@ -300,7 +301,7 @@ export default function ScheduledRuns() {
     if (!confirm(`Delete scheduled run "${row.name}"?`)) return;
     try {
       await api(`/scheduled-runs/${row.id}`, { method: 'DELETE' });
-      toast.success('Deleted');
+      notify.success('Deleted');
       reload();
     } catch (err) {
       toast.error(err.message);
@@ -309,7 +310,7 @@ export default function ScheduledRuns() {
   const runNow = async (row) => {
     try {
       const res = await api(`/scheduled-runs/${row.id}/run-now`, { method: 'POST' });
-      toast.success(`Run started (${res.status})`);
+      notify.success(`Run started (${res.status})`);
       reload();
       if (expandedId === row.id) loadHistory(row.id);
     } catch (err) {

@@ -31,6 +31,7 @@ import {
   Grid3x3
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import WorkflowDiagram from '../components/WorkflowDiagram';
 import WorkflowGallery from '../components/WorkflowGallery';
 import WorkflowFilters from '../components/WorkflowFilters';
@@ -156,7 +157,7 @@ const Workflows = () => {
           // Stop polling if completed or failed
           if (['completed', 'failed', 'cancelled'].includes(execution.state)) {
             setPollingExecution(null);
-            toast.success(`Workflow ${execution.state}`);
+            notify.success(`Workflow ${execution.state}`);
           }
         } catch (error) {
           // Keep polling on transient errors — next tick retries.
@@ -328,7 +329,7 @@ const Workflows = () => {
       await apiJson(`/hierarchical/executions/${executionId}/cancel`, {
         method: 'POST',
       });
-      toast.success('Execution cancelled');
+      notify.success('Execution cancelled');
       setPollingExecution(null);
       await loadExecutions();
     } catch (error) {

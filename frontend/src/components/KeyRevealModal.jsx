@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, Copy, CheckCircle, Shield } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import Modal from './ui/Modal';
 
 const KeyRevealModal = ({ apiKey, onClose }) => {
@@ -11,7 +12,7 @@ const KeyRevealModal = ({ apiKey, onClose }) => {
   const handleCopy = () => {
     navigator.clipboard.writeText(keyValue);
     setCopied(true);
-    toast.success('Copied to clipboard!');
+    notify.success('Copied to clipboard!');
     setTimeout(() => setCopied(false), 2000);
   };
 

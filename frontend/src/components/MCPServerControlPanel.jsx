@@ -12,6 +12,7 @@ import {
   Code
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
 
 export default function MCPServerControlPanel({ server, onClose, onServerUpdated }) {
@@ -33,13 +34,13 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
     try {
       if (action === 'start') {
         await api.startMCPServer(server.name);
-        toast.success(`${server.display_name || server.name} started successfully`);
+        notify.success(`${server.display_name || server.name} started successfully`);
       } else if (action === 'stop') {
         await api.stopMCPServer(server.name);
-        toast.success(`${server.display_name || server.name} stopped successfully`);
+        notify.success(`${server.display_name || server.name} stopped successfully`);
       } else if (action === 'restart') {
         await api.restartMCPServer(server.name);
-        toast.success(`${server.display_name || server.name} restarted successfully`);
+        notify.success(`${server.display_name || server.name} restarted successfully`);
       }
 
       await refreshDetails();
@@ -61,7 +62,7 @@ export default function MCPServerControlPanel({ server, onClose, onServerUpdated
         success: true,
         data: result,
       });
-      toast.success('Tool executed successfully');
+      notify.success('Tool executed successfully');
     } catch (error) {
       const message = error?.message || 'Tool execution failed';
       setTestResult({

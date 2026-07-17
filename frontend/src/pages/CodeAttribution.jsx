@@ -15,6 +15,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import traceService from '../services/traceService';
 import CodeAttributionCard from '../components/CodeAttributionCard';
 import AttributionTimeline from '../components/AttributionTimeline';
@@ -176,7 +177,7 @@ const CodeAttribution = () => {
       document.body.removeChild(a);
 
       toast.dismiss();
-      toast.success('Report downloaded');
+      notify.success('Report downloaded');
     } catch (error) {
       toast.dismiss();
       toast.error('Export failed');

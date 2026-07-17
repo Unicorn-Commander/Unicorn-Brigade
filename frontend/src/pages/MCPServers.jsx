@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, Server, RefreshCw, CheckCircle, X, Package } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
 import MCPServerCard from '../components/MCPServerCard';
 import MCPToolList from '../components/MCPToolList';
@@ -79,7 +80,7 @@ const MCPServers = () => {
     setRefreshing(true);
     try {
       await loadServers();
-      toast.success('Servers refreshed');
+      notify.success('Servers refreshed');
     } catch (error) {
       toast.error('Failed to refresh servers');
     } finally {

@@ -13,6 +13,7 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import { apiJson } from '../services/http';
 
 const Conversations = () => {
@@ -91,7 +92,7 @@ const Conversations = () => {
     try {
       await apiJson(`/conversations/${conversationId}`, { method: 'DELETE' });
       setConversations(prev => prev.filter(c => c.id !== conversationId));
-      toast.success('Conversation deleted');
+      notify.success('Conversation deleted');
     } catch (err) {
       console.error('Failed to delete conversation:', err);
       toast.error('Failed to delete conversation');

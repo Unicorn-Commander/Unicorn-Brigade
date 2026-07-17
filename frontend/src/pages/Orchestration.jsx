@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import { connectOrchestrationStream } from '../services/orchestrationStream';
 import {
   Globe,
@@ -332,7 +333,7 @@ const Orchestration = () => {
         // The SSE mission_created event merges by id, so seeding here won't duplicate
         setMissions(prev => [data.mission, ...prev.filter(m => m.id !== data.mission.id)]);
       }
-      toast.success(data?.message || `Mission "${name}" created`);
+      notify.success(data?.message || `Mission "${name}" created`);
       setShowMissionForm(false);
       setMissionForm({ name: '', task: '' });
     } catch (error) {

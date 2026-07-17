@@ -15,6 +15,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import Breadcrumbs from '../components/Breadcrumbs';
 import CardSkeleton from '../components/skeletons/CardSkeleton';
 import api from '../services/api';
@@ -73,7 +74,7 @@ const ToolLibrary = () => {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
+    notify.success('Copied to clipboard');
   };
 
   const toolTypes = [...new Set(tools.map(t => t.type).filter(Boolean))].sort();

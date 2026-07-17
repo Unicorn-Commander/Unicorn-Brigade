@@ -23,6 +23,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
 import Breadcrumbs from '../components/Breadcrumbs';
 import ListSkeleton from '../components/skeletons/ListSkeleton';
@@ -76,7 +77,7 @@ const RalphMonitor = () => {
       await api.post(`/ralph/executions/${selectedExecution.execution_id}/guidance`, {
         guidance: guidanceInput,
       });
-      toast.success('Guidance injected successfully');
+      notify.success('Guidance injected successfully');
       setGuidanceInput('');
       await loadExecutionDetails(selectedExecution.execution_id);
     } catch (error) {
@@ -89,7 +90,7 @@ const RalphMonitor = () => {
   const handleCancelExecution = async (executionId) => {
     try {
       await api.delete(`/ralph/executions/${executionId}`);
-      toast.success('Execution cancelled');
+      notify.success('Execution cancelled');
       setExecutions(executions.filter((e) => e.execution_id !== executionId));
       if (selectedExecution?.execution_id === executionId) {
         setSelectedExecution(null);

@@ -15,6 +15,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
 
 const terminalExecutionStates = new Set(['completed', 'failed', 'cancelled']);
@@ -168,7 +169,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
         if (terminalExecutionStates.has(updated.state)) {
           clearInterval(interval);
           if (updated.state === 'completed') {
-            toast.success('Workflow completed successfully');
+            notify.success('Workflow completed successfully');
             onExecutionComplete?.(updated);
           } else if (updated.state === 'failed') {
             toast.error('Workflow failed');
@@ -231,7 +232,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
             state: result.outcome === 'success' ? 'completed' : 'failed',
           }));
           if (result.outcome === 'success') {
-            toast.success('Self-correction completed successfully');
+            notify.success('Self-correction completed successfully');
           } else {
             toast.error('Self-correction failed');
           }
@@ -279,7 +280,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
         }));
       }
 
-      toast.success('Workflow execution started');
+      notify.success('Workflow execution started');
     } catch (error) {
       console.error('Failed to start workflow:', error);
       toast.error(error?.message || 'Failed to start workflow');
@@ -298,7 +299,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
       } else {
         await api.cancelWorkflowExecution(execution.id);
       }
-      toast.success('Workflow cancelled');
+      notify.success('Workflow cancelled');
       setExecution((prev) => ({ ...prev, state: 'cancelled' }));
     } catch (error) {
       toast.error('Failed to cancel workflow');
@@ -323,7 +324,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
       setExecutionSource('ralph');
       setRalphProgress(null);
       setRalphResult(null);
-      toast.success('Retrying with self-correction enabled');
+      notify.success('Retrying with self-correction enabled');
     } catch (error) {
       toast.error(error?.message || 'Failed to retry workflow');
     } finally {

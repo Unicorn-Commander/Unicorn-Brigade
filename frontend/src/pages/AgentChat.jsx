@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import ToolCallCard, { getToolIcon } from '../components/ToolCallCard';
 import VoiceCallButton from '../components/VoiceCallButton';
 import VoiceCallModal from '../components/VoiceCallModal';
@@ -154,7 +155,7 @@ const AgentChat = () => {
         setMessages(loadedMessages);
       }
 
-      toast.success('Conversation loaded');
+      notify.success('Conversation loaded');
     } catch (err) {
       console.error('Failed to load conversation:', err);
       toast.error('Failed to load conversation');
@@ -210,7 +211,7 @@ const AgentChat = () => {
     setConversationId(null);
     setConversationTitle(null);
     setSearchParams({});
-    toast.success('New conversation started');
+    notify.success('New conversation started');
   };
 
   const sendMessage = useCallback(async () => {
@@ -458,7 +459,7 @@ const AgentChat = () => {
     setConversationId(null);
     setConversationTitle(null);
     setSearchParams({});
-    toast.success('Chat cleared');
+    notify.success('Chat cleared');
   };
 
   // Retry the last failed message
@@ -1232,11 +1233,11 @@ const AgentChat = () => {
         agent={selectedAgent}
         onCallStart={() => {
           setIsInVoiceCall(true);
-          toast.success(`Voice call started with ${selectedAgent?.displayName || selectedAgent?.name}`);
+          notify.success(`Voice call started with ${selectedAgent?.displayName || selectedAgent?.name}`);
         }}
         onCallEnd={() => {
           setIsInVoiceCall(false);
-          toast.success('Voice call ended');
+          notify.success('Voice call ended');
         }}
       />
     </div>

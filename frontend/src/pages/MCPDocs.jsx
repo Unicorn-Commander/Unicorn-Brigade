@@ -18,6 +18,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { apiJson } from '../services/http';
 
@@ -43,7 +44,7 @@ const MCPDocs = () => {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
+    notify.success('Copied to clipboard');
   };
 
   const toggleSection = (section) => {

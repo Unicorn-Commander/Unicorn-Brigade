@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Search, Wrench, Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 
 const MCPToolList = ({ server, tools, onClose }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,7 +17,7 @@ const MCPToolList = ({ server, tools, onClose }) => {
 
   const copyToolName = (toolName) => {
     navigator.clipboard.writeText(toolName);
-    toast.success('Tool name copied');
+    notify.success('Tool name copied');
   };
 
   const serverIcons = {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Play, Square, Eye, Package, CheckCircle, XCircle, Loader2, AlertCircle, Settings } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 
 // Server Icons (matching category)
 const serverIcons = {
@@ -58,7 +59,7 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
     setActionLoading(true);
     try {
       await onStart(server.name);
-      toast.success(`${server.display_name} started`);
+      notify.success(`${server.display_name} started`);
     } catch (error) {
       toast.error(`Failed to start server: ${error.message}`);
     } finally {
@@ -70,7 +71,7 @@ const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoadi
     setActionLoading(true);
     try {
       await onStop(server.name);
-      toast.success(`${server.display_name} stopped`);
+      notify.success(`${server.display_name} stopped`);
     } catch (error) {
       toast.error(`Failed to stop server: ${error.message}`);
     } finally {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Sparkles, Bot, User, Loader, RefreshCw, BookOpen, ChevronRight, ChevronLeft, ChevronDown, Settings, RotateCcw, Rocket, X, CheckCircle, Cpu, Wrench, Shield } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import { apiJson } from '../services/http';
 import ReactMarkdown from 'react-markdown';
 import { useNavigate } from 'react-router-dom';
@@ -246,7 +247,7 @@ What would you like to build?`
         body: JSON.stringify(deployPayload)
       });
 
-      toast.success('Agent deployed successfully!');
+      notify.success('Agent deployed successfully!');
       setShowConfirmation(false);
       setParsedAgentConfig(null);
       setAgentPreview(prev => ({ ...prev, status: 'created' }));
@@ -416,7 +417,7 @@ What would you like to create today?`
         })
       });
 
-      toast.success('Agent created successfully!');
+      notify.success('Agent created successfully!');
 
       // Update preview status
       setAgentPreview({ ...agentPreview, status: 'created' });
@@ -444,7 +445,7 @@ What would you like to create today?`
       systemPrompt: null,
       status: 'building'
     });
-    toast.success('Preview reset. Start fresh!');
+    notify.success('Preview reset. Start fresh!');
   };
 
   const resetPreferences = () => {
@@ -454,11 +455,11 @@ What would you like to create today?`
       temperature: 0.7,
       maxTokens: 4096
     });
-    toast.success('Preferences reset to defaults');
+    notify.success('Preferences reset to defaults');
   };
 
   const applyPreferences = () => {
-    toast.success('Preferences will be applied to Gunny\'s recommendations');
+    notify.success('Preferences will be applied to Gunny\'s recommendations');
     setShowPreferences(false);
   };
 

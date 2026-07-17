@@ -19,6 +19,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { apiJson, ApiError } from '../services/http';
 
@@ -117,7 +118,7 @@ const LangflowFlows = () => {
       });
 
       setRunOutput(data);
-      toast.success('Flow executed successfully');
+      notify.success('Flow executed successfully');
     } catch (error) {
       console.error('Failed to run flow:', error);
       if (error instanceof ApiError) {
@@ -147,7 +148,7 @@ const LangflowFlows = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success('Flow exported successfully');
+      notify.success('Flow exported successfully');
     } catch (error) {
       console.error('Failed to export flow:', error);
       toast.error('Failed to export flow');
@@ -169,7 +170,7 @@ const LangflowFlows = () => {
         body: JSON.stringify(flowData),
       });
 
-      toast.success('Flow imported successfully');
+      notify.success('Flow imported successfully');
       loadFlows();
     } catch (error) {
       console.error('Failed to import flow:', error);
@@ -193,7 +194,7 @@ const LangflowFlows = () => {
         method: 'DELETE',
       });
 
-      toast.success('Flow deleted successfully');
+      notify.success('Flow deleted successfully');
       setFlows(flows.filter(f => f.id !== flowToDelete.id));
       setShowDeleteModal(false);
       setFlowToDelete(null);
@@ -211,7 +212,7 @@ const LangflowFlows = () => {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
+    notify.success('Copied to clipboard');
   };
 
   const formatDate = (dateString) => {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Edit, Save, X, MessageSquare, Play, Code, Key, BarChart, Settings, Network, Clock, Wrench, Plus } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import { apiJson } from '../services/http';
 import ReactMarkdown from 'react-markdown';
 import AgentArchitectureDiagram from '../components/AgentArchitectureDiagram';
@@ -69,7 +70,7 @@ const AgentDetail = () => {
         method: 'PUT',
         body: JSON.stringify(editedAgent)
       });
-      toast.success('Agent updated successfully');
+      notify.success('Agent updated successfully');
       setAgent(editedAgent);
       setEditMode(false);
     } catch (error) {
@@ -92,7 +93,7 @@ const AgentDetail = () => {
   const handleRevokeKey = async (apiKey) => {
     try {
       await apiJson(`/agents/${id}/api-keys/${apiKey.id}`, { method: 'DELETE' });
-      toast.success('API key revoked');
+      notify.success('API key revoked');
       loadAgent(); // Reload agent to update API keys list
     } catch (error) {
       console.error('Failed to revoke API key:', error);

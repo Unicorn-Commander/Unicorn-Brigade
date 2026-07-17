@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Save, Loader2, ChevronDown, Search } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import api from '../services/api';
 
 const FALLBACK_TOOL_IDS = [
@@ -163,7 +164,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
     const rollback = onSave?.(optimisticAgent, { optimistic: true });
     try {
       const updated = await api.updateAgent(agent.id, formData);
-      toast.success(`${updated.displayName || formData.displayName} updated successfully`);
+      notify.success(`${updated.displayName || formData.displayName} updated successfully`);
       onSave?.(updated, { optimistic: false });
       onClose();
     } catch (error) {
