@@ -3,10 +3,24 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * Semantic design tokens (HSL channel triples, consumed by tailwind.config.js
+   * as hsl(var(--token) / <alpha>)). These are the dark defaults and live on
+   * :root so the app is dark out of the box. A future light theme overrides
+   * these under `:root:not(.dark)` / `[data-theme="light"]` — the class strategy
+   * (darkMode:'class' + <html class="dark">) is already wired.
+   */
   :root {
+    --bg: 229 84% 5%;        /* app background   ≈ slate-950 */
+    --surface: 222 47% 11%;  /* elevated panel   ≈ slate-900 */
+    --card: 222 47% 11%;     /* card background  ≈ slate-900 */
+    --border: 215 25% 27%;   /* hairline borders ≈ slate-700 */
+    --muted: 215 20% 65%;    /* muted body text  = slate-400 (AA on dark) */
+    --accent: 322.8 84.7% 59.8%; /* one accent    = unicorn-500 */
+
+    /* Legacy vars kept for anything still referencing them. */
     --background: 220 20% 8%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
     --primary: 322.8 84.7% 59.8%;
     --primary-foreground: 210 40% 98%;

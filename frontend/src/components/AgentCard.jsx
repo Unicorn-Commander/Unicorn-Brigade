@@ -1,4 +1,4 @@
-import { Star, Sparkles, Cpu, TrendingUp, Wrench, CheckCircle, DollarSign } from 'lucide-react';
+import { Star, Sparkles, Cpu, TrendingUp, Wrench, DollarSign } from 'lucide-react';
 import AgentAvatar from './AgentAvatar';
 import { rankStars } from '../utils/rank';
 import {
@@ -63,9 +63,6 @@ const AgentCard = ({ agent, onClick }) => {
   const tierChip = modelTierChip(tier);
   const paid = paidToolInfo(agent);
 
-  // Calculate success rate (mock for now - could be from real data)
-  const successRate = invocationCount > 0 ? 95 + Math.random() * 5 : 0;
-
   return (
     <div
       onClick={onClick}
@@ -102,7 +99,7 @@ const AgentCard = ({ agent, onClick }) => {
           {/* Model Badge */}
           <div className="flex items-center space-x-1 px-2 py-1 rounded-lg bg-slate-800/50 border border-slate-700/50">
             <ModelIcon className="w-3 h-3 text-cyan-400" />
-            <span className="text-xs text-slate-300">{agent.model || 'gpt-4-turbo'}</span>
+            <span className="text-xs text-slate-300">{agent.model || 'Unknown model'}</span>
           </div>
 
           {/* Domain Badge */}
@@ -193,23 +190,13 @@ const AgentCard = ({ agent, onClick }) => {
           </div>
         )}
 
-        {/* Stats Section */}
+        {/* Stats Section — real invocation count only (no fabricated success rate) */}
         <div className="pt-3 border-t border-slate-800">
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="flex items-center space-x-1.5">
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-slate-400">
-                {invocationCount.toLocaleString()} invocations
-              </span>
-            </div>
-            {successRate > 0 && (
-              <div className="flex items-center space-x-1.5">
-                <CheckCircle className="w-3.5 h-3.5 text-green-400" />
-                <span className="text-slate-400">
-                  {successRate.toFixed(1)}% success
-                </span>
-              </div>
-            )}
+          <div className="flex items-center space-x-1.5 text-xs">
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-slate-400">
+              {invocationCount.toLocaleString()} invocations
+            </span>
           </div>
         </div>
       </div>

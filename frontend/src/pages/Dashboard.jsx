@@ -5,7 +5,6 @@ import {
   Sparkles,
   BookOpen,
   Activity,
-  TrendingUp,
   Shield,
   Zap,
   MessageSquare,
@@ -29,10 +28,12 @@ import {
   Plus
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import notify from '../utils/notify';
 import { apiJson } from '../services/http';
 import { GeneralAvatar, GunnyAvatar } from '../components/UnicornBrigadeLogo';
 import CardSkeleton from '../components/skeletons/CardSkeleton';
 import StatsSkeleton from '../components/skeletons/StatsSkeleton';
+import StatCard from '../components/ui/StatCard';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -145,7 +146,7 @@ const Dashboard = () => {
     await loadDashboardData();
     await checkSystemHealth();
     setRefreshing(false);
-    toast.success('Dashboard refreshed');
+    notify.success('Dashboard refreshed');
   };
 
   const quickActions = [
@@ -154,7 +155,7 @@ const Dashboard = () => {
       label: 'New Chat',
       description: 'Start a conversation with an agent',
       path: '/chat',
-      color: 'from-purple-500 to-pink-500',
+      color: 'from-unicorn-500 to-unicorn-400',
       primary: true
     },
     {
@@ -180,44 +181,44 @@ const Dashboard = () => {
     }
   ];
 
+  // No fabricated trend arrows — there is no real period-over-period delta
+  // source. System Status carries a real tone (ok/warn); the rest are neutral.
+  const healthyCount = Object.values(systemHealth).filter(s => s === 'healthy').length;
   const systemMetrics = [
     {
       icon: Bot,
       label: 'Total Agents',
       value: stats.totalAgents,
-      change: `${stats.activeAgents} active`,
-      trend: 'up'
+      change: `${stats.activeAgents} active`
     },
     {
       icon: MessageSquare,
       label: 'Total Messages',
       value: usageStats.messagesTotal.toLocaleString(),
-      change: 'All time',
-      trend: 'up'
+      change: 'All time'
     },
     {
       icon: MessagesSquare,
       label: 'Conversations',
       value: usageStats.conversationsTotal.toLocaleString(),
-      change: 'All time',
-      trend: 'up'
+      change: 'All time'
     },
     {
       icon: Activity,
       label: 'System Status',
       value: systemStatus === 'online' ? 'Online' : 'Degraded',
-      change: Object.values(systemHealth).filter(s => s === 'healthy').length + '/4 healthy',
-      trend: systemStatus === 'online' ? 'up' : 'down'
+      change: `${healthyCount}/4 healthy`,
+      tone: systemStatus === 'online' ? 'ok' : 'warn'
     }
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 lg:p-8">
+    <div className="min-h-screen p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            <h1 className="text-4xl font-bold text-gradient">
               Unicorn Brigade
             </h1>
             <p className="text-slate-400 mt-2 text-lg">Agent Infrastructure Platform</p>
@@ -254,22 +255,14 @@ const Dashboard = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {systemMetrics.map((metric, idx) => (
-              <div key={idx} className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <metric.icon className="w-8 h-8 text-purple-400" />
-                  {metric.trend === 'up' && <TrendingUp className="w-5 h-5 text-emerald-400" />}
-                  {metric.trend === 'down' && <TrendingUp className="w-5 h-5 text-red-400 rotate-180" />}
-                </div>
-                <p className="text-3xl font-bold text-white mb-1">{metric.value}</p>
-                <p className="text-sm text-slate-400">{metric.label}</p>
-                <p className={`text-xs mt-2 ${
-                  metric.trend === 'up' ? 'text-emerald-400' :
-                  metric.trend === 'down' ? 'text-red-400' :
-                  'text-slate-400'
-                }`}>
-                  {metric.change}
-                </p>
-              </div>
+              <StatCard
+                key={idx}
+                icon={metric.icon}
+                label={metric.label}
+                value={metric.value}
+                change={metric.change}
+                tone={metric.tone}
+              />
             ))}
           </div>
         )}
@@ -282,16 +275,16 @@ const Dashboard = () => {
               <button
                 key={idx}
                 onClick={() => navigate(action.path)}
-                className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 hover:border-purple-500/50 transition-all group text-left"
+                className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 hover:border-unicorn-500/50 transition-all group text-left"
               >
                 <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${action.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                   <action.icon className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-purple-400 transition-colors">
+                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-unicorn-400 transition-colors">
                   {action.label}
                 </h3>
                 <p className="text-sm text-slate-400">{action.description}</p>
-                <ArrowRight className="w-5 h-5 text-purple-400 mt-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <ArrowRight className="w-5 h-5 text-unicorn-400 mt-3 opacity-0 group-hover:opacity-100 transition-opacity" />
               </button>
             ))}
           </div>
@@ -335,7 +328,7 @@ const Dashboard = () => {
                         <div className="flex items-center space-x-3">
                           <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
+                              className="h-full bg-gradient-to-r from-unicorn-500 to-unicorn-400"
                               style={{ width: `${percentage}%` }}
                             ></div>
                           </div>
@@ -357,7 +350,7 @@ const Dashboard = () => {
                 <GeneralAvatar size={64} />
                 <div>
                   <h3 className="font-bold text-white">The General</h3>
-                  <p className="text-sm text-purple-400">Commanding</p>
+                  <p className="text-sm text-unicorn-400">Commanding</p>
                 </div>
               </div>
               <p className="text-sm text-slate-400 mb-4">
@@ -365,7 +358,7 @@ const Dashboard = () => {
               </p>
               <button
                 onClick={() => navigate('/orchestration')}
-                className="w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-colors flex items-center justify-center space-x-2"
+                className="w-full px-4 py-2 bg-gradient-to-r from-unicorn-500 to-unicorn-400 text-white rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-colors flex items-center justify-center space-x-2"
               >
                 <Shield className="w-4 h-4" />
                 <span>View Orchestration</span>
@@ -501,7 +494,7 @@ const Dashboard = () => {
               <h2 className="text-xl font-bold text-white">Recent Conversations</h2>
               <button
                 onClick={() => navigate('/chat')}
-                className="flex items-center space-x-1 text-sm text-purple-400 hover:text-purple-300 transition-colors"
+                className="flex items-center space-x-1 text-sm text-unicorn-400 hover:text-unicorn-300 transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 <span>New Chat</span>
@@ -520,7 +513,7 @@ const Dashboard = () => {
                     onClick={() => navigate(`/chat?conversation=${conv.id}`)}
                   >
                     <div className="flex items-center space-x-3 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-xl flex-shrink-0">
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-unicorn-500 to-unicorn-400 flex items-center justify-center text-xl flex-shrink-0">
                         {conv.agent?.avatar || '🦄'}
                       </div>
                       <div className="min-w-0">
@@ -536,7 +529,7 @@ const Dashboard = () => {
                       <span className="text-xs text-slate-500">
                         {conv.updated_at ? new Date(conv.updated_at).toLocaleDateString() : ''}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-purple-400 transition-colors" />
+                      <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-unicorn-400 transition-colors" />
                     </div>
                   </div>
                 ))}
@@ -547,7 +540,7 @@ const Dashboard = () => {
                 <p className="text-slate-400 mb-4">No conversations yet</p>
                 <button
                   onClick={() => navigate('/chat')}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors text-sm"
+                  className="px-4 py-2 bg-unicorn-600 hover:bg-unicorn-500 text-white rounded-lg transition-colors text-sm"
                 >
                   Start a Chat
                 </button>
@@ -561,7 +554,7 @@ const Dashboard = () => {
               <h2 className="text-xl font-bold text-white">Recent Agents</h2>
               <button
                 onClick={() => navigate('/library')}
-                className="flex items-center space-x-1 text-sm text-purple-400 hover:text-purple-300 transition-colors"
+                className="flex items-center space-x-1 text-sm text-unicorn-400 hover:text-unicorn-300 transition-colors"
               >
                 <span>View All</span>
                 <ChevronRight className="w-4 h-4" />
@@ -580,7 +573,7 @@ const Dashboard = () => {
                     onClick={() => navigate(`/agent/${agent.id}`)}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-xl">
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-unicorn-500 to-unicorn-400 flex items-center justify-center text-xl">
                         {agent.avatar || '🦄'}
                       </div>
                       <div>
@@ -602,7 +595,7 @@ const Dashboard = () => {
                           e.stopPropagation();
                           navigate(`/chat?agent=${agent.id}`);
                         }}
-                        className="p-1.5 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 opacity-0 group-hover:opacity-100 transition-all"
+                        className="p-1.5 rounded bg-unicorn-500/20 text-unicorn-400 hover:bg-unicorn-500/30 opacity-0 group-hover:opacity-100 transition-all"
                         title="Chat with agent"
                       >
                         <MessageSquare className="w-3.5 h-3.5" />

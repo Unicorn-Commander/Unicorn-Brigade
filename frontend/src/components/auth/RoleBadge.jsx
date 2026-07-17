@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useId } from 'react';
 import PropTypes from 'prop-types';
-import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+import { Tooltip } from 'react-tooltip';
 import { User, Wrench, Zap, Shield, Crown } from 'lucide-react';
 
 /**
  * RoleBadge Component
  *
  * Displays a color-coded badge for user roles with tooltip.
+ * Uses react-tooltip (the app's single tooltip lib) for rich hover content.
  *
  * @component
  * @example
@@ -15,6 +16,14 @@ import { User, Wrench, Zap, Shield, Crown } from 'lucide-react';
  * @example
  * <RoleBadge role="brigade-platform-admin" size="large" showIcon />
  */
+const TOOLTIP_STYLE = {
+  backgroundColor: 'rgba(17, 24, 39, 0.98)',
+  color: '#ffffff',
+  borderRadius: '0.5rem',
+  padding: '0.5rem 0.75rem',
+  border: '1px solid rgba(100, 116, 139, 0.3)',
+};
+
 const RoleBadge = ({
   role,
   size = 'medium',
@@ -85,6 +94,7 @@ const RoleBadge = ({
 
   const config = roleConfig[role] || roleConfig['brigade-user'];
   const Icon = config.icon;
+  const tooltipId = useId();
 
   const sizeClasses = {
     small: 'text-xs px-2 py-0.5',
@@ -99,44 +109,35 @@ const RoleBadge = ({
   };
 
   return (
-    <TooltipPrimitive.Provider delayDuration={200}>
-      <TooltipPrimitive.Root>
-        <TooltipPrimitive.Trigger asChild>
-          <span
-            className={`
-              inline-flex items-center gap-1.5 rounded-full font-medium border
-              ${config.color}
-              ${sizeClasses[size]}
-              ${className}
-              transition-all duration-200 hover:scale-105 cursor-help
-            `}
-          >
-            {showIcon && <Icon size={iconSizes[size]} />}
-            {config.label}
-          </span>
-        </TooltipPrimitive.Trigger>
-        <TooltipPrimitive.Portal>
-          <TooltipPrimitive.Content
-            className="bg-gray-900 text-white px-3 py-2 rounded-lg text-sm max-w-xs z-50"
-            sideOffset={5}
-          >
-            <div className="space-y-1">
-              <p className="font-semibold">{config.label}</p>
-              <p className="text-xs text-gray-300">{config.description}</p>
-              <ul className="text-xs space-y-0.5 mt-2">
-                {config.permissions.map((perm, idx) => (
-                  <li key={idx} className="flex items-start gap-1">
-                    <span className="text-green-400">✓</span>
-                    <span>{perm}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <TooltipPrimitive.Arrow className="fill-gray-900" />
-          </TooltipPrimitive.Content>
-        </TooltipPrimitive.Portal>
-      </TooltipPrimitive.Root>
-    </TooltipPrimitive.Provider>
+    <>
+      <span
+        data-tooltip-id={tooltipId}
+        className={`
+          inline-flex items-center gap-1.5 rounded-full font-medium border
+          ${config.color}
+          ${sizeClasses[size]}
+          ${className}
+          transition-all duration-200 hover:scale-105 cursor-help
+        `}
+      >
+        {showIcon && <Icon size={iconSizes[size]} />}
+        {config.label}
+      </span>
+      <Tooltip id={tooltipId} place="top" className="z-50 max-w-xs" style={TOOLTIP_STYLE}>
+        <div className="space-y-1">
+          <p className="font-semibold">{config.label}</p>
+          <p className="text-xs text-gray-300">{config.description}</p>
+          <ul className="text-xs space-y-0.5 mt-2">
+            {config.permissions.map((perm, idx) => (
+              <li key={idx} className="flex items-start gap-1">
+                <span className="text-green-400">✓</span>
+                <span>{perm}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Tooltip>
+    </>
   );
 };
 

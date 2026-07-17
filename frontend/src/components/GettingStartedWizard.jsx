@@ -10,6 +10,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import Modal from './ui/Modal';
 
 const WIZARD_STEPS = [
   {
@@ -85,24 +86,24 @@ const WIZARD_STEPS = [
         </p>
         <ul className="space-y-2 text-sm text-slate-400">
           <li className="flex items-start space-x-2">
-            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-purple-400">1.</div>
+            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-unicorn-400">1.</div>
             <span>Define personality and behavior</span>
           </li>
           <li className="flex items-start space-x-2">
-            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-purple-400">2.</div>
+            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-unicorn-400">2.</div>
             <span>Select tools from the Tool Library</span>
           </li>
           <li className="flex items-start space-x-2">
-            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-purple-400">3.</div>
+            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-unicorn-400">3.</div>
             <span>Configure model and parameters</span>
           </li>
           <li className="flex items-start space-x-2">
-            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-purple-400">4.</div>
+            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-unicorn-400">4.</div>
             <span>Deploy and start chatting</span>
           </li>
         </ul>
-        <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3 mt-4">
-          <p className="text-sm text-purple-300">
+        <div className="bg-unicorn-500/10 border border-unicorn-500/30 rounded-lg p-3 mt-4">
+          <p className="text-sm text-unicorn-300">
             💡 Tip: Use the Agent Library to edit existing agents or create new ones from scratch.
           </p>
         </div>
@@ -177,12 +178,16 @@ export default function GettingStartedWizard({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800/95 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl max-w-2xl w-full">
+    <Modal
+      onClose={handleFinish}
+      ariaLabel={`Getting started: ${step.title}`}
+      showClose={false}
+      panelClassName="bg-slate-800/95 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl max-w-2xl w-full"
+    >
         <div className="flex justify-between items-center p-6 border-b border-slate-700/50">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-purple-500/20 rounded-lg">
-              <Icon className="w-6 h-6 text-purple-400" />
+            <div className="p-2 bg-unicorn-500/20 rounded-lg">
+              <Icon className="w-6 h-6 text-unicorn-400" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">{step.title}</h2>
@@ -208,9 +213,9 @@ export default function GettingStartedWizard({ onClose }) {
                 key={index}
                 className={`w-2 h-2 rounded-full transition-colors ${
                   index === currentStep
-                    ? 'bg-purple-500'
+                    ? 'bg-unicorn-500'
                     : index < currentStep
-                    ? 'bg-purple-500/50'
+                    ? 'bg-unicorn-500/50'
                     : 'bg-slate-600'
                 }`}
               />
@@ -231,7 +236,7 @@ export default function GettingStartedWizard({ onClose }) {
             {step.action && (
               <button
                 onClick={handleAction}
-                className="px-4 py-2 bg-purple-600/20 text-purple-400 rounded-lg hover:bg-purple-600/30 transition-colors"
+                className="px-4 py-2 bg-unicorn-600/20 text-unicorn-400 rounded-lg hover:bg-unicorn-600/30 transition-colors"
               >
                 {step.action.label}
               </button>
@@ -239,14 +244,13 @@ export default function GettingStartedWizard({ onClose }) {
 
             <button
               onClick={handleNext}
-              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-colors flex items-center space-x-2"
+              className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-700 hover:to-unicorn-600 transition-colors flex items-center space-x-2"
             >
               <span>{currentStep === WIZARD_STEPS.length - 1 ? 'Get Started' : 'Next'}</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

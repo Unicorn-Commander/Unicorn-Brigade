@@ -1,5 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  // Class strategy so a future light theme can flip on `.dark` / `[data-theme]`.
+  // Dark stays the default look (tokens below resolve to the dark palette on :root).
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,6 +10,7 @@ export default {
   theme: {
     extend: {
       colors: {
+        // The one accent scale — brand mark, active nav, primary CTAs.
         unicorn: {
           50: '#fdf2f8',
           100: '#fce7f3',
@@ -20,6 +24,16 @@ export default {
           900: '#831843',
           950: '#500724',
         },
+        // Semantic design tokens — wired to the CSS vars in index.css so the
+        // whole UI can be re-themed from one place. Values track the dark
+        // slate palette today (bg-bg ≈ slate-950, surface/card ≈ slate-900,
+        // border ≈ slate-700, muted ≈ slate-400, accent = unicorn-500).
+        bg: 'hsl(var(--bg) / <alpha-value>)',
+        surface: 'hsl(var(--surface) / <alpha-value>)',
+        card: 'hsl(var(--card) / <alpha-value>)',
+        border: 'hsl(var(--border) / <alpha-value>)',
+        muted: 'hsl(var(--muted) / <alpha-value>)',
+        accent: 'hsl(var(--accent) / <alpha-value>)',
       },
       animation: {
         'pulse-ring': 'pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',

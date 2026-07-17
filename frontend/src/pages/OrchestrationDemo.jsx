@@ -366,7 +366,7 @@ const OrchestrationDemo = () => {
   }), [agents, activeAgents, connections]);
 
   return (
-    <div className="min-h-screen bg-slate-900 p-6">
+    <div className="min-h-screen p-6">
       <div className="max-w-full mx-auto">
         {/* Header */}
         <div className="mb-6">

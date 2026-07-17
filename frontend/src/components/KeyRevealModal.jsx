@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, Copy, CheckCircle, Shield } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import Modal from './ui/Modal';
 
 const KeyRevealModal = ({ apiKey, onClose }) => {
   const [copied, setCopied] = useState(false);
@@ -15,8 +16,12 @@ const KeyRevealModal = ({ apiKey, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-lg w-full overflow-hidden">
+    <Modal
+      onClose={onClose}
+      ariaLabel="Your new API key — save it now"
+      showClose={false}
+      panelClassName="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-lg w-full overflow-hidden"
+    >
         {/* Warning Header */}
         <div className="p-6 bg-gradient-to-r from-amber-500/10 to-red-500/10 border-b border-amber-500/20">
           <div className="flex items-start space-x-3">
@@ -134,8 +139,7 @@ const KeyRevealModal = ({ apiKey, onClose }) => {
             You can manage this key in the API Keys tab
           </p>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };
 
