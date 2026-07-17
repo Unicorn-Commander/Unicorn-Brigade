@@ -109,6 +109,7 @@ const WorkflowFilters = ({
           <div className="relative">
             <Tag className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
             <select
+              aria-label="Filter by tag"
               value={selectedTag}
               onChange={(e) => setSelectedTag(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-slate-200 appearance-none cursor-pointer"
@@ -137,6 +138,7 @@ const WorkflowFilters = ({
           <div className="relative">
             <TrendingUp className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
             <select
+              aria-label="Filter by complexity"
               value={selectedComplexity}
               onChange={(e) => setSelectedComplexity(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-slate-200 appearance-none cursor-pointer"
@@ -154,6 +156,7 @@ const WorkflowFilters = ({
           <div className="relative">
             <ArrowUpDown className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
             <select
+              aria-label="Sort workflows"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-slate-200 appearance-none cursor-pointer"

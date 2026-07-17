@@ -21,7 +21,7 @@ export default function StatCard({ icon: Icon, label, value, change, tone = 'neu
       <div className="flex items-center justify-between mb-4">
         {Icon ? <Icon className="w-8 h-8 text-unicorn-400" /> : <span />}
       </div>
-      <p className="text-3xl font-bold text-white mb-1">{value}</p>
+      <p className="text-3xl font-bold text-fg mb-1">{value}</p>
       <p className="text-sm text-muted">{label}</p>
       {change != null && change !== '' && (
         <p className={`text-xs mt-2 ${TONE[tone] || TONE.neutral}`}>{change}</p>

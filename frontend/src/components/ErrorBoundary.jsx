@@ -48,38 +48,38 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-unicorn-900/20 to-slate-900 flex items-center justify-center p-4">
-          <div className="max-w-2xl w-full bg-slate-800/90 backdrop-blur-xl border border-red-500/30 rounded-xl shadow-2xl p-8">
+        <div className="min-h-screen bg-gradient-to-br from-bg via-unicorn-900/20 to-bg flex items-center justify-center p-4">
+          <div className="max-w-2xl w-full bg-elevated/90 backdrop-blur-xl border border-red-500/30 rounded-xl shadow-2xl p-8">
             <div className="flex justify-center mb-6">
               <div className="p-4 bg-red-500/20 rounded-full">
                 <AlertTriangle className="w-16 h-16 text-red-400" />
               </div>
             </div>
 
-            <h1 className="text-3xl font-bold text-white text-center mb-4">
+            <h1 className="text-3xl font-bold text-fg text-center mb-4">
               Something Went Wrong
             </h1>
 
-            <p className="text-slate-300 text-center mb-6">
+            <p className="text-muted text-center mb-6">
               We encountered an unexpected error. This has been logged and our team will investigate.
             </p>
 
             {import.meta.env.DEV && this.state.error && (
-              <details className="mb-6 bg-slate-900/50 rounded-lg p-4 border border-slate-700">
-                <summary className="cursor-pointer text-sm font-medium text-slate-400 hover:text-white">
+              <details className="mb-6 bg-card/50 rounded-lg p-4 border border-border">
+                <summary className="cursor-pointer text-sm font-medium text-muted hover:text-fg">
                   Error Details (Development)
                 </summary>
                 <div className="mt-4 space-y-2">
                   <div className="text-sm">
                     <span className="text-red-400 font-medium">Error:</span>
-                    <pre className="mt-2 text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap">
+                    <pre className="mt-2 text-xs text-muted overflow-x-auto whitespace-pre-wrap">
                       {this.state.error.toString()}
                     </pre>
                   </div>
                   {this.state.errorInfo && (
                     <div className="text-sm">
                       <span className="text-red-400 font-medium">Component Stack:</span>
-                      <pre className="mt-2 text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap">
+                      <pre className="mt-2 text-xs text-muted overflow-x-auto whitespace-pre-wrap">
                         {this.state.errorInfo.componentStack}
                       </pre>
                     </div>
@@ -99,7 +99,7 @@ class ErrorBoundary extends React.Component {
 
               <button
                 onClick={this.handleReload}
-                className="px-6 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors flex items-center justify-center space-x-2"
+                className="px-6 py-3 bg-elevated text-fg rounded-lg hover:bg-elevated transition-colors flex items-center justify-center space-x-2"
               >
                 <RefreshCw className="w-5 h-5" />
                 <span>Reload Page</span>
@@ -107,7 +107,7 @@ class ErrorBoundary extends React.Component {
 
               <Link
                 to="/dashboard"
-                className="px-6 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors flex items-center justify-center space-x-2"
+                className="px-6 py-3 bg-elevated text-fg rounded-lg hover:bg-elevated transition-colors flex items-center justify-center space-x-2"
               >
                 <Home className="w-5 h-5" />
                 <span>Go Home</span>

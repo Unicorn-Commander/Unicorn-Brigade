@@ -271,6 +271,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                   Rank
                 </label>
                 <select
+                  aria-label="Rank"
                   value={formData.rank}
                   onChange={(e) => setFormData({ ...formData, rank: e.target.value })}
                   className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500"
@@ -309,6 +310,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                 Status
               </label>
               <select
+                aria-label="Status"
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                 className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500"
@@ -362,6 +364,7 @@ export default function AgentEditModal({ agent, onClose, onSave }) {
                   Model
                 </label>
                 <select
+                  aria-label="Model"
                   value={formData.model}
                   onChange={(e) => setFormData({ ...formData, model: e.target.value })}
                   className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500"

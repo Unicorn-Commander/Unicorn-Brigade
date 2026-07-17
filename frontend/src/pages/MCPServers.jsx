@@ -254,6 +254,7 @@ const MCPServers = () => {
             {/* Category Filter (only when the registry provides categories) */}
             {categories.length > 0 && (
               <select
+                aria-label="Filter by category"
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white"
@@ -267,6 +268,7 @@ const MCPServers = () => {
 
             {/* Status Filter */}
             <select
+              aria-label="Filter by status"
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
               className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white"

@@ -33,12 +33,13 @@ export default function Breadcrumbs() {
   }
 
   return (
-    <nav className="flex items-center space-x-2 text-sm mb-6">
+    <nav aria-label="Breadcrumb" className="flex items-center space-x-2 text-sm mb-6">
       <Link
         to="/dashboard"
-        className="flex items-center text-slate-400 hover:text-white transition-colors"
+        aria-label="Home"
+        className="flex items-center text-muted hover:text-fg transition-colors"
       >
-        <Home className="w-4 h-4" />
+        <Home className="w-4 h-4" aria-hidden="true" />
       </Link>
 
       {pathnames.map((pathname, index) => {
@@ -48,13 +49,13 @@ export default function Breadcrumbs() {
 
         return (
           <React.Fragment key={routeTo}>
-            <ChevronRight className="w-4 h-4 text-slate-600" />
+            <ChevronRight className="w-4 h-4 text-muted" />
             {isLast ? (
-              <span className="text-white font-medium">{name}</span>
+              <span className="text-fg font-medium">{name}</span>
             ) : (
               <Link
                 to={routeTo}
-                className="text-slate-400 hover:text-white transition-colors"
+                className="text-muted hover:text-fg transition-colors"
               >
                 {name}
               </Link>

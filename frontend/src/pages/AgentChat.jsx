@@ -702,9 +702,9 @@ const AgentChat = () => {
   }, {});
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <div className="flex flex-col h-screen bg-gradient-to-br from-bg via-surface to-bg">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-slate-700/50 backdrop-blur-xl bg-slate-900/80 relative z-50">
+      <div className="flex-shrink-0 border-b border-border/50 backdrop-blur-xl bg-card/80 relative z-50">
         <div className="flex items-center justify-between px-6 py-3">
           {/* Left: Agent Selector + Conversation Title */}
           <div className="flex items-center space-x-4">
@@ -712,11 +712,11 @@ const AgentChat = () => {
             <div className="relative">
               <button
                 onClick={() => setShowAgentPicker(!showAgentPicker)}
-                className="flex items-center space-x-3 px-4 py-2 rounded-xl bg-slate-800/60 border border-slate-700/50 hover:border-unicorn-500/40 transition-all"
+                className="flex items-center space-x-3 px-4 py-2 rounded-xl bg-elevated/60 border border-border/50 hover:border-unicorn-500/40 transition-all"
                 disabled={agentsLoading}
               >
                 {agentsLoading ? (
-                  <div className="flex items-center space-x-2 text-sm text-slate-400">
+                  <div className="flex items-center space-x-2 text-sm text-muted">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>Loading agents...</span>
                   </div>
@@ -724,16 +724,16 @@ const AgentChat = () => {
                   <>
                     <span className="text-2xl">{selectedAgent.avatar || '🦄'}</span>
                     <div className="text-left">
-                      <p className="text-sm font-semibold text-white">
+                      <p className="text-sm font-semibold text-fg">
                         {selectedAgent.displayName || selectedAgent.name}
                       </p>
-                      <p className="text-xs text-slate-400">{selectedAgent.domain}</p>
+                      <p className="text-xs text-muted">{selectedAgent.domain}</p>
                     </div>
                   </>
                 ) : (
-                  <span className="text-sm text-slate-400">Select Agent...</span>
+                  <span className="text-sm text-muted">Select Agent...</span>
                 )}
-                <ChevronDown className="w-4 h-4 text-slate-400" />
+                <ChevronDown className="w-4 h-4 text-muted" />
               </button>
 
               {/* Agent Picker Dropdown */}
@@ -744,7 +744,7 @@ const AgentChat = () => {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute top-full left-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl bg-slate-800 border border-slate-700/50 shadow-2xl shadow-black/50 z-50"
+                    className="absolute top-full left-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl bg-elevated border border-border/50 shadow-2xl shadow-black/50 z-50"
                   >
                     {agentsLoading ? (
                       <div className="p-4">
@@ -753,7 +753,7 @@ const AgentChat = () => {
                     ) : (
                       Object.entries(agentsByDomain).map(([domain, domainAgents]) => (
                         <div key={domain}>
-                          <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-slate-400 uppercase">
+                          <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-muted uppercase">
                             {domain}
                           </p>
                           {domainAgents.map((agent) => (
@@ -763,16 +763,16 @@ const AgentChat = () => {
                                 setSelectedAgent(agent);
                                 setShowAgentPicker(false);
                               }}
-                              className={`w-full flex items-center space-x-3 px-4 py-2.5 hover:bg-slate-700/50 transition-colors ${
+                              className={`w-full flex items-center space-x-3 px-4 py-2.5 hover:bg-elevated/50 transition-colors ${
                                 selectedAgent?.id === agent.id ? 'bg-unicorn-500/10' : ''
                               }`}
                             >
                               <span className="text-xl">{agent.avatar || '🦄'}</span>
                               <div className="text-left flex-1 min-w-0">
-                                <p className="text-sm font-medium text-white truncate">
+                                <p className="text-sm font-medium text-fg truncate">
                                   {agent.displayName || agent.name}
                                 </p>
-                                <p className="text-xs text-slate-400 truncate">{agent.title || agent.agentType}</p>
+                                <p className="text-xs text-muted truncate">{agent.title || agent.agentType}</p>
                               </div>
                               {selectedAgent?.id === agent.id && (
                                 <div className="w-2 h-2 rounded-full bg-unicorn-500"></div>
@@ -789,8 +789,8 @@ const AgentChat = () => {
 
             {/* Conversation Title (shown when resuming) */}
             {conversationTitle && (
-              <div className="hidden md:block px-3 py-1.5 rounded-lg bg-slate-800/40 border border-slate-700/30">
-                <p className="text-xs text-slate-400 truncate max-w-[200px]" title={conversationTitle}>
+              <div className="hidden md:block px-3 py-1.5 rounded-lg bg-elevated/40 border border-border/30">
+                <p className="text-xs text-muted truncate max-w-[200px]" title={conversationTitle}>
                   {conversationTitle}
                 </p>
               </div>
@@ -801,9 +801,9 @@ const AgentChat = () => {
           <div className="flex items-center space-x-2">
             {selectedAgent && (
               <>
-                <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40">
-                  <Cpu className="w-3 h-3 text-slate-400" />
-                  <span className="text-xs text-slate-400">
+                <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-elevated/60 border border-border/40">
+                  <Cpu className="w-3 h-3 text-muted" />
+                  <span className="text-xs text-muted">
                     {(selectedAgent.model || 'gpt-4o-mini').split('/').pop()}
                   </span>
                 </div>
@@ -814,7 +814,7 @@ const AgentChat = () => {
                     className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all ${
                       showToolsPanel
                         ? 'bg-unicorn-500/20 text-unicorn-400 border border-unicorn-500/40'
-                        : 'bg-slate-800/60 text-slate-400 border border-slate-700/40 hover:text-white hover:border-unicorn-500/40'
+                        : 'bg-elevated/60 text-muted border border-border/40 hover:text-fg hover:border-unicorn-500/40'
                     }`}
                     title="View available tools"
                   >
@@ -828,7 +828,7 @@ const AgentChat = () => {
             )}
             <button
               onClick={startNewConversation}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-all"
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-muted hover:text-fg hover:bg-elevated/50 transition-all"
               title="New Conversation"
             >
               <Plus className="w-4 h-4" />
@@ -837,7 +837,7 @@ const AgentChat = () => {
             <button
               onClick={clearChat}
               disabled={messages.length === 0}
-              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 disabled:opacity-30 transition-all"
+              className="p-2 rounded-lg text-muted hover:text-fg hover:bg-elevated/50 disabled:opacity-30 transition-all"
               title="Clear chat"
               aria-label="Clear chat"
             >
@@ -865,13 +865,13 @@ const AgentChat = () => {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="overflow-hidden border-b border-slate-700/50 bg-slate-900/60"
+            className="overflow-hidden border-b border-border/50 bg-card/60"
           >
             <div className="px-6 py-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
                   <Wrench className="w-4 h-4 text-unicorn-400" />
-                  <span className="text-sm font-medium text-white">Available Tools</span>
+                  <span className="text-sm font-medium text-fg">Available Tools</span>
                   <span className="px-2 py-0.5 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
                     {selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0}
                   </span>
@@ -879,7 +879,7 @@ const AgentChat = () => {
                 <button
                   onClick={() => setShowToolsPanel(false)}
                   aria-label="Close tools panel"
-                  className="p-1 rounded hover:bg-slate-700/50 text-slate-400 hover:text-white transition-colors"
+                  className="p-1 rounded hover:bg-elevated/50 text-muted hover:text-fg transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -891,15 +891,15 @@ const AgentChat = () => {
                   return (
                     <div
                       key={idx}
-                      className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50"
+                      className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-elevated/60 border border-border/50"
                     >
                       <ToolIcon className="w-3.5 h-3.5 text-cyan-400" />
-                      <span className="text-xs text-slate-300">{toolName}</span>
+                      <span className="text-xs text-muted">{toolName}</span>
                     </div>
                   );
                 })}
               </div>
-              <p className="mt-3 text-xs text-slate-400">
+              <p className="mt-3 text-xs text-muted">
                 These tools will be automatically used when relevant to your questions.
               </p>
             </div>
@@ -920,7 +920,7 @@ const AgentChat = () => {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="w-10 h-10 text-unicorn-400 animate-spin mx-auto mb-3" />
-            <p className="text-slate-400 text-sm">Loading conversation...</p>
+            <p className="text-muted text-sm">Loading conversation...</p>
           </div>
         </div>
       )}
@@ -938,10 +938,10 @@ const AgentChat = () => {
                     <Sparkles className="w-10 h-10 text-unicorn-400" />
                   )}
                 </div>
-                <h2 className="text-2xl font-bold text-white mb-2">
+                <h2 className="text-2xl font-bold text-fg mb-2">
                   {selectedAgent ? `Chat with ${selectedAgent.displayName || selectedAgent.name}` : 'Start a Conversation'}
                 </h2>
-                <p className="text-slate-400 max-w-md mb-4">
+                <p className="text-muted max-w-md mb-4">
                   {selectedAgent
                     ? selectedAgent.bio || selectedAgent.title || 'Ready to assist you with your questions.'
                     : 'Select an agent from the dropdown and ask anything.'}
@@ -949,10 +949,10 @@ const AgentChat = () => {
 
                 {/* Show agent tools summary */}
                 {selectedAgent && (selectedAgent.tools?.length > 0 || selectedAgent.agentTools?.length > 0) && (
-                  <div className="mb-6 px-4 py-3 rounded-xl bg-slate-800/40 border border-slate-700/30 max-w-md">
+                  <div className="mb-6 px-4 py-3 rounded-xl bg-elevated/40 border border-border/30 max-w-md">
                     <div className="flex items-center justify-center space-x-2 mb-2">
                       <Wrench className="w-4 h-4 text-cyan-400" />
-                      <span className="text-sm font-medium text-slate-300">
+                      <span className="text-sm font-medium text-muted">
                         {selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0} Tools Available
                       </span>
                     </div>
@@ -962,14 +962,14 @@ const AgentChat = () => {
                         return (
                           <span
                             key={idx}
-                            className="px-2 py-0.5 rounded bg-slate-700/50 text-xs text-slate-400"
+                            className="px-2 py-0.5 rounded bg-elevated/50 text-xs text-muted"
                           >
                             {toolName}
                           </span>
                         );
                       })}
                       {(selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0) > 5 && (
-                        <span className="px-2 py-0.5 rounded bg-slate-700/50 text-xs text-slate-400">
+                        <span className="px-2 py-0.5 rounded bg-elevated/50 text-xs text-muted">
                           +{(selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0) - 5} more
                         </span>
                       )}
@@ -987,7 +987,7 @@ const AgentChat = () => {
                             setInput(prompt);
                             textareaRef.current?.focus();
                           }}
-                          className="px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 text-sm text-slate-300 hover:border-unicorn-500/40 hover:text-white transition-all"
+                          className="px-4 py-2 rounded-full bg-elevated/60 border border-border/50 text-sm text-muted hover:border-unicorn-500/40 hover:text-fg transition-all"
                         >
                           {prompt}
                         </button>
@@ -1009,7 +1009,7 @@ const AgentChat = () => {
                     {msg.role === 'user' ? (
                       /* User message */
                       <div className="max-w-[80%]">
-                        <div className="px-5 py-3 rounded-2xl rounded-br-md bg-unicorn-600/80 text-white">
+                        <div className="px-5 py-3 rounded-2xl rounded-br-md bg-unicorn-600/80 text-fg">
                           <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                         </div>
                       </div>
@@ -1027,7 +1027,7 @@ const AgentChat = () => {
                                 {msg.agent?.name || 'Agent'}
                               </span>
                               {msg.model && (
-                                <span className="flex items-center space-x-1 px-1.5 py-0.5 rounded bg-slate-800/60 text-[10px] text-slate-400">
+                                <span className="flex items-center space-x-1 px-1.5 py-0.5 rounded bg-elevated/60 text-[10px] text-muted">
                                   <Zap className="w-2.5 h-2.5" />
                                   <span>{msg.model.split('/').pop()}</span>
                                 </span>
@@ -1046,7 +1046,7 @@ const AgentChat = () => {
                             {/* Message content */}
                             <div
                               className={`prose prose-invert prose-sm max-w-none ${
-                                msg.isError ? 'text-red-400' : 'text-slate-200'
+                                msg.isError ? 'text-red-400' : 'text-fg'
                               }`}
                             >
                               {msg.content ? (
@@ -1055,14 +1055,14 @@ const AgentChat = () => {
                                     code({ node, inline, className, children, ...props }) {
                                       if (inline) {
                                         return (
-                                          <code className="px-1.5 py-0.5 rounded bg-slate-800 text-unicorn-300 text-xs" {...props}>
+                                          <code className="px-1.5 py-0.5 rounded bg-elevated text-unicorn-300 text-xs" {...props}>
                                             {children}
                                           </code>
                                         );
                                       }
                                       return (
                                         <div className="relative my-3">
-                                          <pre className="rounded-lg bg-slate-900/80 border border-slate-700/50 p-4 overflow-x-auto text-xs">
+                                          <pre className="rounded-lg bg-card/80 border border-border/50 p-4 overflow-x-auto text-xs">
                                             <code className={className} {...props}>
                                               {children}
                                             </code>
@@ -1114,7 +1114,7 @@ const AgentChat = () => {
                               <div className="mt-2 flex items-center space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                   onClick={() => copyToClipboard(msg.content, msg.id)}
-                                  className="flex items-center space-x-1 text-xs text-slate-400 hover:text-slate-300 transition-colors"
+                                  className="flex items-center space-x-1 text-xs text-muted hover:text-fg transition-colors"
                                 >
                                   {copiedId === msg.id ? (
                                     <>
@@ -1151,7 +1151,7 @@ const AgentChat = () => {
                       <div className={`px-4 py-3 rounded-2xl rounded-bl-md border ${
                         isExecutingTool
                           ? 'bg-amber-500/10 border-amber-500/30'
-                          : 'bg-slate-800/60 border-slate-700/40'
+                          : 'bg-elevated/60 border-border/40'
                       }`}>
                         <div className="flex items-center space-x-2">
                           {isExecutingTool ? (
@@ -1173,7 +1173,7 @@ const AgentChat = () => {
                                 <span className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
                                 <span className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                               </div>
-                              <span className="text-xs text-slate-400">
+                              <span className="text-xs text-muted">
                                 {selectedAgent?.displayName || 'Agent'} is thinking...
                               </span>
                             </>
@@ -1191,7 +1191,7 @@ const AgentChat = () => {
       )}
 
       {/* Input */}
-      <div className="flex-shrink-0 border-t border-slate-700/50 backdrop-blur-xl bg-slate-900/80">
+      <div className="flex-shrink-0 border-t border-border/50 backdrop-blur-xl bg-card/80">
         <div className="max-w-3xl mx-auto px-4 py-4">
           <div className="flex items-end space-x-3">
             <div className="flex-1 relative">
@@ -1207,14 +1207,14 @@ const AgentChat = () => {
                 }
                 disabled={!selectedAgent || isStreaming || loadingConversation}
                 rows={1}
-                className="w-full resize-none rounded-xl bg-slate-800/60 border border-slate-700/50 px-4 py-3 pr-12 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-unicorn-500/50 focus:ring-1 focus:ring-unicorn-500/20 disabled:opacity-40 transition-all"
+                className="w-full resize-none rounded-xl bg-elevated/60 border border-border/50 px-4 py-3 pr-12 text-sm text-fg placeholder-slate-500 focus:outline-none focus:border-unicorn-500/50 focus:ring-1 focus:ring-unicorn-500/20 disabled:opacity-40 transition-all"
               />
             </div>
             <button
               onClick={sendMessage}
               disabled={!input.trim() || !selectedAgent || isStreaming || loadingConversation}
               aria-label="Send message"
-              className="flex-shrink-0 w-10 h-10 rounded-xl bg-unicorn-600 hover:bg-unicorn-500 disabled:bg-slate-700 disabled:text-slate-400 text-white flex items-center justify-center transition-all disabled:opacity-40"
+              className="flex-shrink-0 w-10 h-10 rounded-xl bg-unicorn-600 hover:bg-unicorn-500 disabled:bg-elevated disabled:text-muted text-white flex items-center justify-center transition-all disabled:opacity-40"
             >
               {isStreaming ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -1223,7 +1223,7 @@ const AgentChat = () => {
               )}
             </button>
           </div>
-          <p className="mt-2 text-[10px] text-slate-600 text-center">
+          <p className="mt-2 text-[10px] text-muted text-center">
             Press Enter to send, Shift+Enter for new line
           </p>
         </div>

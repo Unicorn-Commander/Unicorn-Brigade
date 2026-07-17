@@ -397,6 +397,7 @@ const VoiceCallModal = ({
 
                     <div className="relative">
                       <select
+                        aria-label="Microphone"
                         value={selectedAudioDevice || ''}
                         onChange={(e) => changeAudioDevice(e.target.value)}
                         className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white appearance-none cursor-pointer focus:outline-none focus:border-unicorn-500"

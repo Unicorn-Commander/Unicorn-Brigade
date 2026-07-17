@@ -23,8 +23,8 @@ export default function Toggle({
       aria-label={label}
       disabled={disabled}
       onClick={() => !disabled && onChange?.(!checked)}
-      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed ${
-        checked ? 'bg-accent' : 'bg-slate-700'
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed ${
+        checked ? 'bg-accent' : 'bg-border'
       } ${className}`}
     >
       <span

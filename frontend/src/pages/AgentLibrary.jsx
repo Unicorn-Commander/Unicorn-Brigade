@@ -249,7 +249,7 @@ const AgentLibrary = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gradient">Agent Library</h1>
-            <p className="text-slate-400 mt-1">
+            <p className="text-muted mt-1">
               {filteredAgents.length} of {agents.length} agents
             </p>
           </div>
@@ -268,21 +268,22 @@ const AgentLibrary = () => {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             {/* Search */}
             <div className="relative md:col-span-2">
-              <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+              <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted" />
               <input
                 type="text"
                 placeholder="Search agents, tools, or capabilities..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white placeholder-slate-500"
+                className="w-full pl-10 pr-4 py-2 bg-elevated/50 border border-border rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-fg placeholder-slate-500"
               />
             </div>
 
             {/* Domain Filter */}
             <select
+              aria-label="Filter by domain"
               value={selectedDomain}
               onChange={(e) => setSelectedDomain(e.target.value)}
-              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white"
+              className="px-4 py-2 bg-elevated/50 border border-border rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-fg"
             >
               <option value="">All Domains</option>
               {domains.map(d => (
@@ -294,9 +295,10 @@ const AgentLibrary = () => {
 
             {/* Tool Filter */}
             <select
+              aria-label="Filter by tool"
               value={selectedTool}
               onChange={(e) => setSelectedTool(e.target.value)}
-              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white"
+              className="px-4 py-2 bg-elevated/50 border border-border rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-fg"
             >
               <option value="">All Tools</option>
               {allTools.map(tool => (
@@ -308,9 +310,10 @@ const AgentLibrary = () => {
 
             {/* Status Filter */}
             <select
+              aria-label="Filter by status"
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white"
+              className="px-4 py-2 bg-elevated/50 border border-border rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-fg"
             >
               <option value="">All Status</option>
               <option value="active">Active</option>
@@ -323,11 +326,11 @@ const AgentLibrary = () => {
           {/* Active filters display */}
           {(selectedDomain || selectedStatus || selectedType || selectedTool || searchQuery) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-400">Active filters:</span>
+              <span className="text-xs text-muted">Active filters:</span>
               {searchQuery && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
                   Search: {searchQuery}
-                  <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" className="hover:text-white">
+                  <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" className="hover:text-fg">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -335,7 +338,7 @@ const AgentLibrary = () => {
               {selectedDomain && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs">
                   Domain: {selectedDomain}
-                  <button onClick={() => setSelectedDomain('')} aria-label="Clear domain filter" className="hover:text-white">
+                  <button onClick={() => setSelectedDomain('')} aria-label="Clear domain filter" className="hover:text-fg">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -343,7 +346,7 @@ const AgentLibrary = () => {
               {selectedTool && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-cyan-500/20 text-cyan-400 text-xs">
                   Tool: {selectedTool}
-                  <button onClick={() => setSelectedTool('')} aria-label="Clear tool filter" className="hover:text-white">
+                  <button onClick={() => setSelectedTool('')} aria-label="Clear tool filter" className="hover:text-fg">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -351,7 +354,7 @@ const AgentLibrary = () => {
               {selectedStatus && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
                   Status: {selectedStatus}
-                  <button onClick={() => setSelectedStatus('')} aria-label="Clear status filter" className="hover:text-white">
+                  <button onClick={() => setSelectedStatus('')} aria-label="Clear status filter" className="hover:text-fg">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -359,7 +362,7 @@ const AgentLibrary = () => {
               {selectedType && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/20 text-amber-400 text-xs">
                   Type: {selectedType}
-                  <button onClick={() => setSelectedType('')} aria-label="Clear type filter" className="hover:text-white">
+                  <button onClick={() => setSelectedType('')} aria-label="Clear type filter" className="hover:text-fg">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -372,7 +375,7 @@ const AgentLibrary = () => {
                   setSelectedType('');
                   setSelectedTool('');
                 }}
-                className="text-xs text-slate-400 hover:text-white underline"
+                className="text-xs text-muted hover:text-fg underline"
               >
                 Clear all
               </button>
@@ -381,29 +384,29 @@ const AgentLibrary = () => {
 
           <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center flex-wrap gap-2">
-              <Filter className="w-4 h-4 text-slate-400" />
-              <span className="text-sm text-slate-400">Type:</span>
+              <Filter className="w-4 h-4 text-muted" />
+              <span className="text-sm text-muted">Type:</span>
               <button
                 onClick={() => setSelectedType('')}
-                className={`px-3 py-1 rounded-lg text-sm transition-colors ${!selectedType ? 'bg-unicorn-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                className={`px-3 py-1 rounded-lg text-sm transition-colors ${!selectedType ? 'bg-unicorn-500 text-white' : 'bg-elevated text-muted hover:bg-elevated'}`}
               >
                 All
               </button>
               <button
                 onClick={() => setSelectedType('individual')}
-                className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedType === 'individual' ? 'bg-unicorn-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedType === 'individual' ? 'bg-unicorn-500 text-white' : 'bg-elevated text-muted hover:bg-elevated'}`}
               >
                 Individual
               </button>
               <button
                 onClick={() => setSelectedType('team_lead')}
-                className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedType === 'team_lead' ? 'bg-unicorn-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedType === 'team_lead' ? 'bg-unicorn-500 text-white' : 'bg-elevated text-muted hover:bg-elevated'}`}
               >
                 Team Lead
               </button>
               <button
                 onClick={() => setSelectedType('orchestrator')}
-                className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedType === 'orchestrator' ? 'bg-unicorn-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedType === 'orchestrator' ? 'bg-unicorn-500 text-white' : 'bg-elevated text-muted hover:bg-elevated'}`}
               >
                 Orchestrator
               </button>
@@ -412,11 +415,12 @@ const AgentLibrary = () => {
             <div className="flex items-center space-x-3">
               {/* Sort Dropdown */}
               <div className="flex items-center space-x-2">
-                <ArrowUpDown className="w-4 h-4 text-slate-400" />
+                <ArrowUpDown className="w-4 h-4 text-muted" />
                 <select
+                  aria-label="Sort agents"
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="px-3 py-1 bg-slate-800/50 border border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white"
+                  className="px-3 py-1 bg-elevated/50 border border-border rounded-lg text-sm focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-fg"
                 >
                   <option value="newest">Newest First</option>
                   <option value="most-used">Most Used</option>
@@ -431,7 +435,7 @@ const AgentLibrary = () => {
                   onClick={() => setViewMode('grid')}
                   aria-label="Grid view"
                   aria-pressed={viewMode === 'grid'}
-                  className={`p-2 rounded transition-colors ${viewMode === 'grid' ? 'bg-unicorn-500' : 'bg-slate-800 hover:bg-slate-700'}`}
+                  className={`p-2 rounded transition-colors ${viewMode === 'grid' ? 'bg-unicorn-500' : 'bg-elevated hover:bg-elevated'}`}
                 >
                   <div className="w-4 h-4 grid grid-cols-2 gap-0.5">
                     <div className="bg-white rounded-sm"></div>
@@ -444,7 +448,7 @@ const AgentLibrary = () => {
                   onClick={() => setViewMode('list')}
                   aria-label="List view"
                   aria-pressed={viewMode === 'list'}
-                  className={`p-2 rounded transition-colors ${viewMode === 'list' ? 'bg-unicorn-500' : 'bg-slate-800 hover:bg-slate-700'}`}
+                  className={`p-2 rounded transition-colors ${viewMode === 'list' ? 'bg-unicorn-500' : 'bg-elevated hover:bg-elevated'}`}
                 >
                   <div className="w-4 h-4 flex flex-col gap-1">
                     <div className="h-0.5 bg-white rounded"></div>
@@ -471,9 +475,9 @@ const AgentLibrary = () => {
         {/* Agents Grouped by Domain */}
         {!loading && !filterLoading && Object.keys(groupedAgents).length === 0 && (
           <div className="text-center py-12">
-            <Bot className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-slate-300 mb-2">No agents found</h3>
-            <p className="text-slate-400 mb-6">Start by building your first agent</p>
+            <Bot className="w-16 h-16 text-muted mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-muted mb-2">No agents found</h3>
+            <p className="text-muted mb-6">Start by building your first agent</p>
             <button
               onClick={() => navigate('/builder-chat')}
               className="btn-primary flex items-center space-x-2 mx-auto"
@@ -493,12 +497,12 @@ const AgentLibrary = () => {
             <div key={domain} className="space-y-4">
               {/* Domain Header */}
               <div className="flex items-center space-x-3">
-                <span className="p-2 rounded-lg bg-slate-800/60 text-slate-300">
+                <span className="p-2 rounded-lg bg-elevated/60 text-muted">
                   <DomainIcon className="w-6 h-6" aria-hidden="true" />
                 </span>
                 <div>
                   <h2 className="text-xl font-bold capitalize">{domain}</h2>
-                  <p className="text-sm text-slate-400">{domainAgents.length} agents</p>
+                  <p className="text-sm text-muted">{domainAgents.length} agents</p>
                 </div>
               </div>
 
@@ -511,7 +515,7 @@ const AgentLibrary = () => {
                         agent={agent}
                         onClick={() => navigate(`/agent/${agent.id}`)}
                       />
-                      <div className="mt-4 flex gap-2 pt-4 border-t border-slate-700/50">
+                      <div className="mt-4 flex gap-2 pt-4 border-t border-border/50">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -611,7 +615,7 @@ const AgentListItem = ({ agent, navigate, onEdit, onDelete }) => {
             <h3 className="font-semibold group-hover:text-unicorn-400 transition-colors truncate">
               {agent.displayName || agent.name}
             </h3>
-            <p className="text-sm text-slate-400 truncate">
+            <p className="text-sm text-muted truncate">
               {agent.rank && `${agent.rank} • `}
               {agent.title || agent.type}
             </p>
@@ -626,26 +630,26 @@ const AgentListItem = ({ agent, navigate, onEdit, onDelete }) => {
             return (
               <div
                 key={idx}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800/50 border border-slate-700/50"
+                className="flex items-center gap-1 px-2 py-1 rounded bg-elevated/50 border border-border/50"
                 title={toolName}
               >
                 <ToolIcon className="w-3 h-3 text-cyan-400" />
-                <span className="text-xs text-slate-400 hidden lg:inline">{toolName}</span>
+                <span className="text-xs text-muted hidden lg:inline">{toolName}</span>
               </div>
             );
           })}
           {toolCount > 3 && (
-            <span className="px-2 py-1 rounded bg-slate-800/50 text-xs text-slate-400">
+            <span className="px-2 py-1 rounded bg-elevated/50 text-xs text-muted">
               +{toolCount - 3}
             </span>
           )}
           {toolCount === 0 && (
-            <span className="text-xs text-slate-400">No tools</span>
+            <span className="text-xs text-muted">No tools</span>
           )}
         </div>
 
         {/* Capability summary */}
-        <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400 flex-shrink-0">
+        <div className="hidden lg:flex items-center gap-2 text-xs text-muted flex-shrink-0">
           <div className="flex items-center gap-1">
             <Wrench className="w-3 h-3" />
             <span>{toolCount}</span>
@@ -659,8 +663,8 @@ const AgentListItem = ({ agent, navigate, onEdit, onDelete }) => {
         <span className={`px-3 py-1 rounded-full text-xs flex-shrink-0 ${
           agent.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' :
           agent.status === 'draft' ? 'bg-yellow-500/20 text-yellow-400' :
-          agent.status === 'inactive' ? 'bg-slate-500/20 text-slate-400' :
-          'bg-slate-500/20 text-slate-400'
+          agent.status === 'inactive' ? 'bg-slate-500/20 text-muted' :
+          'bg-slate-500/20 text-muted'
         }`}>
           {statusConfig.label}
         </span>

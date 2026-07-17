@@ -120,14 +120,14 @@ const Navigation = () => {
     `flex items-center space-x-3 px-4 py-3 min-h-[44px] rounded-lg transition-all duration-200 ${
       isActive
         ? 'bg-unicorn-500/20 text-unicorn-400 border-l-2 border-unicorn-500'
-        : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
+        : 'text-muted hover:bg-elevated/50 hover:text-fg'
     }`;
 
   const NavSection = ({ title, icon: Icon, isCollapsed, onToggle, children }) => (
     <div className="mt-6">
       <button
         onClick={onToggle}
-        className="flex items-center justify-between w-full px-4 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider hover:text-slate-300 transition-colors group"
+        className="flex items-center justify-between w-full px-4 py-2 text-xs font-semibold text-muted uppercase tracking-wider hover:text-fg transition-colors group"
       >
         <div className="flex items-center space-x-2">
           {Icon && <Icon className="w-4 h-4" />}
@@ -155,13 +155,13 @@ const Navigation = () => {
     <>
       <button
         onClick={() => setIsMobileMenuOpen((prev) => !prev)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-3 bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-lg shadow-xl hover:bg-slate-700/90 transition-colors"
+        className="lg:hidden fixed top-4 left-4 z-50 p-3 bg-elevated/90 backdrop-blur-xl border border-border/50 rounded-lg shadow-xl hover:bg-elevated/90 transition-colors"
         aria-label="Toggle navigation menu"
       >
         {isMobileMenuOpen ? (
-          <CloseIcon className="w-6 h-6 text-white" />
+          <CloseIcon className="w-6 h-6 text-fg" />
         ) : (
-          <Menu className="w-6 h-6 text-white" />
+          <Menu className="w-6 h-6 text-fg" />
         )}
       </button>
 
@@ -174,20 +174,20 @@ const Navigation = () => {
       )}
 
       <aside
-        className={`fixed left-0 top-0 h-screen w-64 bg-slate-900/50 backdrop-blur-xl border-r border-slate-700/50 transition-transform duration-300 ease-in-out z-40 ${
+        className={`fixed left-0 top-0 h-screen w-64 bg-card/50 backdrop-blur-xl border-r border-border/50 transition-transform duration-300 ease-in-out z-40 ${
           isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         } lg:translate-x-0`}
       >
         <div className="flex flex-col h-full">
         {/* Logo */}
-        <div className="p-6 border-b border-slate-800/50">
+        <div className="p-6 border-b border-border/50">
           <div className="flex items-center space-x-3">
             <BrigadeLogo size={44} />
             <div>
               <h1 className="text-lg font-bold text-gradient">
                 Unicorn Brigade
               </h1>
-              <p className="text-xs text-slate-400">Agent Infrastructure</p>
+              <p className="text-xs text-muted">Agent Infrastructure</p>
             </div>
           </div>
           {import.meta.env.DEV && (
@@ -449,7 +449,7 @@ const Navigation = () => {
         </div>
 
         {/* User Profile */}
-        <div className="p-4 border-t border-slate-800/50">
+        <div className="p-4 border-t border-border/50">
           <UserProfile />
         </div>
 
@@ -459,7 +459,7 @@ const Navigation = () => {
               localStorage.removeItem('wizard-completed');
               window.location.reload();
             }}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-800/50"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-muted hover:text-fg transition-colors rounded-lg hover:bg-elevated/50"
           >
             <GraduationCap className="w-4 h-4" />
             <span>Getting Started Guide</span>
@@ -492,9 +492,9 @@ const Navigation = () => {
                 detail: 'Backend is not responding',
               },
               checking: {
-                card: 'bg-slate-500/10 border-slate-600/30',
+                card: 'bg-slate-500/10 border-border/30',
                 dot: 'bg-slate-400 animate-pulse',
-                text: 'text-slate-300',
+                text: 'text-muted',
                 label: 'Checking…',
                 detail: 'Contacting platform',
               },
@@ -506,7 +506,7 @@ const Navigation = () => {
                   <div className={`w-2 h-2 rounded-full ${s.dot}`}></div>
                   <div>
                     <p className={`text-sm font-medium ${s.text}`}>{s.label}</p>
-                    <p className="text-xs text-slate-400">{s.detail}</p>
+                    <p className="text-xs text-muted">{s.detail}</p>
                   </div>
                 </div>
               </div>

@@ -7,8 +7,8 @@ const VARIANTS = {
   primary:
     'bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white hover:from-unicorn-500 hover:to-unicorn-400 shadow-lg hover:shadow-unicorn-500/25',
   secondary:
-    'bg-slate-800/60 text-slate-200 border border-border/60 hover:bg-slate-700/60',
-  ghost: 'text-muted hover:text-white hover:bg-white/5',
+    'bg-elevated/60 text-fg border border-border/60 hover:bg-elevated',
+  ghost: 'text-muted hover:text-fg hover:bg-white/5',
   danger: 'bg-red-600 text-white hover:bg-red-700',
 };
 

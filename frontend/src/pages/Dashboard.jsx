@@ -242,13 +242,13 @@ const Dashboard = () => {
             <h1 className="text-4xl font-bold text-gradient">
               Unicorn Brigade
             </h1>
-            <p className="text-slate-400 mt-2 text-lg">Agent Infrastructure Platform</p>
+            <p className="text-muted mt-2 text-lg">Agent Infrastructure Platform</p>
           </div>
           <div className="flex items-center space-x-3">
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="p-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+              className="p-2 rounded-lg bg-elevated/50 border border-border/50 text-muted hover:text-fg hover:bg-elevated/50 transition-colors disabled:opacity-50"
               aria-label="Refresh dashboard"
               title="Refresh dashboard"
             >
@@ -291,21 +291,21 @@ const Dashboard = () => {
 
         {/* Quick Actions */}
         <div>
-          <h2 className="text-2xl font-bold text-white mb-4">Quick Actions</h2>
+          <h2 className="text-2xl font-bold text-fg mb-4">Quick Actions</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {quickActions.map((action, idx) => (
               <button
                 key={idx}
                 onClick={() => navigate(action.path)}
-                className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 hover:border-unicorn-500/50 transition-all group text-left"
+                className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6 hover:border-unicorn-500/50 transition-all group text-left"
               >
                 <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${action.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                   <action.icon className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-unicorn-400 transition-colors">
+                <h3 className="text-lg font-semibold text-fg mb-2 group-hover:text-unicorn-400 transition-colors">
                   {action.label}
                 </h3>
-                <p className="text-sm text-slate-400">{action.description}</p>
+                <p className="text-sm text-muted">{action.description}</p>
                 <ArrowRight className="w-5 h-5 text-unicorn-400 mt-3 opacity-0 group-hover:opacity-100 transition-opacity" />
               </button>
             ))}
@@ -316,8 +316,8 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Agent Domains */}
           <div className="lg:col-span-2">
-            <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-              <h2 className="text-xl font-bold text-white mb-4">Agent Domains</h2>
+            <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
+              <h2 className="text-xl font-bold text-fg mb-4">Agent Domains</h2>
               {loading ? (
                 <div className="space-y-4">
                   <CardSkeleton count={3} />
@@ -337,7 +337,7 @@ const Dashboard = () => {
                   renderValue={(item) => `${item.value} agents`}
                 />
               ) : (
-                <p className="text-center text-slate-400 py-8">No domains available</p>
+                <p className="text-center text-muted py-8">No domains available</p>
               )}
             </div>
           </div>
@@ -345,15 +345,15 @@ const Dashboard = () => {
           {/* Character Cards */}
           <div className="space-y-6">
             {/* The General Card */}
-            <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
+            <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
               <div className="flex items-center space-x-3 mb-4">
                 <GeneralAvatar size={64} />
                 <div>
-                  <h3 className="font-bold text-white">The General</h3>
+                  <h3 className="font-bold text-fg">The General</h3>
                   <p className="text-sm text-unicorn-400">Commanding</p>
                 </div>
               </div>
-              <p className="text-sm text-slate-400 mb-4">
+              <p className="text-sm text-muted mb-4">
                 Orchestrator of orchestrators. Managing agent workflows and coordinating the entire Unicorn Brigade.
               </p>
               <button
@@ -366,15 +366,15 @@ const Dashboard = () => {
             </div>
 
             {/* Gunny Card */}
-            <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
+            <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
               <div className="flex items-center space-x-3 mb-4">
                 <GunnyAvatar size={64} />
                 <div>
-                  <h3 className="font-bold text-white">Gunny</h3>
+                  <h3 className="font-bold text-fg">Gunny</h3>
                   <p className="text-sm text-emerald-400">Ready</p>
                 </div>
               </div>
-              <p className="text-sm text-slate-400 mb-4">
+              <p className="text-sm text-muted mb-4">
                 Your Agent Builder. Ready to help you create and deploy new AI agents through conversation.
               </p>
               <button
@@ -387,12 +387,12 @@ const Dashboard = () => {
             </div>
 
             {/* System Health */}
-            <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
+            <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-white">System Health</h3>
+                <h3 className="font-bold text-fg">System Health</h3>
                 <button
                   onClick={checkSystemHealth}
-                  className="p-1 rounded hover:bg-slate-700/50 text-slate-400 hover:text-white transition-colors"
+                  className="p-1 rounded hover:bg-elevated/50 text-muted hover:text-fg transition-colors"
                   aria-label="Refresh health status"
                   title="Refresh health status"
                 >
@@ -404,14 +404,14 @@ const Dashboard = () => {
                   <div className="flex items-center space-x-2">
                     <Server className={`w-4 h-4 ${
                       systemHealth.api === 'healthy' ? 'text-emerald-400' :
-                      systemHealth.api === 'checking' ? 'text-slate-400 animate-pulse' :
+                      systemHealth.api === 'checking' ? 'text-muted animate-pulse' :
                       'text-red-400'
                     }`} />
-                    <span className="text-sm text-slate-300">API Server</span>
+                    <span className="text-sm text-muted">API Server</span>
                   </div>
                   <span className={`text-xs ${
                     systemHealth.api === 'healthy' ? 'text-emerald-400' :
-                    systemHealth.api === 'checking' ? 'text-slate-400' :
+                    systemHealth.api === 'checking' ? 'text-muted' :
                     'text-red-400'
                   }`}>
                     {systemHealth.api === 'healthy' ? 'Healthy' :
@@ -422,14 +422,14 @@ const Dashboard = () => {
                   <div className="flex items-center space-x-2">
                     <Database className={`w-4 h-4 ${
                       systemHealth.database === 'healthy' ? 'text-emerald-400' :
-                      systemHealth.database === 'checking' ? 'text-slate-400 animate-pulse' :
+                      systemHealth.database === 'checking' ? 'text-muted animate-pulse' :
                       'text-red-400'
                     }`} />
-                    <span className="text-sm text-slate-300">Database</span>
+                    <span className="text-sm text-muted">Database</span>
                   </div>
                   <span className={`text-xs ${
                     systemHealth.database === 'healthy' ? 'text-emerald-400' :
-                    systemHealth.database === 'checking' ? 'text-slate-400' :
+                    systemHealth.database === 'checking' ? 'text-muted' :
                     'text-red-400'
                   }`}>
                     {systemHealth.database === 'healthy' ? 'Connected' :
@@ -441,15 +441,15 @@ const Dashboard = () => {
                     <Cpu className={`w-4 h-4 ${
                       systemHealth.llm === 'healthy' ? 'text-emerald-400' :
                       systemHealth.llm === 'warning' ? 'text-amber-400' :
-                      systemHealth.llm === 'checking' ? 'text-slate-400 animate-pulse' :
+                      systemHealth.llm === 'checking' ? 'text-muted animate-pulse' :
                       'text-red-400'
                     }`} />
-                    <span className="text-sm text-slate-300">LLM Providers</span>
+                    <span className="text-sm text-muted">LLM Providers</span>
                   </div>
                   <span className={`text-xs ${
                     systemHealth.llm === 'healthy' ? 'text-emerald-400' :
                     systemHealth.llm === 'warning' ? 'text-amber-400' :
-                    systemHealth.llm === 'checking' ? 'text-slate-400' :
+                    systemHealth.llm === 'checking' ? 'text-muted' :
                     'text-red-400'
                   }`}>
                     {systemHealth.llm === 'healthy' ? 'Active' :
@@ -461,14 +461,14 @@ const Dashboard = () => {
                   <div className="flex items-center space-x-2">
                     <MemoryStick className={`w-4 h-4 ${
                       systemHealth.memory === 'healthy' ? 'text-emerald-400' :
-                      systemHealth.memory === 'checking' ? 'text-slate-400 animate-pulse' :
+                      systemHealth.memory === 'checking' ? 'text-muted animate-pulse' :
                       'text-red-400'
                     }`} />
-                    <span className="text-sm text-slate-300">Memory Store</span>
+                    <span className="text-sm text-muted">Memory Store</span>
                   </div>
                   <span className={`text-xs ${
                     systemHealth.memory === 'healthy' ? 'text-emerald-400' :
-                    systemHealth.memory === 'checking' ? 'text-slate-400' :
+                    systemHealth.memory === 'checking' ? 'text-muted' :
                     'text-red-400'
                   }`}>
                     {systemHealth.memory === 'healthy' ? 'Ready' :
@@ -477,7 +477,7 @@ const Dashboard = () => {
                 </div>
                 <button
                   onClick={() => navigate('/monitoring')}
-                  className="w-full mt-3 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors text-sm flex items-center justify-center space-x-2"
+                  className="w-full mt-3 px-4 py-2 bg-elevated text-muted rounded-lg hover:bg-elevated transition-colors text-sm flex items-center justify-center space-x-2"
                 >
                   <Activity className="w-4 h-4" />
                   <span>View Detailed Metrics</span>
@@ -490,9 +490,9 @@ const Dashboard = () => {
         {/* Two-column bottom section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Recent Conversations */}
-          <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
+          <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white">Recent Conversations</h2>
+              <h2 className="text-xl font-bold text-fg">Recent Conversations</h2>
               <button
                 onClick={() => navigate('/chat')}
                 className="flex items-center space-x-1 text-sm text-unicorn-400 hover:text-unicorn-300 transition-colors"
@@ -510,7 +510,7 @@ const Dashboard = () => {
                 {recentConversations.map((conv, idx) => (
                   <div
                     key={conv.id || idx}
-                    className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer group"
+                    className="flex items-center justify-between p-3 rounded-lg bg-elevated/50 hover:bg-elevated transition-colors cursor-pointer group"
                     onClick={() => navigate(`/chat?conversation=${conv.id}`)}
                   >
                     <div className="flex items-center space-x-3 min-w-0">
@@ -518,27 +518,27 @@ const Dashboard = () => {
                         {conv.agent?.avatar || '🦄'}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium text-white truncate">
+                        <p className="font-medium text-fg truncate">
                           {conv.title || 'Untitled conversation'}
                         </p>
-                        <p className="text-sm text-slate-400 truncate">
+                        <p className="text-sm text-muted truncate">
                           {conv.agent?.displayName || conv.agent?.name || 'Agent'} • {conv.message_count || 0} messages
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-muted">
                         {conv.updated_at ? new Date(conv.updated_at).toLocaleDateString() : ''}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-unicorn-400 transition-colors" />
+                      <ChevronRight className="w-4 h-4 text-muted group-hover:text-unicorn-400 transition-colors" />
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="text-center py-8">
-                <MessageSquare className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                <p className="text-slate-400 mb-4">No conversations yet</p>
+                <MessageSquare className="w-12 h-12 text-muted mx-auto mb-3" />
+                <p className="text-muted mb-4">No conversations yet</p>
                 <button
                   onClick={() => navigate('/chat')}
                   className="px-4 py-2 bg-unicorn-600 hover:bg-unicorn-500 text-white rounded-lg transition-colors text-sm"
@@ -550,9 +550,9 @@ const Dashboard = () => {
           </div>
 
           {/* Recent Agents */}
-          <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
+          <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white">Recent Agents</h2>
+              <h2 className="text-xl font-bold text-fg">Recent Agents</h2>
               <button
                 onClick={() => navigate('/library')}
                 className="flex items-center space-x-1 text-sm text-unicorn-400 hover:text-unicorn-300 transition-colors"
@@ -570,7 +570,7 @@ const Dashboard = () => {
                 {stats.recentActivity.map((agent, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer group"
+                    className="flex items-center justify-between p-3 rounded-lg bg-elevated/50 hover:bg-elevated transition-colors cursor-pointer group"
                     onClick={() => navigate(`/agent/${agent.id}`)}
                   >
                     <div className="flex items-center space-x-3">
@@ -578,8 +578,8 @@ const Dashboard = () => {
                         {agent.avatar || '🦄'}
                       </div>
                       <div>
-                        <p className="font-medium text-white">{agent.displayName || agent.name}</p>
-                        <p className="text-sm text-slate-400">
+                        <p className="font-medium text-fg">{agent.displayName || agent.name}</p>
+                        <p className="text-sm text-muted">
                           {agent.domain} • {(agent.tools?.length || agent.agentTools?.length || 0)} tools
                         </p>
                       </div>
@@ -587,7 +587,7 @@ const Dashboard = () => {
                     <div className="flex items-center space-x-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs ${
                         agent.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' :
-                        'bg-slate-500/20 text-slate-400'
+                        'bg-slate-500/20 text-muted'
                       }`}>
                         {agent.status}
                       </span>
@@ -607,7 +607,7 @@ const Dashboard = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-center text-slate-400 py-8">No agents available</p>
+              <p className="text-center text-muted py-8">No agents available</p>
             )}
           </div>
         </div>

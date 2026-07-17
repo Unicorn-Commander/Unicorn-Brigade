@@ -172,7 +172,7 @@ export default function Register() {
   const passwordStrength = getPasswordStrength();
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-bg via-surface to-bg relative overflow-hidden">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-unicorn-500/20 rounded-full blur-3xl animate-pulse"></div>
@@ -181,7 +181,7 @@ export default function Register() {
 
       {/* Registration Card */}
       <div className="relative z-10 w-full max-w-md mx-4">
-        <div className="glass border border-slate-700/50 rounded-2xl p-8 shadow-2xl">
+        <div className="glass border border-border/50 rounded-2xl p-8 shadow-2xl">
           {/* Logo & Title */}
           <div className="text-center mb-6">
             <div className="flex justify-center mb-4">
@@ -194,7 +194,7 @@ export default function Register() {
               </span>
             </h1>
 
-            <p className="text-slate-400 text-sm">
+            <p className="text-muted text-sm">
               {registerDisabled
                 ? 'Sign in with your organization account'
                 : 'Create your account to get started'}
@@ -271,7 +271,7 @@ export default function Register() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Name Input */}
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-slate-300 mb-1">
+              <label htmlFor="name" className="block text-sm font-medium text-muted mb-1">
                 Full Name
               </label>
               <input
@@ -280,8 +280,8 @@ export default function Register() {
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
-                className={`w-full px-4 py-3 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition ${
-                  validationErrors.name ? 'border-red-500' : 'border-slate-600'
+                className={`w-full px-4 py-3 bg-elevated/50 border rounded-lg text-fg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition ${
+                  validationErrors.name ? 'border-red-500' : 'border-border'
                 }`}
                 placeholder="Enter your name"
                 disabled={isSubmitting}
@@ -293,7 +293,7 @@ export default function Register() {
 
             {/* Email Input */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1">
+              <label htmlFor="email" className="block text-sm font-medium text-muted mb-1">
                 Email Address
               </label>
               <input
@@ -302,8 +302,8 @@ export default function Register() {
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
-                className={`w-full px-4 py-3 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition ${
-                  validationErrors.email ? 'border-red-500' : 'border-slate-600'
+                className={`w-full px-4 py-3 bg-elevated/50 border rounded-lg text-fg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition ${
+                  validationErrors.email ? 'border-red-500' : 'border-border'
                 }`}
                 placeholder="you@example.com"
                 disabled={isSubmitting}
@@ -315,7 +315,7 @@ export default function Register() {
 
             {/* Password Input */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1">
+              <label htmlFor="password" className="block text-sm font-medium text-muted mb-1">
                 Password
               </label>
               <div className="relative">
@@ -325,8 +325,8 @@ export default function Register() {
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
-                  className={`w-full px-4 py-3 pr-12 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition ${
-                    validationErrors.password ? 'border-red-500' : 'border-slate-600'
+                  className={`w-full px-4 py-3 pr-12 bg-elevated/50 border rounded-lg text-fg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition ${
+                    validationErrors.password ? 'border-red-500' : 'border-border'
                   }`}
                   placeholder="Min 8 chars, letters & numbers"
                   disabled={isSubmitting}
@@ -336,7 +336,7 @@ export default function Register() {
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                   aria-pressed={showPassword}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -352,13 +352,13 @@ export default function Register() {
               {formData.password && (
                 <div className="mt-2">
                   <div className="flex items-center space-x-2">
-                    <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div className="flex-1 h-1.5 bg-elevated rounded-full overflow-hidden">
                       <div
                         className={`h-full ${passwordStrength.color} transition-all duration-300`}
                         style={{ width: `${(passwordStrength.strength / 5) * 100}%` }}
                       />
                     </div>
-                    <span className="text-xs text-slate-400">{passwordStrength.label}</span>
+                    <span className="text-xs text-muted">{passwordStrength.label}</span>
                   </div>
                 </div>
               )}
@@ -366,7 +366,7 @@ export default function Register() {
 
             {/* Confirm Password Input */}
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-300 mb-1">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-muted mb-1">
                 Confirm Password
               </label>
               <div className="relative">
@@ -376,8 +376,8 @@ export default function Register() {
                   name="confirmPassword"
                   value={formData.confirmPassword}
                   onChange={handleChange}
-                  className={`w-full px-4 py-3 pr-12 bg-slate-800/50 border rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition ${
-                    validationErrors.confirmPassword ? 'border-red-500' : 'border-slate-600'
+                  className={`w-full px-4 py-3 pr-12 bg-elevated/50 border rounded-lg text-fg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500 transition ${
+                    validationErrors.confirmPassword ? 'border-red-500' : 'border-border'
                   }`}
                   placeholder="Confirm your password"
                   disabled={isSubmitting}
@@ -387,7 +387,7 @@ export default function Register() {
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                   aria-pressed={showConfirmPassword}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
                 >
                   {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -428,7 +428,7 @@ export default function Register() {
 
           {/* Login Link */}
           <div className="mt-6 text-center">
-            <p className="text-slate-400 text-sm">
+            <p className="text-muted text-sm">
               Already have an account?{' '}
               <Link
                 to="/login"
@@ -440,27 +440,27 @@ export default function Register() {
           </div>
 
           {/* Divider */}
-          <div className="my-6 border-t border-slate-700/50"></div>
+          <div className="my-6 border-t border-border/50"></div>
 
           {/* Features */}
           <div className="space-y-3">
-            <div className="flex items-center space-x-3 text-slate-400 text-sm">
+            <div className="flex items-center space-x-3 text-muted text-sm">
               <Sparkles className="w-4 h-4 text-unicorn-400" />
               <span>Build custom AI agents with conversational interface</span>
             </div>
-            <div className="flex items-center space-x-3 text-slate-400 text-sm">
+            <div className="flex items-center space-x-3 text-muted text-sm">
               <Zap className="w-4 h-4 text-cyan-400" />
               <span>Connect MCP servers and 20+ built-in tools</span>
             </div>
-            <div className="flex items-center space-x-3 text-slate-400 text-sm">
+            <div className="flex items-center space-x-3 text-muted text-sm">
               <Shield className="w-4 h-4 text-green-400" />
               <span>Enterprise-grade security and authentication</span>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="mt-6 pt-6 border-t border-slate-700/50 text-center">
-            <p className="text-slate-400 text-xs">
+          <div className="mt-6 pt-6 border-t border-border/50 text-center">
+            <p className="text-muted text-xs">
               Part of{' '}
               <span className="text-unicorn-400 font-semibold">
                 Unicorn Commander Ecosystem
@@ -470,7 +470,7 @@ export default function Register() {
         </div>
 
         {/* Platform Info */}
-        <div className="mt-6 text-center text-slate-400 text-xs">
+        <div className="mt-6 text-center text-muted text-xs">
           <p>Magic Unicorn Unconventional Technology & Stuff Inc</p>
           <p className="mt-1">
             <a href="https://unicorncommander.com" target="_blank" rel="noopener noreferrer" className="text-unicorn-400 hover:text-unicorn-300 transition">

@@ -14,10 +14,10 @@ const MessageBubble = memo(function MessageBubble({ m }) {
       <div
         className={`inline-block max-w-[88%] break-words rounded-xl px-3 py-2 text-left text-sm ${
           isUser
-            ? 'whitespace-pre-wrap bg-unicorn-500/20 text-white'
+            ? 'whitespace-pre-wrap bg-unicorn-500/20 text-fg'
             : m.isError
               ? 'bg-red-500/15 text-red-200'
-              : 'bg-slate-800/70 text-slate-100'
+              : 'bg-elevated/70 text-fg'
         }`}
       >
         {(m.toolCalls || []).map((tc, i) => (
@@ -64,7 +64,7 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3" role="log" aria-live="polite" aria-atomic="false">
         {messages.length === 0 && (
-          <p className="mt-4 px-2 text-center text-xs text-slate-400">
+          <p className="mt-4 px-2 text-center text-xs text-muted">
             {agent?.bio || `Start chatting with ${agent?.displayName || 'this agent'}.`}
           </p>
         )}
@@ -72,14 +72,14 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
           <MessageBubble key={m.id} m={m} />
         ))}
         {isThinking && (
-          <div className="flex items-center gap-2 text-xs text-slate-400">
+          <div className="flex items-center gap-2 text-xs text-muted">
             <Loader2 className="h-3 w-3 animate-spin" />
             {currentTool ? `running ${currentTool}…` : 'thinking…'}
           </div>
         )}
       </div>
 
-      <div className="border-t border-slate-800 p-2">
+      <div className="border-t border-border p-2">
         <div className="flex items-end gap-2">
           <textarea
             value={input}
@@ -95,12 +95,12 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
             }}
             rows={1}
             placeholder={`Message ${agent?.displayName || 'agent'}…`}
-            className="max-h-24 flex-1 resize-none rounded-lg bg-slate-800/70 px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-unicorn-500/50"
+            className="max-h-24 flex-1 resize-none rounded-lg bg-elevated/70 px-3 py-2 text-sm text-fg placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-unicorn-500/50"
           />
           {isStreaming ? (
             <button
               onClick={() => onAbort?.()}
-              className="rounded-lg bg-slate-700 p-2 text-white hover:bg-slate-600"
+              className="rounded-lg bg-elevated p-2 text-fg hover:bg-elevated"
               title="Stop generating (Esc)"
               aria-label="Stop generating"
             >

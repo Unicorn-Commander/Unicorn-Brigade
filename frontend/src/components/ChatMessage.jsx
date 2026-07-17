@@ -23,7 +23,7 @@ const ChatMessage = ({ message }) => {
 
         <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
           {!isUser && message.agent && (
-            <span className="text-xs text-slate-400 mb-1">{message.agent.name}</span>
+            <span className="text-xs text-muted mb-1">{message.agent.name}</span>
           )}
 
           <div className={`rounded-lg px-4 py-3 ${
@@ -44,7 +44,7 @@ const ChatMessage = ({ message }) => {
                       {String(children).replace(/\n$/, '')}
                     </SyntaxHighlighter>
                   ) : (
-                    <code className="bg-slate-800 px-1 py-0.5 rounded text-cyan-400" {...props}>
+                    <code className="bg-elevated px-1 py-0.5 rounded text-cyan-400" {...props}>
                       {children}
                     </code>
                   );
@@ -55,7 +55,7 @@ const ChatMessage = ({ message }) => {
             </ReactMarkdown>
           </div>
 
-          <span className="text-xs text-slate-600 mt-1">
+          <span className="text-xs text-muted mt-1">
             {new Date(message.timestamp).toLocaleTimeString()}
           </span>
         </div>

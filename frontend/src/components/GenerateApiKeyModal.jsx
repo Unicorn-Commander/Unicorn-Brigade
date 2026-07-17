@@ -206,6 +206,7 @@ const GenerateApiKeyModal = ({ agentId, onSuccess, onClose }) => {
               <span>Expiration</span>
             </label>
             <select
+              aria-label="Key expiration"
               value={form.expiresAt || ''}
               onChange={(e) => setForm({ ...form, expiresAt: e.target.value || null })}
               className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent outline-none"

@@ -104,6 +104,7 @@ const ModelSelector = ({
     <div className="space-y-2">
       <div className="relative">
         <select
+          aria-label="Model"
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled || loading}

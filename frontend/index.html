@@ -8,8 +8,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0b1020" />
     <title>Unicorn Brigade - AI Agent Factory</title>
+    <!-- Resolve the theme before first paint to avoid a flash. Reads the saved
+         preference (brigade-preferences.theme: 'system'|'light'|'dark'); falls
+         back to the OS prefers-color-scheme. Kept in sync at runtime by
+         src/utils/theme.js. -->
+    <script>
+      (function () {
+        try {
+          var prefs = JSON.parse(localStorage.getItem('brigade-preferences') || '{}');
+          var choice = prefs.theme || 'system';
+          var dark =
+            choice === 'dark' ||
+            (choice !== 'light' &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.setAttribute('data-theme', dark ? 'dark' : 'light');
+          root.classList.toggle('dark', dark);
+        } catch (e) {
+          /* default markup (class="dark") already renders dark */
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-slate-900 text-white">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

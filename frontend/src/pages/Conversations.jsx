@@ -172,6 +172,7 @@ const Conversations = () => {
             <div className="flex items-center space-x-2">
               <ArrowUpDown className="w-4 h-4 text-slate-400" />
               <select
+                aria-label="Sort conversations"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
                 className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
