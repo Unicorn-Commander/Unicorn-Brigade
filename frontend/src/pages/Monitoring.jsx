@@ -15,6 +15,12 @@ import {
 } from 'lucide-react';
 import { apiJson } from '../services/http';
 import Breadcrumbs from '../components/Breadcrumbs';
+import TimeSeriesChart from '../components/ui/TimeSeriesChart';
+
+// Rolling window of live resource samples (~10 min at the 15s poll interval).
+const MAX_HISTORY = 40;
+const sampleTime = () =>
+  new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 // Icons + display names for the backend's /monitoring/services entries.
 const SERVICE_ICONS = {
@@ -70,6 +76,8 @@ const Monitoring = () => {
     disk_percent: 0
   });
   const [serviceChecks, setServiceChecks] = useState([]);
+  // Live time-series accumulated from real /stats resource samples (no mock data).
+  const [resourceHistory, setResourceHistory] = useState([]);
   const [scheduledRuns, setScheduledRuns] = useState([]);
   const [runsError, setRunsError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -112,6 +120,19 @@ const Monitoring = () => {
         });
         if (stats.resources) {
           setResources(stats.resources);
+          const r = stats.resources;
+          if (r.cpu_percent != null || r.memory_percent != null) {
+            setResourceHistory((prev) =>
+              [
+                ...prev,
+                {
+                  t: sampleTime(),
+                  cpu: Number(r.cpu_percent) || 0,
+                  mem: Number(r.memory_percent) || 0,
+                },
+              ].slice(-MAX_HISTORY)
+            );
+          }
         }
       } else {
         console.error('Failed to load monitoring data:', statsRes.reason);
@@ -162,30 +183,31 @@ const Monitoring = () => {
     }))
   ];
 
+  // Static color classes (no dynamic `text-${color}` — Tailwind can't see those).
   const performanceMetrics = [
     {
       label: 'Total Agents',
       value: metrics.totalAgents,
       icon: Activity,
-      color: 'purple'
+      colorClass: 'text-unicorn-400'
     },
     {
       label: 'Active Agents',
       value: metrics.activeAgents,
       icon: CheckCircle,
-      color: 'emerald'
+      colorClass: 'text-emerald-400'
     },
     {
       label: 'Models Available',
       value: metrics.totalModels,
       icon: Zap,
-      color: 'orange'
+      colorClass: 'text-orange-400'
     },
     {
       label: 'Tools Registered',
       value: metrics.totalTools,
       icon: BarChart3,
-      color: 'blue'
+      colorClass: 'text-blue-400'
     }
   ];
 
@@ -196,7 +218,7 @@ const Monitoring = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold text-gradient">
               System Monitoring
             </h1>
             <p className="text-slate-400 mt-1">
@@ -245,7 +267,7 @@ const Monitoring = () => {
           {performanceMetrics.map((metric, idx) => (
             <div key={idx} className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
               <div className="flex items-center justify-between mb-4">
-                <metric.icon className={`w-8 h-8 text-${metric.color}-400`} />
+                <metric.icon className={`w-8 h-8 ${metric.colorClass}`} />
               </div>
               <p className="text-3xl font-bold text-white mb-1">{metric.value}</p>
               <p className="text-sm text-slate-400">{metric.label}</p>
@@ -308,6 +330,27 @@ const Monitoring = () => {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Resource Utilization over time — live samples from /stats */}
+        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-white">Resource Utilization</h2>
+            <span className="text-xs text-slate-500">
+              Live · sampled every 15s{resourceHistory.length > 1 ? ` · ${resourceHistory.length} points` : ''}
+            </span>
+          </div>
+          <TimeSeriesChart
+            series={[
+              { key: 'cpu', label: 'CPU', color: 'var(--chart-1)', data: resourceHistory.map((p) => p.cpu) },
+              { key: 'mem', label: 'Memory', color: 'var(--chart-2)', data: resourceHistory.map((p) => p.mem) },
+            ]}
+            labels={resourceHistory.map((p) => p.t)}
+            yMax={100}
+            unit="%"
+            height={220}
+            emptyLabel="Collecting live samples… (first points appear within ~30s)"
+          />
         </div>
 
         {/* Resource Usage */}

@@ -24,6 +24,17 @@
     --card-foreground: 210 40% 98%;
     --primary: 322.8 84.7% 59.8%;
     --primary-foreground: 210 40% 98%;
+
+    /*
+     * Data-viz palette (validated via the dataviz skill on the dark chart
+     * surface ≈ slate-900). Categorical series are a CVD-safe blue+magenta
+     * pair (worst adjacent CVD ΔE 15.9). These flip under [data-theme="light"].
+     */
+    --chart-1: #3987e5;                     /* series 1 — blue    (CPU)    */
+    --chart-2: #d55181;                     /* series 2 — magenta (Memory) */
+    --chart-3: #199e70;                     /* series 3 — aqua             */
+    --chart-grid: rgba(148, 163, 184, 0.14);
+    --chart-axis: #94a3b8;                  /* slate-400 — axis/ticks      */
   }
 }
 

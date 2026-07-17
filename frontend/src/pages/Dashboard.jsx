@@ -25,7 +25,15 @@ import {
   Wifi,
   WifiOff,
   ChevronRight,
-  Plus
+  Plus,
+  DollarSign,
+  Scale,
+  Stethoscope,
+  Code2,
+  Search,
+  Target,
+  Award,
+  Eye
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
@@ -34,6 +42,19 @@ import { GeneralAvatar, GunnyAvatar } from '../components/UnicornBrigadeLogo';
 import CardSkeleton from '../components/skeletons/CardSkeleton';
 import StatsSkeleton from '../components/skeletons/StatsSkeleton';
 import StatCard from '../components/ui/StatCard';
+import BarList from '../components/ui/BarList';
+
+// Domain → lucide mark (replaces the decorative emoji icons).
+const DOMAIN_ICONS = {
+  financial: DollarSign,
+  legal: Scale,
+  medical: Stethoscope,
+  technology: Code2,
+  investigation: Search,
+  orchestration: Target,
+  meta: Award,
+  intelligence: Eye,
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -300,44 +321,22 @@ const Dashboard = () => {
                 <div className="space-y-4">
                   <CardSkeleton count={3} />
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {stats.domains.map((domain, idx) => {
-                    const domainIcons = {
-                      financial: '💰',
-                      legal: '⚖️',
-                      medical: '🏥',
-                      technology: '💻',
-                      investigation: '🔍',
-                      orchestration: '🎯',
-                      meta: '🎖️',
-                      intelligence: '🕵️'
+              ) : stats.domains.length > 0 ? (
+                <BarList
+                  items={stats.domains.map((domain) => {
+                    const Icon = DOMAIN_ICONS[domain.name] || Bot;
+                    return {
+                      key: domain.name,
+                      label: domain.name,
+                      value: domain.count,
+                      icon: <Icon className="w-4 h-4" />,
+                      onClick: () => navigate(`/library?domain=${encodeURIComponent(domain.name)}`),
                     };
-                    const icon = domainIcons[domain.name] || '🤖';
-                    const percentage = ((domain.count / stats.totalAgents) * 100).toFixed(0);
-
-                    return (
-                      <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 hover:bg-slate-800 transition-colors">
-                        <div className="flex items-center space-x-3">
-                          <span className="text-2xl">{icon}</span>
-                          <div>
-                            <p className="font-medium text-white capitalize">{domain.name}</p>
-                            <p className="text-sm text-slate-400">{domain.count} agents</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-unicorn-500 to-unicorn-400"
-                              style={{ width: `${percentage}%` }}
-                            ></div>
-                          </div>
-                          <span className="text-sm font-medium text-slate-300">{percentage}%</span>
-                        </div>
-                      </div>
-                    );
                   })}
-                </div>
+                  renderValue={(item) => `${item.value} agents`}
+                />
+              ) : (
+                <p className="text-center text-slate-400 py-8">No domains available</p>
               )}
             </div>
           </div>
