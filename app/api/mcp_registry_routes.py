@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Optional, Annotated
 
 from app.mcp.registry import mcp_registry, MCPServer, MCPTransport
 from app.mcp.sandbox_executor import sandbox_executor, ExecutionResult
-from app.auth.middleware import require_admin, require_operator, AuthUser
+from app.auth.middleware import require_admin, require_operator, require_api_key, AuthUser
 from app.security.rate_limit import rate_limit
 from app.security.request_limits import max_body_size
 
@@ -51,20 +51,27 @@ class CodeExecuteRequest(BaseModel):
 # Endpoints
 
 @router.get("/servers")
-async def list_servers():
-    """List all available MCP servers"""
+async def list_servers(
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
+    """List all available MCP servers (AUTH REQUIRED — server catalog is internal topology)"""
     return {"servers": mcp_registry.list_available()}
 
 
 @router.get("/servers/running")
-async def list_running_servers():
-    """List currently running MCP servers"""
+async def list_running_servers(
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
+    """List currently running MCP servers (AUTH REQUIRED)"""
     return {"servers": mcp_registry.list_running()}
 
 
 @router.get("/servers/{name}")
-async def get_server(name: str):
-    """Get details of a specific MCP server"""
+async def get_server(
+    name: str,
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
+    """Get details of a specific MCP server (AUTH REQUIRED — leaks command/env/capabilities)"""
     server = mcp_registry.get_server(name)
     if not server:
         raise HTTPException(404, f"Server not found: {name}")
@@ -194,8 +201,10 @@ async def call_tool(
 # Sandbox Endpoints
 
 @router.get("/sandbox/status")
-async def get_sandbox_status():
-    """Get sandbox executor status"""
+async def get_sandbox_status(
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
+    """Get sandbox executor status (AUTH REQUIRED — reveals docker/e2b backend availability)"""
     status = sandbox_executor.get_status()
 
     # Check availability
@@ -264,8 +273,10 @@ async def execute_code_with_fallback(
 
 # Health check for MCP subsystem
 @router.get("/health")
-async def mcp_health():
-    """Health check for MCP registry and sandbox"""
+async def mcp_health(
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
+    """Health check for MCP registry and sandbox (AUTH REQUIRED — leaks server/running counts)"""
     docker_ok = await sandbox_executor.check_docker()
     e2b_ok = await sandbox_executor.check_e2b()
     running_servers = len(mcp_registry.list_running())

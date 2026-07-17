@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import os
 
-from app.auth.middleware import require_admin, AuthUser
+from app.auth.middleware import require_admin, require_api_key, AuthUser
 
 _PUBLIC_BASE_URL = os.environ.get("BRIGADE_URL") or os.environ.get("BRIGADE_PUBLIC_URL") or "http://localhost:8100"
 
@@ -86,8 +86,16 @@ class MCPProtocolRequest(BaseModel):
 # ---- Endpoints ----
 
 @router.get("/mcp/info")
-async def get_mcp_info():
-    """Get MCP server info and capabilities."""
+async def get_mcp_info(
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
+    """Get MCP server info and capabilities (AUTH REQUIRED — internal catalog).
+
+    NOTE: the customer-facing, protocol-compliant MCP discovery surface is the
+    federation gateway at ``/mcp`` (federation_mcp_router, key-authed). These
+    legacy ``/api/v1/mcp/*`` catalog reads leak the full tool inventory +
+    parameter schemas, so on an internet-reachable prod they require a key.
+    """
     _ensure_tools_registered()
 
     return {
@@ -106,8 +114,10 @@ async def get_mcp_info():
 
 
 @router.get("/mcp/tools/list")
-async def list_mcp_tools():
-    """List all available MCP tools."""
+async def list_mcp_tools(
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
+    """List all available MCP tools (AUTH REQUIRED — leaks tool inventory + schemas)."""
     _ensure_tools_registered()
 
     tools = []
@@ -133,8 +143,10 @@ async def list_mcp_tools():
 
 
 @router.get("/mcp/tools/openai")
-async def list_mcp_tools_openai_format():
-    """List tools in OpenAI function calling format."""
+async def list_mcp_tools_openai_format(
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
+    """List tools in OpenAI function calling format (AUTH REQUIRED)."""
     _ensure_tools_registered()
 
     return {
@@ -144,8 +156,10 @@ async def list_mcp_tools_openai_format():
 
 
 @router.get("/mcp/tools/anthropic")
-async def list_mcp_tools_anthropic_format():
-    """List tools in Anthropic tool use format."""
+async def list_mcp_tools_anthropic_format(
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
+    """List tools in Anthropic tool use format (AUTH REQUIRED)."""
     _ensure_tools_registered()
 
     return {
@@ -200,8 +214,10 @@ async def call_mcp_tool(
 
 
 @router.get("/mcp/resources/list")
-async def list_mcp_resources():
-    """List available MCP resources."""
+async def list_mcp_resources(
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
+    """List available MCP resources (AUTH REQUIRED)."""
     _ensure_tools_registered()
 
     return {
@@ -236,9 +252,11 @@ async def handle_mcp_request(
 # ---- Claude Desktop / MCP Server Configuration ----
 
 @router.get("/mcp/config")
-async def get_mcp_config():
+async def get_mcp_config(
+    _auth: Annotated[AuthUser, Depends(require_api_key)],
+):
     """
-    Get MCP server configuration for Claude Desktop.
+    Get MCP server configuration for Claude Desktop (AUTH REQUIRED — lists availableTools).
 
     Returns the configuration needed to add Brigade as an MCP server in Claude Desktop.
     """

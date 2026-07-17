@@ -74,7 +74,6 @@ PUBLIC_PATHS: Set[str] = {
 
     # Health checks
     "/api/v1/health",
-    "/api/v1/mcp/registry/health",
     "/api/v1/voice/health",
     "/api/v1/langflow/health",
     "/api/v1/slack/health",
@@ -88,9 +87,11 @@ PUBLIC_PATHS: Set[str] = {
     "/api/v1/a2a/agents",
     "/api/v1/a2a/discover",
 
-    # MCP info (public for protocol compliance)
-    "/api/v1/mcp/info",
-    "/api/v1/mcp/tools/list",
+    # MCP catalog: NOT public. The protocol-compliant, customer-facing MCP
+    # discovery surface is the key-authed federation gateway at /mcp
+    # (federation_mcp_router). The legacy /api/v1/mcp/* catalog reads leak the
+    # full tool inventory + parameter schemas, so on an internet-reachable prod
+    # (FEDERATION_ONLY=false) they now require an api_key (BR-6.2 / BR-0.9).
 
     # Read-only stats
     "/api/v1/stats",

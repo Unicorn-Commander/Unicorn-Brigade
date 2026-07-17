@@ -76,11 +76,32 @@ from app.config import FEDERATION_ONLY, INTERNAL_AGENTS_ENABLED
 from app.security.headers import SecurityHeadersMiddleware
 from app.security.limits import RequestSizeLimitMiddleware
 from app.security.ratelimit import RateLimitMiddleware
-from app.security.bootstrap import assert_auth_bypass_safe
+from app.security.bootstrap import assert_auth_bypass_safe, is_production_env
 # ───────────────────────────────────────────────────────────────────────────
 
 # Load environment variables
 load_dotenv()
+
+
+def _api_docs_exposed() -> bool:
+    """Whether to serve the interactive API docs (/docs, /redoc, /openapi.json).
+
+    BR-0.9: prod runs FEDERATION_ONLY=false and is internet-reachable, so the
+    auto-generated Swagger/ReDoc pages would publish the ENTIRE internal API
+    surface (every internal router: medical, monitoring, orchestration, …) to
+    anonymous callers. Lock them down by default in a production environment.
+
+    Escape hatch: ``EXPOSE_API_DOCS=true`` force-enables them (e.g. an internal
+    instance behind a VPN); ``EXPOSE_API_DOCS=false`` force-disables even in dev.
+    When unset, docs are ON in dev/test and OFF in production.
+    """
+    flag = os.getenv("EXPOSE_API_DOCS")
+    if flag is not None and flag.strip() != "":
+        return flag.strip().lower() in ("1", "true", "yes", "on")
+    return not is_production_env()
+
+
+_DOCS_ENABLED = _api_docs_exposed()
 
 # Configure logging — JSON formatter + request-id correlation filter.
 # Falls back to a human-readable format when LOG_JSON=false.
@@ -240,8 +261,18 @@ app = FastAPI(
     title=os.getenv("API_TITLE", "Unicorn Brigade API"),
     version=os.getenv("API_VERSION", "1.17.0"),
     description="Multi-Agent Orchestration System with LangGraph + Graphiti/FalkorDB",
-    lifespan=lifespan
+    lifespan=lifespan,
+    # BR-0.9: disable interactive API docs on internet-reachable prod (see
+    # _api_docs_exposed). None => the /docs, /redoc, and /openapi.json routes
+    # are not registered, so they 404 instead of publishing the full API surface.
+    docs_url="/docs" if _DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DOCS_ENABLED else None,
 )
+if not _DOCS_ENABLED:
+    logger.info(
+        "API docs DISABLED (production lockdown; set EXPOSE_API_DOCS=true to enable)"
+    )
 
 # Standardize HTTPException responses to a consistent detail format
 @app.exception_handler(HTTPException)

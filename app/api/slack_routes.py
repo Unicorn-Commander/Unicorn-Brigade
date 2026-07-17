@@ -42,6 +42,49 @@ def init_slack_routes(llm_client: OpsCenterLLMClient):
     logger.info("Slack routes initialized")
 
 
+async def verify_slack_signature(request: Request) -> bytes:
+    """Read the raw request body and enforce the Slack signing-secret HMAC.
+
+    The Slack webhook endpoints (``/events``, ``/interactions``, ``/commands``)
+    are intentionally PUBLIC (no auth dependency — see roles.PUBLIC_PATHS); the
+    signing-secret HMAC is their ONLY authenticity check. An unset secret in a
+    production environment therefore means the endpoint is wide open, so we FAIL
+    CLOSED (mirrors the github/slack-events webhook fix): when a secret is set we
+    require a valid signature; when it is unset we reject in a production env and
+    only skip verification in dev/test.
+
+    Returns the raw body bytes so callers can parse it (JSON or form) without
+    re-reading the stream — Starlette caches the body, so a subsequent
+    ``request.form()`` / ``json.loads`` on the returned bytes is safe.
+    """
+    body = await request.body()
+
+    timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
+    signature = request.headers.get("X-Slack-Signature", "")
+
+    slack_client = get_slack_client()
+    if slack_client.signing_secret:
+        if not slack_client.verify_request(body, timestamp, signature):
+            logger.warning("Invalid Slack signature")
+            raise HTTPException(status_code=401, detail="Invalid signature")
+    elif is_production_env():
+        logger.error(
+            "Slack signing secret not configured in a production environment - "
+            "rejecting unverifiable webhook (set SLACK_SIGNING_SECRET)"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Slack signing secret not configured",
+        )
+    else:
+        logger.warning(
+            "Slack signing secret not configured - skipping verification "
+            "(non-production environment)"
+        )
+
+    return body
+
+
 # ==================== Request Models ====================
 
 
@@ -99,38 +142,9 @@ async def slack_events(request: Request, background_tasks: BackgroundTasks):
     Returns:
         Challenge response for verification, or acknowledgment for events
     """
-    # Get raw body for signature verification
-    body = await request.body()
-
-    # Get headers for signature verification
-    timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
-    signature = request.headers.get("X-Slack-Signature", "")
-
-    # Verify signature. The Slack webhook endpoints are intentionally PUBLIC (no
-    # auth dependency — see roles.PUBLIC_PATHS); the signing-secret HMAC is their
-    # ONLY authenticity check. So an unset secret in production means the endpoint
-    # is wide open. FAIL CLOSED in prod (mirrors the github webhook fix): when a
-    # secret is set we require a valid signature; when it is unset we reject in a
-    # production env and only skip verification in dev/test.
-    slack_client = get_slack_client()
-    if slack_client.signing_secret:
-        if not slack_client.verify_request(body, timestamp, signature):
-            logger.warning("Invalid Slack signature")
-            raise HTTPException(status_code=401, detail="Invalid signature")
-    elif is_production_env():
-        logger.error(
-            "Slack signing secret not configured in a production environment - "
-            "rejecting unverifiable webhook (set SLACK_SIGNING_SECRET)"
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="Slack signing secret not configured",
-        )
-    else:
-        logger.warning(
-            "Slack signing secret not configured - skipping verification "
-            "(non-production environment)"
-        )
+    # Verify the Slack signing-secret HMAC (fail-closed in prod). Returns the raw
+    # body so we can parse it without re-reading the stream.
+    body = await verify_slack_signature(request)
 
     # Parse payload
     try:
@@ -182,6 +196,12 @@ async def slack_interactions(request: Request, background_tasks: BackgroundTasks
     Returns:
         Immediate response or acknowledgment
     """
+    # Authenticity check FIRST — interactions carry no auth dep, so the Slack
+    # signing-secret HMAC is the only thing preventing a forged button/modal
+    # callback. Reading the raw body here also primes Starlette's body cache so
+    # the subsequent request.form() parse works.
+    await verify_slack_signature(request)
+
     # Get form data (interactions come as form-encoded)
     form_data = await request.form()
     payload_str = form_data.get("payload", "{}")
@@ -219,6 +239,12 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
     Returns:
         Immediate ephemeral response, with follow-up via response_url
     """
+    # Authenticity check FIRST — a forged slash command would otherwise let anyone
+    # drive the LLM (and the response_url POST-back) unauthenticated. The Slack
+    # signing-secret HMAC is the only gate. Priming the body cache also lets the
+    # subsequent request.form() parse succeed.
+    await verify_slack_signature(request)
+
     # Parse form data
     form_data = await request.form()
 
