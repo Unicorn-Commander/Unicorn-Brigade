@@ -118,7 +118,7 @@ services:
       KEYCLOAK_URL: https://auth.unicorncommander.ai
       KEYCLOAK_REALM: uchub
       KEYCLOAK_CLIENT_ID: brigade
-      KEYCLOAK_CLIENT_SECRET: REMOVED
+      KEYCLOAK_CLIENT_SECRET: REPLACE_WITH_KEYCLOAK_CLIENT_SECRET
 
       # Public URLs
       BRIGADE_URL: https://brigade.unicorncommander.ai
@@ -286,7 +286,7 @@ REDIS_URL=redis://unicorn-redis:6379
 KEYCLOAK_URL=https://auth.unicorncommander.ai
 KEYCLOAK_REALM=uchub
 KEYCLOAK_CLIENT_ID=brigade
-KEYCLOAK_CLIENT_SECRET=REMOVED
+KEYCLOAK_CLIENT_SECRET=REPLACE_WITH_KEYCLOAK_CLIENT_SECRET
 
 # Public URLs
 BRIGADE_URL=https://brigade.unicorncommander.ai

@@ -191,7 +191,7 @@ OLLAMA_NUM_GPU=2 ollama serve
 
 # Enable OpenRouter routing via Ops-Center
 OPS_CENTER_URL=https://unicorncommander.ai
-OPENROUTER_API_KEY=REMOVED
+OPENROUTER_API_KEY=sk-or-v1-000000000000000000000000000000000000
 
 # Set default workflow config
 DEFAULT_WORKFLOW_PRESET=openrouter_budget
