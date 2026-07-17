@@ -18,7 +18,7 @@ Usage:
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any
+from typing import Annotated, Dict, List, Optional, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 import logging
@@ -26,6 +26,9 @@ import os
 
 from app.db.database import get_session
 from app.db.repositories import AgentRepository
+# BR-1.4: bind the caller's org so an org-scoped agent resolves (post agents-RLS,
+# an unbound session sees only global/shared agents). Optional = no new 401.
+from app.auth.middleware import get_current_user_optional, AuthUser
 from app.voice import VoiceRoomManager, VoiceConfig, STTProvider, TTSProvider
 
 logger = logging.getLogger(__name__)
@@ -150,6 +153,7 @@ class GetTokenRequest(BaseModel):
 async def create_voice_room(
     request: CreateRoomRequest,
     session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """
     Create a new voice room for an agent.
@@ -450,6 +454,7 @@ async def voice_health():
 async def trigger_agent_join(
     room_id: str,
     session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """
     Trigger the voice agent to join a room.

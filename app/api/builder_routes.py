@@ -5,7 +5,7 @@ Provides chat with Gunny to design and deploy new agents.
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional, Dict, List
+from typing import Annotated, Optional, Dict, List
 import json
 import logging
 import uuid
@@ -13,6 +13,11 @@ import uuid
 from app.llm.ops_center_client import OpsCenterLLMClient
 from app.db.database import get_session, AsyncSession
 from app.db.repositories import AgentRepository, BuilderSessionRepository
+# BR-1.4: bind the per-request org RLS GUC. builder_sessions is FORCE-RLS, so an
+# unbound session sees zero rows and can't INSERT (org_id default = current_org_id()
+# would be NULL). get_current_user_optional binds the caller's org when present
+# without forcing a 401 on anonymous/dev callers.
+from app.auth.middleware import get_current_user_optional, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -131,7 +136,10 @@ Be direct and efficient. Ask one or two questions at a time, not all at once. Us
 # ---- Endpoints ----
 
 @router.get("/agent-builder/info")
-async def get_builder_info(session: AsyncSession = Depends(get_session)):
+async def get_builder_info(
+    session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+):
     """Return Gunny's info and current builder capabilities."""
     repo = AgentRepository(session)
     gunny = await repo.get("gunny")
@@ -169,6 +177,7 @@ async def get_builder_info(session: AsyncSession = Depends(get_session)):
 async def builder_chat(
     request: BuilderChatRequest,
     session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """Chat with Gunny to build an agent."""
     repo = BuilderSessionRepository(session)
@@ -245,6 +254,7 @@ async def builder_chat(
 async def get_session_history(
     session_id: str,
     session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """Get build session conversation history."""
     repo = BuilderSessionRepository(session)

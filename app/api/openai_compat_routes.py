@@ -105,6 +105,12 @@ async def list_models(
     auth_user = await validate_api_key(provided, session)
     if not auth_user:
         raise HTTPException(status_code=401, detail="Invalid API key")
+    # BR-1.4: validate_api_key authenticates but does NOT bind the org RLS GUC.
+    # Without this, list_all() under the prod app role returns only global/shared
+    # agents — a tenant's own agents would vanish from their model list. Bind the
+    # caller's org so they see global + their org's agents.
+    from app.auth.middleware import _bind_org_context
+    await _bind_org_context(auth_user, session)
 
     repo = AgentRepository(session)
     agents = await repo.list_all()
@@ -161,6 +167,14 @@ async def openai_chat_completions(
         auth_user = await validate_api_key(provided, session)
     if auth_user is None:
         raise HTTPException(status_code=401, detail="Invalid API key")
+    # BR-1.4: bind the org RLS GUC BEFORE any org-scoped access. validate_api_key
+    # authenticates but doesn't bind org; without this the agent lookup below sees
+    # only global agents and, worse, chat_with_agent's conversation/message INSERTs
+    # (org_id default = current_org_id() = NULL under an empty GUC) are rejected by
+    # FORCE RLS in prod. One bind point covers every downstream path (dual-layer,
+    # passthrough, enhanced, streaming) since they all share this session.
+    from app.auth.middleware import _bind_org_context
+    await _bind_org_context(auth_user, session)
     # ---- Tool-mode routing ----
     # (a) client sends tools AND agent has its own server tools  -> dual-layer
     # (b) client sends tools AND agent has no server tools       -> passthrough

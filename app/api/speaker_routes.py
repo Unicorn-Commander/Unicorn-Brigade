@@ -5,13 +5,17 @@ Provides CRUD for speaker profiles + enrollment endpoint.
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Dict, List, Optional
+from typing import Annotated, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import numpy as np
 
 from app.db.database import get_session
 from app.db.repositories import SpeakerProfileRepository
+# BR-1.4: speaker_profiles is FORCE-RLS + org-scoped. Bind the caller's org so
+# reads/writes resolve to their org (unbound = zero rows / rejected INSERT under
+# the prod app role). Optional = no new 401 for the voice client / dev.
+from app.auth.middleware import get_current_user_optional, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,6 +39,7 @@ class SpeakerUpdateRequest(BaseModel):
 @router.get("/speakers")
 async def list_speakers(
     session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """List all speaker profiles (voice client caches these on startup)."""
     repo = SpeakerProfileRepository(session)
@@ -46,6 +51,7 @@ async def list_speakers(
 async def enroll_speaker(
     request: SpeakerEnrollRequest,
     session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """Create or update a speaker profile from voice enrollment.
 
@@ -86,6 +92,7 @@ async def enroll_speaker(
 async def get_speaker(
     profile_id: str,
     session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """Get a single speaker profile."""
     repo = SpeakerProfileRepository(session)
@@ -100,6 +107,7 @@ async def update_speaker(
     profile_id: str,
     request: SpeakerUpdateRequest,
     session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """Update speaker name, preferences, or re-enroll with new embedding."""
     repo = SpeakerProfileRepository(session)
@@ -117,6 +125,7 @@ async def update_speaker(
 async def delete_speaker(
     profile_id: str,
     session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """Remove a speaker profile."""
     repo = SpeakerProfileRepository(session)

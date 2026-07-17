@@ -5,6 +5,7 @@ System-level routes: stats, model catalog, providers.
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Annotated, Optional
 import asyncio
 import logging
 import os
@@ -15,6 +16,10 @@ import httpx
 from app.db.database import get_session
 from app.db.models import Conversation, Message
 from app.db.repositories import AgentRepository
+# BR-1.4: /stats counts org-scoped tables (agents shared-catalog, conversations +
+# messages are FORCE-RLS). Bind the caller's org so the dashboard reflects THEIR
+# org's counts; anonymous callers see global agents + zero private conversations.
+from app.auth.middleware import get_current_user_optional, AuthUser
 from app.llm.tool_resolver import TOOL_REGISTRY
 from app.stores.model_catalog import ModelCatalog
 from app.llm.ops_center_client import OpsCenterLLMClient
@@ -78,8 +83,11 @@ async def probe_http(url: str, timeout: float = PROBE_TIMEOUT_SECONDS) -> dict:
 
 
 @router.get("/stats")
-async def get_stats(session: AsyncSession = Depends(get_session)):
-    """System stats for the Dashboard."""
+async def get_stats(
+    session: AsyncSession = Depends(get_session),
+    _user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+):
+    """System stats for the Dashboard (org-scoped when the caller is authenticated)."""
     uptime = time.time() - _start_time
 
     repo = AgentRepository(session)

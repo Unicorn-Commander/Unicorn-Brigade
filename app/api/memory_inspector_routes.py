@@ -45,7 +45,6 @@ async def get_agent_memories(
     user_id: str = "anonymous",
     query: str = "*",
     limit: int = 50,
-    session: AsyncSession = Depends(get_session),
     x_api_key: Optional[str] = Header(None),
     authorization: Optional[str] = Header(None),
 ):
@@ -56,8 +55,12 @@ async def get_agent_memories(
     _verify_admin_key(x_api_key, authorization)
     if memory_manager is None:
         raise HTTPException(status_code=503, detail="Memory manager not initialized")
-    repo = AgentRepository(session)
-    agent = await repo.get(agent_id)
+    # BR-1.4: admin-key-gated cross-tenant inspection. Resolve the agent on the
+    # owner/admin session so an org-scoped agent (any tenant's) is found — the
+    # RLS-subject request session with no bound org would only see global agents.
+    from app.db.database import admin_session
+    async with admin_session() as admin_sess:
+        agent = await AgentRepository(admin_sess).get(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
     memories = await memory_manager.retrieve(
