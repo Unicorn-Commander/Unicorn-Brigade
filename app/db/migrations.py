@@ -214,13 +214,13 @@ MIGRATIONS = [
             "CREATE INDEX IF NOT EXISTS ix_org_memberships_user_id ON org_memberships(user_id)",
             "CREATE INDEX IF NOT EXISTS ix_org_memberships_org_id ON org_memberships(org_id)",
             """
-            INSERT INTO organizations (name, slug, plan_tier, api_calls_limit, metadata)
-            VALUES ('Early Access', 'early-access', 'free', 0, '{"bootstrap": true}'::json)
+            INSERT INTO organizations (id, name, slug, plan_tier, api_calls_limit, metadata)
+            VALUES (gen_random_uuid(), 'Early Access', 'early-access', 'free', 0, '{"bootstrap": true}'::json)
             ON CONFLICT (slug) DO NOTHING
             """,
             """
-            INSERT INTO org_memberships (org_id, user_id, role)
-            SELECT o.id, u.id, 'owner'
+            INSERT INTO org_memberships (id, org_id, user_id, role)
+            SELECT gen_random_uuid(), o.id, u.id, 'owner'
             FROM organizations o
             CROSS JOIN users u
             WHERE o.slug = 'early-access'
@@ -450,7 +450,11 @@ _IDENTITY_REMAP_VERSION = "20260716_02_identity_remap_backfill"
 # Edge cases handled by the WHERE clause:
 #   * user_id NULL / 'anonymous'      -> never equals a uuid keycloak_id, skipped
 #   * downstream pass-through ids     -> not a keycloak_id, skipped
-#   * sub already == users.id         -> excluded by ``keycloak_id <> id``, no churn
+#   * sub already == users.id         -> excluded by ``keycloak_id <> CAST(id AS text)``
+#                                        (portable: varchar<>uuid has NO operator on
+#                                        Postgres — this cast was a BR-1.1 bug caught
+#                                        by the BR-1.2 real-Postgres RLS proof; CAST
+#                                        keeps SQLite green too), no churn
 #   * already-canonical rows          -> user_id not in the keycloak_id set, skipped
 _REMAP_STATEMENTS = [
     """
@@ -458,7 +462,7 @@ _REMAP_STATEMENTS = [
        SET user_id = (SELECT u.id FROM users u WHERE u.keycloak_id = conversations.user_id)
      WHERE user_id IN (
         SELECT keycloak_id FROM users
-         WHERE keycloak_id IS NOT NULL AND keycloak_id <> id
+         WHERE keycloak_id IS NOT NULL AND keycloak_id <> CAST(id AS text)
      )
     """,
     """
@@ -466,7 +470,7 @@ _REMAP_STATEMENTS = [
        SET user_id = (SELECT u.id FROM users u WHERE u.keycloak_id = builder_sessions.user_id)
      WHERE user_id IN (
         SELECT keycloak_id FROM users
-         WHERE keycloak_id IS NOT NULL AND keycloak_id <> id
+         WHERE keycloak_id IS NOT NULL AND keycloak_id <> CAST(id AS text)
      )
     """,
 ]

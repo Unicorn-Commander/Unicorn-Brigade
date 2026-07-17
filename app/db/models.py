@@ -155,7 +155,13 @@ class ToolCatalog(Base):
 class Organization(Base):
     __tablename__ = "organizations"
 
-    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    # server_default so a raw INSERT that omits id (the migration's 'early-access'
+    # bootstrap seed) still gets a uuid. create_all builds this table BEFORE the
+    # migration runs, so the model — not the migration's CREATE TABLE — is what
+    # actually defines the column; without the DB-side default the seed INSERT
+    # NULLs the PK and the whole migration transaction rolls back.
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid,
+                server_default=text("gen_random_uuid()"))
     name = Column(String(255), nullable=False)
     slug = Column(String(255), unique=True, nullable=False)
     plan_tier = Column(String(50), nullable=False, server_default="free", default="free")
@@ -182,7 +188,10 @@ class Organization(Base):
 class OrgMembership(Base):
     __tablename__ = "org_memberships"
 
-    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    # server_default for the same reason as Organization.id: the migration's
+    # backfill INSERT ... SELECT omits id and would otherwise NULL the PK.
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid,
+                server_default=text("gen_random_uuid()"))
     org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     role = Column(String(50), nullable=False, server_default="owner", default="owner")
