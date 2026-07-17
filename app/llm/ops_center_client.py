@@ -296,8 +296,16 @@ class OpsCenterLLMClient:
             )
             return OPENROUTER_URL, or_model, "openrouter"
         if OPS_CENTER_LLM_ENDPOINT:
-            # Direct hit on an OpenAI-compatible endpoint (e.g. llama.cpp router)
-            return OPS_CENTER_LLM_ENDPOINT, model, "direct"
+            # Direct hit on an OpenAI-compatible endpoint (e.g. llama.cpp router).
+            # Normalize a BARE base URL (no chat-completions path) to the standard
+            # OpenAI path — otherwise a POST lands on the server root and an
+            # OpenAI-compatible gateway (LiteLLM/vLLM) returns 405 Method Not
+            # Allowed. Idempotent: an endpoint already carrying a completions path
+            # (…/v1/chat/completions) is left untouched.
+            ep = OPS_CENTER_LLM_ENDPOINT
+            if "/chat/completions" not in ep:
+                ep = ep.rstrip("/") + "/v1/chat/completions"
+            return ep, model, "direct"
         return self.ops_center_url, model, "ops-center"
 
     def _detect_url(self) -> str:
