@@ -23,7 +23,7 @@ from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredenti
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 
-from app.db.database import get_session
+from app.db.database import get_session, _clear_org_context
 from app.db.models import ApiKey, UserApiKey, User, Organization
 from app.auth.roles import (
     UserRole,
@@ -511,7 +511,11 @@ def _enforce_early_access(user: AuthUser, path: str) -> None:
         return
 
     # Keep service/admin keys usable for bootstrap and federation operations.
-    if user.id == "admin" or user.role == UserRole.ADMIN and not user.email:
+    # Parenthesized so the admin-bypass condition is explicit (``and`` already
+    # binds tighter than ``or``, but the intent must be unmistakable): the
+    # master-admin key, OR a keyless admin identity (an admin AuthUser with no
+    # bound email — a service/bootstrap token, not a human tenant).
+    if user.id == "admin" or (user.role == UserRole.ADMIN and not user.email):
         return
 
     email = (user.email or "").lower()
@@ -570,6 +574,15 @@ async def _resolve_user(
 
 
 async def _default_org_id(session: AsyncSession) -> str:
+    """The shared 'early-access' bootstrap org id (created on first need).
+
+    H1 / BR-2.4: this is the SINGLE org that every keyless identity — service
+    keys, agent keys, the master-admin key — currently binds to (see the fallback
+    in ``_bind_org_context``). There is no per-key org isolation yet, so these
+    keys share one org's data. Not a regression (pre-tenancy had no isolation),
+    but multi-customer service/agent key issuance must wait for BR-2.4 to add a
+    per-key ``org_id``; until then, keys for distinct customers must not be issued.
+    """
     result = await session.execute(
         select(Organization).where(Organization.slug == "early-access")
     )
@@ -636,6 +649,17 @@ async def _bind_org_context(
 
     if local_user is None:
         # Keyless/service/admin/degraded identity → shared bootstrap org.
+        #
+        # H1 / BR-2.4 boundary (NOT a regression): service keys, agent keys, and
+        # the master-admin key have NO bound human, so they ALL collapse onto the
+        # single shared 'early-access' org here — there is no per-KEY org_id yet.
+        # Two different service keys therefore see the SAME org's data. This is not
+        # a regression: pre-tenancy there was no isolation at all, and human tenants
+        # (keycloak/session/user-API-key) DO get their own org above. Per-key org
+        # binding is BR-2.4's job (add org_id to the ApiKey/UserApiKey records and
+        # resolve it here). Until BR-2.4 lands, issuing service/agent keys to
+        # SEPARATE customers must be GATED — a second customer's key would read the
+        # first customer's early-access rows.
         org_id = await _default_org_id(session)
         org_role = None
     else:
@@ -688,6 +712,26 @@ async def _bind_org_context(
         text("SELECT set_config('app.current_org_id', :org_id, false)"),
         {"org_id": org_id},
     )
+    # M4: mirror the bound org into the per-task orchestration context so any
+    # orchestration events emitted while handling this request are stamped with
+    # it, and the SSE stream can filter them to the caller's own org.
+    from app.orchestration.event_bus import current_org_id_var
+    current_org_id_var.set(org_id)
+
+
+async def _clear_org_context_safe(session: AsyncSession) -> None:
+    """B1 companion (defense-in-depth): positively clear the org RLS GUC for a
+    request that resolves NO bound user, so it can NEVER inherit a stale org from
+    a reused pooled connection regardless of pool timing. Never raises — auth must
+    not break if the clear fails; ``get_session``'s teardown is the backstop (it
+    invalidates the connection on a failed clear so a stale org can't be pooled)."""
+    try:
+        await _clear_org_context(session)
+    except Exception:  # noqa: BLE001 — never break the request on a clear failure
+        logger.warning(
+            "Failed to positively clear org context for an unbound request",
+            exc_info=True,
+        )
 
 
 async def get_current_user(
@@ -705,8 +749,11 @@ async def get_current_user(
     path = request.url.path
     method = request.method
 
-    # Allow public paths without auth
+    # Allow public paths without auth. A public request resolves NO bound user, so
+    # positively clear the org GUC (B1 companion): otherwise a public handler that
+    # reads on a reused pooled connection could inherit a previous tenant's org.
     if is_public_path(path):
+        await _clear_org_context_safe(session)
         return AuthUser(id="anonymous", role=UserRole.VIEWER, auth_source="public")
 
     # Development bypass (DANGEROUS)
@@ -768,6 +815,10 @@ async def get_current_user_optional(
     user = await _resolve_user(request, api_key, creds, session)
     if user is not None:
         await _bind_org_context(user, session, _extract_requested_org_id(request))
+    else:
+        # No resolved user → positively clear the org GUC (B1 companion) so an
+        # anonymous caller on a reused pooled connection can't inherit a stale org.
+        await _clear_org_context_safe(session)
     return user
 
 
@@ -806,6 +857,7 @@ async def require_sse_access(
     request: Request,
     ticket: Annotated[Optional[str], Query()] = None,
     user_via_headers: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
+    session: AsyncSession = Depends(get_session),
 ) -> AuthUser:
     """Auth dependency for browser ``EventSource`` (SSE) endpoints.
 
@@ -816,6 +868,11 @@ async def require_sse_access(
     resolved exactly as before, and the same minimum-role check the path would
     otherwise enforce is still applied to whichever user we end up with — so the
     ticket can never grant more than its holder already has.
+
+    The ``session`` dependency is the SAME cached ``get_session`` instance
+    ``get_current_user_optional`` already resolved (FastAPI dependency caching),
+    so it pins no extra connection; it exists only so the B1 companion can
+    positively clear the org GUC for an unbound SSE identity.
     """
     from app.auth import sse_ticket  # local import keeps sse_ticket dependency-free
 
@@ -827,11 +884,20 @@ async def require_sse_access(
     if user is None:
         user = user_via_headers
     if user is None:
+        # No resolved SSE user → clear the org GUC (B1 companion) before failing.
+        await _clear_org_context_safe(session)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing credentials (X-API-Key, Bearer token, or SSE ticket)",
             headers={"WWW-Authenticate": f"Bearer, ApiKey realm=\"{AUTH_HEADER}\""},
         )
+
+    # An SSE stream never reads org-scoped rows via RLS (it fans out the in-memory
+    # event bus and filters by org in Python — see stream_events / M4). A ticket
+    # user carries the org bound at mint time on ``user.org_id``; a caller with no
+    # bound org must not ride a stale org on the pooled connection, so clear it.
+    if getattr(user, "org_id", None) is None:
+        await _clear_org_context_safe(session)
 
     # Apply the same path/method minimum-role check as get_current_user.
     required_role = get_minimum_role_for_method(request.url.path, request.method)

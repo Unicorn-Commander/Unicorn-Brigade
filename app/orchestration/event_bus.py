@@ -9,6 +9,7 @@ This module provides:
 """
 
 import asyncio
+from contextvars import ContextVar
 from typing import Dict, Any, List, Optional, Set, Callable, AsyncGenerator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -18,6 +19,33 @@ import logging
 import uuid
 
 logger = logging.getLogger(__name__)
+
+
+# M4: the org that OWNS the work emitting orchestration events. The auth
+# middleware (``_bind_org_context``) sets this per request and the scheduler
+# (``_bind_org``) sets it per job; ``publish()`` reads it to STAMP each event's
+# ``org_id`` so the SSE stream can filter to the subscriber's own org. A
+# ``ContextVar`` is per-task — a child task spawned via ``asyncio.create_task``
+# inherits a COPY of the context at creation time — so a value set while handling
+# one request can never bleed into another request's events.
+current_org_id_var: ContextVar[Optional[str]] = ContextVar(
+    "orchestration_current_org_id", default=None
+)
+
+
+def event_visible_to_org(
+    event_org_id: Optional[str], subscriber_org_id: Optional[str]
+) -> bool:
+    """M4 SSE visibility rule: an orchestration event reaches a subscriber ONLY
+    when it is stamped with the subscriber's own org.
+
+    Plain equality, which gives the safe-by-default behavior: an UNATTRIBUTED
+    event (``org_id is None`` — emitted with no bound org context) is withheld
+    from any concrete-org subscriber, so an event that failed to get stamped can
+    never leak cross-org. A subscriber with no bound org (also None) sees only
+    those unattributed events, never a tenant's.
+    """
+    return event_org_id == subscriber_org_id
 
 
 class EventType(str, Enum):
@@ -60,6 +88,10 @@ class OrchestrationEvent:
     agent_id: str = ""
     agent_name: str = ""
     mission_id: Optional[str] = None
+    # M4: the org this event belongs to. Stamped by publish() from
+    # current_org_id_var when unset; the SSE stream filters on it so a subscriber
+    # only ever receives its own org's events. None = unattributed (system).
+    org_id: Optional[str] = None
 
     # Event data
     data: Dict[str, Any] = field(default_factory=dict)
@@ -73,6 +105,7 @@ class OrchestrationEvent:
             "agentId": self.agent_id,
             "agentName": self.agent_name,
             "missionId": self.mission_id,
+            "orgId": self.org_id,
             "data": self.data,
             "message": self.message,
         }
@@ -173,6 +206,12 @@ class OrchestrationEventBus:
 
     async def publish(self, event: OrchestrationEvent):
         """Publish an event to all subscribers"""
+        # M4: stamp the originating org (from the per-task context) so the SSE
+        # stream can filter cross-org events. Only when unset, so an event that
+        # already carries an explicit org is left untouched.
+        if event.org_id is None:
+            event.org_id = current_org_id_var.get()
+
         # Store in recent events
         self._recent_events.append(event)
         if len(self._recent_events) > self._max_recent_events:

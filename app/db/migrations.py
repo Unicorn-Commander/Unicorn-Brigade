@@ -213,6 +213,12 @@ MIGRATIONS = [
             """,
             "CREATE INDEX IF NOT EXISTS ix_org_memberships_user_id ON org_memberships(user_id)",
             "CREATE INDEX IF NOT EXISTS ix_org_memberships_org_id ON org_memberships(org_id)",
+            # H1 / BR-2.4 note: 'early-access' is the shared bootstrap org. Existing
+            # users are backfilled into it (CROSS JOIN below) and every keyless
+            # identity (service/agent/admin keys) also collapses onto it at request
+            # time (middleware._default_org_id). There is NO per-key org isolation
+            # yet — not a regression (pre-tenancy had none), but issuing service keys
+            # to distinct customers must wait for BR-2.4's per-key org_id.
             """
             INSERT INTO organizations (id, name, slug, plan_tier, api_calls_limit, metadata)
             VALUES (gen_random_uuid(), 'Early Access', 'early-access', 'free', 0, '{"bootstrap": true}'::json)

@@ -52,6 +52,10 @@ async def _bind_org(session, org_id) -> None:
         text("SELECT set_config('app.current_org_id', :org_id, false)"),
         {"org_id": str(org_id)},
     )
+    # M4: stamp the per-task orchestration context so any events emitted while this
+    # scheduled job runs are attributed to its org for the SSE org filter.
+    from app.orchestration.event_bus import current_org_id_var
+    current_org_id_var.set(str(org_id))
 
 
 def _parse_cron(expr: str, tz: str = "UTC") -> CronTrigger:

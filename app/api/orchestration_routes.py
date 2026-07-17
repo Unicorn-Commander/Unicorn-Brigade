@@ -38,6 +38,7 @@ from app.orchestration import (
     EventType,
     OrchestrationEvent,
 )
+from app.orchestration.event_bus import event_visible_to_org
 from app.engine.meta_agent import MetaAgent
 from app.llm.ops_center_client import OpsCenterLLMClient
 
@@ -141,13 +142,24 @@ async def stream_events(
     If ``mission_id`` is provided, only events with a matching mission_id
     are streamed. Used by Crisis Ops to surface per-chat progress without
     bleeding events from other concurrent chats into the user's view.
+
+    M4 tenancy: events are ALSO filtered to the subscriber's active org. Every
+    event is stamped at emit time with the org that owns the emitting work (see
+    ``event_bus.publish`` / ``current_org_id_var``); a subscriber only receives
+    events stamped with its own org, so an authenticated caller can never observe
+    another tenant's orchestration activity. ``user.org_id`` is the org bound
+    during auth (header path) or captured at ticket-mint time (EventSource path).
     """
+    subscriber_org_id = getattr(user, "org_id", None)
+
     async def generate():
         # Send initial connection event
         yield f"data: {json.dumps({'type': 'connected', 'mission_id': mission_id})}\n\n"
 
-        # Stream events as they come, filtering by mission_id when set
+        # Stream events as they come, filtering by org (M4) then mission_id.
         async for event in event_bus.subscribe():
+            if not event_visible_to_org(event.org_id, subscriber_org_id):
+                continue
             if mission_id and event.mission_id != mission_id:
                 continue
             yield event.to_sse()

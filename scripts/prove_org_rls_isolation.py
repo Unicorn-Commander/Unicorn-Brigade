@@ -27,6 +27,7 @@ from app.db.database import (
     init_db,
     provision_app_role,
     verify_app_role_not_bypassing,
+    verify_owner_role_bypasses_rls,
 )
 
 ORG_A = str(uuid.uuid4())
@@ -76,6 +77,14 @@ async def main():
           posture and posture["bypassrls"] is False, str(posture))
     check("runtime role rolsuper = false",
           posture and posture["super"] is False, str(posture))
+
+    # M1: symmetric owner-role check — the OWNER/MIGRATION_DATABASE_URL role MUST
+    # bypass RLS, or the scheduler + identity remap would silently see zero rows.
+    owner_posture = await verify_owner_role_bypasses_rls()
+    print(f"Owner role posture: {owner_posture}")
+    check("M1: owner/migration role BYPASSES RLS (rolsuper OR rolbypassrls)",
+          bool(owner_posture) and (owner_posture["super"] or owner_posture["bypassrls"]),
+          str(owner_posture))
 
     # Confirm role catalog + FORCE RLS posture directly, via owner.
     async with migration_engine.connect() as oc:
@@ -381,6 +390,97 @@ async def main():
         await set_org(ac, ORG_B)
         seen = await scalar(ac, "SELECT count(*) FROM agents WHERE id='agent-a-default'")
         check("org B cannot see org A's defaulted agent", seen == 0, f"count={seen}")
+
+    print("\n" + "=" * 78)
+    print("PHASE 4 — B1: get_session teardown must NOT leak org across a POOLED reuse")
+    print("=" * 78)
+    # The reviewer-verified cross-tenant leak. A pooled connection that carried a
+    # bound org into request 1 must return to the pool with the org RLS GUC
+    # CLEARED — otherwise an UNBOUND/anonymous request 2 that reuses that same
+    # physical connection (public /a2a/agents, get_agent_card, /stats, builder/
+    # speaker/voice) inherits the previous tenant's org and reads its rows.
+    #
+    # This drives the REAL app.db.database.get_session dependency (its ``finally``
+    # is the code under test) over a pool_size=1 / max_overflow=0 app-role engine,
+    # so request 2 PROVABLY reuses request 1's backend connection (asserted via
+    # pg_backend_pid equality). It FAILS on the pre-fix teardown order
+    # (set_config-clear THEN rollback — Postgres REVERTS the session-level clear on
+    # that rollback, restoring the previous org) and PASSES once teardown is
+    # rollback → clear → COMMIT so the clear persists on the pooled connection.
+    import app.db.database as _dbmod
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        create_async_engine as _cae,
+        async_sessionmaker as _asm,
+    )
+
+    pool1_engine = _cae(
+        os.environ["DATABASE_URL"], pool_size=1, max_overflow=0, pool_pre_ping=False
+    )
+    pool1_sessions = _asm(pool1_engine, expire_on_commit=False, class_=AsyncSession)
+    _orig_async_session = _dbmod.async_session
+    # get_session() looks up the module-global ``async_session`` at CALL time, so
+    # this swap routes the real dependency onto the single-connection pool.
+    _dbmod.async_session = pool1_sessions
+    leak_conv = str(uuid.uuid4())
+    try:
+        # Request 1: bind ORG A, write a conversation, commit, then END the request
+        # (aclose drives get_session's finally — exactly as when a handler returns).
+        gen1 = _dbmod.get_session()
+        s1 = await gen1.__anext__()
+        await s1.execute(
+            text("SELECT set_config('app.current_org_id', :o, false)"), {"o": ORG_A}
+        )
+        pid1 = (await s1.execute(text("SELECT pg_backend_pid()"))).scalar()
+        await s1.execute(
+            text(
+                "INSERT INTO conversations (id,user_id,org_id,title) "
+                "VALUES (:id,'reuse-user',:o,'reuse-A conversation')"
+            ),
+            {"id": leak_conv, "o": ORG_A},
+        )
+        await s1.commit()
+        await gen1.aclose()  # ← runs get_session's teardown (the code under test)
+
+        # Request 2: UNBOUND read on the REUSED connection. No org is bound — this
+        # is the anonymous/public path. Under the B1 fix it must see ZERO rows.
+        gen2 = _dbmod.get_session()
+        s2 = await gen2.__anext__()
+        pid2 = (await s2.execute(text("SELECT pg_backend_pid()"))).scalar()
+        guc2 = (
+            await s2.execute(text("SELECT current_setting('app.current_org_id', true)"))
+        ).scalar()
+        n_leak = (await s2.execute(text("SELECT count(*) FROM conversations"))).scalar()
+        vis_leak = (
+            await s2.execute(
+                text("SELECT count(*) FROM conversations WHERE id=:id"), {"id": leak_conv}
+            )
+        ).scalar()
+        await gen2.aclose()
+
+        check(
+            "B1: request 2 PROVABLY reuses request 1's backend connection (pool_size=1)",
+            pid1 is not None and pid1 == pid2,
+            f"pid1={pid1} pid2={pid2}",
+        )
+        check(
+            "B1: reused connection's org GUC is EMPTY for the unbound request",
+            (guc2 or "") == "",
+            f"guc={guc2!r}",
+        )
+        check(
+            "B1: unbound get_session reuse sees ZERO conversations (no cross-tenant leak)",
+            n_leak == 0,
+            f"count={n_leak}",
+        )
+        check(
+            "B1: unbound get_session reuse CANNOT see request 1's org-A row",
+            vis_leak == 0,
+            f"visible={vis_leak}",
+        )
+    finally:
+        _dbmod.async_session = _orig_async_session
+        await pool1_engine.dispose()
 
     print("\n" + "=" * 78)
     print(f"RESULT: {len(PASSES)} passed, {len(FAILURES)} failed")

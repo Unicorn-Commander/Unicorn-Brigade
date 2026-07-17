@@ -75,17 +75,56 @@ async_session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncS
 admin_session = async_sessionmaker(migration_engine, expire_on_commit=False, class_=AsyncSession)
 
 
+async def _clear_org_context(session: AsyncSession) -> None:
+    """Positively clear the per-request org RLS GUC (``app.current_org_id``) at
+    SESSION level and COMMIT so the clear PERSISTS on the pooled connection.
+
+    Postgres REVERTS a session-level ``set_config(..., is_local=false)`` if the
+    surrounding transaction later rolls back, so the clear must be committed to
+    stick — that reversion is exactly the B1 cross-tenant leak. Order is
+    load-bearing: rollback first (discard any handler transaction state), then
+    clear, then commit.
+
+    Callers that resolve NO bound user — public paths, ``get_current_user_optional``
+    returning None, an SSE identity with no org — call this to GUARANTEE an empty
+    GUC, so an unbound request can never inherit another tenant's org from a reused
+    connection regardless of pool timing.
+    """
+    await session.rollback()
+    await session.execute(text("SELECT set_config('app.current_org_id', '', false)"))
+    await session.commit()
+
+
 async def get_session() -> AsyncSession:
     """Get an async database session."""
     async with async_session() as session:
         try:
             yield session
         finally:
+            # B1 (verified cross-tenant leak) fix — ORDER IS LOAD-BEARING. Discard
+            # any handler transaction state FIRST (rollback), THEN clear the org
+            # RLS GUC, THEN COMMIT so the clear persists at session level on the
+            # connection returned to the pool. The previous order
+            # (set_config-clear → rollback) was UNDONE by Postgres on that rollback
+            # — a session-level set_config(..., false) issued inside a transaction
+            # that then rolls back is reverted — so a pooled connection kept the
+            # prior request's org and an unbound/anonymous reuse read another
+            # tenant's rows (public /a2a/agents, get_agent_card, /stats, …).
             try:
-                await session.execute(text("SELECT set_config('app.current_org_id', '', false)"))
-                await session.rollback()
+                await _clear_org_context(session)
             except Exception:
-                logger.debug("Failed to clear tenant context on DB session", exc_info=True)
+                # Clearing failed (DB unreachable, etc.). Do NOT hand a possibly
+                # org-tainted connection back to the pool — invalidate it so the
+                # pool discards it and the next checkout gets a fresh, GUC-less one.
+                logger.warning(
+                    "Failed to clear tenant context on DB session; invalidating the "
+                    "connection so it is not pooled with a stale org.",
+                    exc_info=True,
+                )
+                try:
+                    await session.invalidate()
+                except Exception:
+                    logger.debug("Session invalidate failed", exc_info=True)
 
 
 # Postgres identifiers: letter/underscore start, then letters/digits/underscore.
@@ -220,6 +259,61 @@ async def verify_app_role_not_bypassing() -> dict | None:
     return posture
 
 
+async def verify_owner_role_bypasses_rls() -> dict | None:
+    """M1 self-check: confirm the OWNER/``MIGRATION_DATABASE_URL`` role BYPASSES RLS.
+
+    Symmetric to ``verify_app_role_not_bypassing`` (which asserts the APP role IS
+    subject to RLS). Trusted CROSS-TENANT system work runs on the owner engine and
+    MUST see rows across every org: the scheduler (``scheduler.reload_all``
+    enumerating all orgs' enabled jobs) and the BR-1.1 identity remap
+    (``run_identity_remap``). If that role is itself subject to RLS — neither
+    ``rolsuper`` nor ``rolbypassrls`` — then with no ``app.current_org_id`` bound,
+    FORCE ROW LEVEL SECURITY hides EVERY row and those subsystems SILENTLY process
+    zero rows (no error, no jobs loaded, no rows remapped). So we assert the
+    opposite at startup and log LOUDLY when the posture is wrong. Returns the
+    observed posture (or None if it can't be read); never raises.
+
+    In single-role dev (``migration_engine is engine``) this reads the same
+    (usually superuser) role and passes — the mirror of the app-role check's
+    "RLS present but bypassed" note.
+    """
+    try:
+        async with migration_engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text(
+                        "SELECT current_user AS role, "
+                        "(SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypassrls, "
+                        "(SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS super"
+                    )
+                )
+            ).mappings().first()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("verify_owner_role_bypasses_rls: could not read owner role posture: %s", exc)
+        return None
+
+    posture = dict(row) if row else None
+    if posture is None:
+        return None
+    if posture.get("super") or posture.get("bypassrls"):
+        logger.info(
+            "✅ Owner/migration DB role %r BYPASSES RLS (rolsuper=%s, rolbypassrls=%s) — "
+            "scheduler + identity remap can enumerate across every org.",
+            posture.get("role"), posture.get("super"), posture.get("bypassrls"),
+        )
+    else:
+        logger.warning(
+            "⚠️  OWNER ROLE IS SUBJECT TO RLS: MIGRATION_DATABASE_URL connects as %r "
+            "(rolsuper=false, rolbypassrls=false). With no app.current_org_id bound, "
+            "FORCE ROW LEVEL SECURITY will HIDE EVERY ROW from cross-tenant system work "
+            "— the scheduler (scheduler.reload_all) will load ZERO jobs and the BR-1.1 "
+            "identity remap (run_identity_remap) will relabel ZERO rows, both SILENTLY. "
+            "Point MIGRATION_DATABASE_URL at a SUPERUSER or BYPASSRLS owner role.",
+            posture.get("role"),
+        )
+    return posture
+
+
 async def init_db():
     """Create all tables (skips existing ones), then apply additive migrations.
 
@@ -251,6 +345,10 @@ async def init_db():
     # engine is genuinely subject to RLS. Both are best-effort + loud.
     await provision_app_role()
     await verify_app_role_not_bypassing()
+    # M1: symmetric assertion that the OWNER/migration role BYPASSES RLS, so the
+    # scheduler + identity remap (which run RLS-exempt, GUC-unbound) don't silently
+    # see zero rows. Best-effort + loud, mirroring the app-role verify above.
+    await verify_owner_role_bypasses_rls()
     logger.info("Database tables created/verified")
 
 

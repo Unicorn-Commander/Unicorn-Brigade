@@ -38,6 +38,7 @@ from app.db.database import (
     init_db,
     provision_app_role,
     verify_app_role_not_bypassing,
+    verify_owner_role_bypasses_rls,
 )
 from app.db import org_service as svc
 from app.auth.middleware import _bind_org_context, AuthUser
@@ -93,6 +94,13 @@ async def main():
     check("runtime role is NOBYPASSRLS brigade_app_login",
           posture and posture["role"] == "brigade_app_login"
           and posture["bypassrls"] is False and posture["super"] is False, str(posture))
+
+    # M1: the owner/MIGRATION_DATABASE_URL role must BYPASS RLS (else the invite
+    # ACCEPT + cross-tenant admin_session paths below would silently see 0 rows).
+    owner_posture = await verify_owner_role_bypasses_rls()
+    check("M1: owner/migration role BYPASSES RLS (rolsuper OR rolbypassrls)",
+          bool(owner_posture) and (owner_posture["super"] or owner_posture["bypassrls"]),
+          str(owner_posture))
 
     # invitations table exists with RLS ENABLE + FORCE (the new migration).
     async with migration_engine.connect() as oc:
