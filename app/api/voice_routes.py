@@ -47,20 +47,43 @@ room_manager: Optional[VoiceRoomManager] = None
 
 
 def init_voice_routes(manager: Optional[VoiceRoomManager] = None):
-    """Initialize voice routes with room manager."""
+    """Initialize voice routes with room manager.
+
+    Voice is an OPTIONAL feature. If LiveKit is misconfigured (e.g. the S6 guard
+    refuses insecure dev creds in a production env), we DISABLE voice and let the
+    rest of the app boot rather than crashing the entire service — a missing
+    optional integration must degrade gracefully. The voice endpoints then return
+    503 via get_room_manager() until real creds are configured.
+    """
     global room_manager
     if manager:
         room_manager = manager
-    else:
+        logger.info("Voice routes initialized")
+        return
+    try:
         room_manager = VoiceRoomManager()
-    logger.info("Voice routes initialized")
+        logger.info("Voice routes initialized")
+    except Exception as e:  # incl. InsecureConfigurationError from the S6 creds guard
+        room_manager = None
+        logger.warning(
+            "Voice DISABLED — could not initialize the LiveKit room manager: %s. "
+            "The app is running normally; /api/v1/voice/* will return 503 until "
+            "LIVEKIT_API_KEY/SECRET are configured with real (non-dev) values.", e
+        )
 
 
 def get_room_manager() -> VoiceRoomManager:
-    """Get the room manager, creating if necessary."""
+    """Get the room manager, or 503 if voice is unavailable in this environment."""
     global room_manager
     if room_manager is None:
-        room_manager = VoiceRoomManager()
+        try:
+            room_manager = VoiceRoomManager()
+        except Exception as e:  # incl. InsecureConfigurationError
+            raise HTTPException(
+                status_code=503,
+                detail="Voice service unavailable: LiveKit is not configured for "
+                       "this environment.",
+            ) from e
     return room_manager
 
 
@@ -474,7 +497,8 @@ async def voice_health():
                 "registered": registry_tts,
             },
         },
-        "room_count": len(get_room_manager().list_rooms()),
+        "room_count": (len(room_manager.list_rooms()) if room_manager is not None else 0),
+        "voice_enabled": room_manager is not None,
     }
 
 
