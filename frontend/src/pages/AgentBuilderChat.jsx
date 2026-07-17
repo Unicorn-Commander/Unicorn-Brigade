@@ -6,6 +6,7 @@ import { apiJson } from '../services/http';
 import ReactMarkdown from 'react-markdown';
 import { useNavigate } from 'react-router-dom';
 import AgentPreview from '../components/AgentPreview';
+import Modal from '../components/ui/Modal';
 import ModelSelector from '../components/ModelSelector';
 import ParameterSlider from '../components/ParameterSlider';
 import { GunnyAvatar } from '../components/UnicornBrigadeLogo';
@@ -783,6 +784,8 @@ What would you like to create today?`
             showPreview ? 'translate-x-0' : 'translate-x-0'
           }`}
           title={showPreview ? 'Hide Preview' : 'Show Preview'}
+          aria-label={showPreview ? 'Hide preview' : 'Show preview'}
+          aria-pressed={showPreview}
         >
           {showPreview ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
         </button>
@@ -790,8 +793,13 @@ What would you like to create today?`
 
       {/* Deploy Confirmation Panel */}
       {showConfirmation && parsedAgentConfig && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg mx-4 rounded-2xl border border-slate-700/50 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-unicorn-500/10 overflow-hidden">
+        <Modal
+          onClose={handleContinueEditing}
+          ariaLabel="Deploy agent confirmation"
+          showClose={false}
+          closeOnBackdrop={false}
+          panelClassName="w-full max-w-lg mx-4 rounded-2xl border border-slate-700/50 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-unicorn-500/10 overflow-hidden focus:outline-none"
+        >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/50 bg-gradient-to-r from-unicorn-500/10 to-unicorn-500/10">
               <div className="flex items-center space-x-3">
@@ -805,6 +813,7 @@ What would you like to create today?`
               </div>
               <button
                 onClick={handleContinueEditing}
+                aria-label="Close dialog"
                 className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-all"
               >
                 <X className="w-5 h-5" />
@@ -929,8 +938,7 @@ What would you like to create today?`
                 )}
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileCode,
@@ -73,6 +73,16 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
   const [selectedAttribution, setSelectedAttribution] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  // Full-screen viewer: Escape closes it (kept as a bespoke overlay rather than
+  // the Modal primitive so the edge-to-edge scrollable layout is preserved).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   // Create a map of line numbers to attributions
   const lineAttributions = useMemo(() => {
     const map = {};
@@ -109,6 +119,9 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
 
   return (
     <motion.div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Attributions for ${getFileName(filePath)}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -147,6 +160,7 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
               </button>
               <button
                 onClick={onClose}
+                aria-label="Close attribution viewer"
                 className="btn btn-secondary btn-sm"
               >
                 <X className="w-4 h-4" />
@@ -241,6 +255,7 @@ const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
                       </h3>
                       <button
                         onClick={() => setSelectedAttribution(null)}
+                        aria-label="Clear selected attribution"
                         className="text-slate-400 hover:text-slate-300"
                       >
                         <X className="w-4 h-4" />

@@ -31,6 +31,7 @@ import {
 import api from '../services/api';
 import { apiJson } from '../services/http';
 import Breadcrumbs from '../components/Breadcrumbs';
+import Modal from '../components/ui/Modal';
 
 // Lazy load 3D visualization — catches WebGL failures at chunk level
 const WorkflowVisualization3D = lazy(() =>
@@ -672,22 +673,13 @@ const Orchestration = () => {
       </div>
 
       {/* New Mission Modal */}
-      <AnimatePresence>
-        {showMissionForm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-            onClick={() => !creatingMission && setShowMissionForm(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-lg p-6 rounded-2xl glass border border-slate-700"
-              onClick={(e) => e.stopPropagation()}
-            >
+      {showMissionForm && (
+        <Modal
+          onClose={() => !creatingMission && setShowMissionForm(false)}
+          ariaLabel="Start new mission"
+          showClose={false}
+          panelClassName="w-full max-w-lg p-6 rounded-2xl glass border border-slate-700 focus:outline-none"
+        >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="flex items-center space-x-2 text-lg font-bold text-white">
                   <Play className="w-5 h-5 text-green-400" />
@@ -696,6 +688,7 @@ const Orchestration = () => {
                 <button
                   onClick={() => setShowMissionForm(false)}
                   disabled={creatingMission}
+                  aria-label="Close dialog"
                   className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-all"
                 >
                   <X className="w-5 h-5" />
@@ -761,28 +754,17 @@ const Orchestration = () => {
                   </button>
                 </div>
               </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </Modal>
+      )}
 
       {/* Selected Agent Detail Modal */}
-      <AnimatePresence>
-        {selectedAgent && !isFullscreen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-            onClick={() => setSelectedAgent(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="w-full max-w-lg p-6 rounded-2xl glass border border-slate-700"
-              onClick={(e) => e.stopPropagation()}
-            >
+      {selectedAgent && !isFullscreen && (
+        <Modal
+          onClose={() => setSelectedAgent(null)}
+          ariaLabel={`${selectedAgent.displayName || selectedAgent.name} details`}
+          showClose={false}
+          panelClassName="w-full max-w-lg p-6 rounded-2xl glass border border-slate-700 focus:outline-none"
+        >
               <div className="flex items-start space-x-4">
                 <div className="text-5xl">{selectedAgent.avatar || '🦄'}</div>
                 <div className="flex-1">
@@ -842,10 +824,8 @@ const Orchestration = () => {
                   Chat with Agent
                 </button>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </Modal>
+      )}
     </div>
   );
 };

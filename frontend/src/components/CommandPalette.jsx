@@ -140,6 +140,9 @@ export default function CommandPalette() {
 
           {/* Palette */}
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Command palette"
             initial={{ opacity: 0, scale: 0.95, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -20 }}
@@ -156,6 +159,7 @@ export default function CommandPalette() {
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Search pages, agents..."
+                  aria-label="Search pages and agents"
                   className="flex-1 bg-transparent px-3 py-4 text-sm text-white placeholder-slate-500 focus:outline-none"
                 />
                 <kbd className="hidden sm:flex items-center px-1.5 py-0.5 rounded bg-slate-700 text-[10px] text-slate-400 font-mono">

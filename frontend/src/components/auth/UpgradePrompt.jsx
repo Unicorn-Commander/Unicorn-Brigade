@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Lock, ArrowRight, Sparkles } from 'lucide-react';
+import { X, Lock, ArrowRight, Sparkles, Check } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import Modal from '../ui/Modal';
 import TierBadge from './TierBadge';
 import RoleBadge from './RoleBadge';
 
@@ -126,29 +126,18 @@ const UpgradePrompt = ({
 
   // Modal version (full featured)
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={onClose}
-          />
-
-          {/* Modal */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className={`relative bg-white rounded-2xl shadow-2xl max-w-md w-full ${className}`}
-          >
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      ariaLabel="Upgrade required"
+      showClose={false}
+      panelClassName={`relative bg-white rounded-2xl shadow-2xl max-w-md w-full focus:outline-none ${className}`}
+    >
             {/* Close button */}
             {onClose && (
               <button
                 onClick={onClose}
+                aria-label="Close dialog"
                 className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X size={20} />
@@ -201,7 +190,7 @@ const UpgradePrompt = ({
                   <ul className="space-y-2">
                     {upgradeInfo.benefits.map((benefit, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
-                        <span className="text-green-500 flex-shrink-0 mt-0.5">✓</span>
+                        <Check className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" aria-hidden="true" />
                         <span>{benefit}</span>
                       </li>
                     ))}
@@ -228,10 +217,7 @@ const UpgradePrompt = ({
                 <ArrowRight size={16} />
               </button>
             </div>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+    </Modal>
   );
 };
 

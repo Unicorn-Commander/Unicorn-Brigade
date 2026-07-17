@@ -17,6 +17,7 @@ import {
 import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
 import api from '../services/api';
+import Modal from './ui/Modal';
 
 const terminalExecutionStates = new Set(['completed', 'failed', 'cancelled']);
 
@@ -408,8 +409,13 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
   const currentStepIndex = execution?.raw?.current_step ?? completedStepCount;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+    <Modal
+      onClose={onClose}
+      ariaLabel={`${workflow.name} execution`}
+      showClose={false}
+      closeOnBackdrop={false}
+      panelClassName="bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col focus:outline-none"
+    >
         <div className="flex justify-between items-start p-6 border-b border-slate-700/50">
           <div>
             <h2 className="text-2xl font-bold text-white">{workflow.name}</h2>
@@ -427,6 +433,7 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
           </div>
           <button
             onClick={onClose}
+            aria-label="Close dialog"
             className="p-3 min-h-[44px] min-w-[44px] hover:bg-slate-700/50 rounded-lg transition-colors"
           >
             <X className="w-6 h-6 text-slate-400" />
@@ -722,7 +729,6 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

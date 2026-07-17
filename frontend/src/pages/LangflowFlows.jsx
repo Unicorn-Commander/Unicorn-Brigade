@@ -21,6 +21,7 @@ import {
 import { toast } from 'react-hot-toast';
 import notify from '../utils/notify';
 import Breadcrumbs from '../components/Breadcrumbs';
+import Modal from '../components/ui/Modal';
 import { apiJson, ApiError } from '../services/http';
 
 const LangflowFlows = () => {
@@ -267,6 +268,7 @@ const LangflowFlows = () => {
               onClick={() => { checkHealth(); loadFlows(); }}
               className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
               title="Refresh"
+              aria-label="Refresh flows"
             >
               <RefreshCw className="w-5 h-5 text-slate-400" />
             </button>
@@ -358,6 +360,7 @@ const LangflowFlows = () => {
                       onClick={(e) => { e.stopPropagation(); handleFlowClick(flow); }}
                       className="p-2 bg-unicorn-500/20 hover:bg-unicorn-500/30 text-unicorn-400 rounded-lg transition-colors"
                       title="Run Flow"
+                      aria-label={`Run flow ${flow.name || 'Untitled Flow'}`}
                     >
                       <Play className="w-4 h-4" />
                     </button>
@@ -365,6 +368,7 @@ const LangflowFlows = () => {
                       onClick={(e) => handleExportFlow(flow, e)}
                       className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg transition-colors"
                       title="Export Flow"
+                      aria-label={`Export flow ${flow.name || 'Untitled Flow'}`}
                       disabled={isExporting}
                     >
                       <Download className="w-4 h-4" />
@@ -373,6 +377,7 @@ const LangflowFlows = () => {
                       onClick={(e) => confirmDelete(flow, e)}
                       className="p-2 bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-lg transition-colors"
                       title="Delete Flow"
+                      aria-label={`Delete flow ${flow.name || 'Untitled Flow'}`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -420,14 +425,12 @@ const LangflowFlows = () => {
 
       {/* Run Flow Modal */}
       {showRunModal && selectedFlow && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
-          onClick={() => setShowRunModal(false)}
+        <Modal
+          onClose={() => setShowRunModal(false)}
+          ariaLabel={`Run flow ${selectedFlow.name || 'Untitled Flow'}`}
+          showClose={false}
+          panelClassName="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto focus:outline-none"
         >
-          <div
-            className="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
@@ -440,6 +443,7 @@ const LangflowFlows = () => {
               </div>
               <button
                 onClick={() => setShowRunModal(false)}
+                aria-label="Close dialog"
                 className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -461,6 +465,7 @@ const LangflowFlows = () => {
                     </code>
                     <button
                       onClick={() => copyToClipboard(selectedFlow.id)}
+                      aria-label="Copy flow ID"
                       className="p-2 hover:bg-slate-800 rounded transition-colors"
                     >
                       <Copy className="w-4 h-4 text-slate-400" />
@@ -547,20 +552,17 @@ const LangflowFlows = () => {
                 </a>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && flowToDelete && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50"
-          onClick={() => setShowDeleteModal(false)}
+        <Modal
+          onClose={() => setShowDeleteModal(false)}
+          ariaLabel="Delete flow"
+          showClose={false}
+          panelClassName="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-md w-full focus:outline-none"
         >
-          <div
-            className="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-md w-full"
-            onClick={(e) => e.stopPropagation()}
-          >
             <div className="text-center mb-6">
               <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
                 <Trash2 className="w-8 h-8 text-red-400" />
@@ -585,8 +587,7 @@ const LangflowFlows = () => {
                 Delete
               </button>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
