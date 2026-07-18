@@ -70,8 +70,26 @@ class AgentRepository:
         if "org_id" in data:
             agent.org_id = data["org_id"]
         self.session.add(agent)
+        # BR-1.4 (RLS): FLUSH (not a post-commit refresh) to materialise the row.
+        # The INSERT emits ``... RETURNING agents.org_id``, so the server_default
+        # ``current_org_id()`` is evaluated and read back INSIDE the caller's
+        # transaction — where the ``app.current_org_id`` GUC is bound and the RLS
+        # WITH CHECK is enforced — fully populating the ORM object.
+        #
+        # We must NOT ``refresh()`` AFTER commit: refresh issues a fresh by-PK
+        # SELECT that the agents SELECT policy filters by
+        # ``org_id IS NULL OR org_id = current_org_id()``. If the org GUC is not
+        # present on the connection at that instant (a per-request session-scope
+        # GUC that was never committed, or was reverted/cleared — e.g. the pooled
+        # connection's org context between transactions), the just-inserted row is
+        # invisible and SQLAlchemy raises "Could not refresh instance" → a 500 on
+        # the normal per-org create. ``expire_on_commit=False`` (see
+        # app/db/database.py) keeps the flushed attributes valid after commit, so
+        # ``to_dict()`` needs no second SELECT. Isolation is unchanged: the write
+        # still ran on the RLS-subject request session and WITH CHECK still bound
+        # the row to the caller's org.
+        await self.session.flush()
         await self.session.commit()
-        await self.session.refresh(agent)
         return agent.to_dict()
 
     async def update(self, agent_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
@@ -111,8 +129,14 @@ class AgentRepository:
                 setattr(agent, attr, value)
 
         agent.updated_at = datetime.utcnow()
+        # BR-1.4 (RLS): NO post-commit refresh. ``agents`` is FORCE-RLS; a by-PK
+        # refresh() after commit issues a SELECT the org policy filters, and if the
+        # ``app.current_org_id`` GUC is not bound at that instant the just-updated
+        # row is invisible → "Could not refresh instance" → 500. The row is already
+        # loaded + mutated in this GUC-bound transaction; flush the UPDATE, commit,
+        # and return — ``expire_on_commit=False`` keeps the attributes valid.
+        await self.session.flush()
         await self.session.commit()
-        await self.session.refresh(agent)
         return agent.to_dict()
 
     async def delete(self, agent_id: str) -> bool:
@@ -183,10 +207,19 @@ class ConversationRepository:
             model=data.get("model"),
         )
         self.session.add(conv)
+        # BR-1.4 (RLS): flush emits INSERT ... RETURNING org_id so the
+        # server_default current_org_id() is evaluated INSIDE this GUC-bound
+        # transaction, then load the agent relationship for the response via
+        # self.get() WHILE STILL in that transaction — where the row is visible.
+        # We must NOT commit first and reload after: ``conversations`` is FORCE-RLS,
+        # and a post-commit by-PK SELECT the org policy filters can miss the
+        # just-written row if the GUC is not bound at that instant (refresh →
+        # "Could not refresh instance", or a None reload → 500). self.get() returns
+        # a plain dict materialised before commit; expire_on_commit=False keeps it.
+        await self.session.flush()
+        result = await self.get(str(conv.id))
         await self.session.commit()
-        await self.session.refresh(conv)
-        # Reload with agent relationship
-        return await self.get(str(conv.id))
+        return result
 
     async def update(self, conv_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
         result = await self.session.execute(
@@ -199,8 +232,15 @@ class ConversationRepository:
             if hasattr(conv, key):
                 setattr(conv, key, value)
         conv.updated_at = datetime.utcnow()
+        # BR-1.4 (RLS): read the updated row back via self.get() BEFORE commit, while
+        # the app.current_org_id GUC is bound and the row is visible in this
+        # transaction. ``conversations`` is FORCE-RLS, so a post-commit reload could
+        # be filtered out if the GUC is not present at that instant. flush the
+        # UPDATE first so the SELECT sees it; commit after (dict already materialised).
+        await self.session.flush()
+        result = await self.get(conv_id)
         await self.session.commit()
-        return await self.get(conv_id)
+        return result
 
     async def delete(self, conv_id: str) -> bool:
         result = await self.session.execute(
@@ -235,8 +275,13 @@ class ConversationRepository:
             if not conv.title and data["role"] == "user":
                 conv.title = data["content"][:100]
 
+        # BR-1.4 (RLS): NO post-commit refresh. ``messages`` is FORCE-RLS; flush
+        # emits INSERT ... RETURNING org_id (server_default current_org_id()) inside
+        # this GUC-bound transaction, fully populating ``msg`` (and the conversation
+        # counter UPDATE). A refresh() after commit would re-SELECT under the org
+        # policy and 500 with "Could not refresh instance" if the GUC is unbound.
+        await self.session.flush()
         await self.session.commit()
-        await self.session.refresh(msg)
         return msg.to_dict()
 
 
@@ -340,8 +385,12 @@ class BuilderSessionRepository:
 
         bs = BuilderSession(user_id=user_id)
         self.session.add(bs)
+        # BR-1.4 (RLS): flush → INSERT ... RETURNING org_id (server_default
+        # current_org_id()) inside the GUC-bound transaction; NO post-commit
+        # refresh. ``builder_sessions`` is FORCE-RLS, so a by-PK refresh() after
+        # commit could be filtered → "Could not refresh instance" → 500.
+        await self.session.flush()
         await self.session.commit()
-        await self.session.refresh(bs)
         return bs.to_dict()
 
     async def add_messages(self, session_id: str, user_msg: str, assistant_msg: str) -> Dict:
@@ -357,8 +406,11 @@ class BuilderSessionRepository:
         msgs.append({"role": "assistant", "content": assistant_msg})
         bs.messages = msgs
         bs.updated_at = datetime.utcnow()
+        # BR-1.4 (RLS): row already loaded + mutated in this GUC-bound transaction;
+        # flush the UPDATE and commit, NO post-commit refresh (FORCE-RLS re-SELECT
+        # could 500 if the org GUC is unbound). expire_on_commit=False keeps attrs.
+        await self.session.flush()
         await self.session.commit()
-        await self.session.refresh(bs)
         return bs.to_dict()
 
     async def get(self, session_id: str) -> Optional[Dict]:
@@ -574,8 +626,11 @@ class ToolExecutionRepository:
             status="pending",
         )
         self.session.add(te)
+        # BR-1.4 (RLS): flush → INSERT ... RETURNING org_id inside the GUC-bound
+        # transaction; NO post-commit refresh. ``tool_executions`` is FORCE-RLS, so
+        # a by-PK refresh() after commit could be filtered → 500 if the GUC is unbound.
+        await self.session.flush()
         await self.session.commit()
-        await self.session.refresh(te)
         return te.to_dict()
 
     async def complete(self, exec_id: str, output: Any, duration_ms: int, status: str = "completed") -> Optional[Dict]:
@@ -588,8 +643,10 @@ class ToolExecutionRepository:
         te.output = output
         te.duration_ms = duration_ms
         te.status = status
+        # BR-1.4 (RLS): row loaded + mutated in this GUC-bound transaction; flush +
+        # commit, NO post-commit refresh (FORCE-RLS re-SELECT could 500 unbound).
+        await self.session.flush()
         await self.session.commit()
-        await self.session.refresh(te)
         return te.to_dict()
 
     async def list_for_conversation(self, conv_id: str) -> List[Dict]:
@@ -631,8 +688,10 @@ class CodeAttributionRepository:
             metadata_=data.get("metadata", {}),
         )
         self.session.add(attribution)
+        # BR-1.4 (RLS): flush → INSERT ... RETURNING org_id inside the GUC-bound
+        # transaction; NO post-commit refresh. ``code_attributions`` is FORCE-RLS.
+        await self.session.flush()
         await self.session.commit()
-        await self.session.refresh(attribution)
         return attribution.to_dict()
 
     async def get_by_file(
@@ -854,8 +913,10 @@ class SpeakerProfileRepository:
             preferences=data.get("preferences", {}),
         )
         self.session.add(profile)
+        # BR-1.4 (RLS): flush → INSERT ... RETURNING org_id inside the GUC-bound
+        # transaction; NO post-commit refresh. ``speaker_profiles`` is FORCE-RLS.
+        await self.session.flush()
         await self.session.commit()
-        await self.session.refresh(profile)
         return profile.to_dict()
 
     async def update(self, profile_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
@@ -871,8 +932,10 @@ class SpeakerProfileRepository:
                 setattr(profile, key, value)
 
         profile.updated_at = datetime.utcnow()
+        # BR-1.4 (RLS): row loaded + mutated in this GUC-bound transaction; flush +
+        # commit, NO post-commit refresh (FORCE-RLS re-SELECT could 500 unbound).
+        await self.session.flush()
         await self.session.commit()
-        await self.session.refresh(profile)
         return profile.to_dict()
 
     async def delete(self, profile_id: str) -> bool:
