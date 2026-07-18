@@ -8,6 +8,8 @@ from typing import Dict, Any, List, Optional, AsyncGenerator, Callable, Union
 from dataclasses import dataclass, field
 import json
 
+from app.llm.org_gateway import gateway_headers
+
 # Phase 7b.2: consecutive-failure monitor for local inference endpoints.
 try:
     from app.observability.inference_monitor import observe as _observe_backend
@@ -332,7 +334,8 @@ class OpsCenterLLMClient:
         temperature: float = 0.7,
         max_tokens: int = 2000,
         stream: bool = False,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create chat completion via Ops-Center (single attempt).
@@ -404,10 +407,7 @@ class OpsCenterLLMClient:
                 logger.info(f"Sending chat completion to OpenRouter: {resolved_model}")
             elif route_type == "gateway":
                 # Metered UC gateway: OpenAI-compatible, Bearer key meters usage.
-                headers = {
-                    "Authorization": f"Bearer {UC_GATEWAY_KEY}",
-                    "Content-Type": "application/json",
-                }
+                headers = gateway_headers(shared_key=UC_GATEWAY_KEY, org_id=org_id, user_id=user_id)
                 endpoint = f"{target_url}/chat/completions"
                 logger.info(f"Sending chat completion to UC gateway: {resolved_model}")
             else:
@@ -531,7 +531,8 @@ class OpsCenterLLMClient:
         model: str = "default",
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Stream chat completion via Ops-Center
@@ -578,10 +579,7 @@ class OpsCenterLLMClient:
                 }
                 endpoint = f"{target_url}/chat/completions"
             elif route_type == "gateway":
-                headers = {
-                    "Authorization": f"Bearer {UC_GATEWAY_KEY}",
-                    "Content-Type": "application/json",
-                }
+                headers = gateway_headers(shared_key=UC_GATEWAY_KEY, org_id=org_id, user_id=user_id)
                 endpoint = f"{target_url}/chat/completions"
             else:
                 headers = {
@@ -698,7 +696,8 @@ class OpsCenterLLMClient:
         temperature: float = 0.7,
         max_tokens: int = 2000,
         tool_choice: str = "auto",  # "auto", "none", or {"type": "function", "function": {"name": "..."}}
-        user_id: Optional[str] = None
+        user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Chat completion with function calling support (single attempt).
@@ -758,10 +757,7 @@ class OpsCenterLLMClient:
                 endpoint = f"{target_url}/chat/completions"
                 logger.info(f"Sending tool-enabled request to OpenRouter: {resolved_model} with {len(tools)} tools")
             elif route_type == "gateway":
-                headers = {
-                    "Authorization": f"Bearer {UC_GATEWAY_KEY}",
-                    "Content-Type": "application/json",
-                }
+                headers = gateway_headers(shared_key=UC_GATEWAY_KEY, org_id=org_id, user_id=user_id)
                 endpoint = f"{target_url}/chat/completions"
                 logger.info(f"Sending tool-enabled request to UC gateway: {resolved_model} with {len(tools)} tools")
             else:
@@ -928,6 +924,7 @@ class OpsCenterLLMClient:
         max_tokens: int = 2000,
         max_iterations: int = 10,
         user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
         on_tool_call: Optional[Callable[[ToolCall], None]] = None,
         on_tool_result: Optional[Callable[[ToolResult], None]] = None,
         use_user_message_fallback: bool = True,  # Use user messages for tool results (works with more providers)
@@ -992,6 +989,7 @@ class OpsCenterLLMClient:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     user_id=user_id,
+                    org_id=org_id,
                 )
             except Exception as e:
                 error_msg = str(e)

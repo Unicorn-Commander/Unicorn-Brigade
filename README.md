@@ -891,6 +891,10 @@ DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5434/unicorn_brigade
 OPS_CENTER_URL=https://unicorncommander.ai
 OPENROUTER_API_KEY=sk-or-v1-000000000000000000000000000000000000
 ANTHROPIC_API_KEY=sk-ant-...
+UC_GATEWAY_URL=https://llm.unicorncommander.ai/v1
+UC_GATEWAY_KEY=sk-shared-placeholder
+UC_GATEWAY_PER_ORG_KEYS_ENABLED=false
+UC_GATEWAY_ORG_KEYS_JSON='{"org-uuid":{"api_key":"sk-org-placeholder","key_alias":"org-alias","max_budget":50}}'
 
 # Tools
 SERPER_API_KEY=...  # Web search

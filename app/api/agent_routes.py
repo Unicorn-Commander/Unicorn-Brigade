@@ -1201,6 +1201,7 @@ async def chat_with_agent(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 user_id=request.user_id,
+                org_id=getattr(user, "org_id", None),
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
                 # Room context for room-aware tools (needs_room_context).
@@ -1218,6 +1219,7 @@ async def chat_with_agent(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 user_id=request.user_id,
+                org_id=getattr(user, "org_id", None),
             )
 
         content = strip_channel_artifacts(_strip_thinking(llm_client.get_response_content(response)))
@@ -1477,6 +1479,7 @@ async def _stream_chat(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 user_id=user_id,
+                org_id=getattr(user, "org_id", None),
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
             ))
@@ -1548,6 +1551,7 @@ async def _stream_chat(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 user_id=user_id,
+                org_id=getattr(user, "org_id", None),
             ):
                 try:
                     chunk = json.loads(chunk_data)
@@ -1786,6 +1790,8 @@ async def direct_chat_completion(
             model=model,
             temperature=request.temperature,
             max_tokens=request.maxTokens,
+            user_id=getattr(user, "id", None),
+            org_id=getattr(user, "org_id", None),
         )
 
         content = strip_channel_artifacts(_strip_thinking(llm_client.get_response_content(response)))

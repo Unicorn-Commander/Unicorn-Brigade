@@ -7,6 +7,11 @@ hitting OpenRouter's native API (which expects bare/namespaced slugs such as
 import pytest
 
 from app.llm import ops_center_client
+from app.llm.org_gateway import (
+    clear_org_gateway_cache,
+    gateway_headers,
+    get_org_gateway_credential,
+)
 from app.llm.ops_center_client import OpsCenterLLMClient
 
 
@@ -61,3 +66,62 @@ def test_uc_prefix_goes_to_gateway_unstripped(client, monkeypatch):
     assert route == "gateway"
     assert resolved == "uc/chat-local-p40"
     assert url == "http://gw/v1"
+
+
+def test_gateway_headers_use_shared_key_when_org_mapping_disabled(monkeypatch):
+    monkeypatch.delenv("UC_GATEWAY_PER_ORG_KEYS_ENABLED", raising=False)
+    monkeypatch.setenv(
+        "UC_GATEWAY_ORG_KEYS_JSON",
+        '{"org-a":{"api_key":"sk-org-a","key_alias":"org-a","max_budget":50}}',
+    )
+    clear_org_gateway_cache()
+
+    headers = gateway_headers(shared_key="sk-shared", org_id="org-a", user_id="user-a")
+
+    assert headers["Authorization"] == "Bearer sk-shared"
+    assert headers["X-Org-ID"] == "org-a"
+    assert headers["X-User-ID"] == "user-a"
+    assert "X-UC-Gateway-Key-Alias" not in headers
+
+
+def test_gateway_headers_use_org_key_and_budget_when_enabled(monkeypatch):
+    monkeypatch.setenv("UC_GATEWAY_PER_ORG_KEYS_ENABLED", "true")
+    monkeypatch.setenv(
+        "UC_GATEWAY_ORG_KEYS_JSON",
+        '{"org-a":{"api_key":"sk-org-a","key_alias":"org-a","max_budget":50}}',
+    )
+    clear_org_gateway_cache()
+
+    credential = get_org_gateway_credential("org-a")
+    headers = gateway_headers(shared_key="sk-shared", org_id="org-a", user_id="user-a")
+
+    assert credential is not None
+    assert credential.api_key == "sk-org-a"
+    assert credential.max_budget == 50.0
+    assert headers["Authorization"] == "Bearer sk-org-a"
+    assert headers["X-Org-ID"] == "org-a"
+    assert headers["X-User-ID"] == "user-a"
+    assert headers["X-UC-Gateway-Key-Alias"] == "org-a"
+    assert headers["X-UC-Gateway-Max-Budget"] == "50.0"
+
+
+def test_gateway_headers_fail_closed_for_unmapped_org_when_enabled(monkeypatch):
+    monkeypatch.setenv("UC_GATEWAY_PER_ORG_KEYS_ENABLED", "1")
+    monkeypatch.setenv("UC_GATEWAY_ORG_KEYS_JSON", '{"org-a":"sk-org-a"}')
+    clear_org_gateway_cache()
+
+    with pytest.raises(RuntimeError, match="no UC gateway key configured for org org-b"):
+        gateway_headers(shared_key="sk-shared", org_id="org-b", user_id="user-b")
+
+
+def test_gateway_headers_allow_shared_key_for_unscoped_system_call(monkeypatch):
+    monkeypatch.setenv("UC_GATEWAY_PER_ORG_KEYS_ENABLED", "1")
+    monkeypatch.setenv("UC_GATEWAY_ORG_KEYS_JSON", '{"org-a":"sk-org-a"}')
+    clear_org_gateway_cache()
+
+    headers = gateway_headers(shared_key="sk-shared", org_id=None, user_id=None)
+
+    assert headers == {
+        "Authorization": "Bearer sk-shared",
+        "Content-Type": "application/json",
+    }
