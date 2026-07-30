@@ -158,6 +158,10 @@ MIGRATIONS = [
     (
         "20260729_01_core_agent_avatar_urls",
         "Populate verified Brigade and Brand-Ops primary agent portraits",
+        # Brand-Ops owns the artwork masters below; Brigade owns their runtime
+        # aliases and serves portable same-origin copies.  Keep this explanation
+        # outside the SQL string: asyncpg can return a null statement status for
+        # a semicolon-split statement beginning with a line comment.
         """
         UPDATE agents
         SET avatar_url = '/avatars/' || id || '.webp'
@@ -183,10 +187,6 @@ MIGRATIONS = [
         )
           AND (avatar_url IS NULL OR btrim(avatar_url) = '');
 
-        -- Brand-Ops owns these artwork masters; Brigade owns their runtime
-        -- aliases and serves portable same-origin copies. Replace only the
-        -- known non-portable Brand-Ops bindings. Arbitrary custom URLs remain
-        -- operator-owned and are deliberately untouched.
         UPDATE agents
         SET avatar_url = '/avatars/' || id || '.webp'
         WHERE (

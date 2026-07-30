@@ -7,6 +7,7 @@ from app.agent_avatars import (
     MASTERED_AGENT_AVATAR_IDS,
     canonical_avatar_path,
 )
+from app.db.migrations import MIGRATIONS
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -45,3 +46,14 @@ def test_core_avatar_paths_are_same_origin_and_stable() -> None:
     assert canonical_avatar_path("perry") == "/avatars/perry.webp"
     assert canonical_avatar_path("prudence") == "/avatars/prudence.webp"
     assert canonical_avatar_path("cpl.-colophon") == "/avatars/cpl.-colophon.webp"
+
+
+def test_avatar_migration_split_statements_begin_with_sql() -> None:
+    sql = next(
+        migration_sql
+        for version, _description, migration_sql in MIGRATIONS
+        if version == "20260729_01_core_agent_avatar_urls"
+    )
+    statements = [statement.strip() for statement in sql.split(";") if statement.strip()]
+    assert statements
+    assert all(not statement.startswith("--") for statement in statements)
