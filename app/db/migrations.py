@@ -156,6 +156,67 @@ MIGRATIONS = [
         """,
     ),
     (
+        "20260729_01_core_agent_avatar_urls",
+        "Populate verified Brigade and Brand-Ops primary agent portraits",
+        """
+        UPDATE agents
+        SET avatar_url = '/avatars/' || id || '.webp'
+        WHERE id IN (
+            'the-general',
+            'gunny',
+            'sgt-cipher',
+            'cpt-fullstack',
+            'maj-devops',
+            'col-finance',
+            'lt-taxstrat',
+            'judge-advocate',
+            'doc-medresearch',
+            'detective-holmes',
+            'prof-datasci',
+            'support-agent',
+            'code-reviewer',
+            'sql-analyst',
+            'sgt-scribe',
+            'maj-leadgen',
+            'lt-docanalyst',
+            'iris'
+        )
+          AND (avatar_url IS NULL OR btrim(avatar_url) = '');
+
+        -- Brand-Ops owns these artwork masters; Brigade owns their runtime
+        -- aliases and serves portable same-origin copies. Replace only the
+        -- known non-portable Brand-Ops bindings. Arbitrary custom URLs remain
+        -- operator-owned and are deliberately untouched.
+        UPDATE agents
+        SET avatar_url = '/avatars/' || id || '.webp'
+        WHERE (
+            id = 'perry'
+            AND (
+                avatar_url IS NULL
+                OR btrim(avatar_url) = ''
+                OR avatar_url = '/api/brands/magic-unicorn/agents/perrywinkle-spector/avatar'
+                OR avatar_url = 'https://brand-ops.magicunicorn.dev/api/brands/magic-unicorn/agents/perrywinkle-spector/avatar'
+            )
+        ) OR (
+            id = 'prudence'
+            AND (
+                avatar_url IS NULL
+                OR btrim(avatar_url) = ''
+                OR avatar_url = '/api/brands/magic-unicorn/agents/prudence-finch/avatar'
+                OR avatar_url = 'https://brand-ops.magicunicorn.dev/api/brands/magic-unicorn/agents/prudence-finch/avatar'
+            )
+        ) OR (
+            id = 'cpl.-colophon'
+            AND (
+                avatar_url IS NULL
+                OR btrim(avatar_url) = ''
+                OR avatar_url = '/api/brands/magic-unicorn/agents/cpl-colophon/avatar'
+                OR avatar_url = 'https://brand-ops.magicunicorn.dev/api/brands/magic-unicorn/agents/cpl-colophon/avatar'
+            )
+        );
+        """,
+    ),
+    (
         "20260716_01_user_keycloak_id",
         "BR-1.1: users.keycloak_id — canonical Keycloak sub binding (unique-nullable + index)",
         # Additive + idempotent. Nullable so legacy/native rows stay valid until

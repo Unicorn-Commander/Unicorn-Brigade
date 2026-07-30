@@ -20,6 +20,7 @@ load_dotenv()
 from app.db.database import engine, migration_engine, Base, async_session, admin_session
 from app.db.models import Agent
 from app.llm.ops_center_client import DEFAULT_MODEL
+from app.agent_avatars import canonical_avatar_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -76,6 +77,10 @@ async def seed_agents():
                 title=data.get("title"),
                 rank=data.get("rank"),
                 avatar=data.get("avatar", "🦄"),
+                avatar_url=(
+                    data.get("avatarUrl")
+                    or canonical_avatar_path(data["id"])
+                ),
                 bio=data.get("bio"),
                 persona=data.get("persona"),
                 system_prompt=data.get("systemPrompt"),
