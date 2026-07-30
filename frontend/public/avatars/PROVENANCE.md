@@ -23,6 +23,10 @@ the source of mastered artwork where an identity comes from a product brand.
   source bytes identify as JPEG despite the legacy `.png` filename. Source
   SHA-256:
   `4860c7fa90ce29f1d8d6416405d51c71bda5eea559876e2d920aba1dd1015550`.
+- `rating-raider.webp` is the exact 512x512 WebP already served by Brigade and
+  explicitly bound to the production `rating-raider` identity before its
+  import into source control. Runtime asset SHA-256:
+  `4f4691c2eaa2989c1e249999c75f3f6c528515d96018e18caf2e4b023bbd06a3`.
 - The original 17 Brigade portraits and their state variants predate this
   provenance manifest and remain Brigade-owned.
 

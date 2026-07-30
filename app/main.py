@@ -17,6 +17,7 @@ from app.graph.workflow import WorkflowManager
 from app.stores.model_catalog import ModelCatalog
 from app.llm.ops_center_client import OpsCenterLLMClient
 from app.api.agent_routes import router as agent_router, init_agent_routes
+from app.api.avatar_routes import router as avatar_router
 from app.api.openai_compat_routes import router as openai_compat_router
 from app.api.welcome_route import router as welcome_router
 from app.observability.metrics import metrics_middleware, metrics_endpoint
@@ -352,6 +353,7 @@ if not FEDERATION_ONLY:
     # Internal/dogfood surface — agents, voice, slack, knowledge, all the
     # internal tooling. Skipped on the customer-facing prod instance.
     app.include_router(agent_router, prefix="/api/v1", tags=["agents"])
+    app.include_router(avatar_router)
     app.include_router(openai_compat_router, prefix="/api/v1/openai/v1", tags=["openai-compat"])
     app.include_router(welcome_router, tags=["welcome"])
     app.include_router(landing_router, tags=["landing"])

@@ -797,6 +797,20 @@ MIGRATIONS = [
             """,
         ],
     ),
+    (
+        "20260729_02_rating_raider_avatar_url",
+        "Preserve the verified production rating-raider portrait binding",
+        # The exact 512x512 WebP already served from Brigade and was explicitly
+        # bound to the rating-raider row in production. It is now tracked in the
+        # Brigade asset catalog. Null-only assignment preserves every operator
+        # custom URL and makes this migration safe to repeat.
+        """
+        UPDATE agents
+        SET avatar_url = '/avatars/rating-raider.webp'
+        WHERE id = 'rating-raider'
+          AND (avatar_url IS NULL OR btrim(avatar_url) = '');
+        """,
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.
