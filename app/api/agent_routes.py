@@ -1087,6 +1087,7 @@ async def chat_with_agent(
                 messages, model, temperature, max_tokens, agent,
                 request.user_id, agent_tools, session,
                 user_email=user_email_for_metering,
+                org_id=getattr(user, "org_id", None),
             ),
             media_type="text/event-stream"
         )
@@ -1389,6 +1390,7 @@ async def chat_with_agent(
 async def _stream_chat(
     messages, model, temperature, max_tokens, agent, user_id, agent_tools, session,
     user_email: Optional[str] = None,
+    org_id: Optional[str] = None,
 ):
     """SSE streaming chat generator with function calling support."""
     from app.llm.delegation_tools import _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME
@@ -1479,7 +1481,7 @@ async def _stream_chat(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 user_id=user_id,
-                org_id=getattr(user, "org_id", None),
+                org_id=org_id,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
             ))
@@ -1533,7 +1535,7 @@ async def _stream_chat(
                 agent=agent,
                 tools_called=[t.get("name") for t in (tool_calls_log or [])],
                 outcome=_chat_outcome(tool_calls_log),
-                org_id=getattr(user, "org_id", None),
+                org_id=org_id,
             )
 
             yield "data: [DONE]\n\n"
@@ -1551,7 +1553,7 @@ async def _stream_chat(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 user_id=user_id,
-                org_id=getattr(user, "org_id", None),
+                org_id=org_id,
             ):
                 try:
                     chunk = json.loads(chunk_data)
@@ -1603,7 +1605,7 @@ async def _stream_chat(
                     },
                     agent=agent,
                     tools_called=[],
-                    org_id=getattr(user, "org_id", None),
+                    org_id=org_id,
                 )
             except Exception as _meter_err:
                 logger.debug(f"Stream meter failed: {_meter_err}")
