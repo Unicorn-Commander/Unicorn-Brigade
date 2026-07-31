@@ -811,6 +811,52 @@ MIGRATIONS = [
           AND (avatar_url IS NULL OR btrim(avatar_url) = '');
         """,
     ),
+    (
+        "20260731_01_stable_resident_avatar_urls",
+        "Promote majik/sidekick/corporal-qwen Brand-Ops masters to verified webp",
+        # Production rows were runtime-bound to CDN-busted -v2.png filenames
+        # (rating-raider precedent). Canonical verified paths are same-origin
+        # .webp. Rewrite only the known runtime URLs or empty rows — never
+        # invent a binding for an unbound agent and never touch unrelated
+        # custom URLs.
+        """
+        UPDATE agents
+        SET avatar_url = '/avatars/majik.webp'
+        WHERE id = 'majik'
+          AND (
+            avatar_url IS NULL
+            OR btrim(avatar_url) = ''
+            OR avatar_url = '/avatars/majik-v2.png'
+            OR avatar_url = '/avatars/majik.png'
+            OR avatar_url = 'https://brigade.magicunicorn.dev/avatars/majik-v2.png'
+            OR avatar_url = 'https://brigade.magicunicorn.dev/avatars/majik.png'
+          );
+
+        UPDATE agents
+        SET avatar_url = '/avatars/sidekick.webp'
+        WHERE id = 'sidekick'
+          AND (
+            avatar_url IS NULL
+            OR btrim(avatar_url) = ''
+            OR avatar_url = '/avatars/sidekick-v2.png'
+            OR avatar_url = '/avatars/sidekick.png'
+            OR avatar_url = 'https://brigade.magicunicorn.dev/avatars/sidekick-v2.png'
+            OR avatar_url = 'https://brigade.magicunicorn.dev/avatars/sidekick.png'
+          );
+
+        UPDATE agents
+        SET avatar_url = '/avatars/corporal-qwen.webp'
+        WHERE id = 'corporal-qwen'
+          AND (
+            avatar_url IS NULL
+            OR btrim(avatar_url) = ''
+            OR avatar_url = '/avatars/corporal-qwen-v2.png'
+            OR avatar_url = '/avatars/corporal-qwen.png'
+            OR avatar_url = 'https://brigade.magicunicorn.dev/avatars/corporal-qwen-v2.png'
+            OR avatar_url = 'https://brigade.magicunicorn.dev/avatars/corporal-qwen.png'
+          );
+        """,
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.
