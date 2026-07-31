@@ -33,3 +33,14 @@ the source of mastered artwork where an identity comes from a product brand.
 Do not bind an agent ID to a portrait based on title, rank, or visual
 similarity. Add a mapping only when the identity owner provides an explicit
 master or manifest.
+
+## Stable resident portraits (2026-07-31)
+
+- `majik.png`, `sidekick.png`, `corporal-qwen.png` — explicit masters
+  generated through Brand-Ops' compliance-checked agent-identity pipeline
+  (brand `magic-unicorn`, slugs `majik` / `sidekick` / `corporal-qwen`;
+  color-palette compliance pass, score 100 each). Brand-Ops manifests are the
+  identity-owner evidence; production rows were bound explicitly the same day
+  (runtime binding, rating-raider precedent). PNG masters at 256px; webp
+  re-encode + sha256 manifest entries welcome when these are promoted into the
+  verified set.
