@@ -785,8 +785,23 @@ async def create_agent(
     """
     from sqlalchemy.exc import IntegrityError
 
+    from app.agent_avatars import normalize_avatar_url, validate_explicit_avatar_url
+
     data = request.model_dump(exclude_none=True)
     wants_shared = bool(data.pop("shared", False))
+    # Registration-time avatar binding: carry an explicit avatarUrl if the
+    # caller supplies one; otherwise leave null (consumers have fallbacks).
+    # Never invent a portrait from name/rank — identity-owner evidence only.
+    if "avatarUrl" in data:
+        raw_avatar = data.get("avatarUrl")
+        cleaned = normalize_avatar_url(raw_avatar)
+        if cleaned is None:
+            data.pop("avatarUrl", None)
+        else:
+            try:
+                data["avatarUrl"] = validate_explicit_avatar_url(cleaned)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
     # BR-0.10 item 4: a duplicate agent id/name must be a 409 (client already
     # exists), not a 500. The id defaults to a slug of the name, so two "Gunny"
     # creates collide on the PK — surface that cleanly on BOTH create paths.
