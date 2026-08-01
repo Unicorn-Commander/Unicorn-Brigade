@@ -118,3 +118,26 @@ a clipboard and dark gloves in place of the style's white hooves.
 
 `majik` and `sidekick` remain deliberately unbound — see the withdrawal note
 above. A null avatar_url on either id is intentional state, not a defect.
+
+
+## Majik — APPROVED with a rainbow mane (2026-08-01)
+
+**This supersedes the withdrawal note above FOR `majik` ONLY.** The identity
+owner (Aaron) reviewed the withdrawn `majik-v4` composition on 2026-08-01 and
+approved it subject to one change, verbatim: *"For Majik, it's basically what
+you had for an avatar, just give him rainbow hair please."*
+
+`majik-v5.png` is that composition — hooded arcane orchestrator, cosmic purple
+robe, golden spiral horn, confident smirk — with the mane recoloured to a full
+rainbow. Chosen over a second variant because the rainbow reads at 36px, the
+size the Stable org chart renders these at.
+
+- `majik-v5.png` SHA-256:
+  `ded2b33de1de05a3bfd8ce9025d63ffea537ea22543f34ad65997625f36856c0`
+
+`agents.avatar_url` for `majik` is now `/avatars/majik-v5.png`. A NULL there is
+no longer the expected state — do not "restore" it.
+
+**`sidekick` is still WITHDRAWN and still deliberately unbound.** A null
+avatar_url on `sidekick` remains intentional state, not a defect, until the
+owner approves art for it.
