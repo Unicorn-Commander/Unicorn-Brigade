@@ -4,19 +4,121 @@ import CommsLayer from '../components/command/CommsLayer';
 import { useOrchestrationStream } from '../hooks/useOrchestrationStream';
 import ActivityGrid from '../components/command/ActivityGrid';
 import ActivityFeed from '../components/command/ActivityFeed';
-import { ReactFlow, Background, BackgroundVariant, Controls, MiniMap, MarkerType } from '@xyflow/react';
+import {
+  ReactFlow,
+  Background,
+  BackgroundVariant,
+  Controls,
+  MiniMap,
+  Panel,
+  MarkerType,
+  useReactFlow,
+  getNodesBounds,
+} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Network, Boxes, LayoutGrid, Radio, Zap, Orbit, Loader2, Megaphone } from 'lucide-react';
+import { Network, Boxes, LayoutGrid, Radio, Zap, Orbit, Loader2, Megaphone, Maximize2 } from 'lucide-react';
 import BriefingView from '../components/command/BriefingView';
 
 // Heavy (three.js) — only loaded when the operator flips to the 3D view.
 const WorkflowVisualization3D = lazy(() => import('../components/WorkflowVisualization3D'));
 import { useAgents } from '../hooks/useAgents';
 import { buildOrgTree } from '../utils/orgTree';
-import { useOrgLayout } from '../hooks/useOrgLayout';
+import { useOrgLayout, ORG_NODE_W, ORG_NODE_H } from '../hooks/useOrgLayout';
 import OrgAgentNode from '../components/command/OrgAgentNode';
 
 const nodeTypes = { orgAgent: OrgAgentNode };
+
+// A fit must be allowed to zoom out far enough to actually show the widest
+// tier. The old floor of 0.2 was *also* the zoom the fit landed on — the apex
+// has 19 direct reports, ~5100px of row inside a ~1400px pane — so every node
+// rendered as a sliver. Keep this at or below what a real fit needs, and let
+// the legibility floor below decide whether to use it at all.
+const FIT_MIN_ZOOM = 0.12;
+const FIT_OPTIONS = { padding: 0.14, minZoom: FIT_MIN_ZOOM, maxZoom: 0.9 };
+
+// Below this, node labels stop being readable — names turn to grey mush. A
+// board this wide only "fits" at about 0.25, so fitting everything is worse
+// than not fitting: you get a ribbon that is legible at no zoom level floating
+// in an empty pane. Past this point we anchor on the apex at a readable size
+// and let the operator pan, use the minimap, or hit Fit all.
+const LEGIBLE_ZOOM = 0.55;
+
+/**
+ * Owns the viewport. Decides — BEFORE moving it — whether a fit would land at a
+ * readable zoom; fits if it would, anchors on the apex at LEGIBLE_ZOOM if it
+ * would not.
+ *
+ * Polls for real geometry rather than gating on a single readiness signal:
+ * dagre positions are synchronous but xyflow's node measurement is not, and a
+ * bounds read before measurement is zero-sized. Polling is indifferent to
+ * whether pane measurement, node measurement or layout settles last.
+ * setInterval is deliberate over requestAnimationFrame, which never fires in a
+ * hidden tab — which is every background or automated one.
+ *
+ * Rendered inside <ReactFlow> so it has the flow context.
+ */
+function FitOnChange({ token, rootId, paneRef, onModeChange }) {
+  const rf = useReactFlow();
+  useEffect(() => {
+    const apply = () => {
+      const pane = paneRef.current;
+      const ns = rf.getNodes();
+      if (!pane || !ns.length) return false;
+      const w = pane.clientWidth;
+      const h = pane.clientHeight;
+      const bounds = getNodesBounds(ns);
+      if (!w || !h || !bounds.width || !bounds.height) return false;
+
+      // What zoom would fitView land on? Mirror its padding so the choice is
+      // made before the viewport moves — fitting and then correcting would let
+      // the unreadable fit be what the operator sees first.
+      const pad = 1 + FIT_OPTIONS.padding * 2;
+      const wouldFit = Math.min(w / (bounds.width * pad), h / (bounds.height * pad));
+
+      if (wouldFit >= LEGIBLE_ZOOM) {
+        rf.fitView({ ...FIT_OPTIONS, duration: 300 });
+        onModeChange?.('fit');
+        return true;
+      }
+      // Too wide to show legibly. Anchor on the apex at a readable zoom: it
+      // sits centred over its own tier, so this frames the top of the chain of
+      // command and the middle of the tier under it.
+      const root = rootId ? rf.getNode(rootId) : undefined;
+      const cx = root ? root.position.x + ORG_NODE_W / 2 : bounds.x + bounds.width / 2;
+      const cy = root
+        ? root.position.y + h / (2 * LEGIBLE_ZOOM) - ORG_NODE_H
+        : bounds.y + bounds.height / 2;
+      rf.setCenter(cx, cy, { zoom: LEGIBLE_ZOOM, duration: 300 });
+      onModeChange?.('anchored');
+      return true;
+    };
+
+    if (apply()) return undefined;
+    let tries = 0;
+    const iv = setInterval(() => {
+      if (apply() || ++tries > 40) clearInterval(iv);
+    }, 50);
+    return () => clearInterval(iv);
+  }, [token, rf, rootId, paneRef, onModeChange]);
+  return null;
+}
+
+/** Escape hatch: show the whole board however small, on demand. */
+function FitAllButton({ onFit }) {
+  const rf = useReactFlow();
+  return (
+    <button
+      onClick={() => {
+        rf.fitView({ ...FIT_OPTIONS, maxZoom: LEGIBLE_ZOOM, duration: 300 });
+        onFit?.();
+      }}
+      title="Zoom out until the whole chain of command is on screen"
+      className="flex items-center gap-1.5 rounded-lg border border-slate-700/60 bg-slate-900/80 px-2.5 py-1 text-xs font-medium text-slate-300 backdrop-blur-md transition-colors hover:border-unicorn-500/60 hover:text-slate-100"
+    >
+      <Maximize2 className="h-3.5 w-3.5" /> Fit all
+    </button>
+  );
+}
 
 // Live delegation-edge color by protocol (matches the knowledge-graph legend).
 const PROTOCOL_COLOR = {
@@ -59,9 +161,34 @@ export default function CommandCenter() {
 
   const tree = useMemo(() => buildOrgTree(safeAgents), [safeAgents]);
 
+  // Emit nodes in CHAIN-OF-COMMAND order (apex, then each parent's rank-sorted
+  // children, depth-first) rather than raw roster order. Dagre seeds its
+  // within-rank ordering from insertion order, so roster order — which arrives
+  // grouped by domain — scattered the tiers: agents landed beside strangers and
+  // their reporting lines crossed the whole board to reach them. Walking the
+  // tree puts each team together and the most senior of every tier first.
+  const orderedAgents = useMemo(() => {
+    const out = [];
+    const seen = new Set();
+    const walk = (id) => {
+      const a = tree.byId.get(id);
+      if (!a || seen.has(id)) return;
+      seen.add(id);
+      out.push(a);
+      (tree.childrenById.get(id) || []).forEach(walk);
+    };
+    if (tree.root) walk(tree.root.id);
+    // Anyone the walk can't reach (a line the roster is mid-edit on) still has
+    // to appear — dropping an agent off the board is worse than an odd slot.
+    tree.agents.forEach((a) => {
+      if (!seen.has(a.id)) out.push(a);
+    });
+    return out;
+  }, [tree]);
+
   const rawNodes = useMemo(
     () =>
-      tree.agents.map((a) => ({
+      orderedAgents.map((a) => ({
         id: a.id,
         type: 'orgAgent',
         position: { x: 0, y: 0 },
@@ -73,7 +200,7 @@ export default function CommandCenter() {
           onOpen: openWindow, // keyboard activation path (mouse uses onNodeClick)
         },
       })),
-    [tree, openWindow]
+    [orderedAgents, tree, openWindow]
   );
 
   // Stable topology drives the dagre layout — it must NOT change with live
@@ -163,6 +290,11 @@ export default function CommandCenter() {
     () => Object.entries(statuses).filter(([, v]) => v && v.status !== 'idle').map(([id]) => id),
     [statuses]
   );
+
+  // Measured so the viewport owner can tell whether a fit would land at a
+  // readable zoom BEFORE it moves anything.
+  const paneRef = useRef(null);
+  const [fitMode, setFitMode] = useState(null); // 'fit' | 'anchored' | null
 
   // Only surface a disconnect after it persists ~2.5s, so brief EventSource
   // reconnect blips don't flash a banner.
@@ -258,29 +390,50 @@ export default function CommandCenter() {
             <Loader2 className="h-5 w-5 animate-spin" /> Loading the Brigade…
           </div>
         ) : view === 'chart' ? (
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            onNodeClick={onNodeClick}
-            fitView
-            fitViewOptions={{ padding: 0.18 }}
-            minZoom={0.2}
-            maxZoom={1.6}
-            nodesDraggable={false}
-            proOptions={{ hideAttribution: true }}
-            className="bg-transparent"
-          >
-            <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#1e293b" />
-            <Controls showInteractive={false} className="!border-slate-700 !bg-slate-800/80" />
-            <MiniMap
-              pannable
-              zoomable
-              nodeColor="#7c3aed"
-              maskColor="rgba(2,6,23,0.7)"
-              className="!border-slate-700 !bg-slate-900"
-            />
-          </ReactFlow>
+          <div ref={paneRef} className="h-full w-full">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              onNodeClick={onNodeClick}
+              // No `fitView` prop: ReactFlow's built-in fit and <FitOnChange>
+              // would both drive the viewport, and the built-in one wins — the
+              // legibility anchoring below was computed, applied, and then
+              // silently overwritten by a fit back down to ~0.25. One owner for
+              // the viewport.
+              minZoom={FIT_MIN_ZOOM}
+              maxZoom={1.6}
+              nodesDraggable={false}
+              proOptions={{ hideAttribution: true }}
+              className="bg-transparent"
+            >
+              <FitOnChange
+                token={`${positioned.length}:${tree.root?.id || ''}`}
+                rootId={tree.root?.id}
+                paneRef={paneRef}
+                onModeChange={setFitMode}
+              />
+              <Panel position="top-right" className="!m-2 flex flex-col items-end gap-1">
+                <FitAllButton onFit={() => setFitMode('fit')} />
+                {fitMode === 'anchored' && (
+                  <p className="max-w-[13rem] text-right text-[10px] leading-tight text-slate-500">
+                    Too wide to show legibly — anchored on{' '}
+                    {tree.root?.displayName || tree.root?.name || 'the apex'}. Pan, use the
+                    minimap, or Fit all.
+                  </p>
+                )}
+              </Panel>
+              <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#1e293b" />
+              <Controls showInteractive={false} className="!border-slate-700 !bg-slate-800/80" />
+              <MiniMap
+                pannable
+                zoomable
+                nodeColor="#7c3aed"
+                maskColor="rgba(2,6,23,0.7)"
+                className="!border-slate-700 !bg-slate-900"
+              />
+            </ReactFlow>
+          </div>
         ) : view === 'activity' ? (
           <div className="flex h-full min-h-0 flex-col lg:flex-row">
             <div className="min-h-0 flex-1 overflow-hidden">
