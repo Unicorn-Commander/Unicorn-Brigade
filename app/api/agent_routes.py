@@ -474,6 +474,10 @@ class AgentCreateRequest(BaseModel):
     systemPrompt: Optional[str] = None
     domain: Optional[str] = "general"
     subdomain: Optional[str] = None
+    # Who this agent reports to (an existing agent id). Stated at REGISTRATION,
+    # exactly like the avatar, so no consumer has to infer a chain of command
+    # from rank + domain. Omit/None = apex or "not stated yet".
+    reportsTo: Optional[str] = None
     status: Optional[str] = "active"
     type: Optional[str] = "individual"
     agentType: Optional[str] = "analysis"
@@ -503,6 +507,9 @@ class AgentUpdateRequest(BaseModel):
     systemPrompt: Optional[str] = None
     domain: Optional[str] = None
     subdomain: Optional[str] = None
+    # Explicit reporting line. Sent as null (with exclude_unset semantics) to
+    # CLEAR it — which is how an agent is promoted to apex.
+    reportsTo: Optional[str] = None
     status: Optional[str] = None
     type: Optional[str] = None
     agentType: Optional[str] = None
@@ -705,6 +712,152 @@ async def list_domains(
     return {"domains": domains}
 
 
+# ---- Reporting line / chain of command ----
+#
+# Brigade is the registry for agent IDENTITY, so it is the registry for the ORG
+# CHART too. Consumers (Brigade's own Command Center, Stable's /agents view)
+# READ `reportsTo` off the roster and render it; they do not re-derive
+# parentage from rank + domain in their own language and drift apart. These
+# endpoints are how that stated hierarchy is inspected and maintained.
+
+
+class ReportsToRequest(BaseModel):
+    """Set — or clear — one agent's reporting line.
+
+    `reportsTo: null` clears it, which is how an agent becomes (or returns to
+    being) an apex with no one above it.
+    """
+
+    reportsTo: Optional[str] = None
+
+
+class HierarchyEdit(ReportsToRequest):
+    """One (agent, reportsTo) assignment in a bulk re-org."""
+
+    id: str
+
+
+async def _reporting_lines(session: AsyncSession) -> Dict[str, Optional[str]]:
+    """id -> reports_to for every agent visible to this session (RLS applies)."""
+    from sqlalchemy import select
+
+    from app.db.models import Agent
+
+    result = await session.execute(select(Agent.id, Agent.reports_to))
+    return {row[0]: row[1] for row in result.all()}
+
+
+async def _validate_reports_to(
+    session: AsyncSession, agent_id: str, parent_id: Optional[str]
+) -> None:
+    """Reject a reporting line that would break the tree.
+
+    The self-FK already guarantees the target EXISTS. This adds the two things a
+    foreign key cannot express: an agent may not report to itself, and the chain
+    may not loop. A cycle is not cosmetic — every consumer walks parent links to
+    lay the chart out, so a loop is an infinite walk in somebody else's UI.
+    """
+    if parent_id is None:
+        return
+    if parent_id == agent_id:
+        raise HTTPException(status_code=422, detail="An agent cannot report to itself")
+    lines = await _reporting_lines(session)
+    if parent_id not in lines:
+        raise HTTPException(
+            status_code=422, detail=f"reportsTo target not found: {parent_id}"
+        )
+    seen = {agent_id}
+    cursor: Optional[str] = parent_id
+    while cursor is not None:
+        if cursor in seen:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "reportsTo would create a cycle in the chain of command "
+                    f"via '{cursor}'"
+                ),
+            )
+        seen.add(cursor)
+        cursor = lines.get(cursor)
+
+
+@router.get("/agents/hierarchy")
+async def get_agent_hierarchy(
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+):
+    """The STATED chain of command — the org chart as data, not as a heuristic.
+
+    Returns the apex(es) (agents nobody is above), one edge per stated
+    reporting line, and any agent still unstated, so an operator can see at a
+    glance which parts of the roster Brigade actually knows the shape of and
+    which parts consumers are still guessing at.
+    """
+    lines = await _reporting_lines(session)
+    edges = [
+        {"agent": aid, "reportsTo": pid} for aid, pid in sorted(lines.items()) if pid
+    ]
+    parents = {pid for pid in lines.values() if pid}
+    return {
+        # An apex leads people but reports to nobody. An agent with neither a
+        # parent nor reports is not an apex — it is simply unstated, and every
+        # consumer will fall back to its own rank/domain guess for that one.
+        "apex": sorted(a for a, p in lines.items() if p is None and a in parents),
+        "unstated": sorted(
+            a for a, p in lines.items() if p is None and a not in parents
+        ),
+        "edges": edges,
+        "total": len(lines),
+        "stated": len(edges),
+    }
+
+
+@router.put("/agents/hierarchy")
+async def set_agent_hierarchy(
+    edits: List[HierarchyEdit],
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+):
+    """Re-point several reporting lines at once (a re-org, reviewed as one edit).
+
+    Applied in order and validated per edit against the CURRENT state, so a
+    swap that is only legal once its counterpart has moved must be ordered that
+    way — the same discipline a real re-org needs. Touches `reports_to` only:
+    nobody's rank, title or domain changes as a side effect.
+    """
+    applied = []
+    for edit in edits:
+        await _validate_reports_to(session, edit.id, edit.reportsTo)
+        async with _agent_writer(edit.id, session) as (agent, repo):
+            if agent is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Agent not found: {edit.id}"
+                )
+            await repo.update(edit.id, {"reportsTo": edit.reportsTo})
+        applied.append({"agent": edit.id, "reportsTo": edit.reportsTo})
+    return {"applied": applied, "count": len(applied)}
+
+
+@router.put("/agents/{agent_id}/reports-to")
+async def set_agent_reports_to(
+    agent_id: str,
+    request: ReportsToRequest,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_admin)] = None,
+):
+    """Set (or clear) one agent's reporting line.
+
+    A narrow, single-purpose endpoint next to the general agent update, so
+    moving someone in the org chart is one obvious call that cannot fat-finger
+    their rank, title or domain along the way.
+    """
+    await _validate_reports_to(session, agent_id, request.reportsTo)
+    async with _agent_writer(agent_id, session) as (agent, repo):
+        if agent is None:
+            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+        return await repo.update(agent_id, {"reportsTo": request.reportsTo})
+
+
 @router.get("/agents/{agent_id}")
 async def get_agent(
     agent_id: str,
@@ -810,6 +963,15 @@ async def create_agent(
         detail=f"An agent with id/name '{data.get('id') or data.get('name')}' already exists",
     )
 
+    # Registration-time reporting line. Validate BEFORE the insert so a bad
+    # parent is a 422 the caller can act on, not an FK IntegrityError 500.
+    if data.get("reportsTo"):
+        await _validate_reports_to(
+            session,
+            data.get("id") or (data.get("name") or "").lower().replace(" ", "-"),
+            data["reportsTo"],
+        )
+
     if wants_shared:
         # Shared (global) agent: gate to admins, then insert a NULL-org row via
         # the owner session (not subject to RLS). This is the ONLY sanctioned way
@@ -858,6 +1020,8 @@ async def update_agent(
     updates = request.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+    if "reportsTo" in updates:
+        await _validate_reports_to(session, agent_id, updates["reportsTo"])
     async with _agent_writer(agent_id, session) as (agent, repo):
         if agent is None:
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
@@ -954,20 +1118,45 @@ async def import_agents(
     repo = AgentRepository(session)
     created = 0
     updated = 0
+    # Reporting lines are applied in a SECOND pass (and so are deliberately NOT
+    # in _IMPORT_WRITABLE_FIELDS). An import is an unordered bundle: a lead can
+    # appear after their reports, and the self-FK would reject that forward
+    # reference with an IntegrityError 500 on a payload that is perfectly valid
+    # taken as a whole. Deferring makes import ORDER irrelevant and lets the
+    # same cycle/self-report validation run as on the single-agent path.
+    pending_lines = []
     for agent_data in agents:
         agent_id = agent_data.get("id")
+        payload = {k: v for k, v in agent_data.items() if k != "reportsTo"}
         did_update = False
         if agent_id:
             async with _agent_writer(agent_id, session) as (existing, w_repo):
                 if existing:
-                    await w_repo.update(agent_id, _sanitize_agent_import_updates(agent_data))
+                    await w_repo.update(agent_id, _sanitize_agent_import_updates(payload))
                     updated += 1
                     did_update = True
             if did_update:
+                if "reportsTo" in agent_data:
+                    pending_lines.append((agent_id, agent_data["reportsTo"]))
                 continue
-        await repo.create(agent_data)
+        new_agent = await repo.create(payload)
         created += 1
-    return {"created": created, "updated": updated, "total": created + updated}
+        if "reportsTo" in agent_data:
+            pending_lines.append((new_agent["id"], agent_data["reportsTo"]))
+
+    linked = 0
+    for aid, parent in pending_lines:
+        await _validate_reports_to(session, aid, parent)
+        async with _agent_writer(aid, session) as (existing, w_repo):
+            if existing:
+                await w_repo.update(aid, {"reportsTo": parent})
+                linked += 1
+    return {
+        "created": created,
+        "updated": updated,
+        "total": created + updated,
+        "reportingLinesSet": linked,
+    }
 
 
 # ---- Chat with Function Calling ----

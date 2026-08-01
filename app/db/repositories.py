@@ -50,6 +50,10 @@ class AgentRepository:
             system_prompt=data.get("systemPrompt"),
             domain=data.get("domain", "general"),
             subdomain=data.get("subdomain"),
+            # Registration-time reporting line: an agent states who it reports
+            # to when it joins the roster, the same way it states its avatar,
+            # instead of leaving every consumer to guess from rank + domain.
+            reports_to=data.get("reportsTo"),
             status=data.get("status", "active"),
             type=data.get("type", "individual"),
             agent_type=data.get("agentType", "analysis"),
@@ -119,7 +123,7 @@ class AgentRepository:
             "displayName": "display_name", "systemPrompt": "system_prompt",
             "avatarUrl": "avatar_url",
             "agentType": "agent_type", "maxTokens": "max_tokens",
-            "accessPolicy": "access_policy",
+            "accessPolicy": "access_policy", "reportsTo": "reports_to",
             "billingTier": "billing_tier", "rateMultiplier": "rate_multiplier",
             "basePricePerCall": "base_price_per_call",
         }

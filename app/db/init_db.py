@@ -58,7 +58,7 @@ async def seed_agents():
     # loader must use the owner session, which is not subject to RLS. In
     # single-role dev admin_session is the same engine as async_session.
     async with admin_session() as session:
-        from sqlalchemy import select, func
+        from sqlalchemy import func, select, update
         result = await session.execute(select(func.count(Agent.id)))
         count = result.scalar() or 0
 
@@ -102,8 +102,36 @@ async def seed_agents():
             )
             session.add(agent)
 
+        await session.flush()
+
+        # Reporting lines land in a SECOND pass. A seed file states its chain of
+        # command (`reportsTo`) the same way it states an avatar, but the file is
+        # an unordered list — a lead may well be defined after their reports, and
+        # the self-FK on agents.reports_to is checked per INSERT, not at commit,
+        # so a forward reference would abort the whole seed. Flushing every agent
+        # first means each target exists by the time we point at it.
+        by_id = {data["id"] for data in agents_data}
+        linked = 0
+        for data in agents_data:
+            parent = data.get("reportsTo")
+            if not parent:
+                continue
+            if parent not in by_id:
+                logger.warning(
+                    f"Seed agent {data['id']} reports to unknown agent "
+                    f"'{parent}' — leaving its reporting line unstated"
+                )
+                continue
+            await session.execute(
+                update(Agent).where(Agent.id == data["id"]).values(reports_to=parent)
+            )
+            linked += 1
+
         await session.commit()
-        logger.info(f"Seeded {len(agents_data)} agents from {seed_path}")
+        logger.info(
+            f"Seeded {len(agents_data)} agents from {seed_path} "
+            f"({linked} reporting lines)"
+        )
 
 
 async def main():

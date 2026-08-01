@@ -1,13 +1,13 @@
 import { byRankDesc } from './rank';
 
 /**
- * Owner-confirmed chain of command for the 17 named agents.
+ * LEGACY chain of command for the original 17 named agents.
  *
- * Authored here as a reviewable constant rather than in seed_agents.json,
- * because the agents table has fixed columns (no `reports_to`) — a seed field
- * wouldn't reach the API without a schema migration + reseed. `buildOrgTree`
- * still *prefers* an agent's `reportsTo` if the API ever provides one, so this
- * promotes cleanly to a backend column later with no UI change.
+ * Superseded by `agents.reports_to`, which the API now serves as `reportsTo` on
+ * every roster record — the hierarchy is stated in the registry alongside rank,
+ * title and avatar rather than authored in a UI constant. Kept only as the
+ * fallback for a roster served by a Brigade too old to carry the column, and
+ * consulted strictly after the server's answer.
  */
 export const CHAIN_OF_COMMAND = {
   'the-general': null, // Field Marshal — apex
@@ -33,8 +33,8 @@ export const CHAIN_OF_COMMAND = {
  * Build the chain-of-command tree from the agent roster.
  *
  * Per-agent parent precedence:
- *   1. `agent.reportsTo` from the API (future backend column)
- *   2. the authored CHAIN_OF_COMMAND map (today)
+ *   1. `agent.reportsTo` from the API (agents.reports_to — the stated hierarchy)
+ *   2. the legacy CHAIN_OF_COMMAND map (pre-column Brigades)
  *   3. a rank-aware domain fallback (any agent not covered above, e.g. a new one)
  *
  * Returns { agents, byId, root, parentOf, childrenById, edgesResting }.
@@ -42,8 +42,28 @@ export const CHAIN_OF_COMMAND = {
 export function buildOrgTree(agents) {
   const list = (Array.isArray(agents) ? agents : []).filter(Boolean);
   const byId = new Map(list.map((a) => [a.id, a]));
-  const root =
-    list.find((a) => a.type === 'orchestrator') || byId.get('the-general') || list[0] || null;
+
+  // Root selection has to follow the SAME source as parentage, or the chart
+  // contradicts itself: picking the first `type === 'orchestrator'` row (the
+  // roster arrives ordered by domain, so that was whoever sorted first — for
+  // the current roster, an agent in the "general" domain) while parenting
+  // everyone by `reportsTo` hangs the real apex under an impostor. So when the
+  // server states a hierarchy, walk UP a stated line to its top and use that.
+  const stated = list.filter((a) => a.reportsTo && byId.has(a.reportsTo));
+  let root = null;
+  if (stated.length) {
+    const seen = new Set();
+    let cursor = stated[0];
+    while (cursor && cursor.reportsTo && byId.has(cursor.reportsTo) && !seen.has(cursor.id)) {
+      seen.add(cursor.id);
+      cursor = byId.get(cursor.reportsTo);
+    }
+    root = cursor || null;
+  }
+  if (!root) {
+    root =
+      list.find((a) => a.type === 'orchestrator') || byId.get('the-general') || list[0] || null;
+  }
 
   const parentOf = new Map(); // childId -> parentId
   const unplaced = [];

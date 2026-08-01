@@ -34,6 +34,24 @@ class Agent(Base):
     system_prompt = Column(Text)
     domain = Column(String(100), default="general")
     subdomain = Column(String(100))
+    # Explicit reporting line — the agent this one reports to. Brigade is the
+    # registry for agent IDENTITY (name, rank, title, avatar), so it owns the
+    # ORG CHART too: a consumer should read the chain of command, not re-derive
+    # it. Before this column both Brigade's and Stable's org charts inferred
+    # parentage from `rank` + `domain` in two separate implementations, which
+    # meant two heuristics that could (and did) disagree about a chain of
+    # command nobody had actually stated.
+    #
+    # NULL = the apex (reports to no one) OR "not stated yet" — a consumer that
+    # sees no reporting line anywhere in the roster falls back to its own
+    # rank/domain heuristic, so a stale Brigade degrades instead of flattening
+    # the chart. ON DELETE SET NULL so removing a lead orphans its reports back
+    # onto that fallback rather than cascading a whole subtree into oblivion.
+    reports_to = Column(
+        String(255),
+        ForeignKey("agents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     status = Column(String(50), default="active")
     type = Column(String(50), default="individual")
     agent_type = Column(String(50), default="analysis")
@@ -79,6 +97,9 @@ class Agent(Base):
         Index("ix_agents_domain", "domain"),
         Index("ix_agents_status", "status"),
         Index("ix_agents_org_id", "org_id"),
+        # Org-chart reads walk children-of-a-lead; without this every expansion
+        # of the tree is a seq scan over the roster.
+        Index("ix_agents_reports_to", "reports_to"),
     )
 
     @staticmethod
@@ -107,6 +128,7 @@ class Agent(Base):
             "systemPrompt": self.system_prompt,
             "domain": self.domain,
             "subdomain": self.subdomain,
+            "reportsTo": self.reports_to,
             "status": self.status,
             "type": self.type,
             "agentType": self.agent_type,

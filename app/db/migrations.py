@@ -857,6 +857,121 @@ MIGRATIONS = [
           );
         """,
     ),
+    (
+        "20260801_01_agent_reports_to",
+        "Explicit reporting line on agents + backfill from today's derived hierarchy",
+        # Brigade owns agent IDENTITY, so it owns the ORG CHART. Until now the
+        # chain of command existed only as a HEURISTIC re-implemented per
+        # consumer (Brigade's frontend/src/utils/orgTree.js and Stable's
+        # web/src/components/Agents/orgTree.ts), each inferring parentage from
+        # rank + domain. Two implementations, two languages, one inevitable
+        # drift — and neither was stating a hierarchy anyone had authored.
+        #
+        # The backfill reproduces EXACTLY what those heuristics render today, so
+        # day one is visually a no-op and the column can be corrected in place
+        # afterwards:
+        #   * apex          = the-general (else the orchestration domain's top,
+        #                     else the highest-ranked agent anywhere)
+        #   * co-orchestrators (the rest of the orchestration domain) -> apex
+        #   * each other domain's highest-ranked member = that domain's lead -> apex
+        #   * everyone else -> their domain lead
+        # Tie-break is (rank weight DESC, display label ASC), matching the
+        # consumers' sort so the same agent wins a tie here as on screen.
+        #
+        # ONLY fills rows where reports_to IS NULL, so an operator's later
+        # correction survives every re-deploy — same contract as the affiliation
+        # backfill above. The apex keeps reports_to NULL (that IS the apex
+        # signal), which the ``e.parent IS NOT NULL`` guard preserves.
+        [
+            "ALTER TABLE agents ADD COLUMN IF NOT EXISTS reports_to varchar(255)",
+            "CREATE INDEX IF NOT EXISTS ix_agents_reports_to ON agents (reports_to)",
+            # Self-FK with ON DELETE SET NULL: deleting a lead drops its reports
+            # back to the consumer-side fallback instead of cascading a subtree
+            # away. ADD CONSTRAINT has no IF NOT EXISTS on Postgres, hence the
+            # guard — this statement must stay re-runnable.
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'fk_agents_reports_to_agents'
+                ) THEN
+                    ALTER TABLE agents
+                        ADD CONSTRAINT fk_agents_reports_to_agents
+                        FOREIGN KEY (reports_to) REFERENCES agents(id) ON DELETE SET NULL;
+                END IF;
+            END $$
+            """,
+            """
+            WITH ranked AS (
+                SELECT
+                    a.id,
+                    COALESCE(NULLIF(lower(btrim(a.domain)), ''), 'general') AS dom,
+                    CASE lower(btrim(COALESCE(a.rank, '')))
+                        WHEN 'field marshal' THEN 11
+                        WHEN 'general' THEN 11
+                        WHEN 'chief medical officer' THEN 10
+                        WHEN 'chief financial officer' THEN 10
+                        WHEN 'chief marketing officer' THEN 10
+                        WHEN 'chief technology officer' THEN 10
+                        WHEN 'chief operating officer' THEN 10
+                        WHEN 'chief of staff' THEN 10
+                        WHEN 'general counsel' THEN 10
+                        WHEN 'domain lead' THEN 9
+                        WHEN 'commander' THEN 9
+                        WHEN 'colonel' THEN 8
+                        WHEN 'lieutenant colonel' THEN 7
+                        WHEN 'professor' THEN 7
+                        WHEN 'senior counsel' THEN 6
+                        WHEN 'major' THEN 6
+                        WHEN 'captain' THEN 5
+                        WHEN 'senior investigator' THEN 5
+                        WHEN 'senior analyst' THEN 5
+                        WHEN 'chief warrant officer' THEN 4
+                        WHEN 'lieutenant' THEN 4
+                        WHEN 'senior' THEN 4
+                        WHEN 'gunnery sergeant' THEN 3
+                        WHEN 'sergeant first class' THEN 3
+                        WHEN 'specialist' THEN 2
+                        WHEN 'sergeant' THEN 2
+                        WHEN 'resident' THEN 1
+                        ELSE 0
+                    END AS w,
+                    COALESCE(NULLIF(btrim(a.display_name), ''), a.name) AS label
+                FROM agents a
+            ),
+            apex AS (
+                SELECT id FROM ranked
+                 ORDER BY (id = 'the-general') DESC,
+                          (dom = 'orchestration') DESC,
+                          w DESC, label ASC, id ASC
+                 LIMIT 1
+            ),
+            leads AS (
+                SELECT DISTINCT ON (dom) dom, id
+                  FROM ranked
+                 WHERE dom <> 'orchestration'
+                 ORDER BY dom, w DESC, label ASC, id ASC
+            )
+            UPDATE agents t
+               SET reports_to = e.parent
+              FROM (
+                SELECT r.id,
+                       CASE
+                         WHEN r.id = a.id                 THEN NULL
+                         WHEN r.dom = 'orchestration'     THEN a.id
+                         WHEN l.id IS NULL OR r.id = l.id THEN a.id
+                         ELSE l.id
+                       END AS parent
+                  FROM ranked r
+                  CROSS JOIN apex a
+                  LEFT JOIN leads l ON l.dom = r.dom
+              ) e
+             WHERE t.id = e.id
+               AND t.reports_to IS NULL
+               AND e.parent IS NOT NULL
+            """,
+        ],
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.
