@@ -1,12 +1,8 @@
-import { Star, Sparkles, Cpu, TrendingUp, Wrench, DollarSign } from 'lucide-react';
+import { Star, Sparkles, Cpu, TrendingUp, Wrench, Coins } from 'lucide-react';
 import AgentAvatar from './AgentAvatar';
 import { rankStars } from '../utils/rank';
-import {
-  affiliationBorder,
-  modelTier,
-  modelTierChip,
-  paidToolInfo,
-} from '../utils/agentClass';
+import { AffiliationChip, ModelTierChip, PaidToolsBadge } from './AgentBadges';
+import { affiliationBorder, paidToolInfo } from '../utils/agentClass';
 
 // Domain gradient backgrounds
 const domainGradients = {
@@ -58,9 +54,7 @@ const AgentCard = ({ agent, onClick }) => {
   const invocationCount = agent._count?.messages || 0;
 
   // Classification signals (kept in sync with Stable).
-  const affBorder = affiliationBorder(agent.affiliation);
-  const tier = modelTier(agent.model);
-  const tierChip = modelTierChip(tier);
+  const affBorder = affiliationBorder(agent);
   const paid = paidToolInfo(agent);
 
   return (
@@ -107,19 +101,12 @@ const AgentCard = ({ agent, onClick }) => {
             <span className="text-xs text-fg font-medium">{agent.domain || 'General'}</span>
           </div>
 
-          {/* Model Tier Chip */}
-          <span className={`px-2 py-1 rounded-lg text-xs font-medium ${tierChip}`}>{tier}</span>
+          {/* Who operates it, and what powers it — the two classification axes */}
+          <AffiliationChip agent={agent} />
+          <ModelTierChip agent={agent} />
 
-          {/* Paid Tools Badge */}
-          {paid.count > 0 && (
-            <span
-              title={paid.names.length ? `Paid tools: ${paid.names.join(', ')}` : `${paid.count} paid tool${paid.count > 1 ? 's' : ''}`}
-              className="flex items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-medium bg-amber-500/15 text-amber-200"
-            >
-              <DollarSign className="w-3 h-3" />
-              {paid.count}
-            </span>
-          )}
+          {/* How many of its tools cost money (a count, never an amount) */}
+          <PaidToolsBadge agent={agent} />
         </div>
 
         {/* Rank Stars */}
@@ -170,12 +157,13 @@ const AgentCard = ({ agent, onClick }) => {
                 return (
                   <div
                     key={`${name}-${idx}`}
+                    title={isPaid ? `${name} — this tool costs money to run` : name}
                     className="flex items-center space-x-2 text-xs text-muted"
                   >
                     {isPaid ? (
-                      <DollarSign className="w-3 h-3 text-amber-300" />
+                      <Coins aria-hidden="true" className="w-3 h-3 text-amber-300" />
                     ) : (
-                      <Wrench className="w-3 h-3 text-cyan-400" />
+                      <Wrench aria-hidden="true" className="w-3 h-3 text-cyan-400" />
                     )}
                     <span>{name || 'Tool'}</span>
                   </div>

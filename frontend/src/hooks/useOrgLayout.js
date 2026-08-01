@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import dagre from '@dagrejs/dagre';
 
-export const ORG_NODE_W = 208;
+// Must match the rendered node box in OrgAgentNode — dagre reserves space from
+// these numbers, so a node that is wider than declared overlaps its neighbours.
+export const ORG_NODE_W = 236;
 export const ORG_NODE_H = 92;
 
 /**
