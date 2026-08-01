@@ -44,8 +44,6 @@ MASTERED_AGENT_AVATAR_IDS: tuple[str, ...] = CORE_AGENT_AVATAR_IDS + (
     # Stable resident portraits — Brand-Ops masters (magic-unicorn brand,
     # compliance score 100) with explicit same-day production runtime bindings.
     # No visual/name inference; identity-owner evidence only.
-    "majik",
-    "sidekick",
     "corporal-qwen",
 )
 
@@ -84,8 +82,6 @@ VERIFIED_AGENT_AVATAR_SHA256: dict[str, str] = {
     "prudence": "e24106302346bdc8df320e505a62a5ecda58d19e2934f769cec3bab907be7f85",
     "cpl.-colophon": "ece30097615b715a9f5f95df93dbc4be6c7f3765f8ae70a409924d590ba59685",
     "rating-raider": "4f4691c2eaa2989c1e249999c75f3f6c528515d96018e18caf2e4b023bbd06a3",
-    "majik": "dbca3e97d724984d62c2bf839c98abce567f9acd64f8713bceeda15376cbf49f",
-    "sidekick": "6e460c8d87437d4c01f05d9260175f9ae3d7a696411535ede6f3bed7181c2486",
     "corporal-qwen": "eeaa747be5796da488103335a258641507e76687bfa8dcde67a04c717360636d",
 }
 
@@ -96,8 +92,6 @@ VERIFIED_AGENT_AVATAR_EVIDENCE: dict[str, str] = {
     "prudence": "brand-ops-approved-master:prudence-finch;existing-runtime-alias",
     "cpl.-colophon": "brand-ops-approved-master:cpl-colophon;existing-runtime-alias",
     "rating-raider": "existing-production-runtime-binding:2026-07-29",
-    "majik": "brand-ops-approved-master:majik;existing-production-runtime-binding:2026-07-31",
-    "sidekick": "brand-ops-approved-master:sidekick;existing-production-runtime-binding:2026-07-31",
     "corporal-qwen": (
         "brand-ops-approved-master:corporal-qwen;"
         "existing-production-runtime-binding:2026-07-31"

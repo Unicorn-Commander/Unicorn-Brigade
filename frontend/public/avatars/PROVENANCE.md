@@ -62,3 +62,13 @@ master or manifest.
 - The `-v2.png` filenames remain in the catalog so production bindings that
   still point at them keep resolving until the migration rewrites rows to
   the canonical `.webp` paths.
+
+## Withdrawn portraits (2026-07-31)
+
+`majik` and `sidekick` portraits were generated, briefly bound, and then
+WITHDRAWN: the identity owner (Aaron) reviewed and rejected both art passes.
+They were never approved masters, so the earlier "brand-ops-approved-master"
+evidence strings for those two ids were incorrect and are removed here along
+with the files and their verified-manifest entries. Their agent rows carry a
+null avatar_url — consumers fall back deliberately — until approved
+replacements exist. Do not re-add either id without a fresh owner sign-off.
