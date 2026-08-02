@@ -50,6 +50,23 @@ export const AFFIL_META = {
 export const AFFILIATIONS = ['employee', 'contractor', 'third_party', 'frontier'];
 
 /** Normalize whatever the roster carries into one of the four canonical values. */
+/**
+ * Does this agent run on hardware we own?
+ *
+ * The question the AFFILIATION axis exists to answer: an agent on a hosted
+ * 3rd-party API costs us someone else's resources every call and the request
+ * leaves the building; one on our own GPUs (or a local-capable model) does not.
+ * Deliberately separate from `tierOf`, which answers "how capable is the model".
+ * They correlate today but are not the same question, and conflating them is
+ * what made the two chips redundant.
+ */
+export function runsOnOurHardware(agent) {
+  const m = String(agent?.model || '').toLowerCase();
+  if (/^(anthropic|openai|google|azure|mistral|cohere|groq|xai|deepseek)\//.test(m)) return false;
+  if (/^(claude|gpt|gemini)[-.]/.test(m)) return false;
+  return tierOf(agent) !== 'frontier';
+}
+
 export function affiliationOf(agent) {
   const a = String(agent?.affiliation || '')
     .trim()
@@ -58,7 +75,6 @@ export function affiliationOf(agent) {
   if (a === 'third_party' || a === 'third-party' || a === '3rd_party' || a === '3rd-party') {
     return 'third_party';
   }
-  if (a === 'frontier') return 'frontier';
   if (a === 'employee') return 'employee';
   // The roster also records the operating COMPANY as an affiliation
   // ("magic-unicorn"). That is an employee — we run them. Without this the two
@@ -67,10 +83,13 @@ export function affiliationOf(agent) {
   if (a === 'magic-unicorn' || a === 'magic_unicorn' || a === 'magicunicorn') {
     return 'employee';
   }
-  // Unstated: fall back to the model tier so the border still means something —
-  // an agent on a frontier model reads as frontier, everything else as employee
-  // (we run it).
-  return tierOf(agent) === 'frontier' ? 'frontier' : 'employee';
+  // "frontier" is a MODEL TIER, not an affiliation, and it used to be both — so
+  // 25 of 54 agents rendered the same word twice, once per axis, and the
+  // affiliation chip said nothing the model chip had not already said.
+  if (a === 'frontier') return runsOnOurHardware(agent) ? 'employee' : 'contractor';
+  // Unstated: answer the question this axis exists for — do we need someone
+  // else's resources to run this agent?
+  return runsOnOurHardware(agent) ? 'employee' : 'contractor';
 }
 
 /** Left-border class for an agent's affiliation. */
