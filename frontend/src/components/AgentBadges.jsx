@@ -1,4 +1,4 @@
-import { Coins } from 'lucide-react';
+import { Coins, Cpu } from 'lucide-react';
 import {
   AFFIL_META,
   affiliationOf,
@@ -53,17 +53,26 @@ export function AffiliationChip({ agent, size = 'sm' }) {
   );
 }
 
-/** What powers this agent — Local / Frontier / Flexible. */
+/**
+ * What powers this agent — Local / Frontier / Flexible.
+ *
+ * Carries a chip glyph because "Frontier" is a value on BOTH axes: an agent
+ * operated by a frontier lab and running a frontier model rendered as two
+ * near-identical chips reading "FRONTIER FRONTIER", which looks like a
+ * duplicate rather than two different facts. The glyph says which one is the
+ * model without spending the width to write the word.
+ */
 export function ModelTierChip({ agent, size = 'sm' }) {
   const meta = TIER_META[tierOf(agent)];
   const xs = size === 'xs';
   return (
     <span
       title={`${meta.label} model — ${agent?.model || 'unknown model'}`}
-      className={`inline-flex shrink-0 items-center rounded-md font-semibold uppercase tracking-wide ${meta.chip} ${
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded-md font-semibold uppercase tracking-wide ${meta.chip} ${
         xs ? 'px-1 py-px text-[8px]' : 'px-1.5 py-0.5 text-[10px]'
       }`}
     >
+      <Cpu aria-hidden="true" className={xs ? 'h-2 w-2' : 'h-2.5 w-2.5'} />
       {meta.label}
     </span>
   );
