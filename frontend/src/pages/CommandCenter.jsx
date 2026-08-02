@@ -57,7 +57,7 @@ const LEGIBLE_ZOOM = 0.55;
  *
  * Rendered inside <ReactFlow> so it has the flow context.
  */
-function FitOnChange({ token, rootId, paneRef, onModeChange }) {
+function FitOnChange({ token, rootId, paneRef, expectedCount, onModeChange }) {
   const rf = useReactFlow();
   useEffect(() => {
     const apply = () => {
@@ -66,11 +66,14 @@ function FitOnChange({ token, rootId, paneRef, onModeChange }) {
       if (!pane || !ns.length) return false;
       const w = pane.clientWidth;
       const h = pane.clientHeight;
-      // Trust the bounds only once EVERY node has been measured. A partly
-      // measured set reports a smaller board, which reads as "this would fit
-      // legibly" and takes the fit branch — and because apply() then returns
-      // true, that wrong viewport is the one that sticks.
-      if (ns.some((n) => !(n.measured?.width && n.measured?.height))) return false;
+      // Wait for the WHOLE board. A partial node set reports a narrower board,
+      // which reads as "this would fit legibly", takes the fit branch, and —
+      // because apply() then returns true and stops the poll — that wrong
+      // viewport is the one that sticks. Count is the right signal because it
+      // is ours: gating on xyflow's per-node `measured` instead left the
+      // viewport at identity scale forever, since nothing ever satisfied it.
+      // A readiness signal you cannot verify is not a readiness signal.
+      if (expectedCount && ns.length < expectedCount) return false;
       const bounds = getNodesBounds(ns);
       if (!w || !h || !bounds.width || !bounds.height) return false;
 
@@ -112,7 +115,7 @@ function FitOnChange({ token, rootId, paneRef, onModeChange }) {
       if (apply() || ++tries > 40) clearInterval(iv);
     }, 50);
     return () => clearInterval(iv);
-  }, [token, rf, rootId, paneRef, onModeChange]);
+  }, [token, rf, rootId, paneRef, expectedCount, onModeChange]);
   return null;
 }
 
@@ -424,6 +427,7 @@ export default function CommandCenter() {
                 token={`${positioned.length}:${tree.root?.id || ''}`}
                 rootId={tree.root?.id}
                 paneRef={paneRef}
+                expectedCount={positioned.length}
                 onModeChange={setFitMode}
               />
               <Panel position="top-right" className="!m-2 flex flex-col items-end gap-1">
