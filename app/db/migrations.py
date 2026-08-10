@@ -972,6 +972,36 @@ MIGRATIONS = [
             """,
         ],
     ),
+    (
+        "20260810_01_rbac_denials_audit_table",
+        "Create the rbac_denials audit table the denial logger has always targeted",
+        # _log_rbac_denial (app/api/agent_routes) has inserted into rbac_denials
+        # since the per-agent RBAC pass — wrapped in a swallow-all try/except —
+        # but NO DDL for the table ever shipped (not in models.py, not here), so
+        # on any DB that never got it manually every denial audit was a SILENT
+        # no-op. BR-6.4 extends the same helper to record user_policy denials,
+        # so the table now ships properly. Shape matches the existing INSERT
+        # column list (_log_rbac_denial) AND the existing reader
+        # (GET /admin/rbac/denials selects/sorts on ``denied_at``); additive +
+        # idempotent per the rules above.
+        """
+        CREATE TABLE IF NOT EXISTS rbac_denials (
+            id bigserial PRIMARY KEY,
+            user_id varchar(255),
+            user_email varchar(255),
+            user_role varchar(50),
+            user_tier varchar(50),
+            agent_id varchar(255),
+            reason varchar(255),
+            policy_snapshot jsonb,
+            auth_source varchar(50),
+            request_path varchar(500),
+            denied_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS ix_rbac_denials_agent_id ON rbac_denials (agent_id);
+        CREATE INDEX IF NOT EXISTS ix_rbac_denials_denied_at ON rbac_denials (denied_at);
+        """,
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.
