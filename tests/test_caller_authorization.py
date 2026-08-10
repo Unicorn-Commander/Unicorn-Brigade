@@ -115,6 +115,17 @@ async def test_service_transport_forwarded_user_and_userless():
         assert eu is None
 
 
+@pytest.mark.asyncio
+async def test_anonymous_public_identity_asserts_nobody():
+    """A public/anonymous AuthUser is neither an end user nor allowed to
+    forward one — only service credentials and admin humans may delegate."""
+    anon = AuthUser(id="anonymous", role=UserRole.VIEWER, auth_source="public")
+    eu, service = await resolve_end_user(anon, None, session=None)
+    assert eu is None and service is False
+    eu, service = await resolve_end_user(anon, "vip@example.com", session=None)
+    assert eu is None and service is False
+
+
 # ---------------------------------------------------------------------------
 # Agent-level user_policy
 # ---------------------------------------------------------------------------

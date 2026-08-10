@@ -267,8 +267,13 @@ async def resolve_end_user(
     if requested in _PLACEHOLDER_USER_IDS:
         requested = ""
 
-    if auth_user is not None and not service:
-        own_id = getattr(auth_user, "user_id", None) or getattr(auth_user, "id", None)
+    own_id = getattr(auth_user, "user_id", None) or getattr(auth_user, "id", None) if auth_user else None
+    if (
+        auth_user is not None
+        and not service
+        and own_id
+        and str(own_id) not in _PLACEHOLDER_USER_IDS  # "anonymous"/public is nobody
+    ):
         role = _role_str(getattr(auth_user, "role", None))
         if role != UserRole.ADMIN.value or not requested or requested == str(own_id):
             # The human themselves (non-admins can never act as anyone else).
@@ -292,10 +297,16 @@ async def resolve_end_user(
             ), False
         return EndUser(raw_id=requested, resolved=False, source="delegated"), False
 
-    # Service (or missing) transport. A "user" equal to the credential's OWN
-    # id/key-id is the transport talking about itself, not a forwarded human —
-    # the OpenAI-compat shim backfills auth_user.id into user_id when the
-    # client sent no ``user``, and that must not masquerade as an end user.
+    # Only a SERVICE credential (or an admin human, handled above) may assert a
+    # forwarded end user. An anonymous/public identity that somehow reaches a
+    # chat surface asserts nobody.
+    if not service:
+        return None, False
+
+    # Service transport. A "user" equal to the credential's OWN id/key-id is
+    # the transport talking about itself, not a forwarded human — the
+    # OpenAI-compat shim backfills auth_user.id into user_id when the client
+    # sent no ``user``, and that must not masquerade as an end user.
     own_ids = {
         str(getattr(auth_user, "id", "") or ""),
         str(getattr(auth_user, "key_id", "") or ""),
