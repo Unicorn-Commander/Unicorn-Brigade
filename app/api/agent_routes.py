@@ -269,6 +269,68 @@ def _ensure_agent_access(
 
 
 # ---------------------------------------------------------------------------
+# BR-6.4: per-CALLER authorization (end-user policy + tool privilege guard)
+# ---------------------------------------------------------------------------
+
+async def _authorize_caller(
+    session: AsyncSession,
+    auth_user: AuthUser,
+    agent: dict,
+    requested_user_id: Optional[str],
+    request_path: str = "",
+):
+    """Resolve the EFFECTIVE END-USER of this chat/run, enforce the agent's
+    ``accessPolicy.user_policy`` against it, and build the per-run tool
+    permission guard.
+
+    This is the confused-deputy fix (BR-6.4): the existing ``evaluate_agent_
+    access`` gate authorizes the TRANSPORT credential (Stable's service key —
+    admin-scoped, so it always passes), while the human the consumer forwards
+    in ``user``/``user_id`` was previously only a memory/metering hint. Here
+    that human becomes the authorization subject: agents may allowlist end
+    users (``user_policy``), and every tool call is capped at the end user's
+    privilege level at execution time.
+
+    Returns ``(end_user, service_caller, tool_guard)``; raises a machine-
+    readable 403 (audited to rbac_denials + the brigade.authz log) on a
+    user_policy denial. Agents with no user_policy and enforcement-off
+    configs pass through untouched.
+    """
+    from app.auth.caller_authz import (
+        build_tool_guard,
+        evaluate_user_policy,
+        log_agent_access_denied,
+        resolve_end_user,
+        user_policy_denial_detail,
+    )
+
+    end_user, service_caller = await resolve_end_user(
+        auth_user, requested_user_id, session
+    )
+    allowed, reason = evaluate_user_policy(
+        (agent or {}).get("accessPolicy"), end_user, service_caller
+    )
+    if not allowed:
+        agent_id = (agent or {}).get("id") or ""
+        log_agent_access_denied(
+            agent_id, f"user-policy:{reason}", end_user,
+            auth_user=auth_user, request_path=request_path,
+        )
+        await _log_rbac_denial(
+            session, auth_user, agent_id, f"user-policy:{reason}",
+            (agent or {}).get("accessPolicy"), request_path,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=user_policy_denial_detail(agent_id, reason, end_user),
+        )
+    tool_guard = await build_tool_guard(
+        session, agent, auth_user, end_user, service_caller
+    )
+    return end_user, service_caller, tool_guard
+
+
+# ---------------------------------------------------------------------------
 # Phase 7: billing preflight + metering
 # ---------------------------------------------------------------------------
 
@@ -1228,6 +1290,14 @@ async def chat_with_agent(
         user_attrs=user_attrs,
     )
 
+    # BR-6.4: per-CALLER authorization — enforce accessPolicy.user_policy
+    # against the effective END-USER (not the transport key) and build the
+    # per-run tool privilege guard.
+    _end_user, _service_caller, tool_guard = await _authorize_caller(
+        session, user, agent, request.user_id,
+        request_path=f"POST /api/v1/agents/{agent_id}/chat",
+    )
+
     # Build system message from agent config
     system_parts = []
     if agent.get("persona"):
@@ -1292,6 +1362,7 @@ async def chat_with_agent(
                 request.user_id, agent_tools, session,
                 user_email=user_email_for_metering,
                 org_id=getattr(user, "org_id", None),
+                tool_guard=tool_guard,
             ),
             media_type="text/event-stream"
         )
@@ -1415,6 +1486,7 @@ async def chat_with_agent(
                 agent_id=agent["id"],
                 room_id=request.room_id,
                 room_name=request.room_name,
+                tool_guard=tool_guard,
             )
         else:
             # ---- No tools, plain chat ----
@@ -1595,6 +1667,7 @@ async def _stream_chat(
     messages, model, temperature, max_tokens, agent, user_id, agent_tools, session,
     user_email: Optional[str] = None,
     org_id: Optional[str] = None,
+    tool_guard=None,  # BR-6.4 per-caller tool privilege guard (None = ungated)
 ):
     """SSE streaming chat generator with function calling support."""
     from app.llm.delegation_tools import _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME
@@ -1688,6 +1761,7 @@ async def _stream_chat(
                 org_id=org_id,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
+                tool_guard=tool_guard,
             ))
             # Forward each tool event from the queue as the callbacks fire
             # mid-loop (live progress), then settle the loop result.
@@ -2062,6 +2136,14 @@ async def chat_with_agent_local(
         user_attrs=user_attrs,
     )
 
+    # BR-6.4: per-caller authorization. MLXChatRequest carries no user_id
+    # field, so the end user is the authenticated human (or None for a
+    # service credential — the userless-service case).
+    _end_user, _service_caller, tool_guard = await _authorize_caller(
+        session, user, agent, None,
+        request_path=f"POST /api/v1/agents/{agent_id}/chat/local",
+    )
+
     # Build system message
     system_parts = []
     if agent.get("persona"):
@@ -2112,6 +2194,8 @@ async def chat_with_agent_local(
                 max_tokens=request.maxTokens,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
+                user_id=(_end_user.raw_id if _end_user else None),
+                tool_guard=tool_guard,
             )
         else:
             response = await mlx_client.chat_completion(
