@@ -4,6 +4,40 @@ All notable changes to Unicorn Brigade are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — feat/caller-authorization
+
+Per-CALLER authorization (BR-6.4): the human a consumer forwards on each chat
+run — not the consumer's service key — becomes the authorization subject.
+Closes the confused-deputy gap where a low-privilege user chatting with a
+high-privilege agent triggered config-changing tools with the agent's own
+privileges. See [docs/CALLER_AUTHORIZATION.md](docs/CALLER_AUTHORIZATION.md).
+
+### Added
+- **`accessPolicy.user_policy`** (`app/auth/caller_authz.py`, enforced at every
+  chat entry) — optional per-agent END-USER gate: allowlist by forwarded id /
+  `users.id` / email / Keycloak sub, optional `min_role`, admin end-users pass,
+  missing user on a policy-bearing agent is rejected (no anonymous privilege)
+  unless `allow_service: true` opts userless service callers in. Denials are
+  403s with a stable machine-readable `code` and are audited (structured
+  `brigade.authz` events + `rbac_denials` rows).
+- **Per-caller tool privilege guard** — every run resolves a caller level
+  (per-user override map via `BRIGADE_USER_TOOL_LEVELS[_FILE]` → `users.role`
+  default via `BRIGADE_ROLE_TOOL_LEVELS` → unknown-user default; userless
+  service credentials keep full privilege, everyone else floors at level 1) and
+  every server-side tool execution site refuses calls above it against
+  `tool_catalog.permission_level` — model-visible tool error, run continues.
+  `BRIGADE_TOOL_PERMISSION_ENFORCEMENT` = enforce | log (dry-run) | off.
+- **`rbac_denials` DDL** (`20260810_01_rbac_denials_audit_table`) — the audit
+  table `_log_rbac_denial` always inserted into (and `/admin/rbac/denials`
+  reads) finally ships; it previously no-oped silently wherever it was never
+  created by hand.
+
+### Fixed
+- `MLXLLMClient.execute_tool_loop` referenced an undefined `user_id` when
+  injecting caller context — any `needs_caller_context` tool on the MLX path
+  NameError'd into a tool error. It is now a real parameter, wired from the
+  chat route.
+
 ## [1.16.0] — 2026-06-24
 
 Per-agent value billing, the Dr. Glitter Mane medical integration, and a

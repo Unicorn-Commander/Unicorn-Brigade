@@ -47,6 +47,15 @@ informed self-host decision.
   `require_admin` dependency.
 - **Email allowlist.** `BRIGADE_ALLOWED_EMAILS` restricts early-access paths to
   a named set of identities on top of OIDC.
+- **Per-caller authorization (BR-6.4).** Consumers that hold a privileged
+  service key forward the human end user on every chat run; that END USER (not
+  the transport key) is now the enforcement subject: agents can allowlist end
+  users via `accessPolicy.user_policy`, and each tool call is capped at the
+  caller's privilege level against `tool_catalog.permission_level` at execution
+  time (refused calls return a model-visible error; the run continues). See
+  [docs/CALLER_AUTHORIZATION.md](docs/CALLER_AUTHORIZATION.md) for the policy
+  schema, the per-user level store, service-caller exemptions, and the
+  `log`-mode staged rollout.
 - **`AUTH_BYPASS`.** A development-only switch that disables key validation.
   **Never enable it in production.**
 

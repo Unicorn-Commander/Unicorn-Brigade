@@ -934,6 +934,7 @@ class OpsCenterLLMClient:
         room_id: Optional[str] = None,  # Stable room id (for needs_room_context tools)
         room_name: Optional[str] = None,  # Stable livekit room name (for needs_room_context tools)
         tool_timeout: Optional[float] = None,  # BR-4: per-tool wall-clock cap (s); None=env default, <=0 disables
+        tool_guard=None,  # BR-6.4: per-caller ToolPermissionGuard; None = no per-caller gating (internal/service flows)
     ) -> Dict[str, Any]:
         """
         Execute a complete tool use loop.
@@ -1049,7 +1050,21 @@ class OpsCenterLLMClient:
                     on_tool_call(tc)
 
                 tool_def = tool_registry.get(tc.name)
-                if not tool_def or not tool_def.handler:
+                # BR-6.4: per-caller tool permission. The guard (built at the
+                # chat entry from the EFFECTIVE END-USER's privilege level vs
+                # tool_catalog.permission_level) refuses the single call with a
+                # model-visible error — the run continues, the agent can
+                # verbalize the refusal. No guard (internal/service callers) =
+                # exactly the previous behavior.
+                _denial = tool_guard.check(tc.name) if tool_guard is not None else None
+                if _denial:
+                    result = ToolResult(
+                        tool_call_id=tc.id,
+                        name=tc.name,
+                        result=None,
+                        error=_denial,
+                    )
+                elif not tool_def or not tool_def.handler:
                     result = ToolResult(
                         tool_call_id=tc.id,
                         name=tc.name,

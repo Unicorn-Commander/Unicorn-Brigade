@@ -382,6 +382,15 @@ async def _passthrough_chat(
             pass
         raise HTTPException(status_code=403, detail=f"Agent '{agent_id}' is restricted")
 
+    # --- BR-6.4: per-CALLER authorization (end-user policy). Passthrough mode
+    # executes no server tools (client owns execution), so only the agent-level
+    # user_policy applies here; the guard is unused. ---
+    from app.api.agent_routes import _authorize_caller
+    await _authorize_caller(
+        session, auth_user, agent, request.user,
+        request_path=f"POST /api/v1/openai/v1/chat/completions [{agent_id}] (passthrough)",
+    )
+
     # --- Enforce memory isolation ---
     effective_user_id = request.user
     if auth_user and auth_user.role != _UserRole.ADMIN:
@@ -724,6 +733,15 @@ async def _dual_layer_chat(
             pass
         raise HTTPException(status_code=403, detail=f"Agent '{agent['id']}' is restricted")
 
+    # --- BR-6.4: per-CALLER authorization — user_policy against the forwarded
+    # end user + the per-run tool privilege guard for the server-side tool
+    # executions below. ---
+    from app.api.agent_routes import _authorize_caller
+    _end_user, _service_caller, _tool_guard = await _authorize_caller(
+        session, auth_user, agent, request.user,
+        request_path=f"POST /api/v1/openai/v1/chat/completions [{agent['id']}] (dual-layer)",
+    )
+
     # --- Identity + memory isolation ---
     effective_user_id = request.user
     if auth_user and auth_user.role != _UserRole.ADMIN:
@@ -964,8 +982,14 @@ async def _dual_layer_chat(
                 args = {}
             tool = get_tool_by_name(name)
             tool_content = ""
+            # BR-6.4: per-caller tool permission — refuse THIS call with a
+            # model-visible error; the loop continues (same contract as
+            # execute_tool_loop's guard).
+            _denial = _tool_guard.check(name) if _tool_guard is not None else None
             try:
-                if tool and tool.handler:
+                if _denial:
+                    tool_content = _json.dumps({"error": _denial})
+                elif tool and tool.handler:
                     call_args = dict(args) if isinstance(args, dict) else {}
                     if getattr(tool, "needs_caller_context", False):
                         call_args["caller_user_id"] = effective_user_id
@@ -1055,6 +1079,14 @@ async def _enhanced_stream_chat(
         except Exception:
             pass
         raise HTTPException(status_code=403, detail=f"Agent '{agent_id}' is restricted")
+
+    # BR-6.4: per-CALLER authorization — user_policy against the forwarded end
+    # user + tool privilege guard for the in-stream tool executions below.
+    from app.api.agent_routes import _authorize_caller
+    _end_user, _service_caller, _tool_guard = await _authorize_caller(
+        session, auth_user, agent, request.user,
+        request_path=f"POST /api/v1/openai/v1/chat/completions [stream {agent_id}]",
+    )
 
     # Identity + memory isolation
     effective_user_id = request.user
@@ -1337,7 +1369,14 @@ async def _enhanced_stream_chat(
                             except Exception:
                                 pass
 
-                        if tool_def and tool_def.handler:
+                        # BR-6.4: per-caller tool permission — refuse this one
+                        # call with a model-visible error; the stream's tool
+                        # loop continues.
+                        _denial = _tool_guard.check(fn_name) if _tool_guard is not None else None
+                        if _denial:
+                            result_text = _json.dumps({"error": _denial})
+                            err = _denial
+                        elif tool_def and tool_def.handler:
                             try:
                                 result = await tool_def.handler(**fn_args)
                                 result_text = _json.dumps(result, default=str)[:8000]

@@ -373,6 +373,12 @@ def evaluate_agent_access(
       - require_mfa: bool   -> {"require_mfa": true} requires user_attrs["mfa"]
 
     ``user_attrs`` is an optional dict of extra signals: {"orgs": [...], "paid": bool, "mfa": bool}.
+
+    NOTE (BR-6.4): this gate authorizes the TRANSPORT credential (the API key /
+    token that authenticated the request). The additive ``user_policy`` field is
+    NOT evaluated here — it gates the EFFECTIVE END-USER a consumer forwards
+    (``user``/``user_id``) and is enforced at chat entry by
+    ``app.auth.caller_authz.evaluate_user_policy``. Both gates must pass.
     """
     role_val = user_role.value if hasattr(user_role, "value") else str(user_role)
     if role_val == UserRole.ADMIN.value:

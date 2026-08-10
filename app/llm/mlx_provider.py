@@ -394,6 +394,8 @@ class MLXLLMClient:
         max_iterations: int = 10,
         on_tool_call: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
+        user_id: Optional[str] = None,  # caller identity for needs_caller_context tools
+        tool_guard=None,  # BR-6.4: per-caller ToolPermissionGuard; None = no gating
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -443,7 +445,18 @@ class MLXLLMClient:
                     on_tool_call(tc)
 
                 tool_def = tool_registry.get(tc.name)
-                if not tool_def or not tool_def.handler:
+                # BR-6.4: per-caller tool permission (see ops_center_client's
+                # execute_tool_loop — same contract). Refuse the single call
+                # with a model-visible error; the loop continues.
+                _denial = tool_guard.check(tc.name) if tool_guard is not None else None
+                if _denial:
+                    result = ToolResult(
+                        tool_call_id=tc.id,
+                        name=tc.name,
+                        result=None,
+                        error=_denial,
+                    )
+                elif not tool_def or not tool_def.handler:
                     result = ToolResult(
                         tool_call_id=tc.id,
                         name=tc.name,
@@ -454,6 +467,9 @@ class MLXLLMClient:
                     try:
                         call_args = dict(tc.arguments)
                         if getattr(tool_def, "needs_caller_context", False):
+                            # user_id is now a real parameter (it was previously
+                            # an undefined name here — any needs_caller_context
+                            # tool on the MLX path NameError'd into a tool error).
                             call_args["caller_user_id"] = user_id
                         tool_result = await tool_def.handler(**call_args)
                         result = ToolResult(
