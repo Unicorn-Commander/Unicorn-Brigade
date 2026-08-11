@@ -376,6 +376,15 @@ async def _user_orgs(user: AuthUser, session=None) -> list:
     return sorted(orgs)
 
 
+# When billing cannot be reached Brigade fails OPEN (serves the request) so an
+# infrastructure failure never bills-blocks a paying customer. Operators who
+# would rather stop serving than serve unmetered can set
+# BRIGADE_BILLING_STRICT=true, which turns that case into a 503 (retryable
+# "we could not check") instead of a 402 ("you are out of credits") — the two
+# must never be conflated.
+_BILLING_STRICT = os.getenv("BRIGADE_BILLING_STRICT", "").strip().lower() in ("1", "true", "yes")
+
+
 async def _fetch_user_attrs(user: AuthUser, session=None) -> tuple:
     """Return ``(user_attrs, billing_state)`` for a Brigade chat caller.
 
@@ -397,6 +406,7 @@ async def _fetch_user_attrs(user: AuthUser, session=None) -> tuple:
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": "admin",
+            "lookup": "ok",   # admins are authoritatively unlimited
         }
     # Service-delegated callers: keys minted via /api/v1/admin/user-keys are by
     # definition for B2B customers whose upstream service is the paying
@@ -414,6 +424,7 @@ async def _fetch_user_attrs(user: AuthUser, session=None) -> tuple:
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": f"service:{key_name}",
+            "lookup": "ok",   # trusted B2B service key: upstream is the subscriber
         }
     email = (getattr(user, "email", "") or "").lower()
     user_kn = (getattr(user, "key_name", "") or "").lower()
@@ -422,6 +433,9 @@ async def _fetch_user_attrs(user: AuthUser, session=None) -> tuple:
             "paid": False,
             "credits_remaining": 0.0,
             "subscription_tier": None,
+            # No email to key the lookup on -> we could not ASK. Not a verdict.
+            "lookup": "unavailable",
+            "lookup_error": "caller has no email to look billing up by",
         }
     state = await get_billing_state(email)
     return {"paid": bool(state.get("paid")), "key_name": user_kn, "apps": apps, "mfa": mfa, "orgs": orgs}, state
@@ -435,6 +449,29 @@ def _enforce_billing_or_402(user: AuthUser, billing_state: dict) -> None:
     ``paid`` will be False — which fail-safes to "block" for non-admins.
     """
     if not user or user.role == UserRole.ADMIN:
+        return
+    # A billing lookup that never got an answer is NOT a verdict of "no credits".
+    # Until 2026-08-11 this fell through to a 402, and because Ops-Center has
+    # never implemented GET /api/v1/billing/state, EVERY non-admin, non-trusted
+    # caller was told "You are out of credits" regardless of their real balance.
+    # Fail OPEN on an infrastructure failure and make it loud + counted; only an
+    # authoritative answer may take money-affecting action against a customer.
+    if billing_state.get("lookup") != "ok":
+        logger.error(
+            "BILLING PREFLIGHT UNAVAILABLE for user=%s (%s) — allowing the "
+            "request rather than 402-ing on an infrastructure failure. Credits "
+            "were NOT verified.",
+            getattr(user, "email", "") or getattr(user, "id", "?"),
+            billing_state.get("lookup_error", "unknown"),
+        )
+        if _BILLING_STRICT:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "billing_unavailable",
+                    "message": "Billing service is unavailable; please retry.",
+                },
+            )
         return
     credits = float(billing_state.get("credits_remaining") or 0)
     paid = bool(billing_state.get("paid"))

@@ -49,7 +49,19 @@ http_request_duration_seconds = Histogram(
 agent_chat_total = Counter(
     "brigade_agent_chat_total",
     "Agent chat completions by agent and outcome",
-    ["agent", "outcome"],  # outcome: ok | error | tool_loop_max
+    # outcome: ok | error | tool_loop_max | persist_failed
+    ["agent", "outcome"],
+)
+
+# Billing preflight could not reach Ops-Center. Brigade deliberately does NOT
+# 402 on this (an unreachable billing service is not evidence of an empty
+# balance), so without a counter a dead billing dependency is invisible.
+# ALERT ON THIS: a sustained non-zero rate means nobody's credits are being
+# checked at all.
+billing_lookup_unavailable = Counter(
+    "brigade_billing_lookup_unavailable_total",
+    "Billing-state lookups that failed (unreachable / non-200), by reason",
+    ["reason"],
 )
 
 agent_tool_calls_total = Counter(
