@@ -1611,7 +1611,37 @@ async def chat_with_agent(
             })
             await session.commit()
         except Exception as persist_err:
-            logger.warning(f"Failed to persist conversation: {persist_err}")
+            # LOUD. This used to be a warning and the request still returned 200,
+            # so 751 assistant replies were dropped between 2026-07-17 and
+            # 2026-08-11 with nothing but a WARNING line to show for it. A
+            # persistence failure is data loss: log it at ERROR with the identifying
+            # context, count it, and surface it IN-BAND on the response so a caller
+            # can tell "answered and saved" from "answered and thrown away".
+            try:
+                await session.rollback()
+            except Exception:
+                logger.debug("rollback after persist failure also failed", exc_info=True)
+            logger.error(
+                "MESSAGE PERSISTENCE FAILED — chat history was DROPPED for "
+                "agent=%s user=%s: %s",
+                agent.get("id"), request.user_id, persist_err,
+                exc_info=True,
+            )
+            try:
+                # Reuse the existing chat counter with a distinct outcome so this
+                # is alertable without adding a new metric surface.
+                agent_chat_total.labels(
+                    agent=_metric_agent, outcome="persist_failed"
+                ).inc()
+            except Exception:
+                pass
+            result["persisted"] = False
+            result["persistence_error"] = (
+                "conversation history was NOT saved: "
+                f"{type(persist_err).__name__}"
+            )
+        else:
+            result["persisted"] = True
 
         # Store exchange in long-term memory (Phase 2)
         if memory_manager and request.user_id and request.user_id != "anonymous" and content:

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models import Agent, Conversation, Message, ApiKey, BuilderSession, ToolExecution, User, UserApiKey, CodeAttribution, SpeakerProfile
+from app.db.database import ensure_org_context
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ class AgentRepository:
         return agent.to_dict() if agent else None
 
     async def create(self, data: Dict[str, Any]) -> Dict:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         agent = Agent(
             id=data.get("id") or data.get("name", "").lower().replace(" ", "-"),
             name=data["name"],
@@ -97,6 +101,9 @@ class AgentRepository:
         return agent.to_dict()
 
     async def update(self, agent_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         result = await self.session.execute(
             select(Agent).where(Agent.id == agent_id)
         )
@@ -144,6 +151,9 @@ class AgentRepository:
         return agent.to_dict()
 
     async def delete(self, agent_id: str) -> bool:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         result = await self.session.execute(
             select(Agent).where(Agent.id == agent_id)
         )
@@ -204,6 +214,9 @@ class ConversationRepository:
         return conv.to_dict(include_messages=include_messages) if conv else None
 
     async def create(self, data: Dict[str, Any]) -> Dict:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         conv = Conversation(
             agent_id=data.get("agent_id"),
             user_id=data.get("user_id", "anonymous"),
@@ -226,6 +239,9 @@ class ConversationRepository:
         return result
 
     async def update(self, conv_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         result = await self.session.execute(
             select(Conversation).where(Conversation.id == conv_id)
         )
@@ -247,6 +263,9 @@ class ConversationRepository:
         return result
 
     async def delete(self, conv_id: str) -> bool:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         result = await self.session.execute(
             delete(Conversation).where(Conversation.id == conv_id)
         )
@@ -254,6 +273,9 @@ class ConversationRepository:
         return result.rowcount > 0
 
     async def add_message(self, conv_id: str, data: Dict[str, Any]) -> Dict:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         msg = Message(
             conversation_id=conv_id,
             role=data["role"],
@@ -379,6 +401,9 @@ class BuilderSessionRepository:
         self.session = session
 
     async def get_or_create(self, session_id: Optional[str] = None, user_id: str = "anonymous") -> Dict:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         if session_id:
             result = await self.session.execute(
                 select(BuilderSession).where(BuilderSession.id == session_id)
@@ -398,6 +423,9 @@ class BuilderSessionRepository:
         return bs.to_dict()
 
     async def add_messages(self, session_id: str, user_msg: str, assistant_msg: str) -> Dict:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         result = await self.session.execute(
             select(BuilderSession).where(BuilderSession.id == session_id)
         )
@@ -425,6 +453,9 @@ class BuilderSessionRepository:
         return bs.to_dict() if bs else None
 
     async def set_agent_config(self, session_id: str, config: Dict) -> Optional[Dict]:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         result = await self.session.execute(
             select(BuilderSession).where(BuilderSession.id == session_id)
         )
@@ -621,6 +652,9 @@ class ToolExecutionRepository:
         self.session = session
 
     async def create(self, data: Dict[str, Any]) -> Dict:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         te = ToolExecution(
             conversation_id=data.get("conversation_id"),
             message_id=data.get("message_id"),
@@ -638,6 +672,9 @@ class ToolExecutionRepository:
         return te.to_dict()
 
     async def complete(self, exec_id: str, output: Any, duration_ms: int, status: str = "completed") -> Optional[Dict]:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         result = await self.session.execute(
             select(ToolExecution).where(ToolExecution.id == exec_id)
         )
@@ -672,6 +709,9 @@ class CodeAttributionRepository:
 
     async def create(self, data: Dict[str, Any]) -> Dict:
         """Record a code attribution"""
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         import hashlib
 
         # Generate code hash (first 32 chars of SHA-256)
@@ -909,6 +949,9 @@ class SpeakerProfileRepository:
         return profile.to_dict() if profile else None
 
     async def create(self, data: Dict[str, Any]) -> Dict:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         profile = SpeakerProfile(
             name=data["name"],
             user_id=data.get("user_id"),
@@ -924,6 +967,9 @@ class SpeakerProfileRepository:
         return profile.to_dict()
 
     async def update(self, profile_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         result = await self.session.execute(
             select(SpeakerProfile).where(SpeakerProfile.id == profile_id)
         )
@@ -943,6 +989,9 @@ class SpeakerProfileRepository:
         return profile.to_dict()
 
     async def delete(self, profile_id: str) -> bool:
+        # BR-RLS: a prior commit in this request may have released the connection;
+        # re-assert the org GUC so this write cannot be silently rejected by RLS.
+        await ensure_org_context(self.session)
         result = await self.session.execute(
             select(SpeakerProfile).where(SpeakerProfile.id == profile_id)
         )

@@ -75,6 +75,64 @@ async_session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncS
 admin_session = async_sessionmaker(migration_engine, expire_on_commit=False, class_=AsyncSession)
 
 
+class OrgContextLost(RuntimeError):
+    """The request has a bound org but the connection's RLS GUC is empty and
+    could not be restored. Raised instead of letting a write silently no-op."""
+
+
+async def ensure_org_context(session: AsyncSession) -> None:
+    """Re-assert this REQUEST's org into the CONNECTION's RLS GUC before a write.
+
+    ``app.current_org_id`` is a *connection*-level setting, but a request is not
+    pinned to one connection: every ``session.commit()`` inside a repository
+    method releases the connection back to the pool, and the next statement
+    checks out a DIFFERENT one — which never received this request's
+    ``set_config`` (or, worse, has just been blanked by another request's
+    ``_clear_org_context`` teardown). The write then lands with a NULL org_id and
+    Postgres rejects it as "new row violates row-level security policy".
+
+    That is not hypothetical: it silently dropped 751 assistant chat messages
+    between 2026-07-17 (when the B1 teardown started positively blanking pooled
+    connections) and 2026-08-11. Before B1, these writes only ever succeeded by
+    ACCIDENT — they inherited a stale org left on a recycled connection, which is
+    the very cross-tenant leak B1 closed. Closing the leak turned a silent
+    correctness bug into silent data loss.
+
+    Call this at the top of any repository write that targets a FORCE-RLS table.
+
+    Fails SAFE: with no org bound for this request (public/unbound callers) it is
+    a no-op and the pre-existing behaviour is unchanged — it can never invent an
+    org, so it cannot re-open B1.
+    """
+    try:
+        from app.orchestration.event_bus import current_org_id_var
+        org_id = current_org_id_var.get()
+    except Exception:  # noqa: BLE001 - context var must never break a write
+        return
+    if not org_id:
+        # No bound org for this request. Nothing to restore; leave the GUC alone.
+        return
+    current = (await session.execute(
+        text("SELECT current_setting('app.current_org_id', true)")
+    )).scalar()
+    if current == str(org_id):
+        return  # connection already carries the right org — no round-trip needed
+    await session.execute(
+        text("SELECT set_config('app.current_org_id', :org_id, false)"),
+        {"org_id": str(org_id)},
+    )
+    verify = (await session.execute(
+        text("SELECT current_setting('app.current_org_id', true)")
+    )).scalar()
+    if verify != str(org_id):
+        # Refuse to proceed into a write that RLS will silently reject.
+        raise OrgContextLost(
+            "could not restore app.current_org_id on this connection "
+            f"(wanted {org_id}, got {verify!r})"
+        )
+    logger.debug("Re-asserted org RLS context on a recycled connection")
+
+
 async def _clear_org_context(session: AsyncSession) -> None:
     """Positively clear the per-request org RLS GUC (``app.current_org_id``) at
     SESSION level and COMMIT so the clear PERSISTS on the pooled connection.
@@ -90,6 +148,14 @@ async def _clear_org_context(session: AsyncSession) -> None:
     GUC, so an unbound request can never inherit another tenant's org from a reused
     connection regardless of pool timing.
     """
+    # Clear the request-scoped org FIRST so ``ensure_org_context`` can never
+    # resurrect it on a later write: after a deliberate clear there is no bound
+    # org, and the context var is the single source of truth for that.
+    try:
+        from app.orchestration.event_bus import current_org_id_var
+        current_org_id_var.set(None)
+    except Exception:  # noqa: BLE001 - never break the clear on a context-var error
+        logger.debug("Could not reset current_org_id_var during clear", exc_info=True)
     await session.rollback()
     await session.execute(text("SELECT set_config('app.current_org_id', '', false)"))
     await session.commit()
