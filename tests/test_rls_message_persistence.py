@@ -32,7 +32,8 @@ Isolation: every test runs under its own throwaway organization. RLS itself keep
 the org is deleted at teardown (``organizations`` cascades to agents,
 conversations and messages), so no production row is touched.
 
-Skips cleanly when no database is reachable.
+The two DB-backed tests skip cleanly when no Postgres is reachable; the
+source-level canaries always run.
 """
 
 import asyncio
@@ -48,7 +49,11 @@ from app.db.repositories import ConversationRepository
 APP_DSN = os.getenv("DATABASE_URL", "")          # RLS-SUBJECT app role
 ADMIN_DSN = os.getenv("MIGRATION_DATABASE_URL", APP_DSN)  # owner, for fixture DDL/DML
 
-pytestmark = pytest.mark.skipif(
+# Applied ONLY to the two tests that genuinely need Postgres. The guard-removal
+# canary and the loud-failure contract check are pure source inspection — they
+# are exactly what you still want running in a DB-less CI, so they must not be
+# swept up by a module-wide skip.
+needs_postgres = pytest.mark.skipif(
     not APP_DSN.startswith("postgresql"),
     reason="needs a real Postgres (DATABASE_URL); the bug is a pool+RLS interaction "
            "that cannot be reproduced with mocks",
@@ -154,6 +159,7 @@ async def _count_messages(maker, conv_id):
     return {r[0]: r[1] for r in rows}
 
 
+@needs_postgres
 @pytest.mark.asyncio
 async def test_messages_persist_when_the_pooled_connection_lost_its_org(
     app_sessionmaker, test_agent, test_org
@@ -196,6 +202,7 @@ async def test_messages_persist_when_the_pooled_connection_lost_its_org(
     )
 
 
+@needs_postgres
 @pytest.mark.asyncio
 async def test_messages_persist_under_concurrent_requests_sharing_a_pool(
     app_sessionmaker, test_agent, test_org
