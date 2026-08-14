@@ -196,3 +196,48 @@ replacement**, because a wrong face still beats no face:
 
 Compliance scores rate palette, not subject. A 100/100 does not mean the
 picture is right, and 97/100 did not mean this one was nearly right.
+
+## dr-glitter-mane re-rolled on-family; settlement-modeler still open (2026-08-14)
+
+`dr-glitter-mane.webp` REPLACED. The previous pass drifted from its own bio on
+the three markers that define the roster: measured background luminance 30 /
+RGB (20, 31, 60) against a roster band of 21-27 with blue 38-44 (the lightest
+and bluest ground in the set), a cyan-to-purple horn instead of the gold spiral,
+and a silver-white mane carrying none of the purple-to-cyan colour. The new pass
+measures luminance 21 / RGB (16, 21, 40) — inside the band — with a gold horn
+and a purple-to-cyan mane, keeping the white coat, stethoscope and caduceus that
+were always correct. 512x512 WebP, 33,114 bytes, in line with the rest of the set.
+
+`settlement-modeler.webp` UNCHANGED and still off-family. Two re-rolls were
+attempted and both were worse than what is committed, so the original was kept:
+a wrong face beats no face, and a worse face beats both.
+
+**Why the bios were not the problem.** These agents did not have empty bios. Both
+already carried the full locked recipe with exact hex codes, identical to the
+bios of siblings that rendered correctly. The generator simply did not follow
+them. Do not "fix" this by rewriting a bio that is already right.
+
+**Negative constraints backfire on this model.** The second settlement-modeler
+attempt spelled out "no tactical vest, no body armour, no MOLLE pouches, no
+helmet". It returned a unicorn in a tactical helmet with a mounted optic and
+antennas, wearing a plate carrier — the model attended to the nouns and dropped
+the negation. The first attempt, which forbade the olive cap and the desk, did
+drop both but invented a wireframe isometric background panel and a cyan horn
+instead. State what the picture SHOULD contain; naming the unwanted object tends
+to summon it. `dr-glitter-mane` succeeded on the first attempt under
+positive-only phrasing, after settlement-modeler had failed twice under negative
+phrasing.
+
+**Compliance score is not a picture review.** Every one of these failures scored
+100/100 on colour, including the tactical-helmet pass. The original
+settlement-modeler scored 97/100 and the 3% offender was exactly the olive cap
+(#4c5a41) — the check saw the one wrong colour and was blind to the wrong
+uniform, the wrong crop and the missing scales. A palette check cannot tell you
+the horn is the wrong colour when cyan is also a brand colour. Look at the image.
+
+**Brand-Ops now diverges for settlement-modeler.** Its stored master under
+`brand-kits/magic-unicorn/agents/settlement-modeler/avatar` is the rejected
+tactical-helmet pass, because generation overwrites in place and there is no
+revert. Brigade and Stable both still serve the original olive-cap portrait.
+Regenerate before trusting the Brand-Ops master for that one slug. Its bio has
+been reset to positive-only phrasing and is primed for another attempt.
