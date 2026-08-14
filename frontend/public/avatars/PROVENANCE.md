@@ -141,3 +141,58 @@ no longer the expected state — do not "restore" it.
 **`sidekick` is still WITHDRAWN and still deliberately unbound.** A null
 avatar_url on `sidekick` remains intentional state, not a defect, until the
 owner approves art for it.
+
+## Roster avatar backfill — 42 files brought into source control (2026-08-12/14)
+
+A bulk "v2" migration had rewritten 41 of 55 roster rows to
+`/avatars/<slug>-v2.png` files that were never generated, so those agents
+rendered faceless. 36 replacement portraits were generated through Brand-Ops'
+compliance-checked agent-identity pipeline (brand `magic-unicorn`, model
+`gemini/gemini-3.1-flash-image` via litellm) against the locked roster recipe:
+chibi white unicorn bust, thick black outlines, white sticker border, dark navy
+ground, gold spiral horn, iridescent mane, serious adult attitude.
+
+The generated art was written to Brigade's build context and `docker cp`'d into
+the running `unicorn-brigade-ui` container, so URLs resolved — but the files
+were never `git add`ed. They survived a rebuild only on that one host; a fresh
+clone would have rebuilt the image without them and every one of those agents
+would have gone faceless again. This entry records bringing all 42 untracked
+`frontend/public/avatars/*.webp` files into source control.
+
+- 42 files, 1,198,902 bytes total, every one a valid 512x512 WebP (RIFF/WEBP
+  magic verified, all SHA-256s distinct — no duplicated or placeholder art).
+- Nothing in `.gitignore` ever matched these paths. The files were simply never
+  staged; `git check-ignore` confirms no rule applies. There is no ignore rule
+  to fix.
+- Per-file checksums are not reproduced here: unlike the earlier entries, these
+  are not conversions of external masters, so the committed git blobs are
+  themselves the provenance record.
+
+**`sidekick` supersedes its withdrawal note.** The 2026-07-31 withdrawal above
+says `sidekick` is deliberately unbound and a null `avatar_url` is intentional
+state. That is no longer true: this batch generated `sidekick.webp` and the
+production row is bound to `/avatars/sidekick.webp`. The file is committed here
+because the repo was behind live reality, not because a fresh art approval was
+recorded. **The identity owner should confirm this portrait**, since the
+original rejection was an explicit owner decision.
+
+**Two portraits are known off-family and are committed as-is pending
+replacement**, because a wrong face still beats no face:
+
+- `settlement-modeler.webp` — wears an olive-drab military cap and is composed
+  as a wide shot over a glowing blueprint desk, with a literal red/orange/yellow
+  rainbow mane. The roster is head-and-shoulders busts in dark navy/charcoal
+  attire with a purple/cyan/magenta mane, and this agent is the Settlement
+  Strategy Specialist (a legal analyst), so both the uniform and the desk are
+  wrong for the role. Its brand-compliance score was 97/100 — the only
+  non-perfect score in the batch — which caught the olive as an off-palette
+  colour but could not see the wrong subject.
+- `dr-glitter-mane.webp` — the lab coat and stethoscope suit the Chief Medical
+  Officer role, but the execution is off-family: measured background luminance
+  30 / RGB (20, 31, 60) against a roster median of 24 and a blue channel of
+  38-44, making it the lightest and bluest ground in the set; the horn is a
+  cyan-to-purple gradient rather than the roster's gold spiral; and the mane is
+  silver-white with no iridescent colour.
+
+Compliance scores rate palette, not subject. A 100/100 does not mean the
+picture is right, and 97/100 did not mean this one was nearly right.
