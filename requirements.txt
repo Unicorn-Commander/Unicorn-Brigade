@@ -15,7 +15,7 @@ langchain-community==0.3.25
 qdrant-client==1.12.0
 
 # Temporal knowledge-graph memory (Graphiti over FalkorDB)
-falkordb>=1.4.0
+falkordb>=1.7.1
 graphiti-core[falkordb]>=0.28.0
 
 # Database
