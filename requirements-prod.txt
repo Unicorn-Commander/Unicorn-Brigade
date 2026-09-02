@@ -29,7 +29,7 @@ psycopg2-binary==2.9.9
 APScheduler==3.10.4
 
 # Redis (>=7.1 required by falkordb)
-redis==7.1.1
+redis>=8.0.0,<9   # falkordb>=1.7.1 requires redis-py 8 (2026-09-02)
 hiredis==3.0.0
 
 # OpenAI & LLM - pinned to compatible versions
