@@ -134,7 +134,7 @@ async def delete_agent_memories_for_user(
         group_id = f"{_slug(user_id)}__{_slug(agent_id)}"
         # FalkorDB GRAPH.DELETE via a raw redis command
         import redis.asyncio as aredis
-        r = aredis.Redis(host=host, port=port, decode_responses=True)
+        r = aredis.Redis(host=host, port=port, password=os.getenv("FALKORDB_PASSWORD") or None, decode_responses=True)
         try:
             await r.execute_command("GRAPH.DELETE", group_id)
         finally:
@@ -157,7 +157,7 @@ async def list_memory_graphs(
         host = os.getenv("FALKORDB_HOST", "unicorn-falkordb")
         port = int(os.getenv("FALKORDB_PORT", "6379"))
         import redis.asyncio as aredis
-        r = aredis.Redis(host=host, port=port, decode_responses=True)
+        r = aredis.Redis(host=host, port=port, password=os.getenv("FALKORDB_PASSWORD") or None, decode_responses=True)
         try:
             graphs = await r.execute_command("GRAPH.LIST")
         finally:

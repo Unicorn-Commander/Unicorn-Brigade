@@ -24,6 +24,7 @@ except ImportError as _import_err:
 FALKORDB_HOST = os.getenv("FALKORDB_HOST", "unicorn-falkordb")
 FALKORDB_PORT = int(os.getenv("FALKORDB_PORT", "6379"))
 FALKORDB_DB = os.getenv("FALKORDB_DATABASE", "brigade_memories")
+FALKORDB_PASSWORD = os.getenv("FALKORDB_PASSWORD") or None  # requirepass on unicorn-falkordb (2026-09-02)
 
 LLM_BASE_URL = os.getenv("MEMORY_LLM_BASE_URL", "http://172.17.0.1:8085/v1")
 LLM_MODEL = os.getenv("MEMORY_LLM_MODEL", "Qwen3.6-35B-A3B-UD-Q4_K_XL")
@@ -129,7 +130,7 @@ class GraphitiMemoryManager:
             self._init_error = "graphiti-core not installed"
             return
         try:
-            driver = FalkorDriver(host=FALKORDB_HOST, port=FALKORDB_PORT, database=FALKORDB_DB)
+            driver = FalkorDriver(host=FALKORDB_HOST, port=FALKORDB_PORT, password=FALKORDB_PASSWORD, database=FALKORDB_DB)
             llm = GRAPHITI_LLM_CLIENT(config=LLMConfig(
                 api_key="local-dummy",
                 model=LLM_MODEL,

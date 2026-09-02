@@ -354,6 +354,7 @@ async def _check_falkordb() -> Dict[str, Any]:
     """FalkorDB liveness: RESP PING over a raw TCP connection."""
     host = os.getenv("FALKORDB_HOST", "unicorn-falkordb")
     port = int(os.getenv("FALKORDB_PORT", "6379"))
+    password = os.getenv("FALKORDB_PASSWORD") or None
     target = f"{host}:{port}"
     start = time.monotonic()
     try:
@@ -361,11 +362,21 @@ async def _check_falkordb() -> Dict[str, Any]:
             asyncio.open_connection(host, port), timeout=PROBE_TIMEOUT_SECONDS
         )
         try:
-            writer.write(b"PING\r\n")
-            await asyncio.wait_for(writer.drain(), timeout=PROBE_TIMEOUT_SECONDS)
-            reply = await asyncio.wait_for(
-                reader.read(32), timeout=PROBE_TIMEOUT_SECONDS
-            )
+            reply = b""
+            if password:
+                # requirepass is set on unicorn-falkordb (2026-09-02): AUTH first,
+                # otherwise PING answers -NOAUTH and the probe reads "degraded".
+                writer.write(f"AUTH {password}\r\n".encode())
+                await asyncio.wait_for(writer.drain(), timeout=PROBE_TIMEOUT_SECONDS)
+                reply = await asyncio.wait_for(
+                    reader.read(64), timeout=PROBE_TIMEOUT_SECONDS
+                )
+            if not password or reply.startswith(b"+OK"):
+                writer.write(b"PING\r\n")
+                await asyncio.wait_for(writer.drain(), timeout=PROBE_TIMEOUT_SECONDS)
+                reply = await asyncio.wait_for(
+                    reader.read(32), timeout=PROBE_TIMEOUT_SECONDS
+                )
         finally:
             writer.close()
         if reply.startswith(b"+PONG"):
