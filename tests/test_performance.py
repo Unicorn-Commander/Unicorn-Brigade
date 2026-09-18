@@ -24,14 +24,14 @@ Requires:
 """
 
 import asyncio
-import statistics
-import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from unittest.mock import AsyncMock, MagicMock, patch
 import json
 import os
+import statistics
 import sys
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable, Optional
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -48,9 +48,9 @@ class BenchmarkResult:
     """Result of a single benchmark run"""
     name: str
     operation: str
-    samples: List[float] = field(default_factory=list)
+    samples: list[float] = field(default_factory=list)
     target_ms: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def mean_ms(self) -> float:
@@ -97,7 +97,7 @@ class BenchmarkResult:
             return True
         return self.mean_ms <= self.target_ms
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for reporting"""
         return {
             "name": self.name,
@@ -126,7 +126,7 @@ class BenchmarkRunner:
     def __init__(self, warmup_runs: int = 3, sample_runs: int = 100):
         self.warmup_runs = warmup_runs
         self.sample_runs = sample_runs
-        self.results: List[BenchmarkResult] = []
+        self.results: list[BenchmarkResult] = []
 
     def run_sync(
         self,
@@ -134,7 +134,7 @@ class BenchmarkRunner:
         operation: str,
         func: Callable[[], Any],
         target_ms: float = 0.0,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> BenchmarkResult:
         """
         Run a synchronous benchmark.
@@ -176,7 +176,7 @@ class BenchmarkRunner:
         operation: str,
         func: Callable[[], Any],
         target_ms: float = 0.0,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> BenchmarkResult:
         """
         Run an async benchmark.
@@ -223,7 +223,7 @@ class BenchmarkRunner:
         ]
 
         # Group by name
-        grouped: Dict[str, List[BenchmarkResult]] = {}
+        grouped: dict[str, list[BenchmarkResult]] = {}
         for result in self.results:
             if result.name not in grouped:
                 grouped[result.name] = []
@@ -257,7 +257,7 @@ class BenchmarkRunner:
 
         return "\n".join(lines)
 
-    def get_json_report(self) -> Dict[str, Any]:
+    def get_json_report(self) -> dict[str, Any]:
         """Get benchmark results as JSON-serializable dict"""
         return {
             "benchmarks": [r.to_dict() for r in self.results],
@@ -421,7 +421,7 @@ class TestToolResolutionPerformance:
 
     def test_resolve_tools_20_tools(self, benchmark_runner: BenchmarkRunner):
         """Benchmark resolving 20 tools for an agent (all available)"""
-        from app.llm.tool_resolver import get_tools_for_agent, TOOL_REGISTRY
+        from app.llm.tool_resolver import TOOL_REGISTRY, get_tools_for_agent
 
         # Use all available tools (up to 20)
         all_tools = list(TOOL_REGISTRY.keys())[:20]
@@ -474,8 +474,9 @@ class TestAgentLoadingPerformance:
 
     def test_agent_to_dict_serialization(self, benchmark_runner: BenchmarkRunner):
         """Benchmark Agent.to_dict() serialization"""
-        from app.db.models import Agent
         from datetime import datetime
+
+        from app.db.models import Agent
 
         # Create a mock agent instance
         agent = Agent(
@@ -537,8 +538,9 @@ class TestAgentLoadingPerformance:
     @pytest.mark.asyncio
     async def test_agent_repository_list_all_mock(self, benchmark_runner: BenchmarkRunner, sample_agents):
         """Benchmark AgentRepository.list_all with mocked DB"""
-        from app.db.repositories import AgentRepository
         from unittest.mock import MagicMock
+
+        from app.db.repositories import AgentRepository
 
         # Mock the session and result
         mock_session = AsyncMock()
@@ -569,8 +571,9 @@ class TestAgentLoadingPerformance:
     @pytest.mark.asyncio
     async def test_agent_repository_get_mock(self, benchmark_runner: BenchmarkRunner, sample_agents):
         """Benchmark AgentRepository.get with mocked DB"""
-        from app.db.repositories import AgentRepository
         from unittest.mock import MagicMock
+
+        from app.db.repositories import AgentRepository
 
         mock_session = AsyncMock()
         mock_result = MagicMock()
@@ -752,8 +755,9 @@ class TestWorkflowStepExecutionBaseline:
 
     def test_step_execution_object_creation(self, benchmark_runner: BenchmarkRunner):
         """Benchmark StepExecution object creation"""
-        from app.workflows.schema import StepExecution, StepExecutionState
         from datetime import datetime
+
+        from app.workflows.schema import StepExecution, StepExecutionState
 
         def create_step_execution():
             return StepExecution(
@@ -795,7 +799,7 @@ class TestModelConfigResolution:
 
     def test_get_model_for_orchestrator(self, benchmark_runner: BenchmarkRunner):
         """Benchmark orchestrator model resolution"""
-        from app.workflows.model_config import ModelRegistry, ModelConfig
+        from app.workflows.model_config import ModelConfig, ModelRegistry
 
         config = ModelConfig()
 
@@ -811,7 +815,7 @@ class TestModelConfigResolution:
 
     def test_get_model_for_team_lead(self, benchmark_runner: BenchmarkRunner):
         """Benchmark team lead model resolution"""
-        from app.workflows.model_config import ModelRegistry, ModelConfig
+        from app.workflows.model_config import ModelConfig, ModelRegistry
 
         config = ModelConfig()
         domains = ["research", "finance", "content", "sales", "devops", "legal", "medical", "investigation"]
@@ -835,7 +839,7 @@ class TestModelConfigResolution:
 
     def test_get_model_for_worker(self, benchmark_runner: BenchmarkRunner):
         """Benchmark worker model resolution"""
-        from app.workflows.model_config import ModelRegistry, ModelConfig
+        from app.workflows.model_config import ModelConfig, ModelRegistry
 
         config = ModelConfig()
         worker_ids = [
@@ -892,7 +896,7 @@ class TestModelConfigResolution:
 
     def test_preset_config_loading(self, benchmark_runner: BenchmarkRunner):
         """Benchmark preset configuration loading"""
-        from app.workflows.model_config import get_config_from_preset, CONFIG_PRESETS
+        from app.workflows.model_config import CONFIG_PRESETS, get_config_from_preset
 
         presets = list(CONFIG_PRESETS.keys())
         idx = 0
@@ -938,7 +942,7 @@ class TestModelConfigResolution:
 
     def test_config_merge(self, benchmark_runner: BenchmarkRunner):
         """Benchmark config merging"""
-        from app.workflows.model_config import merge_configs, ModelConfig
+        from app.workflows.model_config import ModelConfig, merge_configs
 
         base = ModelConfig()
         overrides = {
@@ -1071,13 +1075,15 @@ class TestAPIResponseTime:
     @pytest.fixture
     def test_client(self, sample_agents):
         """Create a test client with mocked database"""
-        from fastapi.testclient import TestClient
+        from unittest.mock import MagicMock
+
         from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
         from app.api.agent_routes import router as agent_router
         from app.api.hierarchical_routes import router as hierarchical_router
-        from app.db.database import get_session
         from app.auth.middleware import require_api_key
-        from unittest.mock import MagicMock
+        from app.db.database import get_session
 
         # Create a minimal app for testing
         app = FastAPI()
@@ -1114,6 +1120,7 @@ class TestAPIResponseTime:
 
         return TestClient(app)
 
+    @pytest.mark.perf
     def test_list_agents_api(self, benchmark_runner: BenchmarkRunner, test_client, sample_agents):
         """Benchmark GET /api/v1/agents"""
         def make_request():
@@ -1186,12 +1193,15 @@ class TestBenchmarkReport:
 
     def test_generate_full_report(self, full_runner: BenchmarkRunner):
         """Run all benchmarks and generate a comprehensive report"""
-        from app.llm.tool_resolver import TOOL_REGISTRY, get_tools_for_agent, get_tool_by_name
-        from app.workflows.model_config import (
-            ModelRegistry, ModelConfig, get_config_from_preset,
-            merge_configs, CONFIG_PRESETS
-        )
+        from app.llm.tool_resolver import TOOL_REGISTRY, get_tool_by_name, get_tools_for_agent
         from app.workflows.engine import WorkflowEngine
+        from app.workflows.model_config import (
+            CONFIG_PRESETS,
+            ModelConfig,
+            ModelRegistry,
+            get_config_from_preset,
+            merge_configs,
+        )
 
         # 1. Tool Resolution
         tool_names = list(TOOL_REGISTRY.keys())
