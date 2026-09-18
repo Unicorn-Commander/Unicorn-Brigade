@@ -204,6 +204,20 @@ if os.getenv("KNOWLEDGE_OPS_URL"):
 else:
     logger.info("Knowledge-Ops tools skipped (KNOWLEDGE_OPS_URL not set)")
 
+# uc-browser tools — only when the browser gate is configured. Proxies into
+# the uc-browser MCP gate (Playwright MCP driving a real Chrome) over JSON-RPC
+# / Streamable HTTP, authed with the same uchub client_credentials bearer as
+# Center-Deep. See ucbrowser_mcp_tools.
+if os.getenv("UC_BROWSER_MCP_URL"):
+    try:
+        from app.llm.ucbrowser_mcp_tools import UC_BROWSER_MCP_TOOLS
+        TOOL_REGISTRY.update(UC_BROWSER_MCP_TOOLS)
+        logger.info(f"uc-browser tools registered ({len(UC_BROWSER_MCP_TOOLS)} tools)")
+    except ImportError as exc:
+        logger.warning(f"uc-browser tools not available: {exc}")
+else:
+    logger.info("uc-browser tools skipped (UC_BROWSER_MCP_URL not set)")
+
 
 def get_tools_for_agent(agent: Dict[str, Any]) -> List[ToolDefinition]:
     """
