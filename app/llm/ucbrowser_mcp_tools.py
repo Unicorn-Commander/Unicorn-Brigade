@@ -82,7 +82,7 @@ import logging
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import httpx
 
@@ -121,12 +121,12 @@ _MCP_PROTOCOL_VERSION = "2025-06-18"
 
 # In-process token cache. client_credentials TTL is ~300s; refresh a little
 # early. We never write the token anywhere — memory only, per process.
-_TOKEN_CACHE: Dict[str, Any] = {"token": None, "exp": 0.0}
+_TOKEN_CACHE: dict[str, Any] = {"token": None, "exp": 0.0}
 _TOKEN_REFRESH_SKEW = 30.0  # mint a fresh token this many seconds before exp
 _TOKEN_MAX_TTL = float(os.getenv("UC_BROWSER_TOKEN_MAX_TTL", "240.0"))  # cap cache at ~4 min
 
 # Per-process Streamable HTTP session (Mcp-Session-Id) handed out by the gate.
-_SESSION: Dict[str, Optional[str]] = {"id": None}
+_SESSION: dict[str, Optional[str]] = {"id": None}
 # JSON-RPC ids — a counter rather than a constant, since the session is stateful.
 _RPC_IDS = itertools.count(1)
 
@@ -185,7 +185,7 @@ async def _get_token() -> Optional[str]:
         return None
 
 
-def _parse_streamable_response(body: str) -> Dict[str, Any]:
+def _parse_streamable_response(body: str) -> dict[str, Any]:
     """Parse a Streamable HTTP reply into the JSON-RPC response.
 
     The gate unwraps SSE to plain JSON when asked; a raw upstream reply is a
@@ -219,14 +219,14 @@ def _parse_streamable_response(body: str) -> Dict[str, Any]:
     raise ValueError(f"ucbrowser-mcp: no data line in response: {body[:200]}")
 
 
-def _parse_sections(text: str) -> Dict[str, str]:
+def _parse_sections(text: str) -> dict[str, str]:
     """Split Playwright MCP's ``### Title`` blocks into ``{title: body}``.
 
     Mirrors the server's own ``parseSections``. Text before the first header
     (rare) is kept under ``""``. Bodies keep their code fences; use
     ``_strip_fence`` for the YAML/JS blocks.
     """
-    sections: Dict[str, str] = {}
+    sections: dict[str, str] = {}
     if not text:
         return sections
     matches = list(_SECTION_RE.finditer(text))
@@ -251,13 +251,13 @@ def _strip_fence(body: str) -> str:
     return "\n".join(lines)
 
 
-def _page_info(sections: Dict[str, str]) -> Optional[Dict[str, Any]]:
+def _page_info(sections: dict[str, str]) -> Optional[dict[str, Any]]:
     """``### Page`` → ``{"url", "title", ...}`` (None when the section is absent)."""
     body = sections.get("Page")
     if not body:
         return None
-    info: Dict[str, Any] = {}
-    extra: List[str] = []
+    info: dict[str, Any] = {}
+    extra: list[str] = []
     for line in body.splitlines():
         line = line.strip()
         if line.startswith("- Page URL:"):
@@ -277,7 +277,7 @@ def _first_link(body: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def _truncate(text: str, cap: int = 0) -> Tuple[str, bool]:
+def _truncate(text: str, cap: int = 0) -> tuple[str, bool]:
     cap = cap or UC_BROWSER_TEXT_MAX
     text = text or ""
     if len(text) <= cap:
@@ -285,7 +285,7 @@ def _truncate(text: str, cap: int = 0) -> Tuple[str, bool]:
     return text[:cap] + f"\n…[truncated: {len(text) - cap} more chars]", True
 
 
-def _needs_handshake(status: int, data: Dict[str, Any]) -> bool:
+def _needs_handshake(status: int, data: dict[str, Any]) -> bool:
     """True when the gate/upstream rejected the request for lack of a live
     Streamable HTTP session (MCP SDK: 400 "Server not initialized", 404
     "Session not found", -32000/-32001)."""
@@ -301,7 +301,7 @@ def _needs_handshake(status: int, data: Dict[str, Any]) -> bool:
     return ("session" in low) or ("initialized" in low) or not message
 
 
-async def _initialize(client: httpx.AsyncClient, headers: Dict[str, str]) -> None:
+async def _initialize(client: httpx.AsyncClient, headers: dict[str, str]) -> None:
     """Run the MCP ``initialize`` handshake and capture the session id.
 
     Only used when a call was refused for a missing session — the gate
@@ -334,7 +334,7 @@ async def _initialize(client: httpx.AsyncClient, headers: Dict[str, str]) -> Non
         logger.warning(f"ucbrowser-mcp: initialize HTTP {resp.status_code}: {resp.text[:200]}")
 
 
-async def _call_mcp(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+async def _call_mcp(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """JSON-RPC 2.0 ``tools/call`` into the gate. Returns
     ``{"result": {"text": <markdown>, "sections": {...}, "images": [...]}}``
     or ``{"error": <str>}`` — never raises. Tool handlers shape the model-facing
@@ -353,7 +353,7 @@ async def _call_mcp(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]
     if _SESSION["id"]:
         headers["Mcp-Session-Id"] = _SESSION["id"]
 
-    def _payload() -> Dict[str, Any]:
+    def _payload() -> dict[str, Any]:
         return {
             "jsonrpc": "2.0",
             "id": next(_RPC_IDS),
@@ -418,7 +418,7 @@ def _safe_parse(body: str) -> Any:
 # ── Handlers (shape the model-facing result) ─────────────────────────
 
 
-def _remap_ref(args: Dict[str, Any]) -> Dict[str, Any]:
+def _remap_ref(args: dict[str, Any]) -> dict[str, Any]:
     """Agent-facing ``ref`` → upstream ``target`` (0.0.81 renamed it)."""
     out = {k: v for k, v in args.items() if v is not None}
     if "ref" in out:
@@ -426,12 +426,12 @@ def _remap_ref(args: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def _action_result(call: Dict[str, Any]) -> Dict[str, Any]:
+def _action_result(call: dict[str, Any]) -> dict[str, Any]:
     """Common shape for navigate/click/type/fill: ok + page header."""
     if "error" in call:
         return call
     sections = call["result"]["sections"]
-    out: Dict[str, Any] = {"ok": True}
+    out: dict[str, Any] = {"ok": True}
     page = _page_info(sections)
     if page:
         out["page"] = page
@@ -440,7 +440,7 @@ def _action_result(call: Dict[str, Any]) -> Dict[str, Any]:
     return {"result": out}
 
 
-async def ucb_navigate_handler(url: str) -> Dict[str, Any]:
+async def ucb_navigate_handler(url: str) -> dict[str, Any]:
     call = await _call_mcp("browser_navigate", {"url": url})
     out = _action_result(call)
     if "result" in out:
@@ -448,7 +448,7 @@ async def ucb_navigate_handler(url: str) -> Dict[str, Any]:
     return out
 
 
-async def ucb_snapshot_handler() -> Dict[str, Any]:
+async def ucb_snapshot_handler() -> dict[str, Any]:
     call = await _call_mcp("browser_snapshot", {})
     if "error" in call:
         return call
@@ -457,15 +457,15 @@ async def ucb_snapshot_handler() -> Dict[str, Any]:
     if not snapshot:
         snapshot = call["result"]["text"]
     text, truncated = _truncate(snapshot)
-    out: Dict[str, Any] = {"snapshot": text, "truncated": truncated}
+    out: dict[str, Any] = {"snapshot": text, "truncated": truncated}
     page = _page_info(sections)
     if page:
         out["page"] = page
     return {"result": out}
 
 
-async def ucb_page_text_handler(url: Optional[str] = None) -> Dict[str, Any]:
-    page: Optional[Dict[str, Any]] = None
+async def ucb_page_text_handler(url: Optional[str] = None) -> dict[str, Any]:
+    page: Optional[dict[str, Any]] = None
     if url:
         nav = await _call_mcp("browser_navigate", {"url": url})
         if "error" in nav:
@@ -481,7 +481,7 @@ async def ucb_page_text_handler(url: Optional[str] = None) -> Dict[str, Any]:
     except (json.JSONDecodeError, TypeError):
         text = raw
     body, truncated = _truncate(text)
-    out: Dict[str, Any] = {"text": body, "truncated": truncated, "length": len(text)}
+    out: dict[str, Any] = {"text": body, "truncated": truncated, "length": len(text)}
     if page:
         out["page"] = page
     return {"result": out}
@@ -491,7 +491,7 @@ async def ucb_click_handler(
     ref: Optional[str] = None,
     element: Optional[str] = None,
     target: Optional[str] = None,  # alias: models trained on Playwright MCP emit it
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     ref = ref or target
     if not ref:
         return {"error": "ucb_click: 'ref' is required (take a ucb_snapshot to get element refs)"}
@@ -505,7 +505,7 @@ async def ucb_type_handler(
     element: Optional[str] = None,
     submit: Optional[bool] = False,
     target: Optional[str] = None,  # alias, see ucb_click_handler
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     ref = ref or target
     if not ref:
         return {"error": "ucb_type: 'ref' is required (take a ucb_snapshot to get element refs)"}
@@ -516,7 +516,7 @@ async def ucb_type_handler(
     return _action_result(call)
 
 
-async def ucb_fill_form_handler(fields: Any) -> Dict[str, Any]:
+async def ucb_fill_form_handler(fields: Any) -> dict[str, Any]:
     if isinstance(fields, str):
         try:
             fields = json.loads(fields)
@@ -538,15 +538,15 @@ async def ucb_fill_form_handler(fields: Any) -> Dict[str, Any]:
     return _action_result(call)
 
 
-async def ucb_screenshot_handler(full_page: Optional[bool] = False) -> Dict[str, Any]:
-    args: Dict[str, Any] = {"scale": "css"}
+async def ucb_screenshot_handler(full_page: Optional[bool] = False) -> dict[str, Any]:
+    args: dict[str, Any] = {"scale": "css"}
     if full_page:
         args["fullPage"] = True
     call = await _call_mcp("browser_take_screenshot", args)
     if "error" in call:
         return call
     res = call["result"]
-    out: Dict[str, Any] = {"saved_as": _first_link(res["sections"].get("Result", ""))}
+    out: dict[str, Any] = {"saved_as": _first_link(res["sections"].get("Result", ""))}
     if res["images"]:
         img = res["images"][0]
         out["mime_type"] = img["mime_type"]
@@ -558,14 +558,14 @@ async def ucb_screenshot_handler(full_page: Optional[bool] = False) -> Dict[str,
     return {"result": out}
 
 
-async def ucb_pdf_save_handler() -> Dict[str, Any]:
+async def ucb_pdf_save_handler() -> dict[str, Any]:
     call = await _call_mcp("browser_pdf_save", {})
     if "error" in call:
         return call
     return {"result": {"saved_as": _first_link(call["result"]["sections"].get("Result", ""))}}
 
 
-async def ucb_console_messages_handler(level: Optional[str] = "info") -> Dict[str, Any]:
+async def ucb_console_messages_handler(level: Optional[str] = "info") -> dict[str, Any]:
     call = await _call_mcp("browser_console_messages", {"level": level or "info"})
     if "error" in call:
         return call
@@ -742,7 +742,7 @@ UCB_CONSOLE_MESSAGES_TOOL = ToolDefinition(
 )
 
 
-UC_BROWSER_MCP_TOOLS: Dict[str, ToolDefinition] = {
+UC_BROWSER_MCP_TOOLS: dict[str, ToolDefinition] = {
     "ucb_navigate": UCB_NAVIGATE_TOOL,
     "ucb_snapshot": UCB_SNAPSHOT_TOOL,
     "ucb_page_text": UCB_PAGE_TEXT_TOOL,

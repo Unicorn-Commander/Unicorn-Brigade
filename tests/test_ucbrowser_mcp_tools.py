@@ -87,17 +87,17 @@ TINY_PNG_B64 = (
 )
 
 
-def text_result(text: str, is_error: bool = False, images: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
-    content: List[Dict[str, Any]] = [{"type": "text", "text": text}]
+def text_result(text: str, is_error: bool = False, images: Optional[list[dict[str, str]]] = None) -> dict[str, Any]:
+    content: list[dict[str, Any]] = [{"type": "text", "text": text}]
     for img in images or []:
         content.append({"type": "image", "data": img["data"], "mimeType": img["mimeType"]})
-    result: Dict[str, Any] = {"content": content}
+    result: dict[str, Any] = {"content": content}
     if is_error:
         result["isError"] = True
     return result
 
 
-DEFAULT_TOOL_REPLIES: Dict[str, Dict[str, Any]] = {
+DEFAULT_TOOL_REPLIES: dict[str, dict[str, Any]] = {
     "browser_navigate": text_result(NAVIGATE_TEXT),
     "browser_snapshot": text_result(SNAPSHOT_TEXT),
     "browser_evaluate": text_result(EVALUATE_TEXT),
@@ -123,20 +123,20 @@ class FakeGate:
 
     def __init__(self, sse: bool = False):
         self.sse = sse
-        self.requests: List[httpx.Request] = []
-        self.token_requests: List[Dict[str, List[str]]] = []
-        self.mcp_requests: List[Dict[str, Any]] = []
-        self.mcp_headers: List[Dict[str, str]] = []
-        self.queue: List[Any] = []
-        self.tool_replies: Dict[str, Dict[str, Any]] = dict(DEFAULT_TOOL_REPLIES)
+        self.requests: list[httpx.Request] = []
+        self.token_requests: list[dict[str, list[str]]] = []
+        self.mcp_requests: list[dict[str, Any]] = []
+        self.mcp_headers: list[dict[str, str]] = []
+        self.queue: list[Any] = []
+        self.tool_replies: dict[str, dict[str, Any]] = dict(DEFAULT_TOOL_REPLIES)
         self.token_status = 200
-        self.token_body: Dict[str, Any] = {"access_token": "tok-1", "expires_in": 300}
+        self.token_body: dict[str, Any] = {"access_token": "tok-1", "expires_in": 300}
         self.session_id: Optional[str] = None  # set to emit Mcp-Session-Id on MCP replies
 
     # -- framing helpers --
-    def rpc(self, rpc_id: Any, result: Optional[Dict[str, Any]] = None, error: Optional[Dict[str, Any]] = None,
-            status: int = 200, extra_headers: Optional[Dict[str, str]] = None) -> httpx.Response:
-        msg: Dict[str, Any] = {"jsonrpc": "2.0", "id": rpc_id}
+    def rpc(self, rpc_id: Any, result: Optional[dict[str, Any]] = None, error: Optional[dict[str, Any]] = None,
+            status: int = 200, extra_headers: Optional[dict[str, str]] = None) -> httpx.Response:
+        msg: dict[str, Any] = {"jsonrpc": "2.0", "id": rpc_id}
         if error is not None:
             msg["error"] = error
         else:
@@ -204,7 +204,7 @@ def gate(monkeypatch) -> FakeGate:
     ucb._SESSION["id"] = None
 
 
-def last_call(gate: FakeGate) -> Dict[str, Any]:
+def last_call(gate: FakeGate) -> dict[str, Any]:
     calls = [r for r in gate.mcp_requests if r.get("method") == "tools/call"]
     assert calls, "no tools/call was made"
     return calls[-1]

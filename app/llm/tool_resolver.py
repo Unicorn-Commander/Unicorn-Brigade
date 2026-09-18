@@ -5,70 +5,70 @@ Agents store tool references as string names (e.g., ["web_search", "calculator"]
 This module resolves those names to executable ToolDefinition instances from builtin_tools.
 """
 
-import os
 import logging
-from typing import Dict, List, Any
+import os
+from typing import Any
 
-from app.llm.ops_center_client import ToolDefinition
-
-logger = logging.getLogger(__name__)
-from app.llm.builtin_tools import (
-    WEB_SEARCH_TOOL,
-    HTTP_REQUEST_TOOL,
-    CALCULATOR_TOOL,
-    DATETIME_TOOL,
-    JSON_TOOL,
-    SHELL_TOOL,
-    MEMORY_TOOL,
-)
-from app.llm.extended_tools import (
-    EMAIL_TOOL,
-    FILE_TOOL,
-    CODE_TOOL,
-    TEXT_TOOL,
-    IMAGE_TOOL,
-    DATABASE_TOOL,
-    NOTIFY_TOOL,
-    QRCODE_TOOL,
-)
-from app.llm.analytics_tools import ANALYTICS_SQL_TOOL
 from app.llm.advanced_tools import (
     BROWSER_TOOL,
     CODE_SANDBOX_TOOL,
+    DATA_ANALYZE_TOOL,
+    DOC_GENERATE_TOOL,
+    KG_QUERY_TOOL,
+    PDF_EXTRACT_TOOL,
     SANDBOX_SESSION_TOOL,
     SCREENSHOT_TOOL,
-    PDF_EXTRACT_TOOL,
-    DOC_GENERATE_TOOL,
-    DATA_ANALYZE_TOOL,
     URL_PREVIEW_TOOL,
-    KG_QUERY_TOOL,
 )
-from app.llm.knowledge_tools import (
-    KNOWLEDGE_STORE_TOOL,
-    KNOWLEDGE_QUERY_TOOL,
-)
-from app.llm.slack_tools import (
-    SLACK_TOOL,
+from app.llm.analytics_tools import ANALYTICS_SQL_TOOL
+from app.llm.builtin_tools import (
+    CALCULATOR_TOOL,
+    DATETIME_TOOL,
+    HTTP_REQUEST_TOOL,
+    JSON_TOOL,
+    MEMORY_TOOL,
+    SHELL_TOOL,
+    WEB_SEARCH_TOOL,
 )
 from app.llm.business_tools import (
+    COMPANY_TOOL,
     CSV_TOOL,
     RSS_TOOL,
+    SCHEDULE_TOOL,
     TRANSLATE_TOOL,
     WEATHER_TOOL,
-    SCHEDULE_TOOL,
-    COMPANY_TOOL,
 )
+from app.llm.centerdeep_mcp_tools import CENTERDEEP_MCP_TOOLS
+from app.llm.crisis_mcp_tools import CRISIS_MCP_TOOLS
 from app.llm.delegation_tools import (
     DELEGATE_TO_AGENT_TOOL,
 )
-from app.llm.crisis_mcp_tools import CRISIS_MCP_TOOLS
+from app.llm.extended_tools import (
+    CODE_TOOL,
+    DATABASE_TOOL,
+    EMAIL_TOOL,
+    FILE_TOOL,
+    IMAGE_TOOL,
+    NOTIFY_TOOL,
+    QRCODE_TOOL,
+    TEXT_TOOL,
+)
+from app.llm.knowledge_tools import (
+    KNOWLEDGE_QUERY_TOOL,
+    KNOWLEDGE_STORE_TOOL,
+)
+from app.llm.ops_center_client import ToolDefinition
 from app.llm.projectops_mcp_tools import PROJECT_OPS_MCP_TOOLS
-from app.llm.centerdeep_mcp_tools import CENTERDEEP_MCP_TOOLS
+from app.llm.slack_tools import (
+    SLACK_TOOL,
+)
 from app.llm.stable_canvas_tools import STABLE_CANVAS_TOOLS
 from app.llm.stable_knowledge_tools import STABLE_KNOWLEDGE_TOOLS
 
+logger = logging.getLogger(__name__)
+
 # Registry mapping tool names to their definitions
-TOOL_REGISTRY: Dict[str, ToolDefinition] = {
+TOOL_REGISTRY: dict[str, ToolDefinition] = {
     # Core tools
     "web_search": WEB_SEARCH_TOOL,
     "http_request": HTTP_REQUEST_TOOL,
@@ -139,13 +139,13 @@ TOOL_REGISTRY.update(STABLE_KNOWLEDGE_TOOLS)
 if os.getenv("HOMEASSISTANT_TOKEN") or os.getenv("HOMEASSISTANT_URL"):
     try:
         from app.llm.ha_tools import (
-            HA_LIST_ENTITIES_TOOL,
-            HA_GET_ENTITY_STATE_TOOL,
             HA_CALL_SERVICE_TOOL,
-            HA_SEARCH_ENTITIES_TOOL,
+            HA_GET_ENTITY_STATE_TOOL,
             HA_GET_HISTORY_TOOL,
-            HA_LIST_AREAS_TOOL,
             HA_GET_SERVICES_TOOL,
+            HA_LIST_AREAS_TOOL,
+            HA_LIST_ENTITIES_TOOL,
+            HA_SEARCH_ENTITIES_TOOL,
         )
         TOOL_REGISTRY.update({
             "ha_list_entities": HA_LIST_ENTITIES_TOOL,
@@ -219,7 +219,7 @@ else:
     logger.info("uc-browser tools skipped (UC_BROWSER_MCP_URL not set)")
 
 
-def get_tools_for_agent(agent: Dict[str, Any]) -> List[ToolDefinition]:
+def get_tools_for_agent(agent: dict[str, Any]) -> list[ToolDefinition]:
     """
     Resolve an agent's tool names to executable ToolDefinition objects.
 
@@ -243,7 +243,7 @@ def get_tool_by_name(name: str) -> ToolDefinition:
     return TOOL_REGISTRY.get(name)
 
 
-def get_tools_by_names(names: List[str]) -> List[ToolDefinition]:
+def get_tools_by_names(names: list[str]) -> list[ToolDefinition]:
     """
     Get multiple tool definitions by their names.
 

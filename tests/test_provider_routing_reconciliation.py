@@ -4,6 +4,7 @@ import inspect
 from pathlib import Path
 
 import pytest
+
 from app.llm import ops_center_client as module
 from app.llm.ops_center_client import OpsCenterLLMClient
 from app.llm.org_gateway import clear_org_gateway_cache
@@ -72,7 +73,7 @@ def test_client_retains_guard_and_org_call_contract():
 def test_client_request_modes_forward_org_to_shared_helper(method):
     # AST regression: consolidation must cover streaming as well as POSTs.
     tree = ast.parse(Path('app/llm/ops_center_client.py').read_text())
-    fn = next(n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == method)
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == method)
     calls = [n for n in ast.walk(fn) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == '_endpoint_and_headers']
     assert len(calls) == 1
     assert any(k.arg == 'org_id' and ast.unparse(k.value) == 'org_id' for k in calls[0].keywords)

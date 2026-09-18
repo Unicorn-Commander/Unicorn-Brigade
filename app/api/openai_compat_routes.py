@@ -5,13 +5,12 @@
 #
 # Each agent's persona + systemPrompt + tools are applied automatically.
 
-import json
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Header, Depends
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,7 +30,7 @@ class OpenAIChatMessage(BaseModel):
 
 class OpenAIChatRequest(BaseModel):
     model: str
-    messages: List[OpenAIChatMessage]
+    messages: list[OpenAIChatMessage]
     stream: Optional[bool] = False
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
@@ -41,9 +40,9 @@ class OpenAIChatRequest(BaseModel):
     # Brigade's persona + memory are injected into the system prompt, but the
     # LLM sees ONLY the client's tools. Client executes tool calls locally and
     # sends follow-up messages (role=tool) back. See /api/v1/openai/v1 docs.
-    tools: Optional[List[Dict[str, Any]]] = None
+    tools: Optional[list[dict[str, Any]]] = None
     tool_choice: Optional[Any] = None
-    response_format: Optional[Dict[str, Any]] = None
+    response_format: Optional[dict[str, Any]] = None
     # Per-call model override: if set, replaces the agent's configured model.
     # Lets a UI surface (Crisis Ops Drafts wizard) pick best/cheap/local per call
     # without forking an agent definition per quality tier.
@@ -81,7 +80,7 @@ def _server_tool_names():
     except Exception:
         return set()
 
-def _agent_server_tools_for(agent: Dict[str, Any]):
+def _agent_server_tools_for(agent: dict[str, Any]):
     """The subset of server tools THIS agent has configured to use."""
     from app.llm.tool_resolver import get_tools_for_agent
     return get_tools_for_agent(agent) or []
@@ -96,7 +95,8 @@ async def list_models(
     """OpenAI-compatible model listing. Each Brigade agent appears as a model."""
     # Accept admin key OR user API key (Bearer or X-API-Key).
     from app.auth.middleware import validate_api_key
-    from app.auth.roles import can_user_access_agent, derive_user_tier, UserRole as _UserRole
+    from app.auth.roles import UserRole as _UserRole
+    from app.auth.roles import can_user_access_agent, derive_user_tier
     provided = x_api_key
     if not provided and authorization and authorization.startswith("Bearer "):
         provided = authorization[len("Bearer "):]
@@ -157,8 +157,8 @@ async def openai_chat_completions(
     """
     # Resolve the actual authenticated user (admin key OR user API key).
     # Import validation lazily to avoid circular imports.
+
     from app.auth.middleware import validate_api_key
-    import os
     provided = x_api_key
     if not provided and authorization and authorization.startswith("Bearer "):
         provided = authorization[len("Bearer "):]
@@ -201,11 +201,11 @@ async def openai_chat_completions(
 
     # Import lazily so we don't create circular imports at module load
     from app.api.agent_routes import (
-        chat_with_agent,
         ChatRequest,
         # history is plain dict
+        chat_with_agent,
     )
-    
+
 
     agent_id = request.model
     if not agent_id:
@@ -223,7 +223,6 @@ async def openai_chat_completions(
 
     # user_id on the chat request is a hint only; chat_with_agent will override it
     # with auth_user's identity for non-admins (memory isolation).
-    from app.auth.roles import UserRole as _UserRole
     requested_user_id = request.user or auth_user.user_id or auth_user.id or "opencode"
     brigade_req = ChatRequest(
         message=latest,
@@ -259,7 +258,7 @@ async def openai_chat_completions(
         raise
     except Exception as e:
         logger.error(f"OpenAI-compat call failed for agent={agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     if request.stream:
         # brigade returns a StreamingResponse already; just pass through
@@ -333,12 +332,11 @@ async def _passthrough_chat(
       6. If the response is a terminal text reply (no tool_calls), kick off
          an async memory store of (latest user msg -> reply).
     """
-    import time
-    import uuid as _uuid
     import asyncio as _asyncio
+    import uuid as _uuid
 
-    from app.db.repositories import AgentRepository
     from app.auth.roles import UserRole as _UserRole
+    from app.db.repositories import AgentRepository
 
     agent_id = request.model
     if not agent_id:
@@ -351,14 +349,16 @@ async def _passthrough_chat(
 
     # --- Phase 7: billing preflight + user_attrs (for paid_only policies) ---
     from app.api.agent_routes import (
-        _fetch_user_attrs, _enforce_billing_or_402, _enforce_org_cap_or_402,
+        _enforce_billing_or_402,
+        _enforce_org_cap_or_402,
+        _fetch_user_attrs,
     )
     _user_attrs, _billing_state = await _fetch_user_attrs(auth_user, session=session)
     _enforce_billing_or_402(auth_user, _billing_state)
     await _enforce_org_cap_or_402(auth_user)  # BR-3.6 per-org cap
 
     # --- Per-agent RBAC policy (with audit) ---
-    from app.auth.roles import evaluate_agent_access, derive_user_tier
+    from app.auth.roles import derive_user_tier, evaluate_agent_access
     _email = (getattr(auth_user, "email", "") or "") or ""
     _tier = derive_user_tier(_email, auth_user.role)
     _allowed, _reason = evaluate_agent_access(
@@ -496,7 +496,7 @@ async def _passthrough_chat(
                 _m["content"] = strip_channel_artifacts(_m["content"])
     except Exception as e:
         logger.error(f"passthrough LLM call failed: {e}")
-        raise HTTPException(status_code=500, detail=f"LLM call failed: {e}")
+        raise HTTPException(status_code=500, detail=f"LLM call failed: {e}") from e
 
     # --- Store memory of this exchange if terminal (no tool_calls in response) ---
     # We only store on terminal turns to avoid fragmented memory of incomplete tool loops.
@@ -552,7 +552,10 @@ async def _passthrough_chat(
     # can inject persona + memory + tools), but opencode/Cursor expect SSE when
     # stream=true. Emit one content chunk + stop + [DONE].
     if request.stream:
-        import json as _json, time as _time, uuid as _uuid
+        import json as _json
+        import time as _time
+        import uuid as _uuid
+
         from fastapi.responses import StreamingResponse as _Stream
         chat_id = raw.get("id") or f"chatcmpl-brigade-{_uuid.uuid4().hex[:12]}"
         created = raw.get("created") or int(_time.time())
@@ -594,7 +597,7 @@ async def _dual_layer_chat(
     request: "OpenAIChatRequest",
     session: AsyncSession,
     auth_user: Any,
-    agent: Dict[str, Any],
+    agent: dict[str, Any],
 ):
     """Dual-layer tool handling: server tools + client tools visible to the LLM.
 
@@ -613,22 +616,27 @@ async def _dual_layer_chat(
          (If BOTH server and client calls appear in one response, execute
           server ones first in-process, then return client ones to client.)
     """
+    import asyncio as _asyncio
     import json as _json
     import time as _time
     import uuid as _uuid
-    import asyncio as _asyncio
-    from app.auth.roles import UserRole as _UserRole, evaluate_agent_access, derive_user_tier
-    from app.llm.tool_resolver import get_tool_by_name
-    from app.api.agent_routes import (
-        _fetch_user_attrs,
-        _enforce_billing_or_402,
-        _enforce_org_cap_or_402,
-        _log_rbac_denial as _audit_denial,
-        _meter_chat_to_lago,
-    )
+
     from fastapi.responses import StreamingResponse as _Stream
 
-    def _dual_to_sse(raw_resp: Dict[str, Any]) -> _Stream:
+    from app.api.agent_routes import (
+        _enforce_billing_or_402,
+        _enforce_org_cap_or_402,
+        _fetch_user_attrs,
+        _meter_chat_to_lago,
+    )
+    from app.api.agent_routes import (
+        _log_rbac_denial as _audit_denial,
+    )
+    from app.auth.roles import UserRole as _UserRole
+    from app.auth.roles import derive_user_tier, evaluate_agent_access
+    from app.llm.tool_resolver import get_tool_by_name
+
+    def _dual_to_sse(raw_resp: dict[str, Any]) -> _Stream:
         """Wrap a completed non-stream chat.completion response into OpenAI SSE chunks.
 
         Dual-layer runs synchronously (server tools, memory, token metering),
@@ -643,7 +651,7 @@ async def _dual_layer_chat(
         content = msg.get("content") or ""
         tool_calls = msg.get("tool_calls") or []
 
-        def _chunk(delta: Dict[str, Any], finish: Optional[str] = None) -> str:
+        def _chunk(delta: dict[str, Any], finish: Optional[str] = None) -> str:
             payload = {
                 "id": chat_id,
                 "object": "chat.completion.chunk",
@@ -831,14 +839,13 @@ async def _dual_layer_chat(
             raw = resp.json()
         except Exception as e:
             logger.error(f"dual-layer LLM call failed (iter {iteration}): {e}")
-            raise HTTPException(status_code=500, detail=f"LLM call failed: {e}")
+            raise HTTPException(status_code=500, detail=f"LLM call failed: {e}") from e
 
         choices = raw.get("choices") or []
         if not choices:
             raise HTTPException(status_code=500, detail="LLM returned no choices")
         msg = choices[0].get("message") or {}
         tool_calls = msg.get("tool_calls") or []
-        finish_reason = choices[0].get("finish_reason")
 
         if not tool_calls:
             # Terminal text response — store memory and return.
@@ -987,13 +994,13 @@ async def _enhanced_stream_chat(
         data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}]}\n\n
         data: [DONE]\n\n
     """
+    import asyncio as _asyncio
     import json as _json
     import time as _time
     import uuid as _uuid
-    import asyncio as _asyncio
-    from fastapi.responses import StreamingResponse
-    from app.db.repositories import AgentRepository
+
     from app.auth.roles import UserRole as _UserRole
+    from app.db.repositories import AgentRepository
 
     # Fetch agent
     repo = AgentRepository(session)
@@ -1007,10 +1014,15 @@ async def _enhanced_stream_chat(
     # a single token streams. Metering is applied after the stream completes,
     # below. Mirrors the passthrough/dual-layer preflight exactly. ---
     from app.api.agent_routes import (
-        _fetch_user_attrs, _enforce_billing_or_402, _enforce_org_cap_or_402,
-        _meter_chat_to_lago, _log_rbac_denial as _audit_denial,
+        _enforce_billing_or_402,
+        _enforce_org_cap_or_402,
+        _fetch_user_attrs,
+        _meter_chat_to_lago,
     )
-    from app.auth.roles import evaluate_agent_access, derive_user_tier
+    from app.api.agent_routes import (
+        _log_rbac_denial as _audit_denial,
+    )
+    from app.auth.roles import derive_user_tier, evaluate_agent_access
     _user_attrs, _billing_state = await _fetch_user_attrs(auth_user, session=session)
     _enforce_billing_or_402(auth_user, _billing_state)
     await _enforce_org_cap_or_402(auth_user)
@@ -1281,7 +1293,8 @@ async def _enhanced_stream_chat(
                         pass
 
                     try:
-                        from app.orchestration import emit_tool_call as _etc, emit_tool_result as _etr
+                        from app.orchestration import emit_tool_call as _etc
+                        from app.orchestration import emit_tool_result as _etr
                     except Exception:
                         _etc = None
                         _etr = None

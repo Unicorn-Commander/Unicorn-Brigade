@@ -1,12 +1,14 @@
 """Ops-Center LLM Client - Routes through UC-Cloud's inference infrastructure"""
 
 import asyncio
-import httpx
+import builtins
+import json
 import logging
 import os
-from typing import Dict, Any, List, Optional, AsyncGenerator, Callable, Union
 from dataclasses import dataclass, field
-import json
+from typing import Any, AsyncGenerator, Callable, Optional
+
+import httpx
 
 from app.llm.org_gateway import gateway_headers
 
@@ -21,14 +23,14 @@ except Exception:  # pragma: no cover — module may be absent in test harness
 # module is dependency-free and in-repo, but the import is guarded so the LLM
 # client still functions (without resilience) if it is ever unavailable.
 try:
+    from app.reliability.circuit import CircuitBreaker, CircuitOpenError
     from app.reliability.retry import (
-        retry_async,
+        DEFAULT_CONNECT_TIMEOUT,
+        DEFAULT_LLM_TIMEOUT,
         RetryConfig,
         default_is_transient,
-        DEFAULT_LLM_TIMEOUT,
-        DEFAULT_CONNECT_TIMEOUT,
+        retry_async,
     )
-    from app.reliability.circuit import CircuitBreaker, CircuitOpenError
     _RELIABILITY_AVAILABLE = True
 except Exception:  # pragma: no cover - reliability layer should always import
     _RELIABILITY_AVAILABLE = False
@@ -59,9 +61,9 @@ class ToolParameter:
     type: str  # "string", "number", "boolean", "array", "object"
     description: str
     required: bool = True
-    enum: Optional[List[str]] = None
+    enum: Optional[list[str]] = None
     default: Any = None
-    items: Optional[Dict[str, Any]] = None  # For array types: {"type": "string"} or {"type": "object", ...}
+    items: Optional[dict[str, Any]] = None  # For array types: {"type": "string"} or {"type": "object", ...}
 
 
 @dataclass
@@ -69,7 +71,7 @@ class ToolDefinition:
     """Definition for a tool/function that the LLM can call"""
     name: str
     description: str
-    parameters: List[ToolParameter] = field(default_factory=list)
+    parameters: list[ToolParameter] = field(default_factory=list)
     handler: Optional[Callable] = None  # Async function to execute the tool
     # If True, the tool invocation layer injects caller context (e.g.
     # caller_user_id) into the handler kwargs. Tools that make authenticated
@@ -83,7 +85,7 @@ class ToolDefinition:
     # either, both, or neither. When False, NOTHING extra is injected.
     needs_room_context: bool = False
 
-    def to_openai_format(self) -> Dict[str, Any]:
+    def to_openai_format(self) -> dict[str, Any]:
         """Convert to OpenAI function calling format"""
         properties = {}
         required = []
@@ -125,7 +127,7 @@ class ToolCall:
     """A tool call made by the LLM"""
     id: str
     name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
 
 
 @dataclass
@@ -136,7 +138,7 @@ class ToolResult:
     result: Any
     error: Optional[str] = None
 
-    def to_message(self) -> Dict[str, Any]:
+    def to_message(self) -> dict[str, Any]:
         """Convert to a message for the LLM (OpenAI format)"""
         content = json.dumps(self.result) if not self.error else f"Error: {self.error}"
         return {
@@ -146,12 +148,12 @@ class ToolResult:
             "content": content,
         }
 
-    def to_user_message(self) -> Dict[str, Any]:
+    def to_user_message(self) -> dict[str, Any]:
         """Convert to a user message format (fallback for providers that don't support tool messages)"""
         if self.error:
             content = f"[Tool {self.name} error: {self.error}]"
         else:
-            result_str = json.dumps(self.result, indent=2) if isinstance(self.result, (dict, list)) else str(self.result)
+            result_str = json.dumps(self.result, indent=2) if isinstance(self.result, dict | list) else str(self.result)
             content = f"[Tool {self.name} result]\n{result_str}"
         return {
             "role": "user",
@@ -163,7 +165,7 @@ class ToolRegistry:
     """Registry for available tools"""
 
     def __init__(self):
-        self.tools: Dict[str, ToolDefinition] = {}
+        self.tools: dict[str, ToolDefinition] = {}
 
     def register(self, tool: ToolDefinition) -> None:
         """Register a tool"""
@@ -174,11 +176,11 @@ class ToolRegistry:
         """Get a tool by name"""
         return self.tools.get(name)
 
-    def list(self) -> List[ToolDefinition]:
+    def list(self) -> list[ToolDefinition]:
         """List all registered tools"""
         return list(self.tools.values())
 
-    def to_openai_format(self) -> List[Dict[str, Any]]:
+    def to_openai_format(self) -> builtins.list[dict[str, Any]]:
         """Get all tools in OpenAI format"""
         return [tool.to_openai_format() for tool in self.tools.values()]
 
@@ -445,19 +447,19 @@ class OpsCenterLLMClient:
             socket.setdefaulttimeout(1)
             socket.socket().connect(("ops-center-direct", 8084))
             return DEFAULT_INTERNAL_URL
-        except (socket.error, socket.timeout, OSError):
+        except (TimeoutError, OSError):
             return DEFAULT_EXTERNAL_URL
 
     async def _chat_completion_once(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         model: str = "default",
         temperature: float = 0.7,
         max_tokens: int = 2000,
         stream: bool = False,
         user_id: Optional[str] = None,
         org_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create chat completion via Ops-Center (single attempt).
 
@@ -585,7 +587,7 @@ class OpsCenterLLMClient:
             logger.error(f"Error calling Ops-Center LLM: {e}")
             raise
 
-    async def _parse_sse_response(self, response) -> Dict[str, Any]:
+    async def _parse_sse_response(self, response) -> dict[str, Any]:
         """
         Parse SSE-wrapped response from Ops-Center.
 
@@ -615,7 +617,7 @@ class OpsCenterLLMClient:
 
     async def chat_completion_stream(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         model: str = "default",
         temperature: float = 0.7,
         max_tokens: int = 2000,
@@ -677,7 +679,7 @@ class OpsCenterLLMClient:
             logger.error(f"Error streaming from Ops-Center: {e}")
             raise
 
-    async def get_available_models(self) -> List[Dict[str, Any]]:
+    async def get_available_models(self) -> list[dict[str, Any]]:
         """Get list of available models from Ops-Center"""
         try:
             response = await self.client.get(
@@ -691,7 +693,7 @@ class OpsCenterLLMClient:
             logger.error(f"Error fetching models: {e}")
             return []
 
-    async def check_user_subscription(self, user_id: str) -> Dict[str, Any]:
+    async def check_user_subscription(self, user_id: str) -> dict[str, Any]:
         """Check user's subscription tier and limits"""
         try:
             response = await self.client.get(
@@ -738,14 +740,14 @@ class OpsCenterLLMClient:
 
         return await self._llm_breaker.call(_retried)
 
-    async def chat_completion(self, *args, **kwargs) -> Dict[str, Any]:
+    async def chat_completion(self, *args, **kwargs) -> dict[str, Any]:
         """Resilient chat completion (retry + circuit breaker).
 
         Same signature as ``_chat_completion_once``.
         """
         return await self._resilient_llm_call(self._chat_completion_once, *args, **kwargs)
 
-    async def chat_completion_with_tools(self, *args, **kwargs) -> Dict[str, Any]:
+    async def chat_completion_with_tools(self, *args, **kwargs) -> dict[str, Any]:
         """Resilient tool-enabled chat completion (retry + circuit breaker).
 
         Same signature as ``_chat_completion_with_tools_once``.
@@ -756,15 +758,15 @@ class OpsCenterLLMClient:
 
     async def _chat_completion_with_tools_once(
         self,
-        messages: List[Dict[str, Any]],
-        tools: List[ToolDefinition],
+        messages: list[dict[str, Any]],
+        tools: list[ToolDefinition],
         model: str = "default",
         temperature: float = 0.7,
         max_tokens: int = 2000,
         tool_choice: str = "auto",  # "auto", "none", or {"type": "function", "function": {"name": "..."}}
         user_id: Optional[str] = None,
         org_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Chat completion with function calling support (single attempt).
 
@@ -875,7 +877,7 @@ class OpsCenterLLMClient:
             logger.error(f"Error in tool-enabled completion [{type(e).__name__}]: {repr(e)}")
             raise
 
-    def parse_tool_calls(self, response: Dict[str, Any]) -> List[ToolCall]:
+    def parse_tool_calls(self, response: dict[str, Any]) -> list[ToolCall]:
         """
         Parse tool calls from LLM response.
 
@@ -914,7 +916,7 @@ class OpsCenterLLMClient:
 
         return tool_calls
 
-    def has_tool_calls(self, response: Dict[str, Any]) -> bool:
+    def has_tool_calls(self, response: dict[str, Any]) -> bool:
         """Check if response contains tool calls"""
         choices = response.get("choices", [])
         if not choices:
@@ -934,7 +936,7 @@ class OpsCenterLLMClient:
 
         return False
 
-    def get_response_content(self, response: Dict[str, Any]) -> str:
+    def get_response_content(self, response: dict[str, Any]) -> str:
         """Extract text content from response"""
         choices = response.get("choices", [])
         if not choices:
@@ -955,8 +957,8 @@ class OpsCenterLLMClient:
 
     async def execute_tool_loop(
         self,
-        messages: List[Dict[str, Any]],
-        tools: List[ToolDefinition],
+        messages: list[dict[str, Any]],
+        tools: list[ToolDefinition],
         model: str = "default",
         temperature: float = 0.7,
         max_tokens: int = 2000,
@@ -973,7 +975,7 @@ class OpsCenterLLMClient:
         room_name: Optional[str] = None,  # Stable livekit room name (for needs_room_context tools)
         tool_timeout: Optional[float] = None,  # BR-4: per-tool wall-clock cap (s); None=env default, <=0 disables
         tool_guard=None,  # BR-6.4: per-caller ToolPermissionGuard; None = no per-caller gating (internal/service flows)
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute a complete tool use loop.
 
@@ -1045,7 +1047,7 @@ class OpsCenterLLMClient:
 
             # Check for tool calls
             if not self.has_tool_calls(response):
-                logger.info(f"No tool calls in response, completing loop")
+                logger.info("No tool calls in response, completing loop")
 
                 # Record code attribution if tracing is enabled
                 if trace_recorder and agent_id and agent_name:
@@ -1140,7 +1142,7 @@ class OpsCenterLLMClient:
                             name=tc.name,
                             result=tool_output,
                         )
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         # Structured, model-visible error so the agent can
                         # recover/apologize instead of the turn crashing.
                         logger.error(
@@ -1186,7 +1188,7 @@ class OpsCenterLLMClient:
                     if result.error:
                         result_parts.append(f"[Tool {result.name} error: {result.error}]")
                     else:
-                        result_str = json.dumps(result.result, indent=2) if isinstance(result.result, (dict, list)) else str(result.result)
+                        result_str = json.dumps(result.result, indent=2) if isinstance(result.result, dict | list) else str(result.result)
                         result_parts.append(f"[Tool {result.name} result]\n{result_str}")
 
                 user_result_msg = {
