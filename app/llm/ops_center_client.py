@@ -191,6 +191,54 @@ DEFAULT_EXTERNAL_URL = "https://unicorncommander.ai"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
 
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+OPENAI_DIRECT_KEY = os.getenv("OPENAI_API_KEY", "")
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+OPENAI_URL = "https://api.openai.com/v1"
+DASHSCOPE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+
+def _usable_key(value: str) -> bool:
+    """True when an env key looks like a real credential, not a dummy."""
+    if not value:
+        return False
+    v = value.strip()
+    if not v:
+        return False
+    low = v.lower()
+    if low.startswith("local") or "dummy" in low or low in {"changeme", "none", "null", "your-key-here"}:
+        return False
+    return True
+
+
+def _is_anthropic_model(model: str) -> bool:
+    m = model.lower()
+    return m.startswith("anthropic/") or m.startswith("claude")
+
+
+def _is_openai_model(model: str) -> bool:
+    m = model.lower()
+    return (
+        m.startswith("openai/")
+        or m.startswith("gpt-")
+        or m.startswith("o1")
+        or m.startswith("o3")
+        or m.startswith("o4")
+    )
+
+
+def _is_dashscope_model(model: str) -> bool:
+    m = model.lower()
+    return (
+        m.startswith("dashscope/")
+        or m.startswith("alibaba/")
+        or m.startswith("qwen-plus")
+        or m.startswith("qwen-max")
+        or m.startswith("qwen-turbo")
+        or m.startswith("qwen-flash")
+        or m.startswith("qwen-long")
+    )
+
 # Local LLM URL (llama.cpp / Ollama on the Docker network)
 LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://unicorn-llama-cpp:8080")
 
@@ -278,8 +326,10 @@ class OpsCenterLLMClient:
 
         Returns (url, model_name, route_type) tuple where route_type is one of:
           "local"       — local llama.cpp / Ollama (models prefixed 'local/')
-          "openrouter"  — direct OpenRouter BYOK (when OPENROUTER_API_KEY is set)
-          "gateway"     — metered UC gateway (uc/-prefixed models, Bearer key)
+          "openai"      — OpenAI API (when a real OPENAI_API_KEY is set)
+          "dashscope"   — Alibaba DashScope compatible-mode (DASHSCOPE_API_KEY)
+          "gateway"     — UC LiteLLM gateway (has Anthropic/OpenAI/DashScope keys)
+          "openrouter"  — OpenRouter BYOK, last resort for remaining cloud slugs
           "ops-center"  — Ops-Center cloud proxy (default)
         """
         if model.startswith("local/"):
@@ -291,12 +341,36 @@ class OpsCenterLLMClient:
         if UC_GATEWAY_URL and model.startswith("uc/"):
             # Metered UC gateway: keep the full 'uc/<model>' name the gateway expects.
             return UC_GATEWAY_URL, model, "gateway"
+        # Explicit OpenRouter ids still go to OpenRouter.
+        if model.startswith("openrouter/"):
+            if OPENROUTER_API_KEY:
+                return OPENROUTER_URL, model[len("openrouter/"):], "openrouter"
+            if UC_GATEWAY_URL:
+                return UC_GATEWAY_URL, model, "gateway"
+        # Direct provider keys beat OpenRouter. Anthropic's native API is
+        # Messages-format, not OpenAI chat/completions, so Claude goes through
+        # the UC gateway (LiteLLM already holds ANTHROPIC_API_KEY).
+        if _is_anthropic_model(model):
+            if UC_GATEWAY_URL:
+                # LiteLLM catalog uses unprefixed names (claude-opus-4.8).
+                short = model.split("/", 1)[-1] if model.lower().startswith("anthropic/") else model
+                return UC_GATEWAY_URL, short, "gateway"
+        if _is_openai_model(model):
+            resolved = model[len("openai/"):] if model.startswith("openai/") else model
+            if _usable_key(OPENAI_DIRECT_KEY):
+                return OPENAI_URL, resolved, "openai"
+            if UC_GATEWAY_URL:
+                return UC_GATEWAY_URL, resolved, "gateway"
+        if _is_dashscope_model(model):
+            resolved = model.split("/", 1)[-1] if "/" in model else model
+            if _usable_key(DASHSCOPE_API_KEY):
+                return DASHSCOPE_URL, resolved, "dashscope"
+            if UC_GATEWAY_URL:
+                return UC_GATEWAY_URL, model, "gateway"
         if OPENROUTER_API_KEY:
             # OpenRouter native API expects bare/namespaced slugs (e.g.
             # "anthropic/claude-sonnet-4.6"), NOT the litellm-style
-            # "openrouter/" provider prefix. Strip a leading "openrouter/"
-            # so switcher/council ids resolve instead of 400 "not a valid
-            # model ID".
+            # "openrouter/" provider prefix.
             or_model = (
                 model[len("openrouter/"):]
                 if model.startswith("openrouter/")
@@ -315,6 +389,53 @@ class OpsCenterLLMClient:
                 ep = ep.rstrip("/") + "/v1/chat/completions"
             return ep, model, "direct"
         return self.ops_center_url, model, "ops-center"
+
+    def _endpoint_and_headers(
+        self, route_type: str, target_url: str, user_id: Optional[str] = None, org_id: Optional[str] = None
+    ) -> tuple:
+        """Map a route_type from ``_resolve_local_model`` to endpoint + headers."""
+        if route_type == "local":
+            return f"{target_url}/v1/chat/completions", {"Content-Type": "application/json"}
+        if route_type == "direct":
+            headers = {"Content-Type": "application/json"}
+            if LITELLM_DIRECT_KEY:
+                headers["Authorization"] = f"Bearer {LITELLM_DIRECT_KEY}"
+            return target_url, headers
+        if route_type == "openrouter":
+            return (
+                f"{target_url}/chat/completions",
+                {
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+            )
+        if route_type == "openai":
+            return (
+                f"{target_url}/chat/completions",
+                {
+                    "Authorization": f"Bearer {OPENAI_DIRECT_KEY}",
+                    "Content-Type": "application/json",
+                },
+            )
+        if route_type == "dashscope":
+            return (
+                f"{target_url}/chat/completions",
+                {
+                    "Authorization": f"Bearer {DASHSCOPE_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+            )
+        if route_type == "gateway":
+            return f"{target_url}/chat/completions", gateway_headers(
+                shared_key=UC_GATEWAY_KEY, org_id=org_id, user_id=user_id,
+            )
+        headers = {
+            "Authorization": f"Bearer {self.service_key}",
+            "Content-Type": "application/json",
+        }
+        if user_id and user_id not in ("anonymous", "dev-bypass", ""):
+            headers["X-User-ID"] = user_id
+        return f"{target_url}/api/v1/llm/chat/completions", headers
 
     def _detect_url(self) -> str:
         """Detect whether to use internal or external URL"""
@@ -385,42 +506,9 @@ class OpsCenterLLMClient:
             if user_id and user_id not in ("anonymous", "dev-bypass", ""):
                 payload["user"] = user_id
 
-            if route_type == "local":
-                # Local LLM: no auth needed, direct OpenAI-compatible endpoint
-                headers = {"Content-Type": "application/json"}
-                endpoint = f"{target_url}/v1/chat/completions"
-                logger.info(f"Sending chat completion to LOCAL LLM: {resolved_model}")
-            elif route_type == "direct":
-                # Direct endpoint override (OPS_CENTER_LLM_ENDPOINT)
-                headers = {"Content-Type": "application/json"}
-                if LITELLM_DIRECT_KEY:
-                    headers["Authorization"] = f"Bearer {LITELLM_DIRECT_KEY}"
-                endpoint = target_url
-                logger.info(f"Sending chat completion DIRECT to {endpoint}: {resolved_model}")
-            elif route_type == "openrouter":
-                # OpenRouter BYOK: standard OpenAI-compatible API
-                headers = {
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                }
-                endpoint = f"{target_url}/chat/completions"
-                logger.info(f"Sending chat completion to OpenRouter: {resolved_model}")
-            elif route_type == "gateway":
-                # Metered UC gateway: OpenAI-compatible, Bearer key meters usage.
-                headers = gateway_headers(shared_key=UC_GATEWAY_KEY, org_id=org_id, user_id=user_id)
-                endpoint = f"{target_url}/chat/completions"
-                logger.info(f"Sending chat completion to UC gateway: {resolved_model}")
-            else:
-                headers = {
-                    "Authorization": f"Bearer {self.service_key}",
-                    "Content-Type": "application/json",
-                }
-                # Only send X-User-ID for real user IDs (not anonymous/dev-bypass)
-                # When omitted, Ops-Center bills to the service org instead
-                if user_id and user_id not in ("anonymous", "dev-bypass", ""):
-                    headers["X-User-ID"] = user_id
-                endpoint = f"{target_url}/api/v1/llm/chat/completions"
-                logger.info(f"Sending chat completion request to Ops-Center: {resolved_model}")
+            endpoint, headers = self._endpoint_and_headers(
+                route_type, target_url, user_id, org_id=org_id,
+            )
 
             # Use streaming client to handle SSE-wrapped responses
             # (Ops-Center returns SSE format due to Traefik chunked encoding bug)
@@ -564,31 +652,9 @@ class OpsCenterLLMClient:
             if user_id and user_id not in ("anonymous", "dev-bypass", ""):
                 payload["user"] = user_id
 
-            if route_type == "local":
-                headers = {"Content-Type": "application/json"}
-                endpoint = f"{target_url}/v1/chat/completions"
-            elif route_type == "direct":
-                headers = {"Content-Type": "application/json"}
-                if LITELLM_DIRECT_KEY:
-                    headers["Authorization"] = f"Bearer {LITELLM_DIRECT_KEY}"
-                endpoint = target_url
-            elif route_type == "openrouter":
-                headers = {
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                }
-                endpoint = f"{target_url}/chat/completions"
-            elif route_type == "gateway":
-                headers = gateway_headers(shared_key=UC_GATEWAY_KEY, org_id=org_id, user_id=user_id)
-                endpoint = f"{target_url}/chat/completions"
-            else:
-                headers = {
-                    "Authorization": f"Bearer {self.service_key}",
-                    "Content-Type": "application/json",
-                }
-                if user_id and user_id not in ("anonymous", "dev-bypass", ""):
-                    headers["X-User-ID"] = user_id
-                endpoint = f"{target_url}/api/v1/llm/chat/completions"
+            endpoint, headers = self._endpoint_and_headers(
+                route_type, target_url, user_id, org_id=org_id,
+            )
 
             logger.info(f"Starting streaming request ({route_type}): {resolved_model}")
 
@@ -739,37 +805,9 @@ class OpsCenterLLMClient:
             if user_id and user_id not in ("anonymous", "dev-bypass", ""):
                 payload["user"] = user_id
 
-            if route_type == "local":
-                headers = {"Content-Type": "application/json"}
-                endpoint = f"{target_url}/v1/chat/completions"
-                logger.info(f"Sending tool-enabled request to LOCAL LLM: {resolved_model} with {len(tools)} tools")
-            elif route_type == "direct":
-                headers = {"Content-Type": "application/json"}
-                if LITELLM_DIRECT_KEY:
-                    headers["Authorization"] = f"Bearer {LITELLM_DIRECT_KEY}"
-                endpoint = target_url
-                logger.info(f"Sending tool-enabled request DIRECT to {endpoint}: {resolved_model} with {len(tools)} tools")
-            elif route_type == "openrouter":
-                headers = {
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json",
-                }
-                endpoint = f"{target_url}/chat/completions"
-                logger.info(f"Sending tool-enabled request to OpenRouter: {resolved_model} with {len(tools)} tools")
-            elif route_type == "gateway":
-                headers = gateway_headers(shared_key=UC_GATEWAY_KEY, org_id=org_id, user_id=user_id)
-                endpoint = f"{target_url}/chat/completions"
-                logger.info(f"Sending tool-enabled request to UC gateway: {resolved_model} with {len(tools)} tools")
-            else:
-                headers = {
-                    "Authorization": f"Bearer {self.service_key}",
-                    "Content-Type": "application/json",
-                }
-                # Only send X-User-ID for real user IDs (not anonymous/dev-bypass)
-                if user_id and user_id not in ("anonymous", "dev-bypass", ""):
-                    headers["X-User-ID"] = user_id
-                endpoint = f"{target_url}/api/v1/llm/chat/completions"
-                logger.info(f"Sending tool-enabled request to Ops-Center: {resolved_model} with {len(tools)} tools")
+            endpoint, headers = self._endpoint_and_headers(
+                route_type, target_url, user_id, org_id=org_id,
+            )
 
             # Debug: log message roles being sent
             msg_roles = [f"{m.get('role', '?')}" for m in messages]

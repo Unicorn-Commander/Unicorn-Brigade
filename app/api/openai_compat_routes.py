@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_session
 from app.db.repositories import AgentRepository
 from app.llm.gemma_sanitize import strip_channel_artifacts
-from app.llm.org_gateway import gateway_headers
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -478,35 +477,9 @@ async def _passthrough_chat(
         payload["response_format"] = request.response_format
 
     # Pick endpoint + headers per route type (mirrors ops_center_client logic)
-    if route_type == "local":
-        endpoint = f"{target_url}/v1/chat/completions"
-        headers = {"Content-Type": "application/json"}
-    elif route_type == "direct":
-        endpoint = target_url
-        headers = {"Content-Type": "application/json"}
-    elif route_type == "openrouter":
-        import os as _os
-        endpoint = f"{target_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {_os.getenv('OPENROUTER_API_KEY', '')}",
-            "Content-Type": "application/json",
-        }
-    elif route_type == "gateway":
-        import os as _os
-        endpoint = f"{target_url}/chat/completions"
-        headers = gateway_headers(
-            shared_key=_os.getenv("UC_GATEWAY_KEY", ""),
-            org_id=getattr(auth_user, "org_id", None),
-            user_id=effective_user_id,
-        )
-    else:  # ops-center
-        endpoint = f"{target_url}/api/v1/llm/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {_llm_client.service_key}",
-            "Content-Type": "application/json",
-        }
-        if effective_user_id and effective_user_id not in ("anonymous", "dev-bypass", ""):
-            headers["X-User-ID"] = effective_user_id
+    endpoint, headers = _llm_client._endpoint_and_headers(
+        route_type, target_url, effective_user_id, org_id=getattr(auth_user, "org_id", None),
+    )
 
     logger.info(
         f"[passthrough] agent={agent_id} model={resolved_model} route={route_type} "
@@ -830,29 +803,9 @@ async def _dual_layer_chat(
     max_tokens = request.max_tokens or agent.get("maxTokens", 2000)
 
     target_url, resolved_model, route_type = _llm_client._resolve_local_model(model)
-    if route_type == "local":
-        endpoint = f"{target_url}/v1/chat/completions"
-        headers = {"Content-Type": "application/json"}
-    elif route_type == "direct":
-        endpoint = target_url
-        headers = {"Content-Type": "application/json"}
-    elif route_type == "openrouter":
-        import os as _os
-        endpoint = f"{target_url}/chat/completions"
-        headers = {"Authorization": f"Bearer {_os.getenv('OPENROUTER_API_KEY','')}", "Content-Type": "application/json"}
-    elif route_type == "gateway":
-        import os as _os
-        endpoint = f"{target_url}/chat/completions"
-        headers = gateway_headers(
-            shared_key=_os.getenv("UC_GATEWAY_KEY", ""),
-            org_id=getattr(auth_user, "org_id", None),
-            user_id=effective_user_id,
-        )
-    else:
-        endpoint = f"{target_url}/api/v1/llm/chat/completions"
-        headers = {"Authorization": f"Bearer {_llm_client.service_key}", "Content-Type": "application/json"}
-        if effective_user_id and effective_user_id not in ("anonymous","dev-bypass",""):
-            headers["X-User-ID"] = effective_user_id
+    endpoint, headers = _llm_client._endpoint_and_headers(
+        route_type, target_url, effective_user_id, org_id=getattr(auth_user, "org_id", None),
+    )
 
     logger.info(
         f"[dual-layer] agent={agent['id']} model={resolved_model} route={route_type} "
@@ -1157,29 +1110,9 @@ async def _enhanced_stream_chat(
     max_tokens = request.max_tokens or agent.get("maxTokens", 2000)
 
     target_url, resolved_model, route_type = _llm_client._resolve_local_model(model)
-    if route_type == "local":
-        endpoint = f"{target_url}/v1/chat/completions"
-        headers = {"Content-Type": "application/json"}
-    elif route_type == "direct":
-        endpoint = target_url
-        headers = {"Content-Type": "application/json"}
-    elif route_type == "openrouter":
-        import os as _os
-        endpoint = f"{target_url}/chat/completions"
-        headers = {"Authorization": f"Bearer {_os.getenv('OPENROUTER_API_KEY','')}", "Content-Type": "application/json"}
-    elif route_type == "gateway":
-        import os as _os
-        endpoint = f"{target_url}/chat/completions"
-        headers = gateway_headers(
-            shared_key=_os.getenv("UC_GATEWAY_KEY", ""),
-            org_id=getattr(auth_user, "org_id", None),
-            user_id=effective_user_id,
-        )
-    else:
-        endpoint = f"{target_url}/api/v1/llm/chat/completions"
-        headers = {"Authorization": f"Bearer {_llm_client.service_key}", "Content-Type": "application/json"}
-        if effective_user_id and effective_user_id not in ("anonymous","dev-bypass",""):
-            headers["X-User-ID"] = effective_user_id
+    endpoint, headers = _llm_client._endpoint_and_headers(
+        route_type, target_url, effective_user_id, org_id=getattr(auth_user, "org_id", None),
+    )
 
     # Resolve agent's tool list. If non-empty, the LLM stream becomes a tool
     # loop: stream tokens, accumulate tool_calls, when finish_reason=tool_calls
