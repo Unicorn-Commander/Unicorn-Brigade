@@ -66,6 +66,21 @@ from app.voice.providers.base import (
     pcm_to_wav,
 )
 
+# Central provider registry
+from app.voice.providers.registry import (
+    VoiceProviderRegistry,
+    register_builtin_providers,
+)
+
+# STT Factory
+from app.voice.providers.stt_factory import (
+    get_stt_provider,
+    get_default_provider,
+    list_available_providers,
+    is_provider_available,
+    get_provider_info,
+)
+
 # TTS Factory
 from app.voice.providers.tts_factory import (
     get_tts_provider,
@@ -117,6 +132,15 @@ __all__ = [
     "detect_device",
     "audio_to_pcm",
     "pcm_to_wav",
+    # Central provider registry
+    "VoiceProviderRegistry",
+    "register_builtin_providers",
+    # STT Factory
+    "get_stt_provider",
+    "get_default_provider",
+    "list_available_providers",
+    "is_provider_available",
+    "get_provider_info",
     # TTS Factory
     "get_tts_provider",
     "get_available_providers",
