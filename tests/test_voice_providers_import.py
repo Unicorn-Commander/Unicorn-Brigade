@@ -10,7 +10,8 @@ On the base branch (before the fix) this test fails with ImportError.
 After the fix it passes.
 """
 
-import pytest
+import subprocess
+import sys
 
 
 def test_import_voice_provider_registry():
@@ -64,3 +65,33 @@ def test_voice_routes_import():
     from app.voice.providers import VoiceProviderRegistry, list_available_providers
     assert VoiceProviderRegistry is not None
     assert callable(list_available_providers)
+
+
+def test_health_http_without_optional_provider_libraries():
+    """A fresh process must serve health with optional STT/TTS SDKs absent."""
+    code = """
+import sys
+for name in ('faster_whisper', 'pywhispercpp', 'mlx', 'mlx_whisper',
+             'kokoro', 'chatterbox', 'cosyvoice', 'onnxruntime'):
+    sys.modules[name] = None
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from app.voice.providers import VoiceProviderRegistry, list_available_providers
+from app.api.voice_routes import router
+assert isinstance(VoiceProviderRegistry.list_stt_providers(), list)
+assert isinstance(VoiceProviderRegistry.list_tts_providers(), list)
+assert list_available_providers() == []
+app = FastAPI()
+app.include_router(router, prefix='/api/v1')
+with TestClient(app) as client:
+    response = client.get('/api/v1/voice/health')
+    assert response.status_code == 200, response.status_code
+    data = response.json()
+    assert data['self_hosted_providers']['stt']['available'] == []
+    assert isinstance(data['self_hosted_providers']['tts']['registered'], list)
+print('voice-health-http-200-optional-sdks-absent')
+"""
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                            text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert "voice-health-http-200-optional-sdks-absent" in result.stdout

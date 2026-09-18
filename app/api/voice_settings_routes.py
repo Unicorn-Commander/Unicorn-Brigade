@@ -30,7 +30,7 @@ from app.voice.config import (
     reset_voice_config,
     VoiceConfig,
 )
-from app.voice.providers import (
+from app.voice.providers.registry import (
     VoiceProviderRegistry,
     register_builtin_providers,
 )
