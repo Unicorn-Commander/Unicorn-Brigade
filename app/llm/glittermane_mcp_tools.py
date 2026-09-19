@@ -21,10 +21,11 @@ to the right person.
     message whose response is an SSE token stream we accumulate into the answer.
 
 Auth — per the Glitter dev, shared-secret HS256 (option A):
-  * If ``caller_user_id`` is present AND ``GLITTERMANE_JWT_SECRET`` is set, mint a
-    short-lived ``sub=<caller>`` / ``aud=glitter-mane`` JWT. Glitter resolves the
-    user from ``sub`` and scopes all DB access via per-user RLS (auto-provisioning
-    a no-local-login account on first use).
+  * If ``caller_user_id`` + caller email are present AND ``GLITTERMANE_JWT_SECRET``
+    is set, mint a short-lived ``sub=<caller id>`` / ``email=<caller email>`` /
+    ``aud=glitter-mane`` JWT. Glitter maps ``email`` (not the Brigade UUID) onto
+    a user row and scopes all DB access via per-user RLS. A UUID-only ``sub`` is
+    rejected as unauthenticated.
   * Else if ``GLITTERMANE_STATIC_TOKEN`` is set, use it (service scope).
   * Else there is no usable auth and calls return an error (the REST API is
     Bearer-protected). ``needs_caller_context=True`` threads the caller in.
@@ -82,10 +83,20 @@ _POST_PATHS = {
 }
 
 
-def _mint_user_jwt(user_id: str) -> str:
+def _mint_user_jwt(user_id: str, email: str) -> str:
+    """Mint the Brigade→Glitter per-user token.
+
+    Glitter's ``decode_brigade_token`` path resolves the chart by email
+    (``payload.email or payload.sub`` must contain ``@``). A UUID-only
+    ``sub`` is rejected as unauthenticated even when the signature is valid.
+    """
+    normalized = (email or "").strip().lower()
+    if "@" not in normalized:
+        raise ValueError("glittermane JWT requires a caller email")
     now = int(time.time())
     payload = {
         "sub": user_id,
+        "email": normalized,
         "aud": GLITTERMANE_JWT_AUD,
         "iat": now,
         "exp": now + GLITTERMANE_USER_JWT_TTL,
@@ -93,10 +104,13 @@ def _mint_user_jwt(user_id: str) -> str:
     return jose_jwt.encode(payload, GLITTERMANE_JWT_SECRET, algorithm="HS256")
 
 
-def _auth_header(caller_user_id: Optional[str]) -> Dict[str, str]:
-    if caller_user_id and GLITTERMANE_JWT_SECRET:
+def _auth_header(
+    caller_user_id: Optional[str],
+    caller_email: Optional[str] = None,
+) -> Dict[str, str]:
+    if caller_user_id and caller_email and "@" in caller_email and GLITTERMANE_JWT_SECRET:
         try:
-            return {"Authorization": f"Bearer {_mint_user_jwt(caller_user_id)}"}
+            return {"Authorization": f"Bearer {_mint_user_jwt(caller_user_id, caller_email)}"}
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"glittermane: per-user JWT mint failed for {caller_user_id}: {exc}")
     if GLITTERMANE_STATIC_TOKEN:
@@ -150,13 +164,14 @@ async def _consult(question: str, headers: Dict[str, str], base: str,
 
 
 async def _rest_call(tool_name: str, args: Dict[str, Any],
-                     caller_user_id: Optional[str] = None) -> Dict[str, Any]:
+                     caller_user_id: Optional[str] = None,
+                     caller_email: Optional[str] = None) -> Dict[str, Any]:
     base = GLITTERMANE_API_URL.rstrip("/")
     if not base:
         return {"error": "glittermane not configured (set GLITTERMANE_API_URL)"}
-    headers = _auth_header(caller_user_id)
+    headers = _auth_header(caller_user_id, caller_email=caller_email)
     if "Authorization" not in headers:
-        return {"error": "glittermane auth unavailable (set GLITTERMANE_JWT_SECRET + caller, or GLITTERMANE_STATIC_TOKEN)"}
+        return {"error": "glittermane auth unavailable (set GLITTERMANE_JWT_SECRET + caller id/email, or GLITTERMANE_STATIC_TOKEN)"}
     headers["Content-Type"] = "application/json"
     timeout = httpx.Timeout(GLITTERMANE_TIMEOUT, connect=10.0)
     try:
@@ -174,6 +189,8 @@ async def _rest_call(tool_name: str, args: Dict[str, Any],
             else:
                 resp = await client.post(base + path, headers=headers, json=args or {})
         if resp.status_code >= 400:
+            logger.warning("glittermane HTTP %s for %s", resp.status_code, tool_name)
+            # 401/403 bodies are auth strings, not chart data. Truncate anyway.
             return {"error": f"glittermane HTTP {resp.status_code}: {resp.text[:200]}"}
         try:
             return {"result": resp.json()}
@@ -189,11 +206,19 @@ async def _rest_call(tool_name: str, args: Dict[str, Any],
 
 
 def _make_handler(tool_name: str):
-    async def handler(caller_user_id: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        # caller_user_id is injected by the tool layer (needs_caller_context=True);
-        # never let it leak into the request body.
+    async def handler(
+        caller_user_id: Optional[str] = None,
+        caller_email: Optional[str] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        # caller_user_id / caller_email are injected by the tool layer
+        # (needs_caller_context=True); never let them leak into the request body.
         args = {k: v for k, v in kwargs.items() if v is not None}
-        return await _rest_call(tool_name, args, caller_user_id=caller_user_id)
+        return await _rest_call(
+            tool_name, args,
+            caller_user_id=caller_user_id,
+            caller_email=caller_email,
+        )
     handler.__name__ = f"glitter_{tool_name}_handler"
     return handler
 

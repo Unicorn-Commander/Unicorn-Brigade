@@ -1514,6 +1514,7 @@ async def chat_with_agent(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 user_id=request.user_id,
+                user_email=user_email_for_metering,
                 org_id=getattr(user, "org_id", None),
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
@@ -1826,6 +1827,7 @@ async def _stream_chat(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 user_id=user_id,
+                user_email=user_email,
                 org_id=org_id,
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
@@ -2270,6 +2272,7 @@ async def chat_with_agent_local(
                 on_tool_call=on_tool_call,
                 on_tool_result=on_tool_result,
                 user_id=(_end_user.raw_id if _end_user else None),
+                user_email=(getattr(user, "email", "") or "").lower() or None,
                 tool_guard=tool_guard,
             )
         else:

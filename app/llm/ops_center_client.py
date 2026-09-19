@@ -964,6 +964,7 @@ class OpsCenterLLMClient:
         max_tokens: int = 2000,
         max_iterations: int = 10,
         user_id: Optional[str] = None,
+        user_email: Optional[str] = None,
         org_id: Optional[str] = None,
         on_tool_call: Optional[Callable[[ToolCall], None]] = None,
         on_tool_result: Optional[Callable[[ToolResult], None]] = None,
@@ -1119,6 +1120,8 @@ class OpsCenterLLMClient:
                         call_args = dict(tc.arguments)
                         if getattr(tool_def, "needs_caller_context", False):
                             call_args["caller_user_id"] = user_id
+                            if user_email:
+                                call_args["caller_email"] = user_email
                         # Inject room context (room id/name + the running
                         # agent's id) when the tool declared it needs room
                         # context. Parallel to caller-context injection above;

@@ -395,6 +395,7 @@ class MLXLLMClient:
         on_tool_call: Optional[Callable] = None,
         on_tool_result: Optional[Callable] = None,
         user_id: Optional[str] = None,  # caller identity for needs_caller_context tools
+        user_email: Optional[str] = None,  # caller email for Glitter/Brigade JWTs
         tool_guard=None,  # BR-6.4: per-caller ToolPermissionGuard; None = no gating
         **kwargs
     ) -> Dict[str, Any]:
@@ -471,6 +472,8 @@ class MLXLLMClient:
                             # an undefined name here — any needs_caller_context
                             # tool on the MLX path NameError'd into a tool error).
                             call_args["caller_user_id"] = user_id
+                            if user_email:
+                                call_args["caller_email"] = user_email
                         tool_result = await tool_def.handler(**call_args)
                         result = ToolResult(
                             tool_call_id=tc.id,
