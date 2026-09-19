@@ -24,13 +24,15 @@ runs as the one (usually superuser) role — RLS exists but is bypassed. That is
 the pre-BR-1.2 behavior and is fine for local work; ``verify_app_role_not_bypassing``
 logs loudly so it is never a silent surprise in a real deployment.
 """
+import logging
 import os
 import re
-import logging
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import DeclarativeBase
+from contextlib import asynccontextmanager
+
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +161,56 @@ async def _clear_org_context(session: AsyncSession) -> None:
     await session.rollback()
     await session.execute(text("SELECT set_config('app.current_org_id', '', false)"))
     await session.commit()
+
+
+@asynccontextmanager
+async def streaming_org_context(session: AsyncSession, org_id: str | None):
+    """Re-bind the request's org for FORCE-RLS writes issued from a
+    ``StreamingResponse`` generator body.
+
+    FastAPI >= 0.106 (this repo pins 0.115) exits yield-dependencies BEFORE the
+    response body is streamed. So by the time a ``StreamingResponse`` generator
+    runs, ``get_session``'s teardown has already executed — clearing the
+    connection's ``app.current_org_id`` GUC AND positively nulling
+    ``current_org_id_var`` (see ``_clear_org_context``). A write issued from the
+    generator then finds no bound org: ``ensure_org_context`` fails safe to a
+    no-op, the row lands with ``org_id = current_org_id()`` → NULL, and Postgres
+    rejects it as "new row violates row-level security policy". That is how every
+    streaming agent chat with tool calls silently lost its ``tool_executions``
+    audit rows while the SSE stream itself returned 200.
+
+    Bind the org for the duration of the block so the repository methods'
+    ``ensure_org_context`` can do its job, then POSITIVELY clear it on exit —
+    the same B1 guarantee ``get_session`` gives ordinary requests: no connection
+    may return to the pool carrying this org.
+
+    Fail-safe: with no ``org_id`` (unbound/public caller) this is a no-op. It
+    can never invent an org, so it cannot re-open B1; the write stays correctly
+    refused by RLS.
+    """
+    if not org_id:
+        yield
+        return
+    from app.orchestration.event_bus import current_org_id_var
+    token = current_org_id_var.set(str(org_id))
+    try:
+        yield
+    finally:
+        try:
+            await _clear_org_context(session)
+        except Exception:
+            # Same posture as get_session's teardown: a connection we failed to
+            # clear must NOT go back to the pool carrying this request's org.
+            logger.warning(
+                "Failed to clear streaming org context; invalidating the session "
+                "so a possibly org-tainted connection is not pooled.",
+                exc_info=True,
+            )
+            try:
+                await session.invalidate()
+            except Exception:
+                logger.debug("Session invalidate failed", exc_info=True)
+        current_org_id_var.reset(token)
 
 
 async def get_session() -> AsyncSession:
