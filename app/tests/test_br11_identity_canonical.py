@@ -29,6 +29,7 @@ import uuid
 import pytest
 from sqlalchemy import event, select, text
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.exc import CompileError, OperationalError, UnsupportedCompilationError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 
@@ -54,12 +55,41 @@ def _sqlite_uuid(type_, compiler, **kw):
     return "CHAR(36)"
 
 
+_POSTGRES_UUID_DDL_TOKENS = ("uuid", "gen_random_uuid")
+_SQLITE_PG_UUID_DDL_ERRORS = (
+    CompileError,
+    UnsupportedCompilationError,
+    OperationalError,
+)
+
+
+def _sqlite_cannot_compile_postgres_uuid_ddl(dialect_name: str, exc: BaseException) -> bool:
+    """True only when SQLite fails specifically on Postgres UUID DDL.
+
+    Schema-creation errors that are not this limitation (JSONB, a bad
+    constraint, a missing table, a generic OperationalError) stay failures.
+    """
+    if dialect_name != "sqlite":
+        return False
+    if not isinstance(exc, _SQLITE_PG_UUID_DDL_ERRORS):
+        return False
+    blob = str(exc).lower()
+    orig = getattr(exc, "orig", None)
+    if orig is not None:
+        blob = f"{blob} {orig}".lower()
+    cause = exc.__cause__
+    if cause is not None:
+        blob = f"{blob} {cause}".lower()
+    return any(token in blob for token in _POSTGRES_UUID_DDL_TOKENS)
+
+
 async def _fresh_db():
     """Create a throwaway on-disk SQLite DB with the full schema. Returns
     (engine, sessionmaker, path). Caller disposes + unlinks."""
     fd, path = tempfile.mkstemp(prefix="br11_scratch_", suffix=".sqlite")
     os.close(fd)
     engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
+    dialect_name = engine.dialect.name
 
     @event.listens_for(engine.sync_engine, "connect")
     def _register_pg_compat(dbapi_connection, _record):
@@ -74,10 +104,12 @@ async def _fresh_db():
     except Exception as exc:
         await engine.dispose()
         os.unlink(path)
-        pytest.skip(
-            "BR-1.1 identity tests need Postgres-compatible DDL; "
-            f"SQLite could not create the schema: {exc}"
-        )
+        if _sqlite_cannot_compile_postgres_uuid_ddl(dialect_name, exc):
+            pytest.skip(
+                "SQLite cannot compile Postgres-only UUID / gen_random_uuid() DDL "
+                f"({type(exc).__name__}); these identity scenarios require PostgreSQL"
+            )
+        raise
     return engine, async_sessionmaker(engine, expire_on_commit=False), path
 
 
@@ -318,11 +350,43 @@ async def _run_all():
 
 # ---- pytest entrypoints ----
 
+def test_schema_skip_only_matches_sqlite_uuid_or_gen_random_uuid():
+    """The BR-1.1 fixture must not turn an unrelated schema error into a skip."""
+    uuid_compile = CompileError("Compiler can't render element of type UUID")
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", uuid_compile) is True
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("postgresql", uuid_compile) is False
+
+    gen_compile = UnsupportedCompilationError(None, "DEFAULT gen_random_uuid()")
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", gen_compile) is True
+
+    jsonb_compile = CompileError("Compiler can't render element of type JSONB")
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", jsonb_compile) is False
+
+    generic_op = OperationalError("CREATE TABLE t (id INTEGER)", {}, Exception("syntax error"))
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", generic_op) is False
+
+    pg_default = OperationalError(
+        "CREATE TABLE organizations (id CHAR(36) DEFAULT gen_random_uuid() NOT NULL)",
+        {},
+        Exception("near '(': syntax error"),
+    )
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", pg_default) is True
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("postgresql", pg_default) is False
+
+    assert _sqlite_cannot_compile_postgres_uuid_ddl(
+        "sqlite", RuntimeError("gen_random_uuid() exploded")
+    ) is False
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
 @pytest.mark.asyncio
 async def test_batch_remap_unifies_forked_rows():
     await _scenario_batch_remap([])
 
 
+@pytest.mark.integration
+@pytest.mark.postgres
 @pytest.mark.asyncio
 async def test_resolver_unifies_kc_and_apikey():
     await _scenario_resolver([])
