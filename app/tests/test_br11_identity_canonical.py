@@ -23,6 +23,7 @@ Or via pytest: pytest app/tests/test_br11_identity_canonical.py
 
 import asyncio
 import os
+import sqlite3
 import tempfile
 import uuid
 
@@ -63,23 +64,41 @@ _SQLITE_PG_UUID_DDL_ERRORS = (
 )
 
 
+def _compiler_or_dbapi_diagnostic(exc: BaseException) -> str:
+    """Compiler / DBAPI message only — never the SQLAlchemy-rendered statement.
+
+    ``str(StatementError)`` appends ``[SQL: ...]``. Matching on that text
+    treats every wrapped error whose statement mentions ``gen_random_uuid()``
+    as a UUID-DDL skip (locked DB, disk I/O, duplicate column). Classify:
+
+    * ``CompileError`` / ``UnsupportedCompilationError``: ``err.args[0]``
+      (compiler message, before any statement is attached).
+    * ``OperationalError``: ``err.orig`` (the ``sqlite3.OperationalError``)
+      via ``orig.args[0]`` / ``str(orig)`` — SQLAlchemy's
+      ``StatementError.orig`` / ``.statement`` split. Never ``str(err)``.
+    """
+    if isinstance(exc, CompileError):
+        return str(exc.args[0]).lower() if exc.args else ""
+    orig = getattr(exc, "orig", None)
+    if not isinstance(orig, sqlite3.OperationalError):
+        return ""
+    if orig.args:
+        return str(orig.args[0]).lower()
+    return str(orig).lower()
+
+
 def _sqlite_cannot_compile_postgres_uuid_ddl(dialect_name: str, exc: BaseException) -> bool:
     """True only when SQLite fails specifically on Postgres UUID DDL.
 
     Schema-creation errors that are not this limitation (JSONB, a bad
-    constraint, a missing table, a generic OperationalError) stay failures.
+    constraint, a locked database, disk I/O, a duplicate column) stay
+    failures — even when the submitted SQL mentions gen_random_uuid().
     """
     if dialect_name != "sqlite":
         return False
     if not isinstance(exc, _SQLITE_PG_UUID_DDL_ERRORS):
         return False
-    blob = str(exc).lower()
-    orig = getattr(exc, "orig", None)
-    if orig is not None:
-        blob = f"{blob} {orig}".lower()
-    cause = exc.__cause__
-    if cause is not None:
-        blob = f"{blob} {cause}".lower()
+    blob = _compiler_or_dbapi_diagnostic(exc)
     return any(token in blob for token in _POSTGRES_UUID_DDL_TOKENS)
 
 
@@ -350,6 +369,11 @@ async def _run_all():
 
 # ---- pytest entrypoints ----
 
+_UUID_BEARING_SQL = (
+    "CREATE TABLE organizations (id CHAR(36) DEFAULT gen_random_uuid() NOT NULL)"
+)
+
+
 def test_schema_skip_only_matches_sqlite_uuid_or_gen_random_uuid():
     """The BR-1.1 fixture must not turn an unrelated schema error into a skip."""
     uuid_compile = CompileError("Compiler can't render element of type UUID")
@@ -359,23 +383,52 @@ def test_schema_skip_only_matches_sqlite_uuid_or_gen_random_uuid():
     gen_compile = UnsupportedCompilationError(None, "DEFAULT gen_random_uuid()")
     assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", gen_compile) is True
 
+    for diagnostic in (
+        'near "gen_random_uuid": syntax error',
+        'unrecognized token: "gen_random_uuid"',
+        "no such function: gen_random_uuid",
+    ):
+        true_uuid_ddl = OperationalError(
+            _UUID_BEARING_SQL, {}, sqlite3.OperationalError(diagnostic)
+        )
+        assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", true_uuid_ddl) is True
+        assert _sqlite_cannot_compile_postgres_uuid_ddl("postgresql", true_uuid_ddl) is False
+
     jsonb_compile = CompileError("Compiler can't render element of type JSONB")
     assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", jsonb_compile) is False
 
     generic_op = OperationalError("CREATE TABLE t (id INTEGER)", {}, Exception("syntax error"))
     assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", generic_op) is False
 
-    pg_default = OperationalError(
-        "CREATE TABLE organizations (id CHAR(36) DEFAULT gen_random_uuid() NOT NULL)",
-        {},
-        Exception("near '(': syntax error"),
-    )
-    assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", pg_default) is True
-    assert _sqlite_cannot_compile_postgres_uuid_ddl("postgresql", pg_default) is False
-
     assert _sqlite_cannot_compile_postgres_uuid_ddl(
         "sqlite", RuntimeError("gen_random_uuid() exploded")
     ) is False
+
+
+def test_schema_skip_ignores_statement_text_for_unrelated_operational_errors():
+    """Unrelated DBAPI diagnostics must not skip just because SQL names UUID DDL.
+
+    ``str(OperationalError)`` includes the statement. A locked database, disk
+    I/O error, or duplicate column wrapped with ``gen_random_uuid()`` SQL
+    must still fail the test, not skip.
+    """
+    for diagnostic in (
+        "database is locked",
+        "disk I/O error",
+        "duplicate column name: x",
+    ):
+        sqlite_orig = OperationalError(
+            _UUID_BEARING_SQL, {}, sqlite3.OperationalError(diagnostic)
+        )
+        assert (
+            _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", sqlite_orig) is False
+        ), diagnostic
+        # Astra r3 reproduction: orig is a bare Exception; statement still
+        # contains gen_random_uuid() so str(err) would have matched.
+        wrapped = OperationalError(_UUID_BEARING_SQL, {}, Exception(diagnostic))
+        assert (
+            _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", wrapped) is False
+        ), diagnostic
 
 
 @pytest.mark.integration
