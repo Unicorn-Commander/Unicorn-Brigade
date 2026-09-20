@@ -46,35 +46,51 @@ Environment Variables:
 
 # Base classes
 from app.voice.providers.base import (
+    ComputeType,
     # Enums
     DeviceType,
-    ComputeType,
     ModelSize,
+    STTConfig,
     # STT
     STTProvider,
+    STTProviderError,
     STTResult,
     STTSegment,
-    STTConfig,
-    STTProviderError,
+    TTSConfig,
     # TTS
     TTSProvider,
-    TTSConfig,
     TTSProviderError,
+    audio_to_pcm,
     # Utilities
     detect_device,
-    audio_to_pcm,
     pcm_to_wav,
+)
+
+# Central provider registry
+from app.voice.providers.registry import (
+    VoiceProviderRegistry,
+    register_builtin_providers,
+)
+
+# STT Factory
+from app.voice.providers.stt_factory import (
+    get_default_provider,
+    get_provider_info,
+    get_stt_provider,
+    is_provider_available,
+    list_available_providers,
 )
 
 # TTS Factory
 from app.voice.providers.tts_factory import (
-    get_tts_provider,
+    create_livekit_tts_plugin,
+    create_tts_provider,
     get_available_providers,
     get_best_available_provider,
-    create_tts_provider,
-    create_livekit_tts_plugin,
+    get_tts_provider,
     register_provider,
 )
+
 
 # TTS Providers (lazy import to avoid dependency issues)
 def _get_kokoro_provider():
@@ -117,6 +133,15 @@ __all__ = [
     "detect_device",
     "audio_to_pcm",
     "pcm_to_wav",
+    # Central provider registry
+    "VoiceProviderRegistry",
+    "register_builtin_providers",
+    # STT Factory
+    "get_stt_provider",
+    "get_default_provider",
+    "list_available_providers",
+    "is_provider_available",
+    "get_provider_info",
     # TTS Factory
     "get_tts_provider",
     "get_available_providers",
