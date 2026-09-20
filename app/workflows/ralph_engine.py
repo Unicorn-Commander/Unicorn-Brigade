@@ -322,28 +322,37 @@ class RalphWorkflowEngine:
             self.state.tasks[task_id] = asdict(task)
             self._save_state()
 
+            # Executed by Grok (headless lane)
+            # Count this execution exactly once from _execute_task's outcome.
+            # on_task_complete runs after record_attempt so a callback
+            # exception cannot increment again (Astra c031f5b). Callback
+            # errors still append to error_history and take the existing
+            # should_retry / FAILED path.
+            error = None
+            result = None
             try:
                 result = await self._execute_task(task, iteration.number)
-                # Executed by Grok (headless lane)
-                # Count every try, including success. record_attempt(error=None)
-                # is the 2df9e88 contract (docs: first-try success attempts=1,
-                # fail-then-succeed attempts=2). Only the except path used to
-                # increment, so a retried task that then succeeded stayed at 1.
-                task.record_attempt()
+            except Exception as e:
+                error = str(e)
+
+            task.record_attempt(error=error)
+
+            if error is None:
                 task.status = TaskStatus.COMPLETED
                 task.result = result
                 task.completed_at = datetime.now()
                 completed_task_ids.add(task_id)
                 tasks_completed += 1
 
-                # Callback
                 if self.on_task_complete:
-                    await self.on_task_complete(task, result)
+                    try:
+                        await self.on_task_complete(task, result)
+                    except Exception as e:
+                        error = str(e)
+                        task.error_history.append(error)
 
-            except Exception as e:
-                error_msg = str(e)
-                task.record_attempt(error_msg)
-                errors.append(f"{task.description}: {error_msg}")
+            if error is not None:
+                errors.append(f"{task.description}: {error}")
 
                 if task.should_retry():
                     task.status = TaskStatus.PENDING  # Will retry

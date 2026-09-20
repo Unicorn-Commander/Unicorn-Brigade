@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Tests for Ralph Self-Correcting Workflow Engine
 
@@ -279,6 +280,11 @@ class TestRalphWorkflowEngine:
         assert iteration.outcome == IterationOutcome.SUCCESS
         assert iteration.tasks_completed == 3
         assert iteration.tasks_failed == 0
+        # Documented first-try success: attempts == 1
+        assert all(
+            engine.state.tasks[task_id]["attempts"] == 1
+            for task_id in engine.state.tasks
+        )
 
     @pytest.mark.asyncio
     async def test_iteration_outcome_retry(self, sample_workflow, temp_state_dir):
@@ -410,8 +416,40 @@ class TestRalphIntegration:
         assert len(task_complete_calls) == 3
         assert len(iteration_complete_calls) >= 1
 
-        # Verify task_2 was retried
-        assert result["tasks"]["task_2"]["attempts"] > 1
+        # Documented attempts: first-try success = 1, fail-then-succeed = 2
+        assert result["tasks"]["task_1"]["attempts"] == 1
+        assert result["tasks"]["task_2"]["attempts"] == 2
+        assert result["tasks"]["task_3"]["attempts"] == 1
+
+    @pytest.mark.asyncio
+    async def test_success_callback_failure_does_not_count_a_second_execution(
+        self, temp_state_dir
+    ):
+        """Astra c031f5b: one execution + raising callback → attempts == 1."""
+        engine = RalphWorkflowEngine(
+            workflow_id="synthetic",
+            workflow_definition={"steps": [{"description": "synthetic"}]},
+            state_dir=temp_state_dir,
+        )
+        engine.execution_id = "synthetic-counter-review"
+        engine._initialize_state({})
+        engine._execute_task = AsyncMock(return_value={"ok": True})
+        engine.on_task_complete = AsyncMock(
+            side_effect=RuntimeError("synthetic callback failure")
+        )
+
+        iteration = await engine._run_iteration()
+
+        assert engine._execute_task.await_count == 1
+        assert engine.state.tasks["task_1"]["attempts"] == 1
+        # Callback error still surfaces as it did before ed92a93: recorded on
+        # the task and in the iteration summary, not raised out of the loop.
+        assert "synthetic callback failure" in engine.state.tasks["task_1"][
+            "error_history"
+        ]
+        assert engine.state.tasks["task_1"]["status"] == TaskStatus.FAILED.value
+        assert iteration.error_summary is not None
+        assert "synthetic callback failure" in iteration.error_summary
 
 
 if __name__ == "__main__":
