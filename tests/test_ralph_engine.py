@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Tests for Ralph Self-Correcting Workflow Engine
 
@@ -8,19 +9,20 @@ These tests demonstrate Ralph's key capabilities:
 - Progress tracking and state persistence
 """
 
-import pytest
 import asyncio
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.workflows.ralph_engine import (
-    RalphWorkflowEngine,
-    RalphWorkflowState,
-    RalphTask,
-    TaskStatus,
     Iteration,
     IterationOutcome,
+    RalphTask,
+    RalphWorkflowEngine,
+    RalphWorkflowState,
+    TaskStatus,
 )
 
 
@@ -86,6 +88,7 @@ class TestRalphWorkflowEngine:
         )
 
         inputs = {"company_name": "Acme Corp"}
+        engine.execution_id = "test_exec_breakdown"
         engine._initialize_state(inputs)
 
         # Should have 3 tasks (one per step)
@@ -203,7 +206,7 @@ class TestRalphWorkflowEngine:
         engine.inject_guidance(guidance_text)
 
         assert engine.state.pending_guidance == guidance_text
-        assert engine.state.is_paused == False
+        assert engine.state.is_paused is False
 
         # Verify state was saved
         state_file = temp_state_dir / f"{engine.execution_id}.json"
