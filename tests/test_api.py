@@ -1,14 +1,24 @@
+# Executed by Grok (headless lane)
 """Tests for API endpoints"""
 
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app
+
 from app.api.routes import init_managers
-from app.memory.manager import MemoryManager
 from app.graph.workflow import WorkflowManager
+from app.main import app
+from app.memory.manager import MemoryManager
+from tests.http_auth import install_test_auth
 
 # Initialize test client
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _auth_overrides():
+    install_test_auth(app)
+    yield
+    app.dependency_overrides.clear()
 
 # Initialize managers for testing
 memory_manager = MemoryManager()
