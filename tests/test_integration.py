@@ -1298,9 +1298,12 @@ class TestWorkflowModelConfiguration:
 
         config = ModelConfig()
 
-        assert config.orchestrator_model
+        # Production defaults from 61c26c68fcd555cb636b435972f6c2625ca55f8d
+        assert config.orchestrator_model == "anthropic/claude-opus-4-5-20251101"
+        assert config.default_team_lead_model == "openai/gpt-oss-120b"
+        assert config.default_worker_model == "ibm/granite-3.3-2b-instruct"
         assert config.enable_local_models is True
-        assert "research" in config.team_lead_models
+        assert config.team_lead_models["research"] == "openai/gpt-oss-120b"
 
     def test_preset_configurations(self):
         """Test preset configuration loading"""

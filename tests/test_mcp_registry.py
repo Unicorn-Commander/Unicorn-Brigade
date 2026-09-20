@@ -40,20 +40,30 @@ class TestMCPServerConfiguration:
     """Test MCP server configuration and registration"""
 
     def test_total_server_count(self):
-        """Floor-check on the registered MCP server count.
+        """Exact npx-verified MCP set from 0d83ea89a903cbb7b2664855f4f76928371d2d99.
 
-        The registry grows over time as more MCP servers ship; pinning an
-        exact count just creates churn. We assert against a floor (the count
-        when this test was last reviewed) so a regression that drops servers
-        fails fast.
+        That commit pruned the registry 46→11 npm-verified servers. A floor
+        would accept a silent drop or an accidental re-add.
         """
-        servers = mcp_registry.list_available()
-        assert len(servers) >= 11, (
-            f"Expected at least 11 registered MCP servers, got {len(servers)}"
+        expected_servers = (
+            "github",
+            "filesystem",
+            "postgres",
+            "playwright",
+            "slack",
+            "memory",
+            "brave-search",
+            "google-drive",
+            "puppeteer",
+            "stripe",
+            "notion",
         )
+        actual = tuple(sorted(s["name"] for s in mcp_registry.list_available()))
+        assert actual == tuple(sorted(expected_servers))
+        assert len(actual) == 11
 
     def test_baseline_servers_registered(self):
-        """Verify all 10 baseline MCP servers are registered"""
+        """Verify the 9 remaining baseline MCP servers from 0d83ea8."""
         baseline_servers = [
             "github",
             "playwright",
@@ -72,9 +82,11 @@ class TestMCPServerConfiguration:
             assert isinstance(server, MCPServer)
             assert server.name == name
             assert server.enabled is True
+        # fetch was in the pre-0d83ea8 baseline and was pruned.
+        assert mcp_registry.get_server("fetch") is None
 
     def test_phase1_servers_registered(self):
-        """Verify npx-verified Phase 1 MCP servers are registered"""
+        """Verify npx-verified Phase 1 MCP servers from 0d83ea8."""
         phase1_servers = ["stripe", "notion"]
 
         for name in phase1_servers:
@@ -107,40 +119,31 @@ class TestMCPServerConfiguration:
                 f"Server {server_info['name']} should have at least one capability"
 
     def test_stripe_server_configuration(self):
-        """Verify Stripe server has correct configuration"""
-        server = mcp_registry.get_server('stripe')
+        """Verify Stripe server matches 0d83ea8 (@stripe/mcp, STRIPE_SECRET_KEY)."""
+        server = mcp_registry.get_server("stripe")
 
         assert server is not None
         assert server.display_name == "Stripe Payments"
-        assert "STRIPE_SECRET_KEY" in server.env
-        assert "create_refund" in server.capabilities
-        assert len(server.capabilities) >= 10, "Stripe should declare capabilities"
+        assert server.args == ["-y", "@stripe/mcp", "--tools=all"]
+        assert server.env == {"STRIPE_SECRET_KEY": "${STRIPE_API_KEY}"}
+        assert server.capabilities == [
+            "create_customer", "list_customers",
+            "create_product", "list_products",
+            "create_price", "list_prices",
+            "create_payment_link",
+            "create_invoice", "create_invoice_item", "finalize_invoice",
+            "list_payment_intents", "list_subscriptions",
+            "update_subscription", "cancel_subscription",
+            "create_refund", "retrieve_balance",
+        ]
 
-    def test_linear_server_configuration(self):
-        """Verify Linear server has correct configuration"""
-        server = mcp_registry.get_server("linear")
-        if server is None:
-            pytest.skip("linear is not in the npx-verified MCP registry")
+    def test_linear_server_not_in_npx_verified_set(self):
+        """0d83ea8 pruned linear; it must not reappear as an unverified server."""
+        assert mcp_registry.get_server("linear") is None
 
-        assert server is not None
-        assert server.display_name == 'Linear Project Management'
-        assert 'LINEAR_API_KEY' in server.env
-        assert 'create_issue' in server.capabilities
-        assert 'create_project' in server.capabilities
-        assert len(server.capabilities) >= 15, "Linear should have 15+ capabilities"
-
-    def test_git_server_configuration(self):
-        """Verify Git server has correct configuration"""
-        server = mcp_registry.get_server("git")
-        if server is None:
-            pytest.skip("git is not in the npx-verified MCP registry")
-
-        assert server is not None
-        assert server.display_name == 'Git Repository'
-        assert 'git_status' in server.capabilities
-        assert 'git_commit' in server.capabilities
-        assert 'git_push' in server.capabilities
-        assert len(server.capabilities) >= 15, "Git should have 15+ capabilities"
+    def test_git_server_not_in_npx_verified_set(self):
+        """0d83ea8 pruned git; it must not reappear as an unverified server."""
+        assert mcp_registry.get_server("git") is None
 
     def test_notion_server_configuration(self):
         """Verify Notion server has correct configuration"""
@@ -383,16 +386,17 @@ class TestMCPServerQueries:
 
         github = mcp_registry.get_server("github")
         assert github is not None
+        assert github.name == "github"
 
-        db_servers = [
-            s
+        db_names = {
+            s["name"]
             for s in servers
             if any(
-                "query" in cap.lower() or "list_tables" in cap.lower()
+                cap in {"query", "list_tables"}
                 for cap in s["capabilities"]
             )
-        ]
-        assert len(db_servers) > 0
+        }
+        assert db_names == {"postgres"}
 
     def test_filter_enabled_servers(self):
         """Test filtering enabled servers"""

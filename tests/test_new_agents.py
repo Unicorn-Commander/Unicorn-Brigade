@@ -280,16 +280,32 @@ class TestAgentModels:
     """Test agent LLM model configurations"""
 
     def test_valid_model_formats(self, seed_agents):
-        """Verify all agents have valid model strings"""
-        for agent in seed_agents:
-            model = agent['model']
-            assert isinstance(model, str) and model.strip(), (
-                f"Agent {agent['id']} has empty model"
-            )
-            ok = "/" in model or model.startswith(
-                ("gpt-", "claude-", "qwen", "ollama", "ibm")
-            )
-            assert ok, f"Agent {agent['id']} has invalid model format: {model}"
+        """Verify seeded agents use the production model IDs.
+
+        claude-sonnet-4 from 66f8d81; 11 agents repointed to qwen3.6-35b-a3b
+        in 40c0c28963d4c29372127ff1a1b1f4df298d182d.
+        """
+        expected_seed_models = {
+            "the-general": "claude-sonnet-4",
+            "gunny": "claude-sonnet-4",
+            "sgt-cipher": "qwen3.6-35b-a3b",
+            "cpt-fullstack": "qwen3.6-35b-a3b",
+            "maj-devops": "qwen3.6-35b-a3b",
+            "col-finance": "claude-sonnet-4",
+            "lt-taxstrat": "qwen3.6-35b-a3b",
+            "judge-advocate": "claude-sonnet-4",
+            "doc-medresearch": "claude-sonnet-4",
+            "detective-holmes": "claude-sonnet-4",
+            "prof-datasci": "qwen3.6-35b-a3b",
+            "support-agent": "qwen3.6-35b-a3b",
+            "code-reviewer": "qwen3.6-35b-a3b",
+            "sql-analyst": "qwen3.6-35b-a3b",
+            "sgt-scribe": "qwen3.6-35b-a3b",
+            "maj-leadgen": "qwen3.6-35b-a3b",
+            "lt-docanalyst": "qwen3.6-35b-a3b",
+        }
+        actual = {agent["id"]: agent["model"] for agent in seed_agents}
+        assert actual == expected_seed_models
 
     def test_model_diversity(self, seed_agents):
         """Verify we're using multiple different models"""

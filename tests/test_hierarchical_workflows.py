@@ -75,12 +75,23 @@ class TestModelConfig:
 
         config = ModelConfig()
 
-        assert config.orchestrator_model
-        assert config.default_team_lead_model
-        assert config.default_worker_model
+        # Production defaults from 61c26c68fcd555cb636b435972f6c2625ca55f8d
+        # ("feat: Update hierarchical architecture with production model
+        # configuration"). A nonempty typo must fail.
+        assert config.orchestrator_model == "anthropic/claude-opus-4-5-20251101"
+        assert config.default_team_lead_model == "openai/gpt-oss-120b"
+        assert config.default_worker_model == "ibm/granite-3.3-2b-instruct"
         assert config.enable_local_models is True
-        assert "research" in config.team_lead_models
-        assert "finance" in config.team_lead_models
+        assert config.team_lead_models == {
+            "research": "openai/gpt-oss-120b",
+            "finance": "openai/gpt-oss-120b",
+            "content": "openai/gpt-oss-120b",
+            "sales": "openai/gpt-oss-120b",
+            "devops": "openai/gpt-oss-120b",
+            "legal": "openai/gpt-oss-120b",
+            "medical": "openai/gpt-oss-120b",
+            "investigation": "openai/gpt-oss-120b",
+        }
 
     def test_model_config_with_custom_values(self):
         """Test ModelConfig with custom model assignments"""
@@ -288,7 +299,7 @@ class TestModelConfig:
 
     def test_create_config_from_request(self):
         """Test creating config from API request parameters"""
-        from app.workflows import ModelConfig, create_config_from_request
+        from app.workflows import create_config_from_request
 
         # From preset
         config = create_config_from_request(preset="quality_optimized")
@@ -301,9 +312,10 @@ class TestModelConfig:
         )
         assert config.orchestrator_model == "anthropic/claude-3.5-sonnet"
 
-        # Default config matches ModelConfig() (routing may change the id)
+        # Default config is the 61c26c6 production orchestrator, not "whatever
+        # ModelConfig() currently returns".
         config = create_config_from_request()
-        assert config.orchestrator_model == ModelConfig().orchestrator_model
+        assert config.orchestrator_model == "anthropic/claude-opus-4-5-20251101"
 
     def test_list_available_presets(self):
         """Test listing all available presets"""
@@ -327,7 +339,8 @@ class TestModelConfig:
         config = ModelConfig(orchestrator_model="gpt-4o")
 
         # Should be resolved to full name
-        assert config.orchestrator_model == MODEL_ALIASES.get("gpt-4o", "gpt-4o")
+        assert config.orchestrator_model == "openai/gpt-4o"
+        assert MODEL_ALIASES["gpt-4o"] == "openai/gpt-4o"
 
     def test_model_tier_detection(self):
         """Test detection of model tier (api vs local)"""
@@ -920,21 +933,24 @@ class TestTeamLeadsAndWorkers:
         assert all(hasattr(w, "id") for w in workers)
 
     def test_workers_have_valid_model_references(self):
-        """Test all workers reference valid local models"""
+        """Test all workers reference the production model IDs from 61c26c6."""
         from app.workflows import ALL_WORKERS
 
-        valid_prefixes = [
-            "ollama/",
-            "openai/",
-            "anthropic/",
-            "google/",
-            "ibm/",
-            "qwen/",
-        ]
+        expected_worker_models = {
+            "ibm/granite-3.3-2b-instruct",
+            "qwen/qwen3-vl-30b-a3b",
+            "openai/gpt-oss-120b",
+            "ollama/tinyllama:1.1b",
+            "ollama/qwen2.5-math:1.5b",
+            "ollama/gemma2:9b",
+            "ollama/mistral:7b",
+        }
 
         for worker_id, worker in ALL_WORKERS.items():
-            has_valid_prefix = any(worker.model.startswith(prefix) for prefix in valid_prefixes)
-            assert has_valid_prefix, f"Worker {worker_id} has invalid model: {worker.model}"
+            assert worker.model in expected_worker_models, (
+                f"Worker {worker_id} has unexpected model: {worker.model}"
+            )
+        assert {worker.model for worker in ALL_WORKERS.values()} == expected_worker_models
 
 
 # =============================================================================
