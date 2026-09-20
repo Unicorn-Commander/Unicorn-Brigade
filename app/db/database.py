@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Async database connection manager using SQLAlchemy 2.0 + asyncpg.
 
@@ -24,6 +25,7 @@ runs as the one (usually superuser) role — RLS exists but is bypassed. That is
 the pre-BR-1.2 behavior and is fine for local work; ``verify_app_role_not_bypassing``
 logs loudly so it is never a silent surprise in a real deployment.
 """
+import asyncio
 import logging
 import os
 import re
@@ -163,6 +165,22 @@ async def _clear_org_context(session: AsyncSession) -> None:
     await session.commit()
 
 
+async def _invalidate_pooled_session(session: AsyncSession) -> None:
+    """Discard a connection whose org GUC cannot be proven cleared.
+
+    ``asyncio.shield`` is used HERE and only here: a cancelled streaming
+    generator's next ``await`` would otherwise raise ``CancelledError``
+    before ``invalidate`` runs, returning a possibly org-tainted connection
+    to the pool (the B1 leak). The GUC clear itself is not shielded — a hung
+    rollback must not pin the cancelled generator; we fail safe by discarding
+    the connection instead.
+    """
+    try:
+        await asyncio.shield(session.invalidate())
+    except Exception:
+        logger.debug("Session invalidate failed", exc_info=True)
+
+
 @asynccontextmanager
 async def streaming_org_context(session: AsyncSession, org_id: str | None):
     """Re-bind the request's org for FORCE-RLS writes issued from a
@@ -187,6 +205,12 @@ async def streaming_org_context(session: AsyncSession, org_id: str | None):
     Fail-safe: with no ``org_id`` (unbound/public caller) this is a no-op. It
     can never invent an org, so it cannot re-open B1; the write stays correctly
     refused by RLS.
+
+    Cleanup is cancellation-safe. ``asyncio.CancelledError`` is a
+    ``BaseException``, not ``Exception``: a disconnect that cancels during
+    rollback/clear must still (1) reset the ContextVar and (2) clear the GUC
+    or ``invalidate`` the connection when the clear cannot be confirmed, then
+    re-raise so cancellation is not swallowed.
     """
     if not org_id:
         yield
@@ -198,19 +222,30 @@ async def streaming_org_context(session: AsyncSession, org_id: str | None):
     finally:
         try:
             await _clear_org_context(session)
-        except Exception:
-            # Same posture as get_session's teardown: a connection we failed to
-            # clear must NOT go back to the pool carrying this request's org.
-            logger.warning(
-                "Failed to clear streaming org context; invalidating the session "
-                "so a possibly org-tainted connection is not pooled.",
-                exc_info=True,
-            )
-            try:
-                await session.invalidate()
-            except Exception:
-                logger.debug("Session invalidate failed", exc_info=True)
-        current_org_id_var.reset(token)
+        except BaseException as exc:
+            # Exception *and* CancelledError / GeneratorExit / KeyboardInterrupt.
+            # A connection we failed to clear must NOT go back to the pool
+            # carrying this request's org. Invalidate (shielded), then re-raise
+            # anything that is not a regular Exception so cancellation
+            # propagates. Client disconnects are CancelledError — log those
+            # at debug so every SSE hangup is not a warning.
+            if isinstance(exc, Exception):
+                logger.warning(
+                    "Failed to clear streaming org context; invalidating the session "
+                    "so a possibly org-tainted connection is not pooled.",
+                    exc_info=True,
+                )
+            else:
+                logger.debug(
+                    "Streaming org-context cleanup interrupted; invalidating the "
+                    "session so a possibly org-tainted connection is not pooled.",
+                    exc_info=True,
+                )
+            await _invalidate_pooled_session(session)
+            if not isinstance(exc, Exception):
+                raise
+        finally:
+            current_org_id_var.reset(token)
 
 
 async def get_session() -> AsyncSession:
