@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Tests for MCP Server Registry
 
@@ -8,9 +9,11 @@ Tests coverage for:
 - Configuration validation
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
 import subprocess
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
+
 from app.mcp.registry import (
     MCPRegistry,
     MCPServer,
@@ -19,27 +22,58 @@ from app.mcp.registry import (
 )
 
 
+def _fake_mcp_client() -> MagicMock:
+    """MCPClient stand-in so lifecycle tests never spawn npx."""
+    client = MagicMock()
+    client._connected = True
+    client.get_tools.return_value = []
+    client.connect = AsyncMock()
+    client.disconnect = AsyncMock()
+    process = MagicMock()
+    process.pid = 12345
+    process.poll.return_value = None
+    client._process = process
+    return client
+
+
 class TestMCPServerConfiguration:
     """Test MCP server configuration and registration"""
 
     def test_total_server_count(self):
-        """Floor-check on the registered MCP server count.
+        """Exact npx-verified MCP set from 0d83ea89a903cbb7b2664855f4f76928371d2d99.
 
-        The registry grows over time as more MCP servers ship; pinning an
-        exact count just creates churn. We assert against a floor (the count
-        when this test was last reviewed) so a regression that drops servers
-        fails fast.
+        That commit pruned the registry 46→11 npm-verified servers. A floor
+        would accept a silent drop or an accidental re-add.
         """
-        servers = mcp_registry.list_available()
-        assert len(servers) >= 14, (
-            f"Expected at least 14 registered MCP servers, got {len(servers)}"
+        expected_servers = (
+            "github",
+            "filesystem",
+            "postgres",
+            "playwright",
+            "slack",
+            "memory",
+            "brave-search",
+            "google-drive",
+            "puppeteer",
+            "stripe",
+            "notion",
         )
+        actual = tuple(sorted(s["name"] for s in mcp_registry.list_available()))
+        assert actual == tuple(sorted(expected_servers))
+        assert len(actual) == 11
 
     def test_baseline_servers_registered(self):
-        """Verify all 10 baseline MCP servers are registered"""
+        """Verify the 9 remaining baseline MCP servers from 0d83ea8."""
         baseline_servers = [
-            'github', 'playwright', 'slack', 'postgres', 'filesystem',
-            'memory', 'fetch', 'brave-search', 'google-drive', 'puppeteer'
+            "github",
+            "playwright",
+            "slack",
+            "postgres",
+            "filesystem",
+            "memory",
+            "brave-search",
+            "google-drive",
+            "puppeteer",
         ]
 
         for name in baseline_servers:
@@ -48,10 +82,12 @@ class TestMCPServerConfiguration:
             assert isinstance(server, MCPServer)
             assert server.name == name
             assert server.enabled is True
+        # fetch was in the pre-0d83ea8 baseline and was pruned.
+        assert mcp_registry.get_server("fetch") is None
 
     def test_phase1_servers_registered(self):
-        """Verify all 4 Phase 1 MCP servers are registered"""
-        phase1_servers = ['stripe', 'linear', 'git', 'notion']
+        """Verify npx-verified Phase 1 MCP servers from 0d83ea8."""
+        phase1_servers = ["stripe", "notion"]
 
         for name in phase1_servers:
             server = mcp_registry.get_server(name)
@@ -83,38 +119,31 @@ class TestMCPServerConfiguration:
                 f"Server {server_info['name']} should have at least one capability"
 
     def test_stripe_server_configuration(self):
-        """Verify Stripe server has correct configuration"""
-        server = mcp_registry.get_server('stripe')
+        """Verify Stripe server matches 0d83ea8 (@stripe/mcp, STRIPE_SECRET_KEY)."""
+        server = mcp_registry.get_server("stripe")
 
         assert server is not None
-        assert server.display_name == 'Stripe Payments'
-        assert 'STRIPE_API_KEY' in server.env
-        assert 'create_payment_intent' in server.capabilities
-        assert 'create_subscription' in server.capabilities
-        assert 'create_refund' in server.capabilities
-        assert len(server.capabilities) >= 20, "Stripe should have 20+ capabilities"
+        assert server.display_name == "Stripe Payments"
+        assert server.args == ["-y", "@stripe/mcp", "--tools=all"]
+        assert server.env == {"STRIPE_SECRET_KEY": "${STRIPE_API_KEY}"}
+        assert server.capabilities == [
+            "create_customer", "list_customers",
+            "create_product", "list_products",
+            "create_price", "list_prices",
+            "create_payment_link",
+            "create_invoice", "create_invoice_item", "finalize_invoice",
+            "list_payment_intents", "list_subscriptions",
+            "update_subscription", "cancel_subscription",
+            "create_refund", "retrieve_balance",
+        ]
 
-    def test_linear_server_configuration(self):
-        """Verify Linear server has correct configuration"""
-        server = mcp_registry.get_server('linear')
+    def test_linear_server_not_in_npx_verified_set(self):
+        """0d83ea8 pruned linear; it must not reappear as an unverified server."""
+        assert mcp_registry.get_server("linear") is None
 
-        assert server is not None
-        assert server.display_name == 'Linear Project Management'
-        assert 'LINEAR_API_KEY' in server.env
-        assert 'create_issue' in server.capabilities
-        assert 'create_project' in server.capabilities
-        assert len(server.capabilities) >= 15, "Linear should have 15+ capabilities"
-
-    def test_git_server_configuration(self):
-        """Verify Git server has correct configuration"""
-        server = mcp_registry.get_server('git')
-
-        assert server is not None
-        assert server.display_name == 'Git Repository'
-        assert 'git_status' in server.capabilities
-        assert 'git_commit' in server.capabilities
-        assert 'git_push' in server.capabilities
-        assert len(server.capabilities) >= 15, "Git should have 15+ capabilities"
+    def test_git_server_not_in_npx_verified_set(self):
+        """0d83ea8 pruned git; it must not reappear as an unverified server."""
+        assert mcp_registry.get_server("git") is None
 
     def test_notion_server_configuration(self):
         """Verify Notion server has correct configuration"""
@@ -175,16 +204,11 @@ class TestMCPServerLifecycle:
         assert fresh_registry.get_server("test-unregister") is None
 
     @pytest.mark.asyncio
-    @patch('subprocess.Popen')
-    async def test_start_server_success(self, mock_popen, fresh_registry):
+    @patch("app.mcp.registry.MCPClient")
+    async def test_start_server_success(self, mock_client_cls, fresh_registry):
         """Test successfully starting an MCP server"""
-        # Mock the subprocess
-        mock_proc = MagicMock()
-        mock_proc.pid = 12345
-        mock_proc.poll.return_value = None  # Process is running
-        mock_popen.return_value = mock_proc
+        mock_client_cls.return_value = _fake_mcp_client()
 
-        # Register a test server
         test_server = MCPServer(
             name="test-start",
             display_name="Test Start",
@@ -195,12 +219,11 @@ class TestMCPServerLifecycle:
         )
         fresh_registry.register_server(test_server)
 
-        # Start the server
         result = await fresh_registry.start_server("test-start")
 
         assert result is True
         assert fresh_registry.is_running("test-start")
-        mock_popen.assert_called_once()
+        mock_client_cls.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_start_nonexistent_server(self, fresh_registry):
@@ -209,16 +232,12 @@ class TestMCPServerLifecycle:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch('subprocess.Popen')
-    async def test_stop_server(self, mock_popen, fresh_registry):
+    @patch("app.mcp.registry.MCPClient")
+    async def test_stop_server(self, mock_client_cls, fresh_registry):
         """Test stopping a running MCP server"""
-        # Mock the subprocess
-        mock_proc = MagicMock()
-        mock_proc.pid = 12345
-        mock_proc.poll.return_value = None
-        mock_popen.return_value = mock_proc
+        client = _fake_mcp_client()
+        mock_client_cls.return_value = client
 
-        # Register and start a test server
         test_server = MCPServer(
             name="test-stop",
             display_name="Test Stop",
@@ -230,21 +249,17 @@ class TestMCPServerLifecycle:
         fresh_registry.register_server(test_server)
         await fresh_registry.start_server("test-stop")
 
-        # Stop the server
         result = await fresh_registry.stop_server("test-stop")
 
         assert result is True
         assert not fresh_registry.is_running("test-stop")
-        mock_proc.terminate.assert_called_once()
+        client.disconnect.assert_awaited()
 
     @pytest.mark.asyncio
-    @patch('subprocess.Popen')
-    async def test_server_already_running(self, mock_popen, fresh_registry):
+    @patch("app.mcp.registry.MCPClient")
+    async def test_server_already_running(self, mock_client_cls, fresh_registry):
         """Test starting a server that's already running"""
-        mock_proc = MagicMock()
-        mock_proc.pid = 12345
-        mock_proc.poll.return_value = None
-        mock_popen.return_value = mock_proc
+        mock_client_cls.return_value = _fake_mcp_client()
 
         test_server = MCPServer(
             name="test-double-start",
@@ -256,13 +271,12 @@ class TestMCPServerLifecycle:
         )
         fresh_registry.register_server(test_server)
 
-        # Start twice
         result1 = await fresh_registry.start_server("test-double-start")
         result2 = await fresh_registry.start_server("test-double-start")
 
         assert result1 is True
-        assert result2 is True  # Should return True, but not start again
-        assert mock_popen.call_count == 1  # Only called once
+        assert result2 is True
+        assert mock_client_cls.call_count == 1
 
     def test_list_running_servers(self, fresh_registry):
         """Test listing running servers"""
@@ -281,19 +295,13 @@ class TestMCPToolInvocation:
         return MCPRegistry()
 
     @pytest.mark.asyncio
-    @patch('subprocess.Popen')
-    async def test_call_tool_stdio_transport(self, mock_popen, fresh_registry):
+    @patch("app.mcp.registry.MCPClient")
+    async def test_call_tool_stdio_transport(self, mock_client_cls, fresh_registry):
         """Test calling a tool via STDIO transport"""
-        # Mock the subprocess
-        mock_proc = MagicMock()
-        mock_proc.pid = 12345
-        mock_proc.poll.return_value = None
-        mock_proc.stdin = MagicMock()
-        mock_proc.stdout = MagicMock()
-        mock_proc.stdout.readline.return_value = b'{"result": {"success": true}}\n'
-        mock_popen.return_value = mock_proc
+        client = _fake_mcp_client()
+        client.call_tool = AsyncMock(return_value={"success": True})
+        mock_client_cls.return_value = client
 
-        # Register test server
         test_server = MCPServer(
             name="test-tool-call",
             display_name="Test Tool Call",
@@ -305,7 +313,6 @@ class TestMCPToolInvocation:
         )
         fresh_registry.register_server(test_server)
 
-        # Call tool (will auto-start server)
         result = await fresh_registry.call_tool(
             "test-tool-call",
             "test_capability",
@@ -377,13 +384,19 @@ class TestMCPServerQueries:
         """Test finding servers by capability"""
         servers = mcp_registry.list_available()
 
-        # Find servers with git capabilities
-        git_servers = [s for s in servers if any('git' in cap.lower() for cap in s['capabilities'])]
-        assert len(git_servers) > 0
+        github = mcp_registry.get_server("github")
+        assert github is not None
+        assert github.name == "github"
 
-        # Find servers with database capabilities
-        db_servers = [s for s in servers if any('query' in cap.lower() or 'database' in cap.lower() for cap in s['capabilities'])]
-        assert len(db_servers) > 0
+        db_names = {
+            s["name"]
+            for s in servers
+            if any(
+                cap in {"query", "list_tables"}
+                for cap in s["capabilities"]
+            )
+        }
+        assert db_names == {"postgres"}
 
     def test_filter_enabled_servers(self):
         """Test filtering enabled servers"""

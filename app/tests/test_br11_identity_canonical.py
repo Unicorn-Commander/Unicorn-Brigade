@@ -1,7 +1,14 @@
+# Executed by Grok (headless lane)
 """BR-1.1 (P-00129) — canonical user_id unification tests.
 
-Runs entirely against a THROWAWAY SQLite DB created under a temp dir — it never
-touches prod/dogfood Postgres. Exercises the two halves of BR-1.1:
+Unmarked tests use a throwaway SQLite DB under a temp dir. Tests marked
+``postgres`` use ``TEST_DATABASE_URL`` (the existing test DSN convention in
+``tests/test_integration.py``) and skip before opening any engine when that
+env is unset — they never fall back to SQLite. Postgres schema is built the
+way production does (``app.db.migrations.run_additive_migrations``, same
+order as ``app.db.database.init_db``), not bare ``create_all``, inside a
+per-test ``test_<uuid>`` schema so scenario B cannot see scenario A's rows.
+Exercises the two halves of BR-1.1:
 
   * ``remap_forked_keycloak_rows`` — the batch migration SQL (portable form that
     prod runs on Postgres), proving forked rows unify with no data loss and that
@@ -21,18 +28,27 @@ Or via pytest: pytest app/tests/test_br11_identity_canonical.py
 """
 
 import asyncio
+import inspect
 import os
+import sqlite3
 import tempfile
 import uuid
 
 import pytest
 from sqlalchemy import event, select, text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.exc import CompileError, OperationalError, UnsupportedCompilationError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
 
-from app.db.database import Base
-from app.db.models import BuilderSession, Conversation, User
-from app.db.migrations import remap_forked_keycloak_rows
 from app.auth.middleware import resolve_canonical_user_id
+from app.db.database import Base
+from app.db.migrations import (
+    MIGRATIONS,
+    remap_forked_keycloak_rows,
+    run_additive_migrations,
+)
+from app.db.models import BuilderSession, Conversation, User
 
 # BR-1.2 added ``org_id NOT NULL DEFAULT current_org_id()`` to conversations /
 # builder_sessions (and friends). ``current_org_id()`` is a Postgres function
@@ -45,20 +61,272 @@ from app.auth.middleware import resolve_canonical_user_id
 _STUB_ORG_ID = "00000000-0000-0000-0000-000000000000"
 
 
-async def _fresh_db():
-    """Create a throwaway on-disk SQLite DB with the full schema. Returns
-    (engine, sessionmaker, path). Caller disposes + unlinks."""
+@compiles(UUID, "sqlite")
+def _sqlite_uuid(type_, compiler, **kw):
+    """Postgres UUID columns are CHAR(36) on the throwaway SQLite harness."""
+    return "CHAR(36)"
+
+
+_POSTGRES_UUID_DDL_TOKENS = ("uuid", "gen_random_uuid")
+_SQLITE_PG_UUID_DDL_ERRORS = (
+    CompileError,
+    UnsupportedCompilationError,
+    OperationalError,
+)
+
+
+def _compiler_or_dbapi_diagnostic(exc: BaseException) -> str:
+    """Compiler / DBAPI message only — never the SQLAlchemy-rendered statement.
+
+    ``str(StatementError)`` appends ``[SQL: ...]``. Matching on that text
+    treats every wrapped error whose statement mentions ``gen_random_uuid()``
+    as a UUID-DDL skip (locked DB, disk I/O, duplicate column). Classify:
+
+    * ``CompileError`` / ``UnsupportedCompilationError``: ``err.args[0]``
+      (compiler message, before any statement is attached).
+    * ``OperationalError``: ``err.orig`` (the ``sqlite3.OperationalError``)
+      via ``orig.args[0]`` / ``str(orig)`` — SQLAlchemy's
+      ``StatementError.orig`` / ``.statement`` split. Never ``str(err)``.
+    """
+    if isinstance(exc, CompileError):
+        return str(exc.args[0]).lower() if exc.args else ""
+    orig = getattr(exc, "orig", None)
+    if not isinstance(orig, sqlite3.OperationalError):
+        return ""
+    if orig.args:
+        return str(orig.args[0]).lower()
+    return str(orig).lower()
+
+
+def _sqlite_cannot_compile_postgres_uuid_ddl(dialect_name: str, exc: BaseException) -> bool:
+    """True only when SQLite fails specifically on Postgres UUID DDL.
+
+    Schema-creation errors that are not this limitation (JSONB, a bad
+    constraint, a locked database, disk I/O, a duplicate column) stay
+    failures — even when the submitted SQL mentions gen_random_uuid().
+    """
+    if dialect_name != "sqlite":
+        return False
+    if not isinstance(exc, _SQLITE_PG_UUID_DDL_ERRORS):
+        return False
+    blob = _compiler_or_dbapi_diagnostic(exc)
+    return any(token in blob for token in _POSTGRES_UUID_DDL_TOKENS)
+
+
+# Existing test DSN convention (tests/test_integration.py::test_database_url).
+_TEST_PG_DSN_ENV = "TEST_DATABASE_URL"
+# engine id -> (dsn, schema) for postgres per-test schemas.
+_IDENTITY_PG_SCHEMAS: dict[int, tuple[str, str]] = {}
+
+
+def _postgres_requested(request) -> bool:
+    """True when the requesting test is marked ``postgres``."""
+    return request.node.get_closest_marker("postgres") is not None
+
+
+def _identity_db_url(*, postgres: bool):
+    """Return ``(engine_url, sqlite_path_or_None)``.
+
+    Postgres-marked runs read ``TEST_DATABASE_URL`` and skip *before* any
+    engine is opened when it is unset. Unmarked runs keep on-disk SQLite.
+    """
+    if postgres:
+        dsn = os.environ.get(_TEST_PG_DSN_ENV)
+        if not dsn:
+            pytest.skip(f"requires PostgreSQL: set {_TEST_PG_DSN_ENV}")
+        return dsn, None
     fd, path = tempfile.mkstemp(prefix="br11_scratch_", suffix=".sqlite")
     os.close(fd)
-    engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
+    return f"sqlite+aiosqlite:///{path}", path
 
-    @event.listens_for(engine.sync_engine, "connect")
-    def _register_current_org_id(dbapi_connection, _record):
-        dbapi_connection.create_function("current_org_id", 0, lambda: _STUB_ORG_ID)
 
+def _official_current_org_id_sql() -> str:
+    """Production ``current_org_id()`` body from ``app.db.migrations.MIGRATIONS``.
+
+    The identity harness must not invent a private copy of this function;
+    create_all does not create it. init_db() applies this SQL before create_all
+    then calls run_additive_migrations — same order as here, on this engine.
+    """
+    needle = "CREATE OR REPLACE FUNCTION current_org_id()"
+    for _version, _desc, sql in MIGRATIONS:
+        statements = [sql] if isinstance(sql, str) else sql
+        for stmt in statements:
+            if needle in stmt:
+                return stmt.strip()
+    raise RuntimeError(
+        "app.db.migrations.MIGRATIONS does not define current_org_id(); "
+        "the identity postgres harness cannot invent one"
+    )
+
+
+def _org_bound_sessionmaker(engine, org_id: str):
+    """Session factory that binds ``app.current_org_id`` the way middleware does.
+
+    ``conversations.org_id`` is ``NOT NULL DEFAULT current_org_id()``. Without
+    the GUC the default is NULL and inserts fail. ``org_id`` is the
+    migration-seeded ``early-access`` row, not a test-invented tenant.
+    """
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    class _BoundSession:
+        def __init__(self):
+            self._raw = factory()
+
+        async def __aenter__(self):
+            session = await self._raw.__aenter__()
+            await session.execute(
+                text("SELECT set_config('app.current_org_id', :o, false)"),
+                {"o": org_id},
+            )
+            return session
+
+        async def __aexit__(self, *exc):
+            return await self._raw.__aexit__(*exc)
+
+    return _BoundSession
+
+
+async def _bootstrap_postgres_identity_schema(engine) -> str:
+    """Production schema path on this throwaway engine, not bare create_all.
+
+    Mirrors ``app.db.database.init_db``: official ``current_org_id()`` SQL,
+    then ``create_all``, then ``run_additive_migrations`` (RLS, FORCE RLS,
+    early-access org). Does not call ``init_db()`` (process-global engine +
+    LOGIN role provisioning). Returns the seeded early-access org id.
+    """
+    fn_sql = _official_current_org_id_sql()
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    return engine, async_sessionmaker(engine, expire_on_commit=False), path
+        await conn.execute(text(fn_sql))
+        await conn.run_sync(
+            lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True)
+        )
+    await run_additive_migrations(engine)
+    async with engine.begin() as conn:
+        org_id = (
+            await conn.execute(
+                text("SELECT id FROM organizations WHERE slug = 'early-access'")
+            )
+        ).scalar()
+        force = (
+            await conn.execute(
+                text(
+                    "SELECT c.relforcerowsecurity FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE c.relname = 'conversations' "
+                    "AND n.nspname = current_schema()"
+                )
+            )
+        ).scalar()
+    if not force:
+        raise RuntimeError(
+            "run_additive_migrations did not FORCE RLS on conversations; "
+            "postgres identity harness is not the production schema"
+        )
+    if org_id is None:
+        raise RuntimeError(
+            "run_additive_migrations did not seed organizations.slug='early-access'"
+        )
+    return str(org_id)
+
+
+async def _drop_postgres_schema(dsn: str, schema: str) -> None:
+    admin = create_async_engine(dsn)
+    try:
+        async with admin.begin() as conn:
+            await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    finally:
+        await admin.dispose()
+
+
+async def _dispose_identity_db(engine, path) -> None:
+    """Dispose the engine, drop a per-test postgres schema, unlink SQLite."""
+    info = _IDENTITY_PG_SCHEMAS.pop(id(engine), None)
+    await engine.dispose()
+    if info is not None:
+        dsn, schema = info
+        await _drop_postgres_schema(dsn, schema)
+    if path is not None:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+async def _open_fresh_db(*, postgres: bool = False):
+    """Create a throwaway identity DB. Returns (engine, sessionmaker, path).
+
+    ``postgres=True`` uses ``TEST_DATABASE_URL`` (skip if unset) and never
+    opens SQLite. Schema is built the way production does (migrations), not
+    bare create_all, inside a per-test ``test_<uuid>`` schema so scenarios
+    do not retain rows. ``postgres=False`` is the unmarked SQLite harness.
+    Caller (or the ``_fresh_db`` fixture) disposes + unlinks.
+    """
+    url, sqlite_path = _identity_db_url(postgres=postgres)
+    engine = None
+    pg_schema = None
+    schema_created = False
+    try:
+        if sqlite_path is not None:
+            engine = create_async_engine(url)
+
+            @event.listens_for(engine.sync_engine, "connect")
+            def _register_pg_compat(dbapi_connection, _record):
+                dbapi_connection.create_function("current_org_id", 0, lambda: _STUB_ORG_ID)
+                dbapi_connection.create_function(
+                    "gen_random_uuid", 0, lambda: str(uuid.uuid4())
+                )
+
+            dialect_name = engine.dialect.name
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            return engine, async_sessionmaker(engine, expire_on_commit=False), sqlite_path
+
+        pg_schema = f"test_{uuid.uuid4().hex}"
+        admin = create_async_engine(url)
+        try:
+            async with admin.begin() as conn:
+                await conn.execute(text(f'CREATE SCHEMA "{pg_schema}"'))
+            schema_created = True
+        finally:
+            await admin.dispose()
+        engine = create_async_engine(
+            url,
+            connect_args={"server_settings": {"search_path": pg_schema}},
+        )
+        _IDENTITY_PG_SCHEMAS[id(engine)] = (url, pg_schema)
+        org_id = await _bootstrap_postgres_identity_schema(engine)
+        return engine, _org_bound_sessionmaker(engine, org_id), None
+    except Exception as exc:
+        dialect_name = engine.dialect.name if engine is not None else None
+        if engine is not None:
+            await _dispose_identity_db(engine, sqlite_path)
+            sqlite_path = None
+        elif schema_created and pg_schema is not None:
+            await _drop_postgres_schema(url, pg_schema)
+        if sqlite_path is not None:
+            try:
+                os.unlink(sqlite_path)
+            except OSError:
+                pass
+        if dialect_name and _sqlite_cannot_compile_postgres_uuid_ddl(dialect_name, exc):
+            pytest.skip(
+                "SQLite cannot compile Postgres-only UUID / gen_random_uuid() DDL "
+                f"({type(exc).__name__}); these identity scenarios require PostgreSQL"
+            )
+        raise
+
+
+@pytest.fixture
+async def _fresh_db(request):
+    """Identity harness DB: PostgreSQL when marked ``postgres`` and a DSN is
+    set, otherwise SQLite. A marked test with no ``TEST_DATABASE_URL`` skips
+    before any engine is created. Each postgres scenario gets its own schema.
+    """
+    engine, Session, path = await _open_fresh_db(postgres=_postgres_requested(request))
+    try:
+        yield engine, Session, path
+    finally:
+        await _dispose_identity_db(engine, path)
 
 
 async def _count(session, table):
@@ -78,9 +346,8 @@ def _norm(v):
         return v
 
 
-async def _scenario_batch_remap(log):
+async def _scenario_batch_remap(log, engine, Session, path):
     """Two synthetic identities that fork today unify via the batch migration."""
-    engine, Session, path = await _fresh_db()
     try:
         kc_sub = str(uuid.uuid4())          # the Keycloak sub (distinct from local id)
         downstream = "projops-passthrough-42"  # opaque downstream id, must survive
@@ -128,7 +395,7 @@ async def _scenario_batch_remap(log):
 
         async with Session() as s:
             rows = (await s.execute(select(Conversation.title, Conversation.user_id))).all()
-            by_title = {t: uid for t, uid in rows}
+            by_title = dict(rows)
             bsub = (await s.execute(select(BuilderSession.user_id))).scalars().all()
             total_after = (await _count(s, "conversations"),
                            await _count(s, "builder_sessions"))
@@ -147,18 +414,18 @@ async def _scenario_batch_remap(log):
             await s.commit()
         async with Session() as s:
             rows2 = (await s.execute(select(Conversation.title, Conversation.user_id))).all()
-        assert {t: u for t, u in rows2} == by_title, "remap must be idempotent"
+        assert dict(rows2) == by_title, "remap must be idempotent"
 
         log.append(f"[batch] local_id={local_id[:8]} sub={kc_sub[:8]} -> unified; "
                    f"downstream+anon preserved; idempotent OK")
     finally:
         await engine.dispose()
-        os.unlink(path)
+        if path is not None:
+            os.unlink(path)
 
 
-async def _scenario_resolver(log):
+async def _scenario_resolver(log, engine, Session, path):
     """KC-bearer and API-key resolve to the SAME local id; claim + edges."""
-    engine, Session, path = await _fresh_db()
     try:
         kc_sub = str(uuid.uuid4())
 
@@ -235,7 +502,8 @@ async def _scenario_resolver(log):
                    f"new-user/collision/emailless edges OK")
     finally:
         await engine.dispose()
-        os.unlink(path)
+        if path is not None:
+            os.unlink(path)
 
 
 def _scenario_memory_alias(log):
@@ -290,22 +558,259 @@ def _scenario_memory_alias(log):
 
 async def _run_all():
     log = []
-    await _scenario_batch_remap(log)
-    await _scenario_resolver(log)
+    db = await _open_fresh_db(postgres=False)
+    await _scenario_batch_remap(log, *db)
+    db = await _open_fresh_db(postgres=False)
+    await _scenario_resolver(log, *db)
     _scenario_memory_alias(log)
     return log
 
 
 # ---- pytest entrypoints ----
 
-@pytest.mark.asyncio
-async def test_batch_remap_unifies_forked_rows():
-    await _scenario_batch_remap([])
+_UUID_BEARING_SQL = (
+    "CREATE TABLE organizations (id CHAR(36) DEFAULT gen_random_uuid() NOT NULL)"
+)
+
+
+def test_schema_skip_only_matches_sqlite_uuid_or_gen_random_uuid():
+    """The BR-1.1 fixture must not turn an unrelated schema error into a skip."""
+    uuid_compile = CompileError("Compiler can't render element of type UUID")
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", uuid_compile) is True
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("postgresql", uuid_compile) is False
+
+    gen_compile = UnsupportedCompilationError(None, "DEFAULT gen_random_uuid()")
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", gen_compile) is True
+
+    for diagnostic in (
+        'near "gen_random_uuid": syntax error',
+        'unrecognized token: "gen_random_uuid"',
+        "no such function: gen_random_uuid",
+    ):
+        true_uuid_ddl = OperationalError(
+            _UUID_BEARING_SQL, {}, sqlite3.OperationalError(diagnostic)
+        )
+        assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", true_uuid_ddl) is True
+        assert _sqlite_cannot_compile_postgres_uuid_ddl("postgresql", true_uuid_ddl) is False
+
+    jsonb_compile = CompileError("Compiler can't render element of type JSONB")
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", jsonb_compile) is False
+
+    generic_op = OperationalError("CREATE TABLE t (id INTEGER)", {}, Exception("syntax error"))
+    assert _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", generic_op) is False
+
+    assert _sqlite_cannot_compile_postgres_uuid_ddl(
+        "sqlite", RuntimeError("gen_random_uuid() exploded")
+    ) is False
+
+
+def test_schema_skip_ignores_statement_text_for_unrelated_operational_errors():
+    """Unrelated DBAPI diagnostics must not skip just because SQL names UUID DDL.
+
+    ``str(OperationalError)`` includes the statement. A locked database, disk
+    I/O error, or duplicate column wrapped with ``gen_random_uuid()`` SQL
+    must still fail the test, not skip.
+    """
+    for diagnostic in (
+        "database is locked",
+        "disk I/O error",
+        "duplicate column name: x",
+    ):
+        sqlite_orig = OperationalError(
+            _UUID_BEARING_SQL, {}, sqlite3.OperationalError(diagnostic)
+        )
+        assert (
+            _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", sqlite_orig) is False
+        ), diagnostic
+        # Astra r3 reproduction: orig is a bare Exception; statement still
+        # contains gen_random_uuid() so str(err) would have matched.
+        wrapped = OperationalError(_UUID_BEARING_SQL, {}, Exception(diagnostic))
+        assert (
+            _sqlite_cannot_compile_postgres_uuid_ddl("sqlite", wrapped) is False
+        ), diagnostic
 
 
 @pytest.mark.asyncio
-async def test_resolver_unifies_kc_and_apikey():
-    await _scenario_resolver([])
+async def test_postgres_marked_without_dsn_skips_before_opening_sqlite(monkeypatch):
+    """Marked postgres path with no TEST_DATABASE_URL must skip before any engine."""
+    monkeypatch.delenv(_TEST_PG_DSN_ENV, raising=False)
+    opened = []
+
+    def fake_create(url, *args, **kwargs):
+        opened.append(url)
+        raise AssertionError(f"create_async_engine must not run, got {url!r}")
+
+    monkeypatch.setattr(
+        "app.tests.test_br11_identity_canonical.create_async_engine", fake_create
+    )
+    with pytest.raises(
+        pytest.skip.Exception, match="requires PostgreSQL: set TEST_DATABASE_URL"
+    ):
+        await _open_fresh_db(postgres=True)
+    assert opened == []
+
+
+@pytest.mark.asyncio
+async def test_postgres_marked_with_dsn_opens_postgres_not_sqlite(monkeypatch):
+    """Marked postgres path with TEST_DATABASE_URL must open that DSN, not SQLite."""
+    dsn = "postgresql+asyncpg://ci:ci@127.0.0.1:1/identity_ci"
+    monkeypatch.setenv(_TEST_PG_DSN_ENV, dsn)
+    opened = []
+
+    def fake_create(url, *args, **kwargs):
+        opened.append(url)
+        raise RuntimeError("stop-before-connect")
+
+    monkeypatch.setattr(
+        "app.tests.test_br11_identity_canonical.create_async_engine", fake_create
+    )
+    with pytest.raises(RuntimeError, match="stop-before-connect"):
+        await _open_fresh_db(postgres=True)
+    assert opened == [dsn]
+    assert all("sqlite" not in str(url) for url in opened)
+
+
+@pytest.mark.asyncio
+async def test_unmarked_path_opens_sqlite_without_dsn(monkeypatch):
+    """Unmarked tests keep SQLite even when TEST_DATABASE_URL is absent."""
+    monkeypatch.delenv(_TEST_PG_DSN_ENV, raising=False)
+    opened = []
+
+    def fake_create(url, *args, **kwargs):
+        opened.append(url)
+        raise RuntimeError("stop-before-connect")
+
+    monkeypatch.setattr(
+        "app.tests.test_br11_identity_canonical.create_async_engine", fake_create
+    )
+    with pytest.raises(RuntimeError, match="stop-before-connect"):
+        await _open_fresh_db(postgres=False)
+    assert len(opened) == 1
+    assert str(opened[0]).startswith("sqlite+aiosqlite:///")
+
+
+def test_identity_postgres_schema_uses_migration_current_org_id_not_a_private_copy():
+    """Postgres bootstrap must use the repo migrations, not a private function."""
+    sql = _official_current_org_id_sql()
+    assert "CREATE OR REPLACE FUNCTION current_org_id()" in sql
+    assert "current_setting('app.current_org_id'" in sql
+    src = inspect.getsource(_bootstrap_postgres_identity_schema)
+    assert "run_additive_migrations" in src
+    assert "nullif(current_setting" not in src
+    assert "AS $$" not in src
+
+
+def test_fresh_db_fixture_follows_postgres_marker():
+    """The ``_fresh_db`` fixture selects Postgres only for marked tests."""
+
+    class _Node:
+        def __init__(self, marked):
+            self._marked = marked
+
+        def get_closest_marker(self, name):
+            return object() if self._marked and name == "postgres" else None
+
+    class _Request:
+        def __init__(self, marked):
+            self.node = _Node(marked)
+
+    assert _postgres_requested(_Request(True)) is True
+    assert _postgres_requested(_Request(False)) is False
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_postgres_schema_applies_migrations_not_bare_create_all(_fresh_db):
+    """create_all does not create current_org_id(), FORCE RLS, or policies."""
+    _engine, Session, _path = _fresh_db
+    async with Session() as s:
+        fn = (
+            await s.execute(
+                text(
+                    "SELECT EXISTS ("
+                    "SELECT 1 FROM pg_proc p "
+                    "JOIN pg_namespace n ON n.oid = p.pronamespace "
+                    "WHERE p.proname = 'current_org_id' "
+                    "AND n.nspname = current_schema())"
+                )
+            )
+        ).scalar()
+        force = (
+            await s.execute(
+                text(
+                    "SELECT c.relforcerowsecurity FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE c.relname = 'conversations' "
+                    "AND n.nspname = current_schema()"
+                )
+            )
+        ).scalar()
+        policy = (
+            await s.execute(
+                text(
+                    "SELECT EXISTS ("
+                    "SELECT 1 FROM pg_policies "
+                    "WHERE tablename = 'conversations' "
+                    "AND policyname = 'conversations_org_isolation' "
+                    "AND schemaname = current_schema())"
+                )
+            )
+        ).scalar()
+    assert fn is True, "current_org_id() missing — migrations did not run"
+    assert force is True, "conversations FORCE RLS missing — bare create_all"
+    assert policy is True, "conversations_org_isolation policy missing"
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_postgres_scenario_b_does_not_see_scenario_a_rows():
+    """A second postgres scenario must not see the first scenario's users."""
+    engine_a, session_a, path_a = await _open_fresh_db(postgres=True)
+    try:
+        async with session_a() as s:
+            s.add(
+                User(
+                    email="scenario-a@x.com",
+                    name="a",
+                    password_hash="NOLOGIN-SSO-ONLY",
+                    role="viewer",
+                    apps=[],
+                    is_active=True,
+                )
+            )
+            await s.commit()
+        async with session_a() as s:
+            assert await _count(s, "users") == 1
+    finally:
+        await _dispose_identity_db(engine_a, path_a)
+
+    engine_b, session_b, path_b = await _open_fresh_db(postgres=True)
+    try:
+        async with session_b() as s:
+            emails = (await s.execute(select(User.email))).scalars().all()
+            leftover = await _count(s, "users")
+        assert "scenario-a@x.com" not in emails
+        assert leftover == 0, (
+            f"scenario B saw {leftover} leftover user(s) from scenario A"
+        )
+    finally:
+        await _dispose_identity_db(engine_b, path_b)
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_batch_remap_unifies_forked_rows(_fresh_db):
+    await _scenario_batch_remap([], *_fresh_db)
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_resolver_unifies_kc_and_apikey(_fresh_db):
+    await _scenario_resolver([], *_fresh_db)
 
 
 def test_memory_dual_read_alias():

@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Async database connection manager using SQLAlchemy 2.0 + asyncpg.
 
@@ -24,13 +25,16 @@ runs as the one (usually superuser) role — RLS exists but is bypassed. That is
 the pre-BR-1.2 behavior and is fine for local work; ``verify_app_role_not_bypassing``
 logs loudly so it is never a silent surprise in a real deployment.
 """
+import asyncio
+import logging
 import os
 import re
-import logging
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import DeclarativeBase
+from contextlib import asynccontextmanager
+
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +163,124 @@ async def _clear_org_context(session: AsyncSession) -> None:
     await session.rollback()
     await session.execute(text("SELECT set_config('app.current_org_id', '', false)"))
     await session.commit()
+
+
+async def _invalidate_pooled_session(session: AsyncSession) -> None:
+    """Discard a connection whose org GUC cannot be proven cleared.
+
+    ``asyncio.shield`` is used HERE and only here: a cancelled streaming
+    generator's next ``await`` would otherwise raise ``CancelledError``
+    before ``invalidate`` runs, returning a possibly org-tainted connection
+    to the pool (the B1 leak). The GUC clear itself is not shielded — a hung
+    rollback must not pin the cancelled generator; we fail safe by discarding
+    the connection instead.
+
+    Shield alone is not enough. It protects the inner task, but a *second*
+    cancellation still unwinds the awaiter, so ``streaming_org_context`` can
+    exit while invalidate is in flight and the caller can close/release the
+    still-org-bound connection (Astra 20f7bf8 on ee6d263). We own the
+    invalidate task and re-await it until it finishes, then re-raise any
+    ``CancelledError`` that arrived while it was running.
+    """
+    pending_cancel: BaseException | None = None
+    current = asyncio.current_task()
+    try:
+        inv = session.invalidate()
+        if asyncio.isfuture(inv):
+            invalidate_task: asyncio.Future = inv
+        else:
+            invalidate_task = asyncio.create_task(inv)
+    except Exception:
+        logger.debug("Session invalidate failed", exc_info=True)
+        return
+
+    while not invalidate_task.done():
+        try:
+            await asyncio.shield(invalidate_task)
+        except asyncio.CancelledError as exc:
+            pending_cancel = exc
+            # 3.11+: catching CancelledError does not clear the task's
+            # cancelling count, so the next await would raise immediately
+            # without letting invalidate run. Drop one cancel, keep waiting,
+            # re-raise after discard finishes.
+            if current is not None and hasattr(current, "uncancel"):
+                current.uncancel()
+        except Exception:
+            logger.debug("Session invalidate failed", exc_info=True)
+            break
+
+    if pending_cancel is not None:
+        raise pending_cancel
+
+
+@asynccontextmanager
+async def streaming_org_context(session: AsyncSession, org_id: str | None):
+    """Re-bind the request's org for FORCE-RLS writes issued from a
+    ``StreamingResponse`` generator body.
+
+    FastAPI >= 0.106 (this repo pins 0.115) exits yield-dependencies BEFORE the
+    response body is streamed. So by the time a ``StreamingResponse`` generator
+    runs, ``get_session``'s teardown has already executed — clearing the
+    connection's ``app.current_org_id`` GUC AND positively nulling
+    ``current_org_id_var`` (see ``_clear_org_context``). A write issued from the
+    generator then finds no bound org: ``ensure_org_context`` fails safe to a
+    no-op, the row lands with ``org_id = current_org_id()`` → NULL, and Postgres
+    rejects it as "new row violates row-level security policy". That is how every
+    streaming agent chat with tool calls silently lost its ``tool_executions``
+    audit rows while the SSE stream itself returned 200.
+
+    Bind the org for the duration of the block so the repository methods'
+    ``ensure_org_context`` can do its job, then POSITIVELY clear it on exit —
+    the same B1 guarantee ``get_session`` gives ordinary requests: no connection
+    may return to the pool carrying this org.
+
+    Fail-safe: with no ``org_id`` (unbound/public caller) this is a no-op. It
+    can never invent an org, so it cannot re-open B1; the write stays correctly
+    refused by RLS.
+
+    Cleanup is cancellation-safe. ``asyncio.CancelledError`` is a
+    ``BaseException``, not ``Exception``: a disconnect that cancels during
+    rollback/clear must still (1) reset the ContextVar and (2) clear the GUC
+    or ``invalidate`` the connection when the clear cannot be confirmed, then
+    re-raise so cancellation is not swallowed. Repeated cancellation while
+    invalidate is in flight must not let this context exit until the
+    connection is discarded (the awaiter is held until the owned invalidate
+    task finishes, then CancelledError is re-raised).
+    """
+    if not org_id:
+        yield
+        return
+    from app.orchestration.event_bus import current_org_id_var
+    token = current_org_id_var.set(str(org_id))
+    try:
+        yield
+    finally:
+        try:
+            await _clear_org_context(session)
+        except BaseException as exc:
+            # Exception *and* CancelledError / GeneratorExit / KeyboardInterrupt.
+            # A connection we failed to clear must NOT go back to the pool
+            # carrying this request's org. Invalidate (shielded), then re-raise
+            # anything that is not a regular Exception so cancellation
+            # propagates. Client disconnects are CancelledError — log those
+            # at debug so every SSE hangup is not a warning.
+            if isinstance(exc, Exception):
+                logger.warning(
+                    "Failed to clear streaming org context; invalidating the session "
+                    "so a possibly org-tainted connection is not pooled.",
+                    exc_info=True,
+                )
+            else:
+                logger.debug(
+                    "Streaming org-context cleanup interrupted; invalidating the "
+                    "session so a possibly org-tainted connection is not pooled.",
+                    exc_info=True,
+                )
+            await _invalidate_pooled_session(session)
+            if not isinstance(exc, Exception):
+                raise
+        finally:
+            current_org_id_var.reset(token)
 
 
 async def get_session() -> AsyncSession:

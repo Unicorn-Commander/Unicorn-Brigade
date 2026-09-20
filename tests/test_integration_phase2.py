@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Integration Tests for Phase 1 & Phase 2 Features
 
@@ -10,11 +11,12 @@ End-to-end tests covering:
 - Multi-agent coordination
 """
 
-import pytest
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-import json
 import asyncio
-from typing import Dict, Any
+import json
+from typing import Any, Dict
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
 
 
 class TestAgentChatIntegration:
@@ -25,7 +27,6 @@ class TestAgentChatIntegration:
     async def test_agent_chat_with_calculator_tool(self):
         """Test agent chat that uses calculator tool"""
         from app.llm.ops_center_client import OpsCenterLLMClient
-        from app.llm.builtin_tools import calculator
 
         # Mock LLM client
         with patch('app.llm.ops_center_client.OpsCenterLLMClient') as mock_client_class:
@@ -51,61 +52,52 @@ class TestAgentChatIntegration:
                 "usage": {"prompt_tokens": 10, "completion_tokens": 5}
             }
 
-            # Simulate tool execution
-            result = calculator(expression="2+2")
-            assert result.success is True
-            assert result.result == 4
+            from app.llm.builtin_tools import calculator_handler
+
+            result = await calculator_handler(expression="2+2")
+            assert result["success"] is True
+            assert result["result"] == 4
 
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_agent_chat_with_web_search_tool(self):
         """Test agent chat that uses web search tool"""
-        from app.llm.builtin_tools import web_search
+        from app.llm.builtin_tools import web_search_handler
 
-        # Mock serper API
-        with patch('httpx.AsyncClient.post') as mock_post:
-            mock_response = Mock()
-            mock_response.json.return_value = {
-                "organic": [
-                    {"title": "Test Result", "snippet": "Test snippet", "link": "https://example.com"}
-                ]
+        async def fake_search(query: str, num_results: int = 5):
+            return {
+                "query": query,
+                "provider": "serper",
+                "results": [
+                    {
+                        "title": "Test Result",
+                        "snippet": "Test snippet",
+                        "link": "https://example.com",
+                    }
+                ],
+                "success": True,
             }
-            mock_response.status_code = 200
-            mock_post.return_value = mock_response
 
-            result = web_search(query="AI news")
-            assert result.success is True
-            assert "organic" in result.result or "results" in str(result.result)
+        with patch("app.llm.builtin_tools._search_serper", side_effect=fake_search):
+            result = await web_search_handler(query="AI news")
+            assert result["success"] is True
+            assert "results" in result
 
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_agent_memory_storage_and_retrieval(self):
         """Test agent storing and retrieving memory"""
-        from app.llm.builtin_tools import memory_store, memory_retrieve
+        from app.llm.builtin_tools import memory_handler
 
-        # Mock memory manager
-        with patch('app.memory.manager.MemoryManager') as mock_manager_class:
-            mock_manager = AsyncMock()
-            mock_manager_class.return_value = mock_manager
+        stored = await memory_handler(
+            operation="set",
+            key="test-user",
+            value={"content": "Test memory content", "metadata": {"type": "test"}},
+        )
+        assert stored["success"] is True
 
-            # Mock store
-            mock_manager.store.return_value = True
-            result = memory_store(
-                user_id="test-user",
-                content="Test memory content",
-                metadata={"type": "test"}
-            )
-            assert result.success is True
-
-            # Mock retrieve
-            mock_manager.retrieve.return_value = [
-                {"content": "Test memory content", "metadata": {"type": "test"}}
-            ]
-            result = memory_retrieve(
-                user_id="test-user",
-                query="test content"
-            )
-            assert result.success is True
+        retrieved = await memory_handler(operation="get", key="test-user")
+        assert retrieved["success"] is True
 
 
 class TestMCPServerIntegration:
@@ -117,22 +109,7 @@ class TestMCPServerIntegration:
         """Test calling GitHub MCP server tool"""
         from app.mcp.registry import mcp_registry
 
-        # Mock subprocess for MCP server
-        with patch('subprocess.Popen') as mock_popen:
-            mock_proc = MagicMock()
-            mock_proc.pid = 12345
-            mock_proc.poll.return_value = None
-            mock_proc.stdin = MagicMock()
-            mock_proc.stdout = MagicMock()
-            mock_proc.stdout.readline.return_value = json.dumps({
-                "result": {
-                    "repository": "test-repo",
-                    "created": True
-                }
-            }).encode() + b'\n'
-            mock_popen.return_value = mock_proc
-
-            # Test tool call
+        with patch.object(mcp_registry, "start_server", new=AsyncMock(return_value=False)):
             result = await mcp_registry.call_tool(
                 "github",
                 "create_repository",
@@ -148,20 +125,7 @@ class TestMCPServerIntegration:
         """Test calling Filesystem MCP server tool"""
         from app.mcp.registry import mcp_registry
 
-        with patch('subprocess.Popen') as mock_popen:
-            mock_proc = MagicMock()
-            mock_proc.pid = 12345
-            mock_proc.poll.return_value = None
-            mock_proc.stdin = MagicMock()
-            mock_proc.stdout = MagicMock()
-            mock_proc.stdout.readline.return_value = json.dumps({
-                "result": {
-                    "content": "file contents here",
-                    "path": "/test/file.txt"
-                }
-            }).encode() + b'\n'
-            mock_popen.return_value = mock_proc
-
+        with patch.object(mcp_registry, "start_server", new=AsyncMock(return_value=False)):
             result = await mcp_registry.call_tool(
                 "filesystem",
                 "read_file",
@@ -177,22 +141,7 @@ class TestMCPServerIntegration:
         """Test calling Stripe MCP server tool (Phase 1)"""
         from app.mcp.registry import mcp_registry
 
-        with patch('subprocess.Popen') as mock_popen:
-            mock_proc = MagicMock()
-            mock_proc.pid = 12345
-            mock_proc.poll.return_value = None
-            mock_proc.stdin = MagicMock()
-            mock_proc.stdout = MagicMock()
-            mock_proc.stdout.readline.return_value = json.dumps({
-                "result": {
-                    "id": "pi_test123",
-                    "amount": 1000,
-                    "currency": "usd",
-                    "status": "succeeded"
-                }
-            }).encode() + b'\n'
-            mock_popen.return_value = mock_proc
-
+        with patch.object(mcp_registry, "start_server", new=AsyncMock(return_value=False)):
             result = await mcp_registry.call_tool(
                 "stripe",
                 "create_payment_intent",
@@ -211,26 +160,19 @@ class TestA2AProtocolIntegration:
     @pytest.mark.integration
     async def test_a2a_agent_discovery(self):
         """Test A2A agent discovery (agent card)"""
-        from app.protocols.a2a import get_agent_card
+        from app.protocols.a2a import create_agent_card
 
-        # Mock database query for agent
-        with patch('app.db.repositories.AgentRepository.get_by_id') as mock_get:
-            mock_agent = Mock()
-            mock_agent.id = "test-agent"
-            mock_agent.name = "test-agent"
-            mock_agent.display_name = "Test Agent"
-            mock_agent.description = "Test agent for A2A"
-            mock_agent.capabilities = ["test"]
-            mock_agent.tools = ["calculator"]
-            mock_agent.model = "gpt-4o-mini"
-            mock_get.return_value = mock_agent
+        card = create_agent_card(
+            agent_id="test-agent",
+            name="Test Agent",
+            description="Test agent for A2A",
+            base_url="https://example.test",
+            capabilities=[{"name": "test", "description": "test capability"}],
+        )
 
-            # Get agent card
-            card = await get_agent_card("test-agent")
-
-            assert card is not None
-            assert "id" in card
-            assert "capabilities" in card
+        assert card is not None
+        assert card.id == "test-agent"
+        assert card.capabilities
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -267,8 +209,8 @@ class TestOrchestrationIntegration:
     async def test_orchestration_event_emission(self):
         """Test emitting orchestration events"""
         from app.orchestration import (
-            emit_agent_started,
             emit_agent_completed,
+            emit_agent_started,
             emit_tool_call,
             emit_tool_result,
         )
@@ -286,16 +228,15 @@ class TestOrchestrationIntegration:
     @pytest.mark.integration
     async def test_orchestration_state_tracking(self):
         """Test orchestration state tracking"""
-        from app.orchestration.event_bus import orchestration_bus
+        from app.orchestration.event_bus import event_bus
 
-        # Get current state
-        state = orchestration_bus.get_state()
+        state = event_bus.get_state_snapshot()
 
         assert state is not None
-        assert "agents" in state
+        assert "agentStates" in state
         assert "missions" in state
-        assert isinstance(state["agents"], dict)
-        assert isinstance(state["missions"], dict)
+        assert isinstance(state["agentStates"], list)
+        assert isinstance(state["missions"], list)
 
 
 class TestWorkflowIntegration:
@@ -305,8 +246,8 @@ class TestWorkflowIntegration:
     @pytest.mark.integration
     async def test_workflow_validation(self):
         """Test workflow definition validation"""
-        from app.workflows.templates import INVESTMENT_DUE_DILIGENCE
         from app.workflows.schema import WorkflowDefinition
+        from app.workflows.templates import INVESTMENT_DUE_DILIGENCE
 
         workflow = INVESTMENT_DUE_DILIGENCE
 
@@ -444,12 +385,11 @@ class TestErrorHandling:
     @pytest.mark.integration
     async def test_tool_execution_error_handling(self):
         """Test error handling when tool execution fails"""
-        from app.llm.builtin_tools import calculator
+        from app.llm.builtin_tools import calculator_handler
 
-        # Invalid expression should return error
-        result = calculator(expression="invalid / expression")
-        assert result.success is False
-        assert result.error is not None
+        result = await calculator_handler(expression="invalid / expression")
+        assert result["success"] is False
+        assert result.get("error") is not None
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -489,50 +429,49 @@ class TestToolChaining:
     @pytest.mark.integration
     async def test_web_search_then_memory_store(self):
         """Test searching web then storing results in memory"""
-        from app.llm.builtin_tools import web_search, memory_store
+        from app.llm.builtin_tools import memory_handler, web_search_handler
 
-        # Mock web search
-        with patch('httpx.AsyncClient.post') as mock_post:
-            mock_response = Mock()
-            mock_response.json.return_value = {
-                "organic": [
-                    {"title": "AI News", "snippet": "Latest AI developments", "link": "https://example.com"}
-                ]
+        async def fake_search(query: str, num_results: int = 5):
+            return {
+                "query": query,
+                "provider": "serper",
+                "results": [
+                    {
+                        "title": "AI News",
+                        "snippet": "Latest AI developments",
+                        "link": "https://example.com",
+                    }
+                ],
+                "success": True,
             }
-            mock_response.status_code = 200
-            mock_post.return_value = mock_response
 
-            search_result = web_search(query="AI developments")
-            assert search_result.success is True
+        with patch("app.llm.builtin_tools._search_serper", side_effect=fake_search):
+            search_result = await web_search_handler(query="AI developments")
+            assert search_result["success"] is True
 
-            # Mock memory storage
-            with patch('app.memory.manager.MemoryManager.store') as mock_store:
-                mock_store.return_value = True
-
-                memory_result = memory_store(
-                    user_id="test-user",
-                    content=str(search_result.result),
-                    metadata={"source": "web_search", "query": "AI developments"}
-                )
-
-                assert memory_result.success is True
+            memory_result = await memory_handler(
+                operation="set",
+                key="web_search:AI developments",
+                value=search_result.get("results"),
+            )
+            assert memory_result["success"] is True
 
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_calculator_then_json_formatting(self):
         """Test calculating then formatting result as JSON"""
-        from app.llm.builtin_tools import calculator, json_format
+        from app.llm.builtin_tools import calculator_handler, json_handler
 
-        # Calculate
-        calc_result = calculator(expression="(100 * 1.08) - 50")
-        assert calc_result.success is True
+        calc_result = await calculator_handler(expression="(100 * 1.08) - 50")
+        assert calc_result["success"] is True
 
-        # Format as JSON
-        json_result = json_format(data={"result": calc_result.result, "calculation": "(100 * 1.08) - 50"})
-        assert json_result.success is True
-        assert isinstance(json_result.result, str)
-        # Should be valid JSON
-        parsed = json.loads(json_result.result)
+        json_result = await json_handler(
+            operation="stringify",
+            data={"result": calc_result["result"], "calculation": "(100 * 1.08) - 50"},
+        )
+        assert json_result["success"] is True
+        assert isinstance(json_result["result"], str)
+        parsed = json.loads(json_result["result"])
         assert "result" in parsed
 
 
@@ -544,16 +483,16 @@ class TestPerformanceBasics:
     @pytest.mark.slow
     async def test_calculator_performance(self):
         """Test calculator tool performance"""
-        from app.llm.builtin_tools import calculator
         import time
+
+        from app.llm.builtin_tools import calculator_handler
 
         start = time.time()
         for i in range(100):
-            result = calculator(expression=f"{i} + {i}")
-            assert result.success is True
+            result = await calculator_handler(expression=f"{i} + {i}")
+            assert result["success"] is True
         end = time.time()
 
-        # Should complete 100 calculations in < 1 second
         assert end - start < 1.0
 
     @pytest.mark.asyncio
@@ -561,16 +500,16 @@ class TestPerformanceBasics:
     @pytest.mark.slow
     async def test_json_format_performance(self):
         """Test JSON formatting performance"""
-        from app.llm.builtin_tools import json_format
         import time
+
+        from app.llm.builtin_tools import json_handler
 
         test_data = {"key": "value", "number": 123, "nested": {"a": 1, "b": 2}}
 
         start = time.time()
-        for i in range(100):
-            result = json_format(data=test_data)
-            assert result.success is True
+        for _i in range(100):
+            result = await json_handler(operation="stringify", data=test_data)
+            assert result["success"] is True
         end = time.time()
 
-        # Should format 100 JSON objects in < 1 second
         assert end - start < 1.0

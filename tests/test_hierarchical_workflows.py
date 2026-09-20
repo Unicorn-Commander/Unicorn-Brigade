@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Integration tests for the Hierarchical Workflow System.
 
@@ -9,13 +10,12 @@ Tests the 3-tier agent hierarchy:
 Run with: pytest tests/test_hierarchical_workflows.py -v
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
 import json
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
-
 
 # =============================================================================
 # FIXTURES
@@ -75,12 +75,23 @@ class TestModelConfig:
 
         config = ModelConfig()
 
-        assert config.orchestrator_model == "openai/gpt-4o-mini"
-        assert config.default_team_lead_model == "ollama/llama3.1:8b"
-        assert config.default_worker_model == "ollama/llama3.2:3b"
+        # Production defaults from 61c26c68fcd555cb636b435972f6c2625ca55f8d
+        # ("feat: Update hierarchical architecture with production model
+        # configuration"). A nonempty typo must fail.
+        assert config.orchestrator_model == "anthropic/claude-opus-4-5-20251101"
+        assert config.default_team_lead_model == "openai/gpt-oss-120b"
+        assert config.default_worker_model == "ibm/granite-3.3-2b-instruct"
         assert config.enable_local_models is True
-        assert "research" in config.team_lead_models
-        assert "finance" in config.team_lead_models
+        assert config.team_lead_models == {
+            "research": "openai/gpt-oss-120b",
+            "finance": "openai/gpt-oss-120b",
+            "content": "openai/gpt-oss-120b",
+            "sales": "openai/gpt-oss-120b",
+            "devops": "openai/gpt-oss-120b",
+            "legal": "openai/gpt-oss-120b",
+            "medical": "openai/gpt-oss-120b",
+            "investigation": "openai/gpt-oss-120b",
+        }
 
     def test_model_config_with_custom_values(self):
         """Test ModelConfig with custom model assignments"""
@@ -106,13 +117,13 @@ class TestModelConfig:
     def test_preset_configurations_load_correctly(self):
         """Test that preset configurations are properly defined"""
         from app.workflows import (
+            CONFIG_PRESETS,
             COST_OPTIMIZED_CONFIG,
-            QUALITY_OPTIMIZED_CONFIG,
+            FINANCE_SPECIALIZED_CONFIG,
             FULL_API_CONFIG,
             FULL_LOCAL_CONFIG,
-            FINANCE_SPECIALIZED_CONFIG,
             LEGAL_SPECIALIZED_CONFIG,
-            CONFIG_PRESETS,
+            QUALITY_OPTIMIZED_CONFIG,
         )
 
         # Check all presets exist
@@ -301,9 +312,10 @@ class TestModelConfig:
         )
         assert config.orchestrator_model == "anthropic/claude-3.5-sonnet"
 
-        # Default config
+        # Default config is the 61c26c6 production orchestrator, not "whatever
+        # ModelConfig() currently returns".
         config = create_config_from_request()
-        assert config.orchestrator_model == "openai/gpt-4o-mini"
+        assert config.orchestrator_model == "anthropic/claude-opus-4-5-20251101"
 
     def test_list_available_presets(self):
         """Test listing all available presets"""
@@ -314,20 +326,21 @@ class TestModelConfig:
         assert isinstance(presets, dict)
         assert len(presets) >= 4  # At least cost, quality, full_api, full_local
 
-        for name, info in presets.items():
+        for _name, info in presets.items():
             assert "orchestrator_model" in info
             assert "enable_local_models" in info
             assert "description" in info
 
     def test_model_alias_resolution(self):
         """Test that model aliases are resolved correctly"""
-        from app.workflows import ModelConfig, MODEL_ALIASES
+        from app.workflows import MODEL_ALIASES, ModelConfig
 
         # Use alias in config
         config = ModelConfig(orchestrator_model="gpt-4o")
 
         # Should be resolved to full name
-        assert config.orchestrator_model == MODEL_ALIASES.get("gpt-4o", "gpt-4o")
+        assert config.orchestrator_model == "openai/gpt-4o"
+        assert MODEL_ALIASES["gpt-4o"] == "openai/gpt-4o"
 
     def test_model_tier_detection(self):
         """Test detection of model tier (api vs local)"""
@@ -397,7 +410,7 @@ class TestWorkflowEngine:
 
     def test_workflow_engine_initialization_with_model_config(self, mock_llm_client, mock_event_bus):
         """Test WorkflowEngine initialization with ModelConfig"""
-        from app.workflows import WorkflowEngine, ModelConfig
+        from app.workflows import ModelConfig, WorkflowEngine
 
         config = ModelConfig(
             orchestrator_model="openai/gpt-4o",
@@ -411,7 +424,7 @@ class TestWorkflowEngine:
 
     def test_get_model_config_returns_correct_config(self, mock_llm_client, mock_event_bus):
         """Test get_model_config() returns the current configuration"""
-        from app.workflows import WorkflowEngine, ModelConfig
+        from app.workflows import ModelConfig, WorkflowEngine
 
         config = ModelConfig(orchestrator_model="anthropic/claude-3.5-sonnet")
         engine = WorkflowEngine(llm_client=mock_llm_client, model_config=config)
@@ -422,7 +435,7 @@ class TestWorkflowEngine:
 
     def test_update_model_config(self, mock_llm_client, mock_event_bus):
         """Test update_model_config() updates the configuration"""
-        from app.workflows import WorkflowEngine, ModelConfig
+        from app.workflows import ModelConfig, WorkflowEngine
 
         engine = WorkflowEngine(llm_client=mock_llm_client)
         assert engine.orchestrator_model == "openai/gpt-4o-mini"
@@ -528,10 +541,10 @@ class TestSchemas:
     def test_workflow_definition_to_dict(self):
         """Test WorkflowDefinition serialization"""
         from app.workflows import (
-            WorkflowDefinition,
-            WorkflowStep,
             Checkpoint,
             CheckpointType,
+            WorkflowDefinition,
+            WorkflowStep,
         )
 
         workflow = WorkflowDefinition(
@@ -576,7 +589,7 @@ class TestSchemas:
 
     def test_worker_spec_to_dict(self):
         """Test WorkerSpec serialization"""
-        from app.workflows import WorkerSpec, ModelTier
+        from app.workflows import ModelTier, WorkerSpec
 
         worker = WorkerSpec(
             id="test-worker",
@@ -641,7 +654,9 @@ class TestAPIRoutes:
     def test_app(self, mock_llm_client):
         """Create test FastAPI app with mocked dependencies"""
         from fastapi import FastAPI
-        from app.api.hierarchical_routes import router, init_hierarchical_routes
+
+        from app.api.hierarchical_routes import init_hierarchical_routes, router
+        from tests.http_auth import install_test_auth
 
         # Mock the event bus
         with patch("app.workflows.engine.event_bus") as mock_bus:
@@ -649,30 +664,11 @@ class TestAPIRoutes:
             mock_mission.id = "test-mission-123"
             mock_bus.create_mission.return_value = mock_mission
 
-            # Mock auth middleware
-            with patch("app.api.hierarchical_routes.require_api_key") as mock_api_key, \
-                 patch("app.api.hierarchical_routes.require_operator") as mock_operator, \
-                 patch("app.api.hierarchical_routes.require_admin") as mock_admin:
-
-                # Make auth return a mock user
-                mock_user = MagicMock()
-                mock_user.user_id = "test-user"
-                mock_user.role = "admin"
-
-                async def mock_auth():
-                    return mock_user
-
-                mock_api_key.return_value = mock_auth
-                mock_operator.return_value = mock_auth
-                mock_admin.return_value = mock_auth
-
-                app = FastAPI()
-                app.include_router(router, prefix="/api/v1")
-
-                # Initialize with mock LLM client
-                init_hierarchical_routes(mock_llm_client, enable_local_models=True)
-
-                yield TestClient(app)
+            app = FastAPI()
+            app.include_router(router, prefix="/api/v1")
+            install_test_auth(app)
+            init_hierarchical_routes(mock_llm_client, enable_local_models=True)
+            yield TestClient(app)
 
     def test_get_templates_lists_workflows(self, test_app):
         """Test GET /hierarchical/templates lists workflows"""
@@ -937,14 +933,24 @@ class TestTeamLeadsAndWorkers:
         assert all(hasattr(w, "id") for w in workers)
 
     def test_workers_have_valid_model_references(self):
-        """Test all workers reference valid local models"""
+        """Test all workers reference the production model IDs from 61c26c6."""
         from app.workflows import ALL_WORKERS
 
-        valid_prefixes = ["ollama/", "openai/", "anthropic/", "google/"]
+        expected_worker_models = {
+            "ibm/granite-3.3-2b-instruct",
+            "qwen/qwen3-vl-30b-a3b",
+            "openai/gpt-oss-120b",
+            "ollama/tinyllama:1.1b",
+            "ollama/qwen2.5-math:1.5b",
+            "ollama/gemma2:9b",
+            "ollama/mistral:7b",
+        }
 
         for worker_id, worker in ALL_WORKERS.items():
-            has_valid_prefix = any(worker.model.startswith(prefix) for prefix in valid_prefixes)
-            assert has_valid_prefix, f"Worker {worker_id} has invalid model: {worker.model}"
+            assert worker.model in expected_worker_models, (
+                f"Worker {worker_id} has unexpected model: {worker.model}"
+            )
+        assert {worker.model for worker in ALL_WORKERS.values()} == expected_worker_models
 
 
 # =============================================================================
@@ -974,7 +980,7 @@ class TestWorkflowTemplates:
 
     def test_get_workflow_function(self):
         """Test get_workflow helper function"""
-        from app.workflows.templates import get_workflow, ALL_WORKFLOWS
+        from app.workflows.templates import ALL_WORKFLOWS, get_workflow
 
         if not ALL_WORKFLOWS:
             pytest.skip("No workflows available for testing")
@@ -1001,8 +1007,8 @@ class TestWorkflowTemplates:
 
     def test_workflow_steps_reference_valid_executors(self):
         """Test workflow steps reference valid team leads or orchestrator"""
-        from app.workflows.templates import ALL_WORKFLOWS
         from app.workflows import ALL_TEAM_LEADS
+        from app.workflows.templates import ALL_WORKFLOWS
 
         valid_executors = set(ALL_TEAM_LEADS.keys())
         valid_executors.add("orchestrator")
@@ -1018,7 +1024,7 @@ class TestWorkflowTemplates:
                 is_valid = (
                     executor in valid_executors or
                     executor == "orchestrator" or
-                    executor.replace("-lead", "") in [l.domain for l in ALL_TEAM_LEADS.values()]
+                    executor.replace("-lead", "") in [lead.domain for lead in ALL_TEAM_LEADS.values()]
                 )
                 assert is_valid, f"Workflow {workflow_id} step {step.id} has invalid executor: {executor}"
 
