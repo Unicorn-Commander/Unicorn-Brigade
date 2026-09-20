@@ -22,6 +22,20 @@ from app.mcp.registry import (
 )
 
 
+def _fake_mcp_client() -> MagicMock:
+    """MCPClient stand-in so lifecycle tests never spawn npx."""
+    client = MagicMock()
+    client._connected = True
+    client.get_tools.return_value = []
+    client.connect = AsyncMock()
+    client.disconnect = AsyncMock()
+    process = MagicMock()
+    process.pid = 12345
+    process.poll.return_value = None
+    client._process = process
+    return client
+
+
 class TestMCPServerConfiguration:
     """Test MCP server configuration and registration"""
 
@@ -187,16 +201,11 @@ class TestMCPServerLifecycle:
         assert fresh_registry.get_server("test-unregister") is None
 
     @pytest.mark.asyncio
-    @patch('subprocess.Popen')
-    async def test_start_server_success(self, mock_popen, fresh_registry):
+    @patch("app.mcp.registry.MCPClient")
+    async def test_start_server_success(self, mock_client_cls, fresh_registry):
         """Test successfully starting an MCP server"""
-        # Mock the subprocess
-        mock_proc = MagicMock()
-        mock_proc.pid = 12345
-        mock_proc.poll.return_value = None  # Process is running
-        mock_popen.return_value = mock_proc
+        mock_client_cls.return_value = _fake_mcp_client()
 
-        # Register a test server
         test_server = MCPServer(
             name="test-start",
             display_name="Test Start",
@@ -207,12 +216,11 @@ class TestMCPServerLifecycle:
         )
         fresh_registry.register_server(test_server)
 
-        # Start the server
         result = await fresh_registry.start_server("test-start")
 
         assert result is True
         assert fresh_registry.is_running("test-start")
-        mock_popen.assert_called_once()
+        mock_client_cls.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_start_nonexistent_server(self, fresh_registry):
@@ -221,16 +229,12 @@ class TestMCPServerLifecycle:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch('subprocess.Popen')
-    async def test_stop_server(self, mock_popen, fresh_registry):
+    @patch("app.mcp.registry.MCPClient")
+    async def test_stop_server(self, mock_client_cls, fresh_registry):
         """Test stopping a running MCP server"""
-        # Mock the subprocess
-        mock_proc = MagicMock()
-        mock_proc.pid = 12345
-        mock_proc.poll.return_value = None
-        mock_popen.return_value = mock_proc
+        client = _fake_mcp_client()
+        mock_client_cls.return_value = client
 
-        # Register and start a test server
         test_server = MCPServer(
             name="test-stop",
             display_name="Test Stop",
@@ -242,21 +246,17 @@ class TestMCPServerLifecycle:
         fresh_registry.register_server(test_server)
         await fresh_registry.start_server("test-stop")
 
-        # Stop the server
         result = await fresh_registry.stop_server("test-stop")
 
         assert result is True
         assert not fresh_registry.is_running("test-stop")
-        mock_proc.terminate.assert_called_once()
+        client.disconnect.assert_awaited()
 
     @pytest.mark.asyncio
-    @patch('subprocess.Popen')
-    async def test_server_already_running(self, mock_popen, fresh_registry):
+    @patch("app.mcp.registry.MCPClient")
+    async def test_server_already_running(self, mock_client_cls, fresh_registry):
         """Test starting a server that's already running"""
-        mock_proc = MagicMock()
-        mock_proc.pid = 12345
-        mock_proc.poll.return_value = None
-        mock_popen.return_value = mock_proc
+        mock_client_cls.return_value = _fake_mcp_client()
 
         test_server = MCPServer(
             name="test-double-start",
@@ -268,13 +268,12 @@ class TestMCPServerLifecycle:
         )
         fresh_registry.register_server(test_server)
 
-        # Start twice
         result1 = await fresh_registry.start_server("test-double-start")
         result2 = await fresh_registry.start_server("test-double-start")
 
         assert result1 is True
-        assert result2 is True  # Should return True, but not start again
-        assert mock_popen.call_count == 1  # Only called once
+        assert result2 is True
+        assert mock_client_cls.call_count == 1
 
     def test_list_running_servers(self, fresh_registry):
         """Test listing running servers"""
@@ -293,19 +292,13 @@ class TestMCPToolInvocation:
         return MCPRegistry()
 
     @pytest.mark.asyncio
-    @patch('subprocess.Popen')
-    async def test_call_tool_stdio_transport(self, mock_popen, fresh_registry):
+    @patch("app.mcp.registry.MCPClient")
+    async def test_call_tool_stdio_transport(self, mock_client_cls, fresh_registry):
         """Test calling a tool via STDIO transport"""
-        # Mock the subprocess
-        mock_proc = MagicMock()
-        mock_proc.pid = 12345
-        mock_proc.poll.return_value = None
-        mock_proc.stdin = MagicMock()
-        mock_proc.stdout = MagicMock()
-        mock_proc.stdout.readline.return_value = b'{"result": {"success": true}}\n'
-        mock_popen.return_value = mock_proc
+        client = _fake_mcp_client()
+        client.call_tool = AsyncMock(return_value={"success": True})
+        mock_client_cls.return_value = client
 
-        # Register test server
         test_server = MCPServer(
             name="test-tool-call",
             display_name="Test Tool Call",
@@ -317,7 +310,6 @@ class TestMCPToolInvocation:
         )
         fresh_registry.register_server(test_server)
 
-        # Call tool (will auto-start server)
         result = await fresh_registry.call_tool(
             "test-tool-call",
             "test_capability",
