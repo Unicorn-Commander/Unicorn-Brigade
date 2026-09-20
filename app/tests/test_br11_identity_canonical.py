@@ -4,8 +4,10 @@
 Unmarked tests use a throwaway SQLite DB under a temp dir. Tests marked
 ``postgres`` use ``TEST_DATABASE_URL`` (the existing test DSN convention in
 ``tests/test_integration.py``) and skip before opening any engine when that
-env is unset — they never fall back to SQLite. Exercises the two halves of
-BR-1.1:
+env is unset — they never fall back to SQLite. Postgres schema is built the
+way production does (``app.db.migrations.run_additive_migrations``, same
+order as ``app.db.database.init_db``), not bare ``create_all``. Exercises
+the two halves of BR-1.1:
 
   * ``remap_forked_keycloak_rows`` — the batch migration SQL (portable form that
     prod runs on Postgres), proving forked rows unify with no data loss and that
@@ -25,6 +27,7 @@ Or via pytest: pytest app/tests/test_br11_identity_canonical.py
 """
 
 import asyncio
+import inspect
 import os
 import sqlite3
 import tempfile
@@ -39,7 +42,11 @@ from sqlalchemy.ext.compiler import compiles
 
 from app.auth.middleware import resolve_canonical_user_id
 from app.db.database import Base
-from app.db.migrations import remap_forked_keycloak_rows
+from app.db.migrations import (
+    MIGRATIONS,
+    remap_forked_keycloak_rows,
+    run_additive_migrations,
+)
 from app.db.models import BuilderSession, Conversation, User
 
 # BR-1.2 added ``org_id NOT NULL DEFAULT current_org_id()`` to conversations /
@@ -130,11 +137,101 @@ def _identity_db_url(*, postgres: bool):
     return f"sqlite+aiosqlite:///{path}", path
 
 
+def _official_current_org_id_sql() -> str:
+    """Production ``current_org_id()`` body from ``app.db.migrations.MIGRATIONS``.
+
+    The identity harness must not invent a private copy of this function;
+    create_all does not create it. init_db() applies this SQL before create_all
+    then calls run_additive_migrations — same order as here, on this engine.
+    """
+    needle = "CREATE OR REPLACE FUNCTION current_org_id()"
+    for _version, _desc, sql in MIGRATIONS:
+        statements = [sql] if isinstance(sql, str) else sql
+        for stmt in statements:
+            if needle in stmt:
+                return stmt.strip()
+    raise RuntimeError(
+        "app.db.migrations.MIGRATIONS does not define current_org_id(); "
+        "the identity postgres harness cannot invent one"
+    )
+
+
+def _org_bound_sessionmaker(engine, org_id: str):
+    """Session factory that binds ``app.current_org_id`` the way middleware does.
+
+    ``conversations.org_id`` is ``NOT NULL DEFAULT current_org_id()``. Without
+    the GUC the default is NULL and inserts fail. ``org_id`` is the
+    migration-seeded ``early-access`` row, not a test-invented tenant.
+    """
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    class _BoundSession:
+        def __init__(self):
+            self._raw = factory()
+
+        async def __aenter__(self):
+            session = await self._raw.__aenter__()
+            await session.execute(
+                text("SELECT set_config('app.current_org_id', :o, false)"),
+                {"o": org_id},
+            )
+            return session
+
+        async def __aexit__(self, *exc):
+            return await self._raw.__aexit__(*exc)
+
+    return _BoundSession
+
+
+async def _bootstrap_postgres_identity_schema(engine) -> str:
+    """Production schema path on this throwaway engine, not bare create_all.
+
+    Mirrors ``app.db.database.init_db``: official ``current_org_id()`` SQL,
+    then ``create_all``, then ``run_additive_migrations`` (RLS, FORCE RLS,
+    early-access org). Does not call ``init_db()`` (process-global engine +
+    LOGIN role provisioning). Returns the seeded early-access org id.
+    """
+    fn_sql = _official_current_org_id_sql()
+    async with engine.begin() as conn:
+        await conn.execute(text(fn_sql))
+        await conn.run_sync(
+            lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True)
+        )
+    await run_additive_migrations(engine)
+    async with engine.begin() as conn:
+        org_id = (
+            await conn.execute(
+                text("SELECT id FROM organizations WHERE slug = 'early-access'")
+            )
+        ).scalar()
+        force = (
+            await conn.execute(
+                text(
+                    "SELECT c.relforcerowsecurity FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE c.relname = 'conversations' "
+                    "AND n.nspname = current_schema()"
+                )
+            )
+        ).scalar()
+    if not force:
+        raise RuntimeError(
+            "run_additive_migrations did not FORCE RLS on conversations; "
+            "postgres identity harness is not the production schema"
+        )
+    if org_id is None:
+        raise RuntimeError(
+            "run_additive_migrations did not seed organizations.slug='early-access'"
+        )
+    return str(org_id)
+
+
 async def _open_fresh_db(*, postgres: bool = False):
     """Create a throwaway identity DB. Returns (engine, sessionmaker, path).
 
     ``postgres=True`` uses ``TEST_DATABASE_URL`` (skip if unset) and never
-    opens SQLite. ``postgres=False`` is the unmarked SQLite harness.
+    opens SQLite. Schema is built the way production does (migrations), not
+    bare create_all. ``postgres=False`` is the unmarked SQLite harness.
     Caller (or the ``_fresh_db`` fixture) disposes + unlinks.
     """
     url, sqlite_path = _identity_db_url(postgres=postgres)
@@ -150,9 +247,13 @@ async def _open_fresh_db(*, postgres: bool = False):
                     "gen_random_uuid", 0, lambda: str(uuid.uuid4())
                 )
 
-        dialect_name = engine.dialect.name
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            dialect_name = engine.dialect.name
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            return engine, async_sessionmaker(engine, expire_on_commit=False), sqlite_path
+
+        org_id = await _bootstrap_postgres_identity_schema(engine)
+        return engine, _org_bound_sessionmaker(engine, org_id), None
     except Exception as exc:
         dialect_name = engine.dialect.name if engine is not None else None
         if engine is not None:
@@ -168,7 +269,6 @@ async def _open_fresh_db(*, postgres: bool = False):
                 f"({type(exc).__name__}); these identity scenarios require PostgreSQL"
             )
         raise
-    return engine, async_sessionmaker(engine, expire_on_commit=False), sqlite_path
 
 
 @pytest.fixture
@@ -549,6 +649,17 @@ async def test_unmarked_path_opens_sqlite_without_dsn(monkeypatch):
     assert str(opened[0]).startswith("sqlite+aiosqlite:///")
 
 
+def test_identity_postgres_schema_uses_migration_current_org_id_not_a_private_copy():
+    """Postgres bootstrap must use the repo migrations, not a private function."""
+    sql = _official_current_org_id_sql()
+    assert "CREATE OR REPLACE FUNCTION current_org_id()" in sql
+    assert "current_setting('app.current_org_id'" in sql
+    src = inspect.getsource(_bootstrap_postgres_identity_schema)
+    assert "run_additive_migrations" in src
+    assert "nullif(current_setting" not in src
+    assert "AS $$" not in src
+
+
 def test_fresh_db_fixture_follows_postgres_marker():
     """The ``_fresh_db`` fixture selects Postgres only for marked tests."""
 
@@ -565,6 +676,50 @@ def test_fresh_db_fixture_follows_postgres_marker():
 
     assert _postgres_requested(_Request(True)) is True
     assert _postgres_requested(_Request(False)) is False
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_postgres_schema_applies_migrations_not_bare_create_all(_fresh_db):
+    """create_all does not create current_org_id(), FORCE RLS, or policies."""
+    _engine, Session, _path = _fresh_db
+    async with Session() as s:
+        fn = (
+            await s.execute(
+                text(
+                    "SELECT EXISTS ("
+                    "SELECT 1 FROM pg_proc p "
+                    "JOIN pg_namespace n ON n.oid = p.pronamespace "
+                    "WHERE p.proname = 'current_org_id' "
+                    "AND n.nspname = current_schema())"
+                )
+            )
+        ).scalar()
+        force = (
+            await s.execute(
+                text(
+                    "SELECT c.relforcerowsecurity FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE c.relname = 'conversations' "
+                    "AND n.nspname = current_schema()"
+                )
+            )
+        ).scalar()
+        policy = (
+            await s.execute(
+                text(
+                    "SELECT EXISTS ("
+                    "SELECT 1 FROM pg_policies "
+                    "WHERE tablename = 'conversations' "
+                    "AND policyname = 'conversations_org_isolation' "
+                    "AND schemaname = current_schema())"
+                )
+            )
+        ).scalar()
+    assert fn is True, "current_org_id() missing — migrations did not run"
+    assert force is True, "conversations FORCE RLS missing — bare create_all"
+    assert policy is True, "conversations_org_isolation policy missing"
 
 
 @pytest.mark.integration
