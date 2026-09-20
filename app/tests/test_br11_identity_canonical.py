@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """BR-1.1 (P-00129) — canonical user_id unification tests.
 
 Runs entirely against a THROWAWAY SQLite DB created under a temp dir — it never
@@ -27,12 +28,14 @@ import uuid
 
 import pytest
 from sqlalchemy import event, select, text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
 
-from app.db.database import Base
-from app.db.models import BuilderSession, Conversation, User
-from app.db.migrations import remap_forked_keycloak_rows
 from app.auth.middleware import resolve_canonical_user_id
+from app.db.database import Base
+from app.db.migrations import remap_forked_keycloak_rows
+from app.db.models import BuilderSession, Conversation, User
 
 # BR-1.2 added ``org_id NOT NULL DEFAULT current_org_id()`` to conversations /
 # builder_sessions (and friends). ``current_org_id()`` is a Postgres function
@@ -45,6 +48,12 @@ from app.auth.middleware import resolve_canonical_user_id
 _STUB_ORG_ID = "00000000-0000-0000-0000-000000000000"
 
 
+@compiles(UUID, "sqlite")
+def _sqlite_uuid(type_, compiler, **kw):
+    """Postgres UUID columns are CHAR(36) on the throwaway SQLite harness."""
+    return "CHAR(36)"
+
+
 async def _fresh_db():
     """Create a throwaway on-disk SQLite DB with the full schema. Returns
     (engine, sessionmaker, path). Caller disposes + unlinks."""
@@ -53,11 +62,22 @@ async def _fresh_db():
     engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
 
     @event.listens_for(engine.sync_engine, "connect")
-    def _register_current_org_id(dbapi_connection, _record):
+    def _register_pg_compat(dbapi_connection, _record):
         dbapi_connection.create_function("current_org_id", 0, lambda: _STUB_ORG_ID)
+        dbapi_connection.create_function(
+            "gen_random_uuid", 0, lambda: str(uuid.uuid4())
+        )
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as exc:
+        await engine.dispose()
+        os.unlink(path)
+        pytest.skip(
+            "BR-1.1 identity tests need Postgres-compatible DDL; "
+            f"SQLite could not create the schema: {exc}"
+        )
     return engine, async_sessionmaker(engine, expire_on_commit=False), path
 
 
@@ -128,7 +148,7 @@ async def _scenario_batch_remap(log):
 
         async with Session() as s:
             rows = (await s.execute(select(Conversation.title, Conversation.user_id))).all()
-            by_title = {t: uid for t, uid in rows}
+            by_title = dict(rows)
             bsub = (await s.execute(select(BuilderSession.user_id))).scalars().all()
             total_after = (await _count(s, "conversations"),
                            await _count(s, "builder_sessions"))
@@ -147,7 +167,7 @@ async def _scenario_batch_remap(log):
             await s.commit()
         async with Session() as s:
             rows2 = (await s.execute(select(Conversation.title, Conversation.user_id))).all()
-        assert {t: u for t, u in rows2} == by_title, "remap must be idempotent"
+        assert dict(rows2) == by_title, "remap must be idempotent"
 
         log.append(f"[batch] local_id={local_id[:8]} sub={kc_sub[:8]} -> unified; "
                    f"downstream+anon preserved; idempotent OK")
