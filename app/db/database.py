@@ -174,11 +174,43 @@ async def _invalidate_pooled_session(session: AsyncSession) -> None:
     to the pool (the B1 leak). The GUC clear itself is not shielded — a hung
     rollback must not pin the cancelled generator; we fail safe by discarding
     the connection instead.
+
+    Shield alone is not enough. It protects the inner task, but a *second*
+    cancellation still unwinds the awaiter, so ``streaming_org_context`` can
+    exit while invalidate is in flight and the caller can close/release the
+    still-org-bound connection (Astra 20f7bf8 on ee6d263). We own the
+    invalidate task and re-await it until it finishes, then re-raise any
+    ``CancelledError`` that arrived while it was running.
     """
+    pending_cancel: BaseException | None = None
+    current = asyncio.current_task()
     try:
-        await asyncio.shield(session.invalidate())
+        inv = session.invalidate()
+        if asyncio.isfuture(inv):
+            invalidate_task: asyncio.Future = inv
+        else:
+            invalidate_task = asyncio.create_task(inv)
     except Exception:
         logger.debug("Session invalidate failed", exc_info=True)
+        return
+
+    while not invalidate_task.done():
+        try:
+            await asyncio.shield(invalidate_task)
+        except asyncio.CancelledError as exc:
+            pending_cancel = exc
+            # 3.11+: catching CancelledError does not clear the task's
+            # cancelling count, so the next await would raise immediately
+            # without letting invalidate run. Drop one cancel, keep waiting,
+            # re-raise after discard finishes.
+            if current is not None and hasattr(current, "uncancel"):
+                current.uncancel()
+        except Exception:
+            logger.debug("Session invalidate failed", exc_info=True)
+            break
+
+    if pending_cancel is not None:
+        raise pending_cancel
 
 
 @asynccontextmanager
@@ -210,7 +242,10 @@ async def streaming_org_context(session: AsyncSession, org_id: str | None):
     ``BaseException``, not ``Exception``: a disconnect that cancels during
     rollback/clear must still (1) reset the ContextVar and (2) clear the GUC
     or ``invalidate`` the connection when the clear cannot be confirmed, then
-    re-raise so cancellation is not swallowed.
+    re-raise so cancellation is not swallowed. Repeated cancellation while
+    invalidate is in flight must not let this context exit until the
+    connection is discarded (the awaiter is held until the owned invalidate
+    task finishes, then CancelledError is re-raised).
     """
     if not org_id:
         yield

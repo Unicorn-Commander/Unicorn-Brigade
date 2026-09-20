@@ -42,6 +42,14 @@ WHY THESE TESTS LOOK LIKE THIS:
     rollback skipped invalidate and the ContextVar token reset. It must fail
     on that commit and pass after the cancellation-safe cleanup.
 
+  * ``test_streaming_org_context_second_cancel_during_invalidate_still_discards``
+    is Astra's 20f7bf8 repeated-cancellation probe, hermetic. On ee6d263 a
+    second CancelledError while shielded ``invalidate`` is in flight lets
+    the context manager exit; an unbound checkout then inherits the prior
+    org GUC. It must fail on ee6d263 and pass once invalidate is owned
+    until it finishes. The real-DB sibling is
+    ``test_real_second_cancel_during_invalidate_does_not_reuse_org_bound_connection``.
+
   * ``test_streaming_org_context_pool_reuse_carries_no_org`` proves the next
     checkout of the same connection carries no org GUC.
 
@@ -557,6 +565,114 @@ async def test_streaming_org_context_task_cancel_still_invalidates():
         _org_var().reset(token)
 
 
+class _DelayedInvalidateSession:
+    """Astra 20f7bf8 probe session: rollback raises CancelledError (first
+    cancellation); invalidate pauses until ``release`` so a second
+    cancellation can be injected while discard is in flight."""
+
+    def __init__(self, guc="synthetic-org"):
+        self.guc = guc
+        self.invalidated = False
+        self.entered_invalidate = asyncio.Event()
+        self.release_invalidate = asyncio.Event()
+        self.finished_invalidate = asyncio.Event()
+
+    async def rollback(self):
+        raise asyncio.CancelledError()
+
+    async def invalidate(self):
+        self.entered_invalidate.set()
+        try:
+            await self.release_invalidate.wait()
+            self.invalidated = True
+            self.guc = ""
+        finally:
+            self.finished_invalidate.set()
+
+
+@pytest.mark.asyncio
+async def test_streaming_org_context_second_cancel_during_invalidate_still_discards():
+    """Astra's second-cancellation race (20f7bf8), hermetic.
+
+    ``asyncio.shield(session.invalidate())`` protects the inner task but
+    does not defer cancellation of its awaiter. On ee6d263 a second
+    ``CancelledError`` while invalidate is paused lets
+    ``streaming_org_context`` exit; a pool then hands the same connection
+    out still carrying the org GUC.
+
+    Deterministic window: rollback raises CancelledError (first cancel),
+    invalidate waits on an Event, then the wrapping task is cancelled
+    (second cancel) BEFORE the Event is set. The context manager must
+    not finish until invalidate has run; only then may cancellation
+    propagate. Fails on ee6d263; passes once invalidate is owned until
+    it completes.
+    """
+    from app.db.database import streaming_org_context
+
+    session = _DelayedInvalidateSession()
+
+    class _Pool:
+        def __init__(self):
+            self.conn = session
+
+        def checkout(self):
+            if self.conn.invalidated:
+                self.conn = FakeRLSSession()
+            return self.conn
+
+    pool = _Pool()
+    previous = str(uuid.uuid4())
+    token = _org_var().set(previous)
+
+    async def _run():
+        async with streaming_org_context(session, "synthetic-org"):
+            pass
+
+    try:
+        task = asyncio.create_task(_run())
+        await asyncio.wait_for(session.entered_invalidate.wait(), timeout=2)
+        # Second cancellation while discard is paused — the ee6d263 race.
+        task.cancel()
+        await asyncio.wait({task}, timeout=0.2)
+        exited_before_invalidate = (
+            task.done() and not session.finished_invalidate.is_set()
+        )
+
+        # Unblock invalidate so a wait-until-done fix can finish (and so
+        # ee6d263's background shielded task is not leaked).
+        session.release_invalidate.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=2)
+        await asyncio.wait_for(session.finished_invalidate.wait(), timeout=2)
+
+        assert not exited_before_invalidate, (
+            "second cancel let streaming_org_context exit before invalidate "
+            "finished — the org-bound connection can be closed/released into "
+            "the pool (Astra 20f7bf8 double-cancel race on ee6d263)"
+        )
+        assert session.invalidated, (
+            "invalidate did not finish before the context manager returned"
+        )
+        assert session.guc == ""
+        nxt = pool.checkout()
+        assert nxt is not session, (
+            "invalidated connection was handed back out of the pool"
+        )
+        leftover = (await nxt.execute(
+            text("SELECT current_setting('app.current_org_id', true)")
+        )).scalar()
+        assert not leftover, (
+            f"unbound checkout inherited prior org GUC {leftover!r}"
+        )
+        assert _org_var().get() == previous, (
+            "repeated-cancel cleanup bypassed the ContextVar reset "
+            f"(got {_org_var().get()!r}, wanted prior org)"
+        )
+    finally:
+        session.release_invalidate.set()
+        _org_var().reset(token)
+
+
 @pytest.mark.asyncio
 async def test_streaming_tool_log_unbound_caller_denied(monkeypatch):
     """Unbound caller (org_id=None) after dependency teardown: streaming_org_context
@@ -896,4 +1012,113 @@ async def test_real_streaming_org_context_pool_reuse_carries_no_org(test_org):
             )
     finally:
         _org_var().reset(token)
+        await eng.dispose()
+
+
+@needs_postgres
+@pytest.mark.asyncio
+async def test_real_second_cancel_during_invalidate_does_not_reuse_org_bound_connection(
+    test_org,
+):
+    """Astra 20f7bf8 repeated-cancel probe against a real pool of size 1.
+
+    Commits a synthetic org GUC, starts cleanup, injects cancellation
+    during rollback, pauses ``invalidate`` to make the race deterministic,
+    then cancels again. On ee6d263 the block exits before discard finishes
+    and the next unbound checkout of the same PostgreSQL backend still
+    carries the prior org. After the fix, invalidate completes before the
+    context manager returns, cancellation still propagates, and the next
+    checkout has no org GUC.
+
+    Posture is asserted first so a superuser/BYPASSRLS connection cannot
+    produce a false pass. Skips without a postgresql DATABASE_URL.
+    """
+    from app.db.database import streaming_org_context
+
+    eng = create_async_engine(APP_DSN, pool_size=1, max_overflow=0)
+    maker = async_sessionmaker(eng, expire_on_commit=False)
+    session = maker()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    finished = asyncio.Event()
+    original_invalidate = session.invalidate
+    original_rollback = session.rollback
+    token = _org_var().set(None)
+
+    async def interrupted_rollback():
+        raise asyncio.CancelledError()
+
+    async def delayed_invalidate():
+        entered.set()
+        await release.wait()
+        try:
+            await original_invalidate()
+        finally:
+            finished.set()
+
+    try:
+        await _assert_app_role_subject_to_force_rls(session)
+        await session.execute(
+            text("SELECT set_config('app.current_org_id', :o, false)"),
+            {"o": test_org},
+        )
+        await session.commit()
+        pid = (await session.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+        session.rollback = interrupted_rollback
+        session.invalidate = delayed_invalidate
+
+        async def _run():
+            async with streaming_org_context(session, test_org):
+                pass
+
+        task = asyncio.create_task(_run())
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        task.cancel()
+        await asyncio.wait({task}, timeout=0.2)
+        exited_before_invalidate = task.done() and not finished.is_set()
+
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=2)
+        await asyncio.wait_for(finished.wait(), timeout=2)
+
+        assert not exited_before_invalidate, (
+            "second cancel let streaming_org_context exit before invalidate "
+            "finished — the org-bound connection can be released into the pool "
+            "(Astra 20f7bf8 double-cancel race on ee6d263)"
+        )
+
+        session.rollback = original_rollback
+        session.invalidate = original_invalidate
+        await session.close()
+
+        async with maker() as reused:
+            row = (
+                await reused.execute(
+                    text(
+                        "SELECT pg_backend_pid(), "
+                        "current_setting('app.current_org_id', true)"
+                    )
+                )
+            ).one()
+            leftover = row[1]
+            assert not leftover, (
+                "unbound checkout inherited prior org GUC "
+                f"{leftover!r} (same_postgres_connection={row[0] == pid})"
+            )
+            await reused.execute(
+                text("SELECT set_config('app.current_org_id', '', false)")
+            )
+            await reused.commit()
+    finally:
+        release.set()
+        if entered.is_set():
+            try:
+                await asyncio.wait_for(finished.wait(), timeout=2)
+            except (TimeoutError, asyncio.CancelledError):
+                pass
+        session.rollback = original_rollback
+        session.invalidate = original_invalidate
+        _org_var().reset(token)
+        await session.close()
         await eng.dispose()
