@@ -86,6 +86,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api import agent_routes
@@ -923,7 +924,7 @@ async def test_real_rls_denies_foreign_org_and_unbound_inserts(test_org, admin_e
                 text("SELECT set_config('app.current_org_id', :o, false)"),
                 {"o": test_org},
             )
-            with pytest.raises(Exception):
+            with pytest.raises(ProgrammingError, match="row-level security policy"):
                 await session.execute(
                     text(
                         "INSERT INTO tool_executions (tool_name, org_id) "
@@ -936,7 +937,7 @@ async def test_real_rls_denies_foreign_org_and_unbound_inserts(test_org, admin_e
             await session.execute(
                 text("SELECT set_config('app.current_org_id', '', false)")
             )
-            with pytest.raises(Exception):
+            with pytest.raises(ProgrammingError, match="row-level security policy"):
                 await session.execute(
                     text(
                         "INSERT INTO tool_executions (tool_name, org_id) "
