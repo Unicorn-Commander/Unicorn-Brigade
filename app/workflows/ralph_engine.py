@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Ralph Workflow Engine - Self-Correcting Agent Loops
 
@@ -323,6 +324,12 @@ class RalphWorkflowEngine:
 
             try:
                 result = await self._execute_task(task, iteration.number)
+                # Executed by Grok (headless lane)
+                # Count every try, including success. record_attempt(error=None)
+                # is the 2df9e88 contract (docs: first-try success attempts=1,
+                # fail-then-succeed attempts=2). Only the except path used to
+                # increment, so a retried task that then succeeded stayed at 1.
+                task.record_attempt()
                 task.status = TaskStatus.COMPLETED
                 task.result = result
                 task.completed_at = datetime.now()
