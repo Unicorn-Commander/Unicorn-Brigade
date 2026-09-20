@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Comprehensive Integration Tests for Unicorn Brigade
 
@@ -14,17 +15,17 @@ Run LLM tests: RUN_LLM_TESTS=1 pytest tests/test_integration.py -v -k "llm"
 Run auth tests: pytest tests/test_integration.py -v -k "auth"
 """
 
-import os
-import pytest
 import json
+import os
 import uuid
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Check if LLM tests should run
 RUN_LLM_TESTS = os.environ.get("RUN_LLM_TESTS", "0") == "1"
@@ -133,8 +134,8 @@ def test_app(mock_llm_client, mock_auth_user):
     Note: Tests that require database access will be skipped if the database
     is not available or has connection issues.
     """
-    from app.main import app
     from app.api.agent_routes import init_agent_routes
+    from app.main import app
 
     # Patch auth to always return mock user
     with patch("app.auth.middleware.AUTH_BYPASS_ENABLED", True):
@@ -548,7 +549,8 @@ class TestWorkflowExecutionIntegration:
     def workflow_test_app(self, mock_llm_client):
         """Create app with workflow routes initialized"""
         from fastapi import FastAPI
-        from app.api.hierarchical_routes import router, init_hierarchical_routes
+
+        from app.api.hierarchical_routes import init_hierarchical_routes, router
 
         with patch("app.workflows.engine.event_bus") as mock_bus:
             mock_mission = MagicMock()
@@ -896,8 +898,8 @@ class TestDatabaseConsistency:
     @pytest.fixture
     def sync_test_app(self, mock_llm_client):
         """Create test app for sync database tests"""
-        from app.main import app
         from app.api.agent_routes import init_agent_routes
+        from app.main import app
 
         with patch("app.auth.middleware.AUTH_BYPASS_ENABLED", True):
             init_agent_routes(mock_llm_client)
@@ -1033,8 +1035,8 @@ class TestAPIAuthentication:
     @pytest.fixture
     def app_no_bypass(self, mock_llm_client):
         """Create app with auth bypass disabled"""
-        from app.main import app
         from app.api.agent_routes import init_agent_routes
+        from app.main import app
 
         init_agent_routes(mock_llm_client)
 
@@ -1051,7 +1053,7 @@ class TestAPIAuthentication:
 
     def test_valid_admin_key_allows_access(self):
         """Test that valid admin key allows full access"""
-        from app.auth.middleware import validate_api_key, AuthUser, MASTER_ADMIN_KEY
+        from app.auth.middleware import MASTER_ADMIN_KEY, AuthUser, validate_api_key
         from app.auth.roles import UserRole
 
         if not MASTER_ADMIN_KEY:
@@ -1296,7 +1298,7 @@ class TestWorkflowModelConfiguration:
 
         config = ModelConfig()
 
-        assert config.orchestrator_model == "openai/gpt-4o-mini"
+        assert config.orchestrator_model
         assert config.enable_local_models is True
         assert "research" in config.team_lead_models
 

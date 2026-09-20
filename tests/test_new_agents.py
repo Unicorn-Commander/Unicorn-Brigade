@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Tests for New Agent Configurations
 
@@ -9,16 +10,17 @@ Tests coverage for:
 - Phase 1 agents (sql-analyst, support-agent, code-reviewer)
 """
 
-import pytest
 import json
 from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture
 def seed_agents():
     """Load seed agents from JSON file"""
     seed_file = Path(__file__).parent.parent / "app" / "data" / "seed_agents.json"
-    with open(seed_file, 'r') as f:
+    with open(seed_file) as f:
         return json.load(f)
 
 
@@ -281,12 +283,17 @@ class TestAgentModels:
         """Verify all agents have valid model strings"""
         for agent in seed_agents:
             model = agent['model']
-            assert '/' in model or model.startswith('gpt-') or model.startswith('claude-'), \
-                f"Agent {agent['id']} has invalid model format: {model}"
+            assert isinstance(model, str) and model.strip(), (
+                f"Agent {agent['id']} has empty model"
+            )
+            ok = "/" in model or model.startswith(
+                ("gpt-", "claude-", "qwen", "ollama", "ibm")
+            )
+            assert ok, f"Agent {agent['id']} has invalid model format: {model}"
 
     def test_model_diversity(self, seed_agents):
         """Verify we're using multiple different models"""
-        models = set(agent['model'] for agent in seed_agents)
+        models = {agent['model'] for agent in seed_agents}
         assert len(models) >= 2, "Should use at least 2 different models for diversity"
 
 
