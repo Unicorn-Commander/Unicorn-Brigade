@@ -6,8 +6,9 @@ Unmarked tests use a throwaway SQLite DB under a temp dir. Tests marked
 ``tests/test_integration.py``) and skip before opening any engine when that
 env is unset — they never fall back to SQLite. Postgres schema is built the
 way production does (``app.db.migrations.run_additive_migrations``, same
-order as ``app.db.database.init_db``), not bare ``create_all``. Exercises
-the two halves of BR-1.1:
+order as ``app.db.database.init_db``), not bare ``create_all``, inside a
+per-test ``test_<uuid>`` schema so scenario B cannot see scenario A's rows.
+Exercises the two halves of BR-1.1:
 
   * ``remap_forked_keycloak_rows`` — the batch migration SQL (portable form that
     prod runs on Postgres), proving forked rows unify with no data loss and that
@@ -114,6 +115,8 @@ def _sqlite_cannot_compile_postgres_uuid_ddl(dialect_name: str, exc: BaseExcepti
 
 # Existing test DSN convention (tests/test_integration.py::test_database_url).
 _TEST_PG_DSN_ENV = "TEST_DATABASE_URL"
+# engine id -> (dsn, schema) for postgres per-test schemas.
+_IDENTITY_PG_SCHEMAS: dict[int, tuple[str, str]] = {}
 
 
 def _postgres_requested(request) -> bool:
@@ -226,19 +229,45 @@ async def _bootstrap_postgres_identity_schema(engine) -> str:
     return str(org_id)
 
 
+async def _drop_postgres_schema(dsn: str, schema: str) -> None:
+    admin = create_async_engine(dsn)
+    try:
+        async with admin.begin() as conn:
+            await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    finally:
+        await admin.dispose()
+
+
+async def _dispose_identity_db(engine, path) -> None:
+    """Dispose the engine, drop a per-test postgres schema, unlink SQLite."""
+    info = _IDENTITY_PG_SCHEMAS.pop(id(engine), None)
+    await engine.dispose()
+    if info is not None:
+        dsn, schema = info
+        await _drop_postgres_schema(dsn, schema)
+    if path is not None:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
 async def _open_fresh_db(*, postgres: bool = False):
     """Create a throwaway identity DB. Returns (engine, sessionmaker, path).
 
     ``postgres=True`` uses ``TEST_DATABASE_URL`` (skip if unset) and never
     opens SQLite. Schema is built the way production does (migrations), not
-    bare create_all. ``postgres=False`` is the unmarked SQLite harness.
+    bare create_all, inside a per-test ``test_<uuid>`` schema so scenarios
+    do not retain rows. ``postgres=False`` is the unmarked SQLite harness.
     Caller (or the ``_fresh_db`` fixture) disposes + unlinks.
     """
     url, sqlite_path = _identity_db_url(postgres=postgres)
     engine = None
+    pg_schema = None
+    schema_created = False
     try:
-        engine = create_async_engine(url)
         if sqlite_path is not None:
+            engine = create_async_engine(url)
 
             @event.listens_for(engine.sync_engine, "connect")
             def _register_pg_compat(dbapi_connection, _record):
@@ -252,12 +281,28 @@ async def _open_fresh_db(*, postgres: bool = False):
                 await conn.run_sync(Base.metadata.create_all)
             return engine, async_sessionmaker(engine, expire_on_commit=False), sqlite_path
 
+        pg_schema = f"test_{uuid.uuid4().hex}"
+        admin = create_async_engine(url)
+        try:
+            async with admin.begin() as conn:
+                await conn.execute(text(f'CREATE SCHEMA "{pg_schema}"'))
+            schema_created = True
+        finally:
+            await admin.dispose()
+        engine = create_async_engine(
+            url,
+            connect_args={"server_settings": {"search_path": pg_schema}},
+        )
+        _IDENTITY_PG_SCHEMAS[id(engine)] = (url, pg_schema)
         org_id = await _bootstrap_postgres_identity_schema(engine)
         return engine, _org_bound_sessionmaker(engine, org_id), None
     except Exception as exc:
         dialect_name = engine.dialect.name if engine is not None else None
         if engine is not None:
-            await engine.dispose()
+            await _dispose_identity_db(engine, sqlite_path)
+            sqlite_path = None
+        elif schema_created and pg_schema is not None:
+            await _drop_postgres_schema(url, pg_schema)
         if sqlite_path is not None:
             try:
                 os.unlink(sqlite_path)
@@ -275,18 +320,13 @@ async def _open_fresh_db(*, postgres: bool = False):
 async def _fresh_db(request):
     """Identity harness DB: PostgreSQL when marked ``postgres`` and a DSN is
     set, otherwise SQLite. A marked test with no ``TEST_DATABASE_URL`` skips
-    before any engine is created.
+    before any engine is created. Each postgres scenario gets its own schema.
     """
     engine, Session, path = await _open_fresh_db(postgres=_postgres_requested(request))
     try:
         yield engine, Session, path
     finally:
-        await engine.dispose()
-        if path is not None:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+        await _dispose_identity_db(engine, path)
 
 
 async def _count(session, table):
@@ -720,6 +760,43 @@ async def test_postgres_schema_applies_migrations_not_bare_create_all(_fresh_db)
     assert fn is True, "current_org_id() missing — migrations did not run"
     assert force is True, "conversations FORCE RLS missing — bare create_all"
     assert policy is True, "conversations_org_isolation policy missing"
+
+
+@pytest.mark.integration
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_postgres_scenario_b_does_not_see_scenario_a_rows():
+    """A second postgres scenario must not see the first scenario's users."""
+    engine_a, session_a, path_a = await _open_fresh_db(postgres=True)
+    try:
+        async with session_a() as s:
+            s.add(
+                User(
+                    email="scenario-a@x.com",
+                    name="a",
+                    password_hash="NOLOGIN-SSO-ONLY",
+                    role="viewer",
+                    apps=[],
+                    is_active=True,
+                )
+            )
+            await s.commit()
+        async with session_a() as s:
+            assert await _count(s, "users") == 1
+    finally:
+        await _dispose_identity_db(engine_a, path_a)
+
+    engine_b, session_b, path_b = await _open_fresh_db(postgres=True)
+    try:
+        async with session_b() as s:
+            emails = (await s.execute(select(User.email))).scalars().all()
+            leftover = await _count(s, "users")
+        assert "scenario-a@x.com" not in emails
+        assert leftover == 0, (
+            f"scenario B saw {leftover} leftover user(s) from scenario A"
+        )
+    finally:
+        await _dispose_identity_db(engine_b, path_b)
 
 
 @pytest.mark.integration
