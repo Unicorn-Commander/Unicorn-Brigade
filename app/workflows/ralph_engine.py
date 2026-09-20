@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Ralph Workflow Engine - Self-Correcting Agent Loops
 
@@ -13,13 +14,13 @@ Key Features:
 - Integration with hierarchical workflows
 """
 
-import json
 import asyncio
-from typing import Dict, List, Optional, Any, Callable
+import json
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
 from enum import Enum
 from pathlib import Path
+from typing import Any, Callable, Optional
 
 from pydantic import BaseModel, Field
 
@@ -48,10 +49,10 @@ class RalphTask:
     description: str
     status: TaskStatus
     assigned_to: Optional[str] = None  # agent_id
-    dependencies: List[str] = None  # task_ids that must complete first
+    dependencies: list[str] = None  # task_ids that must complete first
     attempts: int = 0
     max_attempts: int = 3
-    error_history: List[str] = None
+    error_history: list[str] = None
     result: Optional[Any] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -106,16 +107,16 @@ class RalphWorkflowState(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
 
     # Task breakdown
-    tasks: Dict[str, Dict] = Field(default_factory=dict)  # task_id -> RalphTask dict
+    tasks: dict[str, dict] = Field(default_factory=dict)  # task_id -> RalphTask dict
 
     # Iteration history
-    iterations: List[Dict] = Field(default_factory=list)  # Iteration dicts
+    iterations: list[dict] = Field(default_factory=list)  # Iteration dicts
     current_iteration: int = 0
     max_iterations: int = 5
 
     # Guidance system
     pending_guidance: Optional[str] = None
-    guidance_history: List[Dict] = Field(default_factory=list)
+    guidance_history: list[dict] = Field(default_factory=list)
 
     # Overall status
     is_complete: bool = False
@@ -142,7 +143,7 @@ class RalphWorkflowEngine:
     def __init__(
         self,
         workflow_id: str,
-        workflow_definition: Dict,
+        workflow_definition: dict,
         state_dir: Optional[Path] = None,
         on_task_complete: Optional[Callable] = None,
         on_iteration_complete: Optional[Callable] = None,
@@ -167,9 +168,9 @@ class RalphWorkflowEngine:
 
     async def execute(
         self,
-        inputs: Dict[str, Any],
+        inputs: dict[str, Any],
         execution_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute workflow with self-correction.
 
@@ -227,7 +228,7 @@ class RalphWorkflowEngine:
         # Build result
         return self._build_result()
 
-    def _initialize_state(self, inputs: Dict[str, Any]):
+    def _initialize_state(self, inputs: dict[str, Any]):
         """Initialize workflow state with task breakdown"""
         # Resolve the owning org: the org captured at construction (from the
         # authenticated request), falling back to the currently-bound request
@@ -255,9 +256,9 @@ class RalphWorkflowEngine:
 
     def _breakdown_workflow(
         self,
-        workflow_def: Dict,
-        inputs: Dict[str, Any]
-    ) -> List[RalphTask]:
+        workflow_def: dict,
+        inputs: dict[str, Any]
+    ) -> list[RalphTask]:
         """
         Convert workflow definition into Ralph tasks.
 
@@ -296,10 +297,10 @@ class RalphWorkflowEngine:
             started_at=datetime.now()
         )
 
-        completed_task_ids = set(
+        completed_task_ids = {
             task_id for task_id, task_data in self.state.tasks.items()
             if task_data["status"] == TaskStatus.COMPLETED.value
-        )
+        }
 
         tasks_completed = 0
         tasks_failed = 0
@@ -321,22 +322,37 @@ class RalphWorkflowEngine:
             self.state.tasks[task_id] = asdict(task)
             self._save_state()
 
+            # Executed by Grok (headless lane)
+            # Count this execution exactly once from _execute_task's outcome.
+            # on_task_complete runs after record_attempt so a callback
+            # exception cannot increment again (Astra c031f5b). Callback
+            # errors still append to error_history and take the existing
+            # should_retry / FAILED path.
+            error = None
+            result = None
             try:
                 result = await self._execute_task(task, iteration.number)
+            except Exception as e:
+                error = str(e)
+
+            task.record_attempt(error=error)
+
+            if error is None:
                 task.status = TaskStatus.COMPLETED
                 task.result = result
                 task.completed_at = datetime.now()
                 completed_task_ids.add(task_id)
                 tasks_completed += 1
 
-                # Callback
                 if self.on_task_complete:
-                    await self.on_task_complete(task, result)
+                    try:
+                        await self.on_task_complete(task, result)
+                    except Exception as e:
+                        error = str(e)
+                        task.error_history.append(error)
 
-            except Exception as e:
-                error_msg = str(e)
-                task.record_attempt(error_msg)
-                errors.append(f"{task.description}: {error_msg}")
+            if error is not None:
+                errors.append(f"{task.description}: {error}")
 
                 if task.should_retry():
                     task.status = TaskStatus.PENDING  # Will retry
@@ -421,7 +437,7 @@ class RalphWorkflowEngine:
         self.state.updated_at = datetime.now()
         self._save_state()
 
-    def _build_result(self) -> Dict[str, Any]:
+    def _build_result(self) -> dict[str, Any]:
         """Build final result with full history"""
         return {
             "workflow_id": self.workflow_id,
@@ -516,7 +532,7 @@ class RalphWorkflowEngine:
         # This could trigger notifications, webhooks, etc.
         pass
 
-    def get_progress(self) -> Dict[str, Any]:
+    def get_progress(self) -> dict[str, Any]:
         """Get current progress summary"""
         if not self.state:
             return {"status": "not_started"}

@@ -3,58 +3,54 @@ Agent management and chat routes.
 Provides full CRUD for agents and real-time chat with function calling via Ops-Center LLM.
 """
 
-from contextlib import asynccontextmanager
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import Dict, List, Optional, Any, Annotated
-from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 import json
 import logging
 import os
-import time
+import re as _re
+from contextlib import asynccontextmanager
+from typing import Annotated, Any, Optional
 
-from app.db.database import get_session
-from app.db.repositories import AgentRepository, ToolExecutionRepository
-from app.llm.ops_center_client import OpsCenterLLMClient, ToolCall, ToolResult, DEFAULT_MODEL
-from app.llm.tool_resolver import get_tools_for_agent
-from app.llm.mlx_provider import MLXLLMClient
-from app.llm.gemma_sanitize import strip_channel_artifacts
-from app.auth.middleware import require_api_key, require_operator, require_admin, AuthUser
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agents.deep_research import DeepResearchAgent
+from app.auth.middleware import AuthUser, require_admin, require_api_key, require_operator
 from app.auth.roles import UserRole
-from app.security.rate_limit import rate_limit
-from app.security.request_limits import max_body_size
-from app.orchestration import (
-    emit_agent_started,
-    emit_agent_thinking,
-    emit_tool_call,
-    emit_tool_result,
-    emit_agent_completed,
-)
-from app.observability import get_tracer
-from app.observability.metrics import (
-    agent_chat_total,
-    agent_tool_calls_total,
-    agent_active,
-)
-from app.agents.deep_research import DeepResearchAgent, ResearchDepth
+from app.db.database import get_session, streaming_org_context
+from app.db.repositories import AgentRepository, ToolExecutionRepository
 from app.integrations.lago import (
-    emit_ai_api_call,
-    emit_agent_work,
-    estimate_local_cost,
-    is_local_route,
-    rag_used,
     classify_rate_tier,
+    rag_used,
 )
-from app.integrations.metering import meter_usage
+
 # BR-3.6: the per-org cap preflight lives in the dependency-light metering module
 # (importable without agent_routes' heavy deps); re-exported under the historical
 # private name so callers (this module + openai_compat_routes) resolve it here.
 from app.integrations.metering import enforce_org_cap_or_402 as _enforce_org_cap_or_402
+from app.integrations.metering import meter_usage
 from app.integrations.ops_center_billing import get_billing_state
-import asyncio
+from app.llm.gemma_sanitize import strip_channel_artifacts
+from app.llm.mlx_provider import MLXLLMClient
+from app.llm.ops_center_client import DEFAULT_MODEL, OpsCenterLLMClient, ToolCall, ToolResult
+from app.llm.tool_resolver import get_tools_for_agent
+from app.observability import get_tracer
+from app.observability.metrics import (
+    agent_active,
+    agent_chat_total,
+    agent_tool_calls_total,
+)
+from app.orchestration import (
+    emit_agent_completed,
+    emit_agent_started,
+    emit_tool_call,
+    emit_tool_result,
+)
+from app.security.rate_limit import rate_limit
+from app.security.request_limits import max_body_size
 
-import re as _re
 
 def _strip_thinking(text: str) -> str:
     """Strip <think>...</think> blocks from model output.
@@ -168,6 +164,7 @@ async def _log_rbac_denial(
     """Record a denial to the rbac_denials audit table. Non-fatal — never raises."""
     try:
         from sqlalchemy import text
+
         from app.auth.roles import derive_user_tier
         email = (getattr(user, "email", "") or "") or ""
         tier = derive_user_tier(email, user.role)
@@ -246,7 +243,7 @@ def _ensure_agent_access(
     if not user.can_access_agent(agent_id):
         raise HTTPException(status_code=403, detail="Access to agent denied")
     if agent is not None:
-        from app.auth.roles import evaluate_agent_access, derive_user_tier
+        from app.auth.roles import derive_user_tier, evaluate_agent_access
         email = (getattr(user, "email", "") or "") or ""
         tier = derive_user_tier(email, user.role)
         allowed, reason = evaluate_agent_access(
@@ -339,9 +336,10 @@ async def _user_apps(user_id: Optional[str]) -> list:
     if not user_id:
         return []
     try:
+        from sqlalchemy import select as _select
+
         from app.db.database import async_session
         from app.db.models import User as _User
-        from sqlalchemy import select as _select
         async with async_session() as s:
             r = await s.execute(_select(_User).where(_User.id == user_id))
             u = r.scalar_one_or_none()
@@ -580,11 +578,11 @@ class AgentCreateRequest(BaseModel):
     status: Optional[str] = "active"
     type: Optional[str] = "individual"
     agentType: Optional[str] = "analysis"
-    capabilities: Optional[List[str]] = []
+    capabilities: Optional[list[str]] = []
     model: Optional[str] = "openai/gpt-4o-mini"
     temperature: Optional[float] = 0.7
     maxTokens: Optional[int] = 2000
-    tools: Optional[List[str]] = []
+    tools: Optional[list[str]] = []
     billingTier: Optional[str] = "standard"
     rateMultiplier: Optional[float] = 1.0
     basePricePerCall: Optional[float] = None
@@ -612,12 +610,12 @@ class AgentUpdateRequest(BaseModel):
     status: Optional[str] = None
     type: Optional[str] = None
     agentType: Optional[str] = None
-    capabilities: Optional[List[str]] = None
+    capabilities: Optional[list[str]] = None
     model: Optional[str] = None
     temperature: Optional[float] = None
     maxTokens: Optional[int] = None
-    tools: Optional[List[str]] = None
-    accessPolicy: Optional[Dict[str, Any]] = None
+    tools: Optional[list[str]] = None
+    accessPolicy: Optional[dict[str, Any]] = None
     billingTier: Optional[str] = None
     rateMultiplier: Optional[float] = None
     basePricePerCall: Optional[float] = None
@@ -630,7 +628,7 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = None
     maxTokens: Optional[int] = None
     user_id: Optional[str] = "anonymous"
-    history: Optional[List[Dict[str, str]]] = []
+    history: Optional[list[dict[str, str]]] = []
     speaker_name: Optional[str] = None
     # Per-case scope: when set, memory groups become {user}__{case}__{agent}
     # so the same user's memories don't bleed across cases. Crisis Ops sends
@@ -652,7 +650,7 @@ class ChatRequest(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    messages: List[Dict[str, str]]
+    messages: list[dict[str, str]]
     agentId: Optional[str] = None
     model: Optional[str] = None
     temperature: Optional[float] = 0.7
@@ -673,15 +671,15 @@ class DeepResearchResponse(BaseModel):
     topic: str
     depth: str
     report: Optional[str] = None
-    sources: Optional[List[Dict[str, str]]] = None
-    queries_executed: Optional[List[str]] = None
+    sources: Optional[list[dict[str, str]]] = None
+    queries_executed: Optional[list[str]] = None
     result_count: Optional[int] = None
     error: Optional[str] = None
 
 
 # ---- Agent CRUD (DB-backed) ----
 
-async def _load_tool_catalog(session: AsyncSession) -> Dict[str, Dict[str, Any]]:
+async def _load_tool_catalog(session: AsyncSession) -> dict[str, dict[str, Any]]:
     """name -> {costTier, permissionLevel, provider, external, displayName}.
 
     Best-effort: if the catalog table is absent/empty (fresh DB pre-migration) we
@@ -710,7 +708,7 @@ async def _load_tool_catalog(session: AsyncSession) -> Dict[str, Dict[str, Any]]
         return {}
 
 
-def _enrich_agent_tools(agent: Dict[str, Any], catalog: Dict[str, Dict[str, Any]]) -> None:
+def _enrich_agent_tools(agent: dict[str, Any], catalog: dict[str, dict[str, Any]]) -> None:
     """Attach per-tool cost/permission detail + a cost rollup to an agent dict.
 
     Adds `toolDetails` (one entry per tool, catalog-looked-up with neutral
@@ -836,7 +834,7 @@ class HierarchyEdit(ReportsToRequest):
     id: str
 
 
-async def _reporting_lines(session: AsyncSession) -> Dict[str, Optional[str]]:
+async def _reporting_lines(session: AsyncSession) -> dict[str, Optional[str]]:
     """id -> reports_to for every agent visible to this session (RLS applies)."""
     from sqlalchemy import select
 
@@ -913,7 +911,7 @@ async def get_agent_hierarchy(
 
 @router.put("/agents/hierarchy")
 async def set_agent_hierarchy(
-    edits: List[HierarchyEdit],
+    edits: list[HierarchyEdit],
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_admin)] = None,
 ):
@@ -1085,8 +1083,8 @@ async def create_agent(
         try:
             async with admin_session() as owner_sess:
                 agent = await AgentRepository(owner_sess).create(data)
-        except IntegrityError:
-            raise _dup
+        except IntegrityError as exc:
+            raise _dup from exc
         return agent
 
     # Per-org agent: leave org_id unset so the DB default (current_org_id()) tags
@@ -1096,8 +1094,8 @@ async def create_agent(
     repo = AgentRepository(session)
     try:
         agent = await repo.create(data)
-    except IntegrityError:
-        raise _dup
+    except IntegrityError as exc:
+        raise _dup from exc
     return agent
 
 
@@ -1184,7 +1182,7 @@ _IMPORT_WRITABLE_FIELDS = frozenset({
 })
 
 
-def _sanitize_agent_import_updates(agent_data: Dict[str, Any]) -> Dict[str, Any]:
+def _sanitize_agent_import_updates(agent_data: dict[str, Any]) -> dict[str, Any]:
     """Strip everything not in ``_IMPORT_WRITABLE_FIELDS`` (esp. ``org_id``/
     ``orgId``/``id``) so an import/upsert can never reassign an agent's org or
     re-map its primary key — critical on the shared-agent path, which runs on the
@@ -1195,7 +1193,7 @@ def _sanitize_agent_import_updates(agent_data: Dict[str, Any]) -> Dict[str, Any]
 
 @router.post("/agents/import/json")
 async def import_agents(
-    agents: List[Dict[str, Any]],
+    agents: list[dict[str, Any]],
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_operator)] = None,
     _size: Annotated[None, max_body_size(5 * 1024 * 1024)] = None,
@@ -1422,8 +1420,10 @@ async def chat_with_agent(
         # Stash on a context var so delegate_to_agent_handler (called from a
         # tool handler) can read it without an explicit parameter chain.
         from app.llm.delegation_tools import (
-            _CURRENT_MISSION_ID, _CURRENT_CASE_ID,
-            _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME,
+            _CURRENT_AGENT_ID,
+            _CURRENT_AGENT_NAME,
+            _CURRENT_CASE_ID,
+            _CURRENT_MISSION_ID,
         )
         _mission_token = _CURRENT_MISSION_ID.set(mission_id)
         _case_token = _CURRENT_CASE_ID.set(request.case_id) if request.case_id else None
@@ -1432,7 +1432,7 @@ async def chat_with_agent(
         _CURRENT_AGENT_ID.set(agent["id"])
         _CURRENT_AGENT_NAME.set(agent_name)
         # Stamp correlation ids onto every log record for this request.
-        from app.observability import mission_id_ctx, agent_id_ctx
+        from app.observability import agent_id_ctx, mission_id_ctx
         mission_id_ctx.set(mission_id)
         agent_id_ctx.set(agent["id"])
 
@@ -1607,6 +1607,7 @@ async def chat_with_agent(
         # Auto-persist conversation (Phase 2: agents remember)
         try:
             from sqlalchemy import text as _sa_text
+
             from app.db.repositories import ConversationRepository
             conv_repo = ConversationRepository(session)
             user_id = request.user_id or "anonymous"
@@ -1722,7 +1723,7 @@ async def chat_with_agent(
             tracer.end_trace(output={"error": str(e)}, status="error")
         except Exception:
             pass
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
         try:
             agent_active.labels(agent=_metric_agent).dec()
@@ -1771,7 +1772,7 @@ async def _stream_chat(
         # emitting tool_call / tool_result events, then stream the final response.
         if agent_tools:
             import asyncio as _asyncio
-            _live_q: "_asyncio.Queue" = _asyncio.Queue()
+            _live_q: _asyncio.Queue = _asyncio.Queue()
 
             def on_tool_call(tc: ToolCall):
                 tool_calls_log.append({
@@ -1836,28 +1837,35 @@ async def _stream_chat(
                 try:
                     _evt = await _asyncio.wait_for(_live_q.get(), timeout=0.25)
                     yield f"data: {json.dumps(_evt)}\n\n"
-                except _asyncio.TimeoutError:
+                except TimeoutError:
                     continue
             response = await _loop_task
 
-            # Log tool executions to DB
-            try:
-                tool_repo = ToolExecutionRepository(session)
-                for tc in tool_calls_log:
-                    te = await tool_repo.create({
-                        "agent_id": agent["id"],
-                        "tool_name": tc["name"],
-                        "input": tc.get("arguments"),
-                    })
-                    status = "failed" if tc.get("error") else "completed"
-                    await tool_repo.complete(
-                        str(te["id"]),
-                        output=tc.get("result"),
-                        duration_ms=0,
-                        status=status,
-                    )
-            except Exception as log_err:
-                logger.warning(f"Failed to log tool executions: {log_err}")
+            # Log tool executions to DB. This generator body runs AFTER
+            # get_session's dependency teardown (FastAPI >=0.106), which has
+            # already cleared the org GUC and current_org_id_var — without
+            # re-binding the org here, every one of these FORCE-RLS inserts is
+            # rejected by RLS and the audit rows are silently lost (the stream
+            # still returns 200). streaming_org_context binds the request's org
+            # for the block and positively clears it on exit (B1 posture).
+            async with streaming_org_context(session, org_id):
+                try:
+                    tool_repo = ToolExecutionRepository(session)
+                    for tc in tool_calls_log:
+                        te = await tool_repo.create({
+                            "agent_id": agent["id"],
+                            "tool_name": tc["name"],
+                            "input": tc.get("arguments"),
+                        })
+                        status = "failed" if tc.get("error") else "completed"
+                        await tool_repo.complete(
+                            str(te["id"]),
+                            output=tc.get("result"),
+                            duration_ms=0,
+                            status=status,
+                        )
+                except Exception as log_err:
+                    logger.warning(f"Failed to log tool executions: {log_err}")
 
             # The tool-loop response is already complete; emit it as a few larger
             # chunks (a light "typing" feel) rather than hundreds of tiny frames.
@@ -1985,11 +1993,11 @@ async def _stream_chat(
 
 class AttachToolRequest(BaseModel):
     toolId: str
-    config: Optional[Dict] = {}
+    config: Optional[dict] = {}
 
 
 class UpdateToolConfigRequest(BaseModel):
-    config: Dict
+    config: dict
 
 
 @router.get("/agents/{agent_id}/tools")
@@ -2156,7 +2164,7 @@ async def direct_chat_completion(
         }
     except Exception as e:
         logger.error(f"Chat completion error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ---- Local MLX Testing ----
@@ -2166,7 +2174,7 @@ class MLXChatRequest(BaseModel):
     model: Optional[str] = "granite-3.3-2b"  # granite-3.3-2b, granite-3.3-8b
     temperature: Optional[float] = 0.7
     maxTokens: Optional[int] = 1000
-    history: Optional[List[Dict[str, str]]] = []
+    history: Optional[list[dict[str, str]]] = []
 
 
 @router.post("/agents/{agent_id}/chat/local")
@@ -2308,10 +2316,10 @@ async def chat_with_agent_local(
         raise HTTPException(
             status_code=503,
             detail=f"MLX not available on this system: {e}. Install with: pip install mlx-lm"
-        )
+        ) from e
     except Exception as e:
         logger.error(f"[MLX] Chat error with agent {agent_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/models/local")
@@ -2358,8 +2366,8 @@ class TextToSQLResponse(BaseModel):
     """Response from text-to-SQL agent."""
     question: str
     sql: str
-    results: List[Dict[str, Any]]
-    columns: List[str]
+    results: list[dict[str, Any]]
+    columns: list[str]
     row_count: int
     truncated: bool = False
     explanation: Optional[str] = None
@@ -2422,7 +2430,7 @@ async def text_to_sql(
 
     except Exception as e:
         logger.error(f"Text-to-SQL error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/agents/sql/schema")
@@ -2444,30 +2452,10 @@ async def get_database_schema(
         return {"schema": schema}
     except Exception as e:
         logger.error(f"Error fetching schema: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ---- Deep Research Agent ----
-
-class DeepResearchRequest(BaseModel):
-    """Request model for deep research"""
-    topic: str
-    depth: Optional[str] = "medium"  # quick, medium, thorough
-    user_id: Optional[str] = "anonymous"
-
-
-class DeepResearchResponse(BaseModel):
-    """Response model for deep research"""
-    session_id: str
-    status: str
-    topic: str
-    depth: str
-    report: Optional[str] = None
-    sources: Optional[List[Dict[str, str]]] = None
-    queries_executed: Optional[List[str]] = None
-    result_count: Optional[int] = None
-    error: Optional[str] = None
-
 
 @router.post("/agents/research", response_model=DeepResearchResponse)
 async def deep_research(
@@ -2552,7 +2540,7 @@ async def deep_research(
             agent_name="Deep Researcher",
             result=f"Error: {str(e)}",
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/agents/research/sessions")
@@ -2609,7 +2597,7 @@ async def list_rbac_denials(
     """
     from sqlalchemy import text
     clauses = []
-    params: Dict[str, Any] = {"limit": max(1, min(1000, limit))}
+    params: dict[str, Any] = {"limit": max(1, min(1000, limit))}
     if agent_id:
         clauses.append("agent_id = :aid")
         params["aid"] = agent_id
@@ -2661,8 +2649,9 @@ async def list_conversations_for_user(
     Used by Ops Center's activity aggregator to show per-user chat history.
     ``since`` is an ISO timestamp; defaults to 7 days ago.
     """
-    from sqlalchemy import text
     from datetime import datetime, timedelta
+
+    from sqlalchemy import text
     if not user_id:
         return {"conversations": [], "count": 0}
     since_dt = None
