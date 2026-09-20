@@ -15,23 +15,23 @@ For live LLM tests:
 """
 
 import os
+from typing import Any
+
 import pytest
-from typing import Dict, Any, List
-from unittest.mock import AsyncMock, patch, MagicMock
 
 # Test configuration
 RUN_LLM_TESTS = os.getenv("RUN_LLM_TESTS", "0") == "1"
 
 # Import workflow utilities
 from app.workflows.schema import (
-    WorkflowDefinition,
-    WorkflowStep,
     Checkpoint,
     CheckpointType,
+    WorkflowDefinition,
     WorkflowExecutionState,
+    WorkflowStep,
 )
-from app.workflows.templates import get_workflow, list_workflows, ALL_WORKFLOWS
 from app.workflows.team_leads import ALL_TEAM_LEADS, get_team_lead
+from app.workflows.templates import ALL_WORKFLOWS, get_workflow, list_workflows
 
 # Import test data
 from tests.fixtures.professional_test_data import (
@@ -40,7 +40,6 @@ from tests.fixtures.professional_test_data import (
     get_test_inputs,
     list_test_workflows,
 )
-
 
 # =============================================================================
 # WORKFLOW STRUCTURE TESTS
@@ -121,11 +120,11 @@ class TestWorkflowStructure:
             pytest.skip(f"Workflow {workflow_id} not yet implemented")
 
         # Track which outputs are available at each step
-        available_outputs = set(f"inputs.{inp}" for inp in workflow.required_inputs)
+        available_outputs = {f"inputs.{inp}" for inp in workflow.required_inputs}
 
         for step in workflow.steps:
             # Check all inputs reference available outputs
-            for input_name, input_ref in step.inputs.items():
+            for _input_name, input_ref in step.inputs.items():
                 if input_ref.startswith("inputs."):
                     input_field = input_ref.split(".")[1]
                     assert input_field in workflow.required_inputs, \
@@ -281,25 +280,13 @@ class TestTestData:
 class TestMockedExecution:
     """Test workflow execution with mocked LLM responses."""
 
-    @pytest.fixture
-    def mock_llm_client(self):
-        """Create a mock LLM client that returns structured responses."""
-        with patch("app.llm.ops_center_client.OpsCenterClient") as mock:
-            client = mock.return_value
-            client.chat_completion_with_tools = AsyncMock(return_value={
-                "content": "Mocked response",
-                "tool_calls": [],
-                "usage": {"total_tokens": 100},
-            })
-            yield client
-
     @pytest.mark.asyncio
     @pytest.mark.parametrize("workflow_id", [
         "ma-due-diligence",
         "contract-review",
         "soc-analyst-assistant",
     ])
-    async def test_workflow_execution_flow(self, mock_llm_client, workflow_id: str):
+    async def test_workflow_execution_flow(self, workflow_id: str):
         """Test workflow execution produces expected structure."""
         workflow = get_workflow(workflow_id)
         if workflow is None:
@@ -445,6 +432,7 @@ class TestIntegration:
     def test_app(self):
         """Create test FastAPI app."""
         from fastapi.testclient import TestClient
+
         from app.main import app
         return TestClient(app)
 
@@ -480,7 +468,7 @@ class TestIntegration:
 # HELPER FUNCTIONS
 # =============================================================================
 
-def verify_output_structure(outputs: Dict[str, Any], expected: Dict[str, List[str]]) -> List[str]:
+def verify_output_structure(outputs: dict[str, Any], expected: dict[str, list[str]]) -> list[str]:
     """
     Verify outputs match expected structure.
 
@@ -509,7 +497,7 @@ def verify_output_structure(outputs: Dict[str, Any], expected: Dict[str, List[st
     return issues
 
 
-def calculate_quality_score(outputs: Dict[str, Any], checks: List[Dict]) -> float:
+def calculate_quality_score(outputs: dict[str, Any], checks: list[dict]) -> float:
     """
     Calculate quality score based on checks.
 
@@ -533,7 +521,7 @@ def calculate_quality_score(outputs: Dict[str, Any], checks: List[Dict]) -> floa
 
         # Check min_items
         elif "min_items" in check:
-            if isinstance(value, (list, dict)) and len(value) >= check["min_items"]:
+            if isinstance(value, list | dict) and len(value) >= check["min_items"]:
                 passed += 1
 
         # Check contains
@@ -544,7 +532,7 @@ def calculate_quality_score(outputs: Dict[str, Any], checks: List[Dict]) -> floa
 
         # Check is_numeric
         elif check.get("is_numeric"):
-            if isinstance(value, (int, float)):
+            if isinstance(value, int | float):
                 passed += 1
 
         else:
