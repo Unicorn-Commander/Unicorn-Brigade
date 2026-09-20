@@ -14,7 +14,7 @@ import logging
 import os
 import time
 
-from app.db.database import get_session
+from app.db.database import get_session, streaming_org_context
 from app.db.repositories import AgentRepository, ToolExecutionRepository
 from app.llm.ops_center_client import OpsCenterLLMClient, ToolCall, ToolResult, DEFAULT_MODEL
 from app.llm.tool_resolver import get_tools_for_agent
@@ -1840,24 +1840,31 @@ async def _stream_chat(
                     continue
             response = await _loop_task
 
-            # Log tool executions to DB
-            try:
-                tool_repo = ToolExecutionRepository(session)
-                for tc in tool_calls_log:
-                    te = await tool_repo.create({
-                        "agent_id": agent["id"],
-                        "tool_name": tc["name"],
-                        "input": tc.get("arguments"),
-                    })
-                    status = "failed" if tc.get("error") else "completed"
-                    await tool_repo.complete(
-                        str(te["id"]),
-                        output=tc.get("result"),
-                        duration_ms=0,
-                        status=status,
-                    )
-            except Exception as log_err:
-                logger.warning(f"Failed to log tool executions: {log_err}")
+            # Log tool executions to DB. This generator body runs AFTER
+            # get_session's dependency teardown (FastAPI >=0.106), which has
+            # already cleared the org GUC and current_org_id_var — without
+            # re-binding the org here, every one of these FORCE-RLS inserts is
+            # rejected by RLS and the audit rows are silently lost (the stream
+            # still returns 200). streaming_org_context binds the request's org
+            # for the block and positively clears it on exit (B1 posture).
+            async with streaming_org_context(session, org_id):
+                try:
+                    tool_repo = ToolExecutionRepository(session)
+                    for tc in tool_calls_log:
+                        te = await tool_repo.create({
+                            "agent_id": agent["id"],
+                            "tool_name": tc["name"],
+                            "input": tc.get("arguments"),
+                        })
+                        status = "failed" if tc.get("error") else "completed"
+                        await tool_repo.complete(
+                            str(te["id"]),
+                            output=tc.get("result"),
+                            duration_ms=0,
+                            status=status,
+                        )
+                except Exception as log_err:
+                    logger.warning(f"Failed to log tool executions: {log_err}")
 
             # The tool-loop response is already complete; emit it as a few larger
             # chunks (a light "typing" feel) rather than hundreds of tiny frames.
