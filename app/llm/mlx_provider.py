@@ -5,11 +5,10 @@ Uses IBM Granite 3.3 models (2B/8B) for local, on-device inference.
 Great for testing and offline usage on Mac with Apple Silicon.
 """
 
-import logging
-import json
 import asyncio
-from typing import Dict, Any, List, Optional, Callable
-from dataclasses import dataclass
+import json
+import logging
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +24,9 @@ def _get_mlx():
         from mlx_lm import generate, load
         from mlx_lm.sample_utils import make_sampler
         return generate, load, make_sampler
-    except ImportError:
+    except ImportError as exc:
         logger.error("mlx_lm not installed. Run: pip install mlx-lm")
-        raise ImportError("mlx_lm is required for local MLX inference")
+        raise ImportError("mlx_lm is required for local MLX inference") from exc
 
 
 def load_mlx_model(model_name: str = "mlx-community/granite-3.3-2b-instruct-4bit"):
@@ -57,7 +56,7 @@ def load_mlx_model(model_name: str = "mlx-community/granite-3.3-2b-instruct-4bit
     return _mlx_model, _mlx_tokenizer
 
 
-def format_chat_messages(messages: List[Dict[str, Any]], tokenizer) -> str:
+def format_chat_messages(messages: list[dict[str, Any]], tokenizer) -> str:
     """
     Format chat messages into a prompt string.
 
@@ -141,12 +140,12 @@ class MLXLLMClient:
 
     async def chat_completion(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         model: str = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create chat completion using local MLX model.
 
@@ -161,11 +160,11 @@ class MLXLLMClient:
 
     def _sync_chat_completion(
         self,
-        messages: List[Dict[str, str]],
+        messages: list[dict[str, str]],
         model: str = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Synchronous chat completion."""
         self._ensure_model_loaded()
         generate, _, make_sampler = _get_mlx()
@@ -217,7 +216,7 @@ class MLXLLMClient:
             }
         }
 
-    def _parse_tool_calls(self, text: str) -> List[Dict[str, Any]]:
+    def _parse_tool_calls(self, text: str) -> list[dict[str, Any]]:
         """
         Parse tool calls from Granite's response.
 
@@ -289,14 +288,14 @@ class MLXLLMClient:
 
     async def chat_completion_with_tools(
         self,
-        messages: List[Dict[str, Any]],
-        tools: List[Any],  # List of ToolDefinition
+        messages: list[dict[str, Any]],
+        tools: list[Any],  # List of ToolDefinition
         model: str = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
         tool_choice: str = "auto",
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Chat completion with function calling support.
 
@@ -345,7 +344,7 @@ class MLXLLMClient:
             max_tokens=max_tokens,
         )
 
-    def parse_tool_calls(self, response: Dict[str, Any]) -> List:
+    def parse_tool_calls(self, response: dict[str, Any]) -> list:
         """Parse tool calls from response (compatible with OpsCenterLLMClient)."""
         from app.llm.ops_center_client import ToolCall
 
@@ -368,7 +367,7 @@ class MLXLLMClient:
 
         return tool_calls
 
-    def has_tool_calls(self, response: Dict[str, Any]) -> bool:
+    def has_tool_calls(self, response: dict[str, Any]) -> bool:
         """Check if response contains tool calls."""
         choices = response.get("choices", [])
         if not choices:
@@ -376,7 +375,7 @@ class MLXLLMClient:
         message = choices[0].get("message", {})
         return bool(message.get("tool_calls"))
 
-    def get_response_content(self, response: Dict[str, Any]) -> str:
+    def get_response_content(self, response: dict[str, Any]) -> str:
         """Extract text content from response."""
         choices = response.get("choices", [])
         if not choices:
@@ -386,8 +385,8 @@ class MLXLLMClient:
 
     async def execute_tool_loop(
         self,
-        messages: List[Dict[str, Any]],
-        tools: List[Any],  # List of ToolDefinition
+        messages: list[dict[str, Any]],
+        tools: list[Any],  # List of ToolDefinition
         model: str = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
@@ -398,7 +397,7 @@ class MLXLLMClient:
         user_email: Optional[str] = None,  # caller email for Glitter/Brigade JWTs
         tool_guard=None,  # BR-6.4: per-caller ToolPermissionGuard; None = no gating
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute a complete tool use loop locally.
 

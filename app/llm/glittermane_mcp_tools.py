@@ -40,7 +40,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import httpx
 from jose import jwt as jose_jwt
@@ -107,7 +107,7 @@ def _mint_user_jwt(user_id: str, email: str) -> str:
 def _auth_header(
     caller_user_id: Optional[str],
     caller_email: Optional[str] = None,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     if caller_user_id and caller_email and "@" in caller_email and GLITTERMANE_JWT_SECRET:
         try:
             return {"Authorization": f"Bearer {_mint_user_jwt(caller_user_id, caller_email)}"}
@@ -118,8 +118,8 @@ def _auth_header(
     return {}
 
 
-async def _consult(question: str, headers: Dict[str, str], base: str,
-                   timeout: httpx.Timeout) -> Dict[str, Any]:
+async def _consult(question: str, headers: dict[str, str], base: str,
+                   timeout: httpx.Timeout) -> dict[str, Any]:
     """The ``ask`` flow: open a consultation, post the question, accumulate the
     SSE token stream into the answer."""
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -163,9 +163,9 @@ async def _consult(question: str, headers: Dict[str, str], base: str,
     return {"result": {"answer": answer, "specialties": specialties}}
 
 
-async def _rest_call(tool_name: str, args: Dict[str, Any],
+async def _rest_call(tool_name: str, args: dict[str, Any],
                      caller_user_id: Optional[str] = None,
-                     caller_email: Optional[str] = None) -> Dict[str, Any]:
+                     caller_email: Optional[str] = None) -> dict[str, Any]:
     base = GLITTERMANE_API_URL.rstrip("/")
     if not base:
         return {"error": "glittermane not configured (set GLITTERMANE_API_URL)"}
@@ -196,7 +196,7 @@ async def _rest_call(tool_name: str, args: Dict[str, Any],
             return {"result": resp.json()}
         except (json.JSONDecodeError, ValueError):
             return {"result": resp.text}
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return {"error": f"glittermane call timed out after {GLITTERMANE_TIMEOUT}s"}
     except httpx.TimeoutException:
         return {"error": f"glittermane call timed out after {GLITTERMANE_TIMEOUT}s"}
@@ -210,7 +210,7 @@ def _make_handler(tool_name: str):
         caller_user_id: Optional[str] = None,
         caller_email: Optional[str] = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         # caller_user_id / caller_email are injected by the tool layer
         # (needs_caller_context=True); never let them leak into the request body.
         args = {k: v for k, v in kwargs.items() if v is not None}
@@ -348,7 +348,7 @@ ADD_APPOINTMENT_TOOL = ToolDefinition(
 )
 
 
-GLITTERMANE_MCP_TOOLS: Dict[str, ToolDefinition] = {
+GLITTERMANE_MCP_TOOLS: dict[str, ToolDefinition] = {
     # The consult (headline) + ingest
     "glitter_ask": ASK_TOOL,
     "glitter_ingest_text": INGEST_TEXT_TOOL,
