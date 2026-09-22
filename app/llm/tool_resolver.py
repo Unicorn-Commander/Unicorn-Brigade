@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Tool Resolver — Maps agent tool names to ToolDefinition objects.
 
@@ -23,6 +24,7 @@ from app.llm.advanced_tools import (
 from app.llm.analytics_tools import ANALYTICS_SQL_TOOL
 from app.llm.builtin_tools import (
     CALCULATOR_TOOL,
+    COLONEL_FACTS_TOOL,
     DATETIME_TOOL,
     HTTP_REQUEST_TOOL,
     JSON_TOOL,
@@ -73,6 +75,9 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
     "web_search": WEB_SEARCH_TOOL,
     "http_request": HTTP_REQUEST_TOOL,
     "calculator": CALCULATOR_TOOL,
+    # Fixed-URL fleet snapshot. Attached to The Colonel by his agent tool list,
+    # not by the global default/safe/research sets.
+    "colonel_facts": COLONEL_FACTS_TOOL,
     "datetime": DATETIME_TOOL,
     "json": JSON_TOOL,
     "shell": SHELL_TOOL,
