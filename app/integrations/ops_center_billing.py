@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Phase 7.2/7.3 — Brigade-side client for Ops-Center's ``/api/v1/billing/state``.
 
@@ -5,21 +6,21 @@ Chat endpoints use this to:
   * decide whether to 402 a non-admin user who's out of credits
   * populate ``user_attrs["paid"]`` for per-agent RBAC policies
 
-The client caches per-user for ``_CACHE_TTL`` seconds so a single turn of a
-chat (which hits RBAC + preflight + potentially more) doesn't trigger three
-round-trips to ops-center.
+The client caches per-user for ``_CACHE_TTL`` seconds, hits and misses alike,
+so one chat turn does not open a connection per gate.
 
-On any network / auth failure we return an "unknown" state (paid=False,
-credits=0). The caller (``agent_routes``) then treats that as
-"no-credits, no-paid-subscription" — which blocks non-admins the same as
-a confirmed empty balance. That's the correct fail-safe: if billing is
-unreachable, pausing free-tier chat is better than giving away inference.
+On any network / auth failure we return an "unknown" state
+(``lookup="unavailable"``). The chat gate (``_enforce_billing_or_402``) fails
+open on that state: it does not 402. It logs one advisory WARNING per caller
+per ``_ADVISORY_LOG_INTERVAL`` instead of an error on every request.
+``BRIGADE_BILLING_STRICT=true`` is the opt-in that turns the same state into
+a 503. An authoritative ``lookup="ok"`` with no credits and no paid plan is
+still a 402.
 """
 
 import logging
 import os
 import time
-from typing import Dict, Tuple
 
 import httpx
 
@@ -29,14 +30,20 @@ OPS_CENTER_URL = os.getenv("OPS_CENTER_URL", "http://ops-center-direct:8084").rs
 BRIGADE_SERVICE_KEY = os.getenv("BRIGADE_SERVICE_KEY", "")
 
 _CACHE_TTL = 30.0
-_cache: Dict[str, Tuple[float, Dict[str, object]]] = {}
+_cache: dict[str, tuple[float, dict[str, object]]] = {}
+
+# Advisory (fail-open) misses are WARNING at most once per caller per window.
+# A dead preflight must not paint every chat line as an error. The Prometheus
+# counter still increments on each real lookup attempt.
+_ADVISORY_LOG_INTERVAL = 600.0
+_advisory_logged_at: dict[str, float] = {}
 
 # ``lookup`` is the load-bearing field: "ok" means Ops-Center ANSWERED and this
 # is its authoritative view of the account. "unavailable" means we never got an
 # answer — unreachable, timeout, 5xx, 401, or the route does not exist. The two
 # must never be conflated, because "you have zero credits" and "we could not ask
 # whether you have credits" are opposite facts about a paying customer.
-_UNKNOWN: Dict[str, object] = {
+_UNKNOWN: dict[str, object] = {
     "paid": False,
     "subscription_tier": None,
     "credits_remaining": 0.0,
@@ -45,14 +52,36 @@ _UNKNOWN: Dict[str, object] = {
 }
 
 
-def _unknown(reason: str) -> Dict[str, object]:
+def _unknown(reason: str) -> dict[str, object]:
     d = dict(_UNKNOWN)
     d["lookup_error"] = reason
     return d
 
 
-async def get_billing_state(user_email: str) -> Dict[str, object]:
-    """Return the billing state dict for ``user_email``. Cached 30s."""
+def _log_advisory(caller: str, message: str, *args: object) -> None:
+    """WARNING once per caller per interval; suppressed repeats are DEBUG.
+
+    Never ERROR. On the fail-open path a billing miss is not a failed chat.
+    The dedupe key is case-folded so the HTTP client and the chat gate share
+    one window for the same email.
+    """
+    now = time.monotonic()
+    key = (caller or "<unknown>").strip().lower()
+    last = _advisory_logged_at.get(key)
+    if last is not None and (now - last) < _ADVISORY_LOG_INTERVAL:
+        logger.debug(message, *args)
+        return
+    _advisory_logged_at[key] = now
+    logger.warning(message, *args)
+
+
+async def get_billing_state(user_email: str) -> dict[str, object]:
+    """Return the billing state dict for ``user_email``. Cached 30s.
+
+    Failures are cached for the same TTL as a hit. A 401 or a timeout is an
+    infrastructure fact about this caller, not something that changes between
+    messages in a turn.
+    """
     if not user_email:
         return _unknown("no user email on the request")
 
@@ -80,26 +109,38 @@ async def get_billing_state(user_email: str) -> Dict[str, object]:
             data.setdefault("lookup", "ok")
             _cache[user_email] = (now, data)
             return data
-        # Any non-200 is an INFRASTRUCTURE failure, not a verdict on this account.
-        # ERROR, not warning: as of 2026-08-11 this route has never existed in
-        # Ops-Center (the billing router has /plans,/invoices,/cycle,/summary and
-        # no /state), so the 401 from its global auth gate is really a masked 404
-        # and EVERY non-admin caller was being told they were out of credits.
-        logger.error(
-            "BILLING LOOKUP UNAVAILABLE — billing/state returned %s for %s: %s. "
-            "Not blocking the caller: an unreachable billing service is not "
-            "evidence of an empty balance.",
-            r.status_code, user_email, r.text[:200],
-        )
+        # Non-200 is an infrastructure miss, not a verdict on this account.
+        # The chat gate fails open. One WARNING per caller per interval — an
+        # ERROR on every chat hides real errors. Cached like a hit.
+        result = _unknown(f"HTTP {r.status_code}")
+        _cache[user_email] = (now, result)
         _record_unavailable(str(r.status_code))
-        return _unknown(f"HTTP {r.status_code}")
-    except Exception as e:
-        logger.error(
-            "BILLING LOOKUP UNAVAILABLE — billing/state lookup failed for %s: %s. "
-            "Not blocking the caller.", user_email, e,
+        _log_advisory(
+            user_email,
+            "BILLING LOOKUP ADVISORY — billing/state returned %s for %s: %s. "
+            "Not blocking the caller (fail-open): an unreachable billing "
+            "service is not evidence of an empty balance. Repeats for this "
+            "caller are debug-only for %ss.",
+            r.status_code,
+            user_email,
+            r.text[:200],
+            int(_ADVISORY_LOG_INTERVAL),
         )
+        return result
+    except Exception as e:
+        result = _unknown(f"{type(e).__name__}: {e}")
+        _cache[user_email] = (now, result)
         _record_unavailable(type(e).__name__)
-        return _unknown(f"{type(e).__name__}: {e}")
+        _log_advisory(
+            user_email,
+            "BILLING LOOKUP ADVISORY — billing/state lookup failed for %s: %s. "
+            "Not blocking the caller (fail-open). Repeats for this caller are "
+            "debug-only for %ss.",
+            user_email,
+            e,
+            int(_ADVISORY_LOG_INTERVAL),
+        )
+        return result
 
 
 def _record_unavailable(reason: str) -> None:

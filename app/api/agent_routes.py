@@ -1,3 +1,4 @@
+# Executed by Grok (headless lane)
 """
 Agent management and chat routes.
 Provides full CRUD for agents and real-time chat with function calling via Ops-Center LLM.
@@ -31,7 +32,11 @@ from app.integrations.lago import (
 # private name so callers (this module + openai_compat_routes) resolve it here.
 from app.integrations.metering import enforce_org_cap_or_402 as _enforce_org_cap_or_402
 from app.integrations.metering import meter_usage
-from app.integrations.ops_center_billing import get_billing_state
+from app.integrations.ops_center_billing import (
+    _ADVISORY_LOG_INTERVAL,
+    _log_advisory,
+    get_billing_state,
+)
 from app.llm.gemma_sanitize import strip_channel_artifacts
 from app.llm.mlx_provider import MLXLLMClient
 from app.llm.ops_center_client import DEFAULT_MODEL, OpsCenterLLMClient, ToolCall, ToolResult
@@ -440,27 +445,31 @@ async def _fetch_user_attrs(user: AuthUser, session=None) -> tuple:
 
 
 def _enforce_billing_or_402(user: AuthUser, billing_state: dict) -> None:
-    """Raise 402 if a non-admin user has no credits and no paid subscription.
+    """Raise 402 only when billing authoritatively says the account is empty.
 
-    This is the ONLY place Brigade enforces billing. If Ops-Center returned
-    an "unknown" state (lookup failed), ``credits_remaining`` will be 0 and
-    ``paid`` will be False — which fail-safes to "block" for non-admins.
+    This is the only place Brigade enforces the Ops-Center credit balance.
+    ``lookup != "ok"`` means the lookup never got an answer. That is not a
+    verdict of "no credits": the default is fail-open (allow the request).
+    ``BRIGADE_BILLING_STRICT`` turns that case into a 503 instead.
     """
     if not user or user.role == UserRole.ADMIN:
         return
-    # A billing lookup that never got an answer is NOT a verdict of "no credits".
-    # Until 2026-08-11 this fell through to a 402, and because Ops-Center has
-    # never implemented GET /api/v1/billing/state, EVERY non-admin, non-trusted
-    # caller was told "You are out of credits" regardless of their real balance.
-    # Fail OPEN on an infrastructure failure and make it loud + counted; only an
-    # authoritative answer may take money-affecting action against a customer.
+    # Until 2026-08-11 a missed lookup fell through to a 402, and because
+    # Ops-Center has no GET /api/v1/billing/state, every non-admin, non-trusted
+    # caller was told they were out of credits. Only an authoritative answer
+    # may take money-affecting action. The miss itself is advisory: one WARNING
+    # per caller per interval, shared with the HTTP client via _log_advisory.
     if billing_state.get("lookup") != "ok":
-        logger.error(
-            "BILLING PREFLIGHT UNAVAILABLE for user=%s (%s) — allowing the "
-            "request rather than 402-ing on an infrastructure failure. Credits "
-            "were NOT verified.",
-            getattr(user, "email", "") or getattr(user, "id", "?"),
+        caller = getattr(user, "email", "") or getattr(user, "id", "?")
+        _log_advisory(
+            caller,
+            "BILLING PREFLIGHT ADVISORY for user=%s (%s) — allowing the "
+            "request rather than 402-ing on an infrastructure failure. "
+            "Credits were NOT verified. Repeats for this caller are "
+            "debug-only for %ss.",
+            caller,
             billing_state.get("lookup_error", "unknown"),
+            int(_ADVISORY_LOG_INTERVAL),
         )
         if _BILLING_STRICT:
             raise HTTPException(
