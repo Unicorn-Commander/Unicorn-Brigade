@@ -1,10 +1,10 @@
+# Executed by Grok (headless lane)
 """
 Built-in Tools for Agent Execution
 
 Provides a standard set of tools that agents can use for common operations.
 """
 
-import asyncio
 import ast
 import ipaddress
 import json
@@ -13,16 +13,17 @@ import math
 import operator as _operator
 import os
 import socket
-import httpx
-from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
+from typing import Any, Optional
 from urllib.parse import urlparse
+
+import httpx
 
 from app.llm.ops_center_client import ToolDefinition, ToolParameter
 
 # BR-4: shared outbound-tool timeout defaults (connect kept short for fast-fail).
 try:
-    from app.reliability.retry import DEFAULT_TOOL_TIMEOUT, DEFAULT_CONNECT_TIMEOUT
+    from app.reliability.retry import DEFAULT_CONNECT_TIMEOUT, DEFAULT_TOOL_TIMEOUT
 except Exception:  # pragma: no cover - reliability layer should always import
     DEFAULT_TOOL_TIMEOUT, DEFAULT_CONNECT_TIMEOUT = 30.0, 10.0
 
@@ -119,7 +120,7 @@ def _safe_eval_node(node: ast.AST):
 
     if isinstance(node, ast.Constant):
         # Reject bool (subclass of int) and anything non-numeric (str, bytes, ...).
-        if isinstance(node.value, bool) or not isinstance(node.value, (int, float, complex)):
+        if isinstance(node.value, bool) or not isinstance(node.value, int | float | complex):
             raise ValueError("only numeric constants are allowed")
         return node.value
 
@@ -193,7 +194,7 @@ def _ip_is_blocked(ip_str: str) -> bool:
 
 def resolve_and_validate_egress(
     url: str,
-) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+) -> tuple[bool, Optional[str], Optional[str], Optional[str]]:
     """
     SSRF guard that ALSO returns the connection pin.
 
@@ -254,7 +255,7 @@ def resolve_and_validate_egress(
     return True, None, hostname, pinned_ip
 
 
-def validate_url_egress(url: str) -> Tuple[bool, Optional[str]]:
+def validate_url_egress(url: str) -> tuple[bool, Optional[str]]:
     """
     SSRF guard. Returns (allowed, error_message).
 
@@ -311,7 +312,7 @@ class _PinnedIPTransport(httpx.AsyncHTTPTransport):
 
 def build_egress_guarded_transport(
     url: str, **transport_kwargs
-) -> Tuple[Optional[httpx.AsyncBaseTransport], Optional[str]]:
+) -> tuple[Optional[httpx.AsyncBaseTransport], Optional[str]]:
     """Validate egress for ``url`` and return a DNS-pinned httpx transport.
 
     Returns ``(transport, None)`` when the URL is allowed, or ``(None, reason)``
@@ -347,7 +348,7 @@ BRIGHTDATA_API_KEY = os.getenv("BRIGHTDATA_API_KEY", "")
 BRIGHTDATA_ZONE = os.getenv("BRIGHTDATA_ZONE", "serp")
 
 
-async def _search_serper(query: str, num_results: int = 5) -> Dict[str, Any]:
+async def _search_serper(query: str, num_results: int = 5) -> dict[str, Any]:
     """Search via Serper.dev (Google SERP API)"""
     # Degrade gracefully instead of firing a request with an empty API key
     # (which would 4xx) — return a clean, actionable tool error.
@@ -407,7 +408,7 @@ async def _search_serper(query: str, num_results: int = 5) -> Dict[str, Any]:
         return {"query": query, "error": str(e), "success": False}
 
 
-async def _search_searxng(query: str, num_results: int = 5) -> Dict[str, Any]:
+async def _search_searxng(query: str, num_results: int = 5) -> dict[str, Any]:
     """Search via SearXNG (self-hosted metasearch)"""
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -443,7 +444,7 @@ async def _search_searxng(query: str, num_results: int = 5) -> Dict[str, Any]:
         return {"query": query, "error": str(e), "success": False}
 
 
-async def _search_brightdata(query: str, num_results: int = 5) -> Dict[str, Any]:
+async def _search_brightdata(query: str, num_results: int = 5) -> dict[str, Any]:
     """Search via Brightdata SERP API"""
     if not BRIGHTDATA_API_KEY:
         return {"query": query, "error": "BRIGHTDATA_API_KEY not configured", "success": False}
@@ -487,7 +488,7 @@ async def _search_brightdata(query: str, num_results: int = 5) -> Dict[str, Any]
         return {"query": query, "error": str(e), "success": False}
 
 
-async def web_search_handler(query: str, num_results: int = 5, provider: str = None) -> Dict[str, Any]:
+async def web_search_handler(query: str, num_results: int = 5, provider: str = None) -> dict[str, Any]:
     """Execute a web search using configured provider"""
     use_provider = provider or SEARCH_PROVIDER
     logger.info(f"Web search [{use_provider}]: {query}")
@@ -540,10 +541,10 @@ WEB_SEARCH_TOOL = ToolDefinition(
 async def http_request_handler(
     url: str,
     method: str = "GET",
-    headers: Optional[Dict[str, str]] = None,
-    body: Optional[Dict[str, Any]] = None,
+    headers: Optional[dict[str, str]] = None,
+    body: Optional[dict[str, Any]] = None,
     timeout: int = 30,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Make an HTTP request"""
     logger.info(f"HTTP {method} request to: {url}")
 
@@ -588,7 +589,7 @@ async def http_request_handler(
             # Try to parse JSON response
             try:
                 response_data = response.json()
-            except:
+            except Exception:
                 response_data = response.text
 
             return {
@@ -642,7 +643,7 @@ HTTP_REQUEST_TOOL = ToolDefinition(
 
 # ============== Calculator Tool ==============
 
-async def calculator_handler(expression: str) -> Dict[str, Any]:
+async def calculator_handler(expression: str) -> dict[str, Any]:
     """Evaluate a mathematical expression safely"""
     logger.info(f"Calculator: {expression}")
 
@@ -696,9 +697,8 @@ async def datetime_handler(
     operation: str = "now",
     timezone: str = "UTC",
     format: str = "%Y-%m-%d %H:%M:%S",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get date/time information"""
-    from datetime import datetime, timedelta
     import pytz
 
     logger.info(f"DateTime operation: {operation}")
@@ -768,7 +768,7 @@ async def json_handler(
     operation: str,
     data: Any,
     path: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Manipulate JSON data"""
     logger.info(f"JSON operation: {operation}")
 
@@ -846,7 +846,7 @@ async def shell_handler(
     command: str,
     timeout: int = 30,
     working_dir: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Execute a shell command in a sandboxed Docker container.
 
@@ -918,14 +918,14 @@ SHELL_TOOL = ToolDefinition(
 # ============== Memory Tool ==============
 
 # In-memory store for the session
-_memory_store: Dict[str, Any] = {}
+_memory_store: dict[str, Any] = {}
 
 
 async def memory_handler(
     operation: str,
     key: str,
     value: Any = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Store and retrieve data in session memory"""
     global _memory_store
 
@@ -985,9 +985,236 @@ MEMORY_TOOL = ToolDefinition(
 )
 
 
+# ============== Colonel facts (fixed internal collector) ==============
+#
+# The Colonel's fleet snapshot lives on an internal nginx container
+# (colonel-facts on bigboy's docker network) and is refreshed every 15 minutes
+# by colonel-collect.timer. The generic http_request tool correctly refuses
+# that address: the SSRF guard blocks non-public IPs, and that guard must stay
+# closed. This tool is the one exception, and only because the URL is not
+# caller-controllable.
+
+DEFAULT_COLONEL_FACTS_URL = "http://colonel-facts/facts.json"
+COLONEL_FACTS_TIMEOUT_SECONDS = 5.0
+COLONEL_FACTS_MAX_BYTES = 1024 * 1024  # 1 MiB
+COLONEL_FACTS_MAX_AGE_MINUTES = 15
+
+# Document-level clocks. The collector's own timestamp is what makes a stale
+# answer visible; host/section filters must not drop it.
+_COLONEL_FACTS_TIMESTAMP_KEYS = (
+    "timestamp",
+    "collected_at",
+    "generated_at",
+    "as_of",
+    "updated_at",
+)
+# Top-level keys that are snapshot metadata, not a host entry.
+_COLONEL_FACTS_NON_HOST_KEYS = frozenset(_COLONEL_FACTS_TIMESTAMP_KEYS) | {
+    "hosts",
+    "sections",
+    "note",
+    "version",
+    "source",
+    "max_age_minutes",
+}
+
+
+def colonel_facts_url() -> str:
+    """Operator-configured collector URL. Tool arguments never influence this."""
+    raw = os.getenv("COLONEL_FACTS_URL", DEFAULT_COLONEL_FACTS_URL)
+    text = raw.strip() if isinstance(raw, str) else ""
+    return text or DEFAULT_COLONEL_FACTS_URL
+
+
+def _colonel_facts_url_allowed(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _colonel_filter_str(value: Any, label: str) -> tuple[Optional[str], Optional[str]]:
+    """Normalize a response filter. ``(None, None)`` means the filter is omitted."""
+    if value is None:
+        return None, None
+    if not isinstance(value, str):
+        return None, f"{label} must be a string"
+    text = value.strip()
+    return (text, None) if text else (None, None)
+
+
+def _colonel_facts_timestamp(payload: Any) -> Any:
+    if not isinstance(payload, dict):
+        return None
+    for key in _COLONEL_FACTS_TIMESTAMP_KEYS:
+        stamp = payload.get(key)
+        if stamp not in (None, ""):
+            return stamp
+    return None
+
+
+def _colonel_select_host(payload: Any, host: str) -> tuple[Any, Optional[str]]:
+    if not isinstance(payload, dict):
+        return None, f"host {host!r} not in facts"
+    hosts = payload.get("hosts")
+    if isinstance(hosts, dict):
+        if host in hosts:
+            return hosts[host], None
+        return None, f"host {host!r} not in facts"
+    if isinstance(hosts, list):
+        for item in hosts:
+            if not isinstance(item, dict):
+                continue
+            names = (item.get("host"), item.get("hostname"), item.get("name"), item.get("id"))
+            if host in names:
+                return item, None
+        return None, f"host {host!r} not in facts"
+    entry = payload.get(host)
+    if host not in _COLONEL_FACTS_NON_HOST_KEYS and isinstance(entry, dict | list):
+        return entry, None
+    return None, f"host {host!r} not in facts"
+
+
+def _colonel_select_section(payload: Any, section: str) -> tuple[Any, Optional[str]]:
+    if isinstance(payload, dict) and section in payload:
+        return payload[section], None
+    if isinstance(payload, dict):
+        sections = payload.get("sections")
+        if isinstance(sections, dict) and section in sections:
+            return sections[section], None
+    return None, f"section {section!r} not in facts"
+
+
+def _colonel_facts_error(message: str, timestamp: Any = None) -> dict[str, Any]:
+    body: dict[str, Any] = {"success": False, "error": message}
+    if timestamp is not None:
+        body["timestamp"] = timestamp
+        body["max_age_minutes"] = COLONEL_FACTS_MAX_AGE_MINUTES
+    return body
+
+
+async def _read_capped_body(response: httpx.Response, limit: int) -> tuple[Optional[bytes], Optional[str]]:
+    """Read up to ``limit`` bytes. A longer body is an error, not a partial parse."""
+    declared = response.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > limit:
+                return None, "colonel facts response exceeds 1 MiB cap"
+        except ValueError:
+            pass
+    buf = bytearray()
+    async for chunk in response.aiter_bytes():
+        if not chunk:
+            continue
+        if len(buf) + len(chunk) > limit:
+            return None, "colonel facts response exceeds 1 MiB cap"
+        buf.extend(chunk)
+    return bytes(buf), None
+
+
+async def colonel_facts_handler(
+    host: Optional[str] = None,
+    section: Optional[str] = None,
+    **_ignored: Any,
+) -> dict[str, Any]:
+    """Fetch the fixed fleet-facts document and optionally slice the JSON.
+
+    ``host`` and ``section`` select keys inside the response. They are never
+    written into the request URL. Any other keyword (url, path, scheme, ...)
+    is ignored so a caller cannot redirect the fetch.
+    """
+    host_name, host_err = _colonel_filter_str(host, "host")
+    if host_err:
+        return _colonel_facts_error(host_err)
+    section_name, section_err = _colonel_filter_str(section, "section")
+    if section_err:
+        return _colonel_facts_error(section_err)
+
+    url = colonel_facts_url()
+    if not _colonel_facts_url_allowed(url):
+        return _colonel_facts_error("COLONEL_FACTS_URL must be an absolute http(s) URL")
+
+    timeout = httpx.Timeout(COLONEL_FACTS_TIMEOUT_SECONDS)
+    try:
+        # Safe to bypass the SSRF egress guard: this GET uses one fixed internal
+        # URL from COLONEL_FACTS_URL (default http://colonel-facts/facts.json).
+        # No caller input is copied into the URL, the method is read-only, and
+        # redirects are not followed, so the client cannot be bounced at another
+        # host. host/section only filter the JSON body after it arrives.
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+            async with client.stream("GET", url) as response:
+                if response.status_code != 200:
+                    return _colonel_facts_error(f"colonel facts HTTP {response.status_code}")
+                body, size_err = await _read_capped_body(response, COLONEL_FACTS_MAX_BYTES)
+                if size_err:
+                    return _colonel_facts_error(size_err)
+    except httpx.TimeoutException:
+        return _colonel_facts_error(
+            f"colonel facts request timed out after {int(COLONEL_FACTS_TIMEOUT_SECONDS)}s"
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("colonel_facts request failed: %s", type(exc).__name__)
+        return _colonel_facts_error(f"colonel facts request failed: {type(exc).__name__}")
+
+    try:
+        payload = json.loads(body or b"")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _colonel_facts_error("colonel facts response was not JSON")
+
+    timestamp = _colonel_facts_timestamp(payload)
+    facts = payload
+    if host_name is not None:
+        facts, err = _colonel_select_host(facts, host_name)
+        if err:
+            return _colonel_facts_error(err, timestamp)
+    if section_name is not None:
+        facts, err = _colonel_select_section(facts, section_name)
+        if err:
+            return _colonel_facts_error(err, timestamp)
+
+    result: dict[str, Any] = {
+        "success": True,
+        "timestamp": timestamp,
+        "max_age_minutes": COLONEL_FACTS_MAX_AGE_MINUTES,
+        "facts": facts,
+    }
+    if host_name is not None:
+        result["host"] = host_name
+    if section_name is not None:
+        result["section"] = section_name
+    return result
+
+
+COLONEL_FACTS_TOOL = ToolDefinition(
+    name="colonel_facts",
+    description=(
+        "Read The Colonel's fleet facts snapshot (read-only JSON from the internal "
+        "collector). The snapshot is refreshed every 15 minutes and may be up to "
+        "15 minutes old; use the returned timestamp before treating a figure as "
+        "current. Optional host returns only that host's entry. Optional section "
+        "returns only that section of the document (or of the selected host). "
+        "This tool always reads the configured collector URL and cannot be pointed "
+        "at another address."
+    ),
+    parameters=[
+        ToolParameter(
+            name="host",
+            type="string",
+            description="If set, return only this host's entry from the snapshot. Not a URL.",
+            required=False,
+        ),
+        ToolParameter(
+            name="section",
+            type="string",
+            description="If set, return only this section of the snapshot (after host filtering).",
+            required=False,
+        ),
+    ],
+    handler=colonel_facts_handler,
+)
+
+
 # ============== Tool Registry ==============
 
-def get_default_tools() -> List[ToolDefinition]:
+def get_default_tools() -> list[ToolDefinition]:
     """
     Get the default set of built-in tools.
 
@@ -1004,7 +1231,7 @@ def get_default_tools() -> List[ToolDefinition]:
     ]
 
 
-def get_safe_tools() -> List[ToolDefinition]:
+def get_safe_tools() -> list[ToolDefinition]:
     """Get a safe subset of tools (no shell, no http)"""
     return [
         CALCULATOR_TOOL,
@@ -1014,7 +1241,7 @@ def get_safe_tools() -> List[ToolDefinition]:
     ]
 
 
-def get_research_tools() -> List[ToolDefinition]:
+def get_research_tools() -> list[ToolDefinition]:
     """Get tools useful for research tasks"""
     return [
         WEB_SEARCH_TOOL,
@@ -1025,7 +1252,7 @@ def get_research_tools() -> List[ToolDefinition]:
     ]
 
 
-def get_all_tools() -> List[ToolDefinition]:
+def get_all_tools() -> list[ToolDefinition]:
     """
     Get all built-in tools including shell (sandboxed).
 
