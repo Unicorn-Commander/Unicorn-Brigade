@@ -6,8 +6,12 @@ Regression for the 2026-10-01 dr-glitter-mane turn: iteration 1 called
 ``has_tool_calls`` is purely structural, so the loop treated that as a finished
 answer and handed the announcement to the user instead of an appointment date.
 
+Lives in app/tests/ on purpose: pytest.ini has `testpaths = tests app/tests`, so a
+test under app/llm/ is never collected by CI (app/llm/test_gemma_sanitize.py has that
+problem today and has to be run by hand).
+
 Run with:
-    python3 -m pytest app/llm/test_tool_loop_stall.py -v
+    python3 -m pytest app/tests/test_tool_loop_stall.py -v
 """
 
 import pytest
