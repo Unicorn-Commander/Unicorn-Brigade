@@ -52,7 +52,7 @@ records whose stored names do not resolve in the current executable registry.
 | `email` | 5 | outbound email |
 | `file` | 5 | filesystem write/delete capability |
 | `find_connections` | 1 | read-only graph traversal |
-| `find_evidence_gaps` | 1 | read-only evidence analysis |
+| `find_evidence_gaps` | 2 | evidence-gap analysis retained at its stricter historical tier |
 | `generate_pdf` | 2 | internal generated artifact |
 | `get_case_summary` | 1 | read-only case lookup |
 | `get_document` | 1 | read-only document metadata lookup |
@@ -64,17 +64,17 @@ records whose stored names do not resolve in the current executable registry.
 | `get_relationships` | 1 | read-only relationship lookup |
 | `get_strategy` | 1 | read-only case strategy lookup |
 | `get_timeline` | 1 | read-only timeline lookup |
-| `glitter_add_allergy` | 3 | sensitive medical record mutation |
-| `glitter_add_appointment` | 3 | sensitive medical record mutation |
-| `glitter_add_care_plan_item` | 3 | sensitive medical record mutation |
-| `glitter_add_condition` | 3 | sensitive medical record mutation |
-| `glitter_add_medication` | 3 | sensitive medical record mutation |
-| `glitter_add_vital` | 3 | sensitive medical record mutation |
+| `glitter_add_allergy` | 4 | sensitive medical record mutation |
+| `glitter_add_appointment` | 4 | sensitive medical record mutation |
+| `glitter_add_care_plan_item` | 4 | sensitive medical record mutation |
+| `glitter_add_condition` | 4 | sensitive medical record mutation |
+| `glitter_add_medication` | 4 | sensitive medical record mutation |
+| `glitter_add_vital` | 4 | sensitive medical record mutation |
 | `glitter_ask` | 3 | sensitive PHI consultation |
 | `glitter_get_health_summary` | 3 | sensitive PHI read |
 | `glitter_get_timeline` | 3 | sensitive PHI read |
 | `glitter_get_visit_summary` | 3 | sensitive PHI read |
-| `glitter_ingest_text` | 3 | sensitive medical record mutation |
+| `glitter_ingest_text` | 4 | sensitive medical record mutation |
 | `glitter_list_allergies` | 3 | sensitive PHI read |
 | `glitter_list_conditions` | 3 | sensitive PHI read |
 | `glitter_list_labs` | 3 | sensitive PHI read |
