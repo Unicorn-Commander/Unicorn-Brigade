@@ -376,7 +376,7 @@ class ApiKeyRepository:
             select(ApiKey)
             .where(
                 ApiKey.agent_id == agent_id,
-                ApiKey.is_active == True,
+                ApiKey.is_active.is_(True),
                 ApiKey.org_id == func.current_org_id(),
             )
             .order_by(ApiKey.created_at.desc())
@@ -603,7 +603,7 @@ class UserApiKeyRepository:
         """List all API keys for a user"""
         result = await self.session.execute(
             select(UserApiKey)
-            .where(UserApiKey.user_id == user_id, UserApiKey.is_active == True)
+            .where(UserApiKey.user_id == user_id, UserApiKey.is_active.is_(True))
             .order_by(UserApiKey.created_at.desc())
         )
         return [k.to_dict() for k in result.scalars().all()]
@@ -632,7 +632,7 @@ class UserApiKeyRepository:
         result = await self.session.execute(
             select(UserApiKey).where(
                 UserApiKey.key_hash == key_hash,
-                UserApiKey.is_active == True,
+                UserApiKey.is_active.is_(True),
             )
         )
         db_key = result.scalar_one_or_none()
