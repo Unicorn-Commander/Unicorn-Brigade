@@ -69,6 +69,15 @@ from app.llm.stable_knowledge_tools import STABLE_KNOWLEDGE_TOOLS
 
 logger = logging.getLogger(__name__)
 
+
+class UnknownToolNamesError(ValueError):
+    """Raised when an agent payload names a tool absent from the executable registry."""
+
+    def __init__(self, unknown_names: list[str]):
+        self.unknown_names = sorted(set(unknown_names))
+        super().__init__(f"unknown tool names: {', '.join(self.unknown_names)}")
+
+
 # Registry mapping tool names to their definitions
 TOOL_REGISTRY: dict[str, ToolDefinition] = {
     # Core tools
@@ -152,15 +161,18 @@ if os.getenv("HOMEASSISTANT_TOKEN") or os.getenv("HOMEASSISTANT_URL"):
             HA_LIST_ENTITIES_TOOL,
             HA_SEARCH_ENTITIES_TOOL,
         )
-        TOOL_REGISTRY.update({
-            "ha_list_entities": HA_LIST_ENTITIES_TOOL,
-            "ha_get_entity_state": HA_GET_ENTITY_STATE_TOOL,
-            "ha_call_service": HA_CALL_SERVICE_TOOL,
-            "ha_search_entities": HA_SEARCH_ENTITIES_TOOL,
-            "ha_get_history": HA_GET_HISTORY_TOOL,
-            "ha_list_areas": HA_LIST_AREAS_TOOL,
-            "ha_get_services": HA_GET_SERVICES_TOOL,
-        })
+
+        TOOL_REGISTRY.update(
+            {
+                "ha_list_entities": HA_LIST_ENTITIES_TOOL,
+                "ha_get_entity_state": HA_GET_ENTITY_STATE_TOOL,
+                "ha_call_service": HA_CALL_SERVICE_TOOL,
+                "ha_search_entities": HA_SEARCH_ENTITIES_TOOL,
+                "ha_get_history": HA_GET_HISTORY_TOOL,
+                "ha_list_areas": HA_LIST_AREAS_TOOL,
+                "ha_get_services": HA_GET_SERVICES_TOOL,
+            }
+        )
         logger.info("Home Assistant tools registered (HOMEASSISTANT_TOKEN/URL configured)")
     except ImportError:
         logger.warning("Home Assistant tools not available (ha_tools.py not found)")
@@ -174,6 +186,7 @@ else:
 if os.getenv("GLITTERMANE_API_URL"):
     try:
         from app.llm.glittermane_mcp_tools import GLITTERMANE_MCP_TOOLS
+
         TOOL_REGISTRY.update(GLITTERMANE_MCP_TOOLS)
         logger.info(f"Glitter Mane medical tools registered ({len(GLITTERMANE_MCP_TOOLS)} tools)")
     except ImportError as exc:
@@ -189,6 +202,7 @@ else:
 if os.getenv("ILO_TARGETS"):
     try:
         from app.llm.ilo_redfish_tools import ILO_REDFISH_TOOLS
+
         TOOL_REGISTRY.update(ILO_REDFISH_TOOLS)
         logger.info(f"iLO Redfish BMC tools registered ({len(ILO_REDFISH_TOOLS)} tools)")
     except ImportError as exc:
@@ -202,6 +216,7 @@ else:
 if os.getenv("KNOWLEDGE_OPS_URL"):
     try:
         from app.llm.knowledge_ops_tools import KNOWLEDGE_OPS_TOOLS
+
         TOOL_REGISTRY.update(KNOWLEDGE_OPS_TOOLS)
         logger.info(f"Knowledge-Ops tools registered ({len(KNOWLEDGE_OPS_TOOLS)} tools)")
     except ImportError as exc:
@@ -216,12 +231,25 @@ else:
 if os.getenv("UC_BROWSER_MCP_URL"):
     try:
         from app.llm.ucbrowser_mcp_tools import UC_BROWSER_MCP_TOOLS
+
         TOOL_REGISTRY.update(UC_BROWSER_MCP_TOOLS)
         logger.info(f"uc-browser tools registered ({len(UC_BROWSER_MCP_TOOLS)} tools)")
     except ImportError as exc:
         logger.warning(f"uc-browser tools not available: {exc}")
 else:
     logger.info("uc-browser tools skipped (UC_BROWSER_MCP_URL not set)")
+
+
+def unknown_tool_names(names: list[str] | None) -> list[str]:
+    """Return sorted names that cannot resolve to executable tool definitions."""
+    return sorted({str(name) for name in (names or []) if str(name) not in TOOL_REGISTRY})
+
+
+def validate_tool_names(names: list[str] | None) -> None:
+    """Reject an agent tool list that would otherwise be silently dropped at run time."""
+    unknown = unknown_tool_names(names)
+    if unknown:
+        raise UnknownToolNamesError(unknown)
 
 
 def get_tools_for_agent(agent: dict[str, Any]) -> list[ToolDefinition]:

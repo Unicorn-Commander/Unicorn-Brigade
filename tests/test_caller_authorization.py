@@ -29,27 +29,40 @@ from app.auth.caller_authz import (
     is_service_caller,
     resolve_caller_tool_level,
     resolve_end_user,
+    tool_catalog_fail_closed,
     user_policy_denial_detail,
 )
 from app.auth.middleware import AuthUser
 from app.auth.roles import UserRole
 
 
-def _human(role=UserRole.OPERATOR, user_id="11111111-1111-1111-1111-111111111111",
-           email="human@example.com", **kw):
-    return AuthUser(id=user_id, role=role, user_id=user_id, email=email,
-                    auth_source="api_key", **kw)
+def _human(
+    role=UserRole.OPERATOR,
+    user_id="11111111-1111-1111-1111-111111111111",
+    email="human@example.com",
+    **kw,
+):
+    return AuthUser(
+        id=user_id, role=role, user_id=user_id, email=email, auth_source="api_key", **kw
+    )
 
 
 def _service_key(key_id="svc-key-1", agent_id="the-colonel", role=UserRole.ADMIN):
     # An agents/api_keys credential: no bound human (no user_id / email).
-    return AuthUser(id=key_id, role=role, agent_id=agent_id, key_id=key_id,
-                    key_name="stable-runtime", auth_source="api_key")
+    return AuthUser(
+        id=key_id,
+        role=role,
+        agent_id=agent_id,
+        key_id=key_id,
+        key_name="stable-runtime",
+        auth_source="api_key",
+    )
 
 
 def _master_admin():
-    return AuthUser(id="admin", role=UserRole.ADMIN, key_name="Master Admin Key",
-                    auth_source="api_key")
+    return AuthUser(
+        id="admin", role=UserRole.ADMIN, key_name="Master Admin Key", auth_source="api_key"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -61,8 +74,9 @@ def test_service_caller_classification():
     assert is_service_caller(_service_key()) is True
     assert is_service_caller(_master_admin()) is True
     assert is_service_caller(_human()) is False
-    kc = AuthUser(id="u1", role=UserRole.VIEWER, user_id="u1",
-                  email="v@example.com", auth_source="keycloak")
+    kc = AuthUser(
+        id="u1", role=UserRole.VIEWER, user_id="u1", email="v@example.com", auth_source="keycloak"
+    )
     assert is_service_caller(kc) is False
 
 
@@ -84,8 +98,11 @@ async def test_non_admin_human_is_always_the_end_user():
 
 @pytest.mark.asyncio
 async def test_admin_human_may_delegate_a_forwarded_user():
-    user = _human(role=UserRole.ADMIN, user_id="22222222-2222-2222-2222-222222222222",
-                  email="boss@example.com")
+    user = _human(
+        role=UserRole.ADMIN,
+        user_id="22222222-2222-2222-2222-222222222222",
+        email="boss@example.com",
+    )
     end_user, service = await resolve_end_user(user, "stable-user-9", session=None)
     assert service is False
     assert end_user is not None
@@ -150,15 +167,12 @@ def test_user_policy_allowlist_allows_by_raw_id_email_and_sub():
         EndUser(raw_id="u-2", email="VIP@example.com", resolved=True, role="viewer"),
         False,
     )[0]
-    assert evaluate_user_policy(
-        policy, EndUser(raw_id="u-3", keycloak_id="kc-sub-1"), False
-    )[0]
+    assert evaluate_user_policy(policy, EndUser(raw_id="u-3", keycloak_id="kc-sub-1"), False)[0]
 
 
 def test_user_policy_denies_unlisted_user_with_machine_readable_detail():
     policy = {"user_policy": {"users": ["vip@example.com"]}}
-    low = EndUser(raw_id="stable-user-9", resolved=True, role="viewer",
-                  email="low@example.com")
+    low = EndUser(raw_id="stable-user-9", resolved=True, role="viewer", email="low@example.com")
     allowed, reason = evaluate_user_policy(policy, low, False)
     assert not allowed and reason == "user-not-allowed"
     detail = user_policy_denial_detail("the-colonel", reason, low)
@@ -206,15 +220,17 @@ def test_caller_level_from_role_and_defaults(monkeypatch):
     monkeypatch.delenv("BRIGADE_USER_TOOL_LEVELS", raising=False)
     monkeypatch.delenv("BRIGADE_USER_TOOL_LEVELS_FILE", raising=False)
     monkeypatch.delenv("BRIGADE_ROLE_TOOL_LEVELS", raising=False)
-    assert resolve_caller_tool_level(
-        EndUser(raw_id="a", resolved=True, role="admin"), False
-    ) == (5, "role:admin")
+    assert resolve_caller_tool_level(EndUser(raw_id="a", resolved=True, role="admin"), False) == (
+        5,
+        "role:admin",
+    )
     assert resolve_caller_tool_level(
         EndUser(raw_id="o", resolved=True, role="operator"), False
     ) == (3, "role:operator")
-    assert resolve_caller_tool_level(
-        EndUser(raw_id="v", resolved=True, role="viewer"), False
-    ) == (1, "role:viewer")
+    assert resolve_caller_tool_level(EndUser(raw_id="v", resolved=True, role="viewer"), False) == (
+        1,
+        "role:viewer",
+    )
     # Forwarded id that matched no users row -> unknown-user default (2).
     level, basis = resolve_caller_tool_level(EndUser(raw_id="mystery"), False)
     assert (level, basis) == (2, "unknown-user")
@@ -248,9 +264,13 @@ def test_caller_level_per_user_override(monkeypatch):
 
 def _guard(level, levels=None, mode="enforce"):
     return ToolPermissionGuard(
-        caller_level=level, caller_basis="test", levels=levels or {},
-        agent_id="the-colonel", end_user_id="stable-user-9",
-        transport="api_key:stable-runtime", mode=mode,
+        caller_level=level,
+        caller_basis="test",
+        levels=levels or {},
+        agent_id="the-colonel",
+        end_user_id="stable-user-9",
+        transport="api_key:stable-runtime",
+        mode=mode,
     )
 
 
@@ -260,8 +280,30 @@ def test_guard_allows_at_or_below_level_and_refuses_above():
     assert guard.check("create_task") is None
     denial = guard.check("database")
     assert denial and "permission_denied" in denial and "level 4" in denial
-    # Unknown tools cost the neutral default (1) — never brick chat.
-    assert guard.check("never-seen-tool") is None
+
+
+def test_missing_catalogue_rows_fail_closed_and_are_logged_once(caplog):
+    guard = _guard(5, {"known": 1})
+
+    first = guard.check("never-seen-tool")
+    second = guard.check("never-seen-tool")
+
+    assert first and "tool_catalog_missing" in first
+    assert second == first
+    missing = [r for r in caplog.records if "tool_catalog_missing" in r.message]
+    assert len(missing) == 1
+
+
+def test_catalogue_fail_open_escape_hatch_restores_legacy_level(monkeypatch):
+    monkeypatch.setenv("BRIGADE_TOOL_CATALOG_FAIL_CLOSED", "false")
+    assert tool_catalog_fail_closed() is False
+    guard = _guard(1, {})
+    assert guard.check("late-seeded-tool") is None
+
+
+def test_catalogue_fail_closed_defaults_on_invalid_value(monkeypatch):
+    monkeypatch.setenv("BRIGADE_TOOL_CATALOG_FAIL_CLOSED", "not-a-boolean")
+    assert tool_catalog_fail_closed() is True
 
 
 def test_guard_log_mode_audits_but_allows():
@@ -309,12 +351,24 @@ async def test_tool_tier_refusal_mid_run_continues_the_run(monkeypatch):
 
     responses = [
         {  # LLM asks for BOTH tools: one allowed, one above the caller's level
-            "choices": [{"message": {"tool_calls": [
-                {"id": "c1", "type": "function",
-                 "function": {"name": "search", "arguments": "{}"}},
-                {"id": "c2", "type": "function",
-                 "function": {"name": "database", "arguments": "{}"}},
-            ]}}],
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {"name": "search", "arguments": "{}"},
+                            },
+                            {
+                                "id": "c2",
+                                "type": "function",
+                                "function": {"name": "database", "arguments": "{}"},
+                            },
+                        ]
+                    }
+                }
+            ],
         },
         {  # terminal answer after seeing the tool results
             "choices": [{"message": {"content": "done"}}],
@@ -325,9 +379,7 @@ async def test_tool_tier_refusal_mid_run_continues_the_run(monkeypatch):
     async def fake_chat_completion_with_tools(**kwargs):
         return responses.pop(0)
 
-    monkeypatch.setattr(
-        client, "chat_completion_with_tools", fake_chat_completion_with_tools
-    )
+    monkeypatch.setattr(client, "chat_completion_with_tools", fake_chat_completion_with_tools)
 
     results = []
     response = await client.execute_tool_loop(
@@ -359,10 +411,21 @@ async def test_no_guard_keeps_existing_behavior(monkeypatch):
         return {"ok": True}
 
     responses = [
-        {"choices": [{"message": {"tool_calls": [
-            {"id": "c1", "type": "function",
-             "function": {"name": "database", "arguments": "{}"}},
-        ]}}]},
+        {
+            "choices": [
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {"name": "database", "arguments": "{}"},
+                            },
+                        ]
+                    }
+                }
+            ]
+        },
         {"choices": [{"message": {"content": "done"}}]},
     ]
 
@@ -398,6 +461,7 @@ class _NoDbSession:
 @pytest.mark.asyncio
 async def test_authorize_caller_denies_low_priv_user_on_policied_agent(monkeypatch):
     from fastapi import HTTPException
+
     from app.api.agent_routes import _authorize_caller
 
     monkeypatch.setenv("BRIGADE_TOOL_PERMISSION_ENFORCEMENT", "enforce")
