@@ -1,12 +1,13 @@
 """Tests for the Gemma/Harmony channel-artifact sanitizer.
 
+Lives in app/tests/ because pytest.ini sets `testpaths = tests app/tests` — these
+14 tests were never collected by CI while the file sat in app/llm/.
+
 Run with:
-    PYTHONPATH=/tmp/brigade-fed python3 -m pytest \
-        /tmp/brigade-fed/app/llm/test_gemma_sanitize.py -v
+    python3 -m pytest app/tests/test_gemma_sanitize.py -v
 """
 
 from app.llm.gemma_sanitize import strip_channel_artifacts
-
 
 # --- Required cases ---------------------------------------------------------
 

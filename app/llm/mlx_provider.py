@@ -407,11 +407,18 @@ class MLXLLMClient:
         3. Send results back to LLM
         4. Repeat until LLM responds without tool calls
         """
-        from app.llm.ops_center_client import ToolResult
+        from app.llm.ops_center_client import (
+            TOOL_NUDGE,
+            ToolResult,
+            announced_tool_without_calling,
+        )
 
         tool_registry = {tool.name: tool for tool in tools}
         current_messages = list(messages)
         iteration = 0
+        # One nudge per stall, reset after every executed tool round — same
+        # contract as OpsCenterLLMClient.execute_tool_loop.
+        nudged = False
 
         while iteration < max_iterations:
             iteration += 1
@@ -428,12 +435,33 @@ class MLXLLMClient:
 
             # Check for tool calls
             if not self.has_tool_calls(response):
+                # A model can DESCRIBE a tool call rather than emit one, which
+                # this structural check reads as a finished answer — the user
+                # then gets the announcement instead of an answer.
+                announced = announced_tool_without_calling(
+                    self.get_response_content(response), tool_registry
+                )
+                if announced and not nudged:
+                    nudged = True
+                    logger.warning(
+                        f"Model described tool '{announced}' without emitting a "
+                        f"call; nudging once (iteration {iteration})"
+                    )
+                    current_messages.append({
+                        "role": "assistant",
+                        "content": self.get_response_content(response),
+                    })
+                    current_messages.append({"role": "user", "content": TOOL_NUDGE})
+                    continue
                 logger.info("No tool calls in response, completing loop")
                 return response
 
             # Parse tool calls
             tool_calls = self.parse_tool_calls(response)
             logger.info(f"Processing {len(tool_calls)} tool calls")
+
+            # A real tool round ran: allow one nudge again if it stalls later.
+            nudged = False
 
             # Add assistant message with tool calls to history
             assistant_message = response["choices"][0]["message"]
