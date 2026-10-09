@@ -16,8 +16,8 @@ Each benchmark includes:
 - Pass/fail against target
 
 Usage:
-    pytest tests/test_performance.py -v --benchmark-only
-    pytest tests/test_performance.py -v  # Run all benchmarks
+    pytest tests/test_performance.py -q  # Run deterministic correctness checks
+    BRIGADE_BENCHMARK=1 pytest tests/test_performance.py -v -m perf -s
 
 Requires:
     pip install pytest-benchmark httpx pytest-asyncio
@@ -37,6 +37,12 @@ import pytest
 
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+BENCHMARK_ENV = "BRIGADE_BENCHMARK"
+BENCHMARK_ONLY = pytest.mark.skipif(
+    os.getenv(BENCHMARK_ENV) != "1",
+    reason=f"set {BENCHMARK_ENV}=1 to run wall-clock benchmarks",
+)
 
 
 # =============================================================================
@@ -277,7 +283,11 @@ class BenchmarkRunner:
 @pytest.fixture
 def benchmark_runner():
     """Provide a fresh benchmark runner for each test"""
-    return BenchmarkRunner(warmup_runs=3, sample_runs=100)
+    runner = BenchmarkRunner(warmup_runs=3, sample_runs=100)
+    yield runner
+
+    if os.getenv(BENCHMARK_ENV) == "1" and runner.results:
+        print(runner.generate_report())
 
 
 @pytest.fixture
@@ -332,6 +342,8 @@ def sample_agent_with_tools():
 # 1. TOOL RESOLUTION PERFORMANCE
 # =============================================================================
 
+@pytest.mark.perf
+@BENCHMARK_ONLY
 class TestToolResolutionPerformance:
     """
     Benchmark tool resolution performance.
@@ -458,6 +470,8 @@ class TestToolResolutionPerformance:
 # 2. AGENT LOADING PERFORMANCE
 # =============================================================================
 
+@pytest.mark.perf
+@BENCHMARK_ONLY
 class TestAgentLoadingPerformance:
     """
     Benchmark agent loading performance.
@@ -608,6 +622,8 @@ class TestAgentLoadingPerformance:
 # 3. WORKFLOW STEP EXECUTION BASELINE
 # =============================================================================
 
+@pytest.mark.perf
+@BENCHMARK_ONLY
 class TestWorkflowStepExecutionBaseline:
     """
     Benchmark workflow engine overhead (excluding LLM calls).
@@ -782,6 +798,8 @@ class TestWorkflowStepExecutionBaseline:
 # 4. MODEL CONFIG RESOLUTION
 # =============================================================================
 
+@pytest.mark.perf
+@BENCHMARK_ONLY
 class TestModelConfigResolution:
     """
     Benchmark ModelRegistry.get_model_for_* methods.
@@ -965,6 +983,8 @@ class TestModelConfigResolution:
 # 5. MEMORY OPERATIONS (if Qdrant available)
 # =============================================================================
 
+@pytest.mark.perf
+@BENCHMARK_ONLY
 class TestMemoryOperations:
     """
     Benchmark memory operations.
@@ -1073,7 +1093,12 @@ class TestAPIResponseTime:
     TARGET_MS = 50.0  # 50ms for read operations
 
     @pytest.fixture
-    def test_client(self, sample_agents):
+    def agent_api_sessions(self):
+        """Sessions used by the mocked agent API, including query counts."""
+        return []
+
+    @pytest.fixture
+    def test_client(self, sample_agents, agent_api_sessions):
         """Create a test client with mocked database"""
         from unittest.mock import MagicMock
 
@@ -1093,16 +1118,25 @@ class TestAPIResponseTime:
             session = AsyncMock()
             mock_result = MagicMock()
 
-            # Create mock Agent objects
+            # Mirror AgentRepository.list_all's stable ORDER BY domain, name.
             mock_agents = []
-            for agent_data in sample_agents:
+            for agent_data in sorted(
+                sample_agents, key=lambda agent: (agent["domain"], agent["name"])
+            ):
                 mock_agent = MagicMock()
-                mock_agent.to_dict.return_value = agent_data
+                mock_agent.to_dict.side_effect = lambda data=agent_data: dict(data)
                 mock_agents.append(mock_agent)
 
             mock_result.scalars.return_value.all.return_value = mock_agents
             mock_result.scalar_one_or_none.return_value = mock_agents[0] if mock_agents else None
-            session.execute.return_value = mock_result
+            session.query_count = 0
+
+            async def execute(*args, **kwargs):
+                session.query_count += 1
+                return mock_result
+
+            session.execute = AsyncMock(side_effect=execute)
+            agent_api_sessions.append(session)
             yield session
 
         # Mock auth
@@ -1120,9 +1154,41 @@ class TestAPIResponseTime:
 
         return TestClient(app)
 
+    def test_list_agents_api(self, test_client, sample_agents, agent_api_sessions):
+        """GET /api/v1/agents returns the complete, ordered roster without N+1."""
+        response = test_client.get("/api/v1/agents")
+        assert response.status_code == 200
+
+        payload = response.json()
+        assert set(payload) == {"agents"}
+        returned_agents = payload["agents"]
+        assert isinstance(returned_agents, list)
+        assert all(isinstance(agent, dict) for agent in returned_agents)
+        assert len(returned_agents) == len(sample_agents)
+
+        expected_agents = sorted(
+            sample_agents, key=lambda agent: (agent["domain"], agent["name"])
+        )
+        expected_ids = [agent["id"] for agent in expected_agents]
+        assert [agent["id"] for agent in returned_agents] == expected_ids
+        for expected, actual in zip(expected_agents, returned_agents):
+            for field, value in expected.items():
+                assert actual[field] == value
+
+        max_list_queries = 2  # one agent query plus one tool-catalog query
+        query_count = sum(session.query_count for session in agent_api_sessions)
+        assert query_count <= max_list_queries, (
+            f"GET /api/v1/agents used {query_count} SQL statements for "
+            f"{len(returned_agents)} agents; expected <= {max_list_queries} "
+            "independent of roster size"
+        )
+
     @pytest.mark.perf
-    def test_list_agents_api(self, benchmark_runner: BenchmarkRunner, test_client, sample_agents):
-        """Benchmark GET /api/v1/agents"""
+    @BENCHMARK_ONLY
+    def test_list_agents_api_benchmark(
+        self, benchmark_runner: BenchmarkRunner, test_client, sample_agents
+    ):
+        """Opt-in benchmark for GET /api/v1/agents latency."""
         def make_request():
             response = test_client.get("/api/v1/agents")
             assert response.status_code == 200
@@ -1136,8 +1202,13 @@ class TestAPIResponseTime:
             metadata={"agent_count": len(sample_agents)},
         )
 
-        assert result.passed, f"List agents API too slow: {result.mean_ms:.3f}ms"
+        assert result.passed, (
+            f"List agents API too slow: mean={result.mean_ms:.3f}ms, "
+            f"p95={result.p95_ms:.3f}ms > {self.TARGET_MS}ms"
+        )
 
+    @pytest.mark.perf
+    @BENCHMARK_ONLY
     def test_get_agent_api(self, benchmark_runner: BenchmarkRunner, test_client, sample_agents):
         """Benchmark GET /api/v1/agents/{id}"""
         agent_ids = [a["id"] for a in sample_agents]
@@ -1161,6 +1232,8 @@ class TestAPIResponseTime:
 
         assert result.passed, f"Get agent API too slow: {result.mean_ms:.3f}ms"
 
+    @pytest.mark.perf
+    @BENCHMARK_ONLY
     def test_list_templates_api(self, benchmark_runner: BenchmarkRunner, test_client):
         """Benchmark GET /api/v1/hierarchical/templates"""
         def make_request():
@@ -1183,6 +1256,8 @@ class TestAPIResponseTime:
 # COMPREHENSIVE BENCHMARK REPORT
 # =============================================================================
 
+@pytest.mark.perf
+@BENCHMARK_ONLY
 class TestBenchmarkReport:
     """Generate a comprehensive benchmark report"""
 

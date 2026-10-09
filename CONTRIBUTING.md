@@ -53,6 +53,9 @@ Note: the full test suite has optional-dependency collection points (Slack,
 LangGraph, asyncssh) and integration tests that need live services. When your
 change is narrow, run the focused tests that exercise it and say so in the PR.
 
+- Deterministic performance correctness tests run by default; wall-clock tests use the `perf` marker and are excluded by default.
+- Run `BRIGADE_BENCHMARK=1 pytest tests/test_performance.py -m perf -s` to opt into benchmark mean/p95 output.
+
 ## Pull Requests
 
 1. Branch off `main`.
