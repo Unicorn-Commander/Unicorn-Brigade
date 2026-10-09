@@ -29,6 +29,7 @@ from app.auth.caller_authz import (
     is_service_caller,
     resolve_caller_tool_level,
     resolve_end_user,
+    tool_catalog_fail_closed,
     user_policy_denial_detail,
 )
 from app.auth.middleware import AuthUser
@@ -260,8 +261,30 @@ def test_guard_allows_at_or_below_level_and_refuses_above():
     assert guard.check("create_task") is None
     denial = guard.check("database")
     assert denial and "permission_denied" in denial and "level 4" in denial
-    # Unknown tools cost the neutral default (1) — never brick chat.
-    assert guard.check("never-seen-tool") is None
+
+
+def test_missing_catalogue_rows_fail_closed_and_are_logged_once(caplog):
+    guard = _guard(5, {"known": 1})
+
+    first = guard.check("never-seen-tool")
+    second = guard.check("never-seen-tool")
+
+    assert first and "tool_catalog_missing" in first
+    assert second == first
+    missing = [r for r in caplog.records if "tool_catalog_missing" in r.message]
+    assert len(missing) == 1
+
+
+def test_catalogue_fail_open_escape_hatch_restores_legacy_level(monkeypatch):
+    monkeypatch.setenv("BRIGADE_TOOL_CATALOG_FAIL_CLOSED", "false")
+    assert tool_catalog_fail_closed() is False
+    guard = _guard(1, {})
+    assert guard.check("late-seeded-tool") is None
+
+
+def test_catalogue_fail_closed_defaults_on_invalid_value(monkeypatch):
+    monkeypatch.setenv("BRIGADE_TOOL_CATALOG_FAIL_CLOSED", "not-a-boolean")
+    assert tool_catalog_fail_closed() is True
 
 
 def test_guard_log_mode_audits_but_allows():

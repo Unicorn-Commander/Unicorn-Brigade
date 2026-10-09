@@ -173,10 +173,25 @@ def unknown_user_tool_level() -> int:
 
 
 def unknown_tool_permission_level() -> int:
-    """Required level for a tool ABSENT from tool_catalog. Default 1 — matches
-    the neutral fallback ``_enrich_agent_tools`` has always used for the UI
-    rollup, so an unseeded tool never bricks chat."""
+    """Fallback level used only when the catalogue fail-open escape hatch is on.
+
+    The normal, safe behavior is ``tool_catalog_fail_closed()``: an executable
+    tool with no catalogue row is refused before its handler runs. Operators can
+    temporarily set ``BRIGADE_TOOL_CATALOG_FAIL_CLOSED=false`` for one restart
+    when a seed is late; this preserves the old configurable level fallback.
+    """
     return _int_env("BRIGADE_UNKNOWN_TOOL_PERMISSION_LEVEL", 1)
+
+
+def tool_catalog_fail_closed() -> bool:
+    """Whether missing ``tool_catalog`` rows refuse tool execution.
+
+    Invalid values deliberately resolve to the safe default (enabled). The
+    setting is read when a per-run guard is built, so an operator can change it
+    for one restart without changing persisted agent records or catalogue rows.
+    """
+    raw = (os.getenv("BRIGADE_TOOL_CATALOG_FAIL_CLOSED", "true") or "true").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
 
 
 # ---------------------------------------------------------------------------
@@ -489,6 +504,8 @@ class ToolPermissionGuard:
     end_user_id: Optional[str] = None
     transport: str = ""
     mode: str = "enforce"
+    fail_closed: bool = field(default_factory=tool_catalog_fail_closed)
+    _missing_catalogue_logged: set[str] = field(default_factory=set, init=False, repr=False)
 
     def required_level(self, tool_name: str) -> int:
         try:
@@ -497,6 +514,14 @@ class ToolPermissionGuard:
             return unknown_tool_permission_level()
 
     def check(self, tool_name: str) -> Optional[str]:
+        if tool_name not in self.levels:
+            if self.fail_closed:
+                self._audit_catalogue_missing(tool_name)
+                return (
+                    f"tool_catalog_missing: tool '{tool_name}' has no catalogue "
+                    "row, so it was NOT executed. Seed tool_catalog before "
+                    "enabling this tool."
+                )
         required = self.required_level(tool_name)
         if self.caller_level >= required:
             return None
@@ -528,11 +553,35 @@ class ToolPermissionGuard:
         except Exception:  # noqa: BLE001
             logger.debug("tool_permission_denied audit emit failed", exc_info=True)
 
+    def _audit_catalogue_missing(self, tool_name: str) -> None:
+        """Emit one structured warning per missing tool name for this run."""
+        if tool_name in self._missing_catalogue_logged:
+            return
+        self._missing_catalogue_logged.add(tool_name)
+        try:
+            audit_logger.error(json.dumps({
+                "event": "tool_catalog_missing",
+                "layer": "tool_permission",
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "agent_id": self.agent_id,
+                "tool": tool_name,
+                "caller_level": self.caller_level,
+                "caller_basis": self.caller_basis,
+                "end_user": self.end_user_id,
+                "transport": self.transport,
+                "fail_closed": True,
+            }))
+        except Exception:  # noqa: BLE001
+            logger.debug("tool_catalog_missing audit emit failed", exc_info=True)
+
 
 async def load_tool_permission_levels(session) -> Dict[str, int]:
-    """tool_catalog name → permission_level. Best-effort: {} when the catalog
-    is absent (fresh pre-migration DB) — unknown tools then cost only the
-    neutral default level, mirroring how the roster enrichment degrades."""
+    """Load ``tool_catalog`` name → permission level.
+
+    An unavailable or pre-migration catalogue returns ``{}``; with the safe
+    default guard setting this makes every guarded tool call fail closed rather
+    than silently treating every name as level 1.
+    """
     if session is None:
         return {}
     try:
@@ -542,7 +591,10 @@ async def load_tool_permission_levels(session) -> Dict[str, int]:
         )
         return {r[0]: int(r[1] or 1) for r in rows}
     except Exception as exc:  # noqa: BLE001
-        logger.warning(f"tool_catalog unavailable, tool guard using defaults: {exc}")
+        logger.warning(
+            f"tool_catalog unavailable; guarded tools will fail closed "
+            f"unless BRIGADE_TOOL_CATALOG_FAIL_CLOSED=false: {exc}"
+        )
         return {}
 
 
@@ -571,4 +623,5 @@ async def build_tool_guard(
             f"{getattr(auth_user, 'key_name', None) or getattr(auth_user, 'id', '')}"
         ),
         mode=mode,
+        fail_closed=tool_catalog_fail_closed(),
     )
