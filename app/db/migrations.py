@@ -1002,6 +1002,114 @@ MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS ix_rbac_denials_denied_at ON rbac_denials (denied_at);
         """,
     ),
+    (
+        "20261009_01_tool_catalogue_complete",
+        "BR-87063fd6: catalogue every executable built-in tool with conservative permission levels",
+        # TOOL_REGISTRY is the executable source of truth.  This seed includes
+        # the five optional integration maps even when an individual deployment
+        # does not enable one, so enabling an integration cannot create an
+        # uncatalogued execution path.  INSERT ... DO NOTHING preserves an
+        # operator's reviewed metadata.  The conditional UPDATE only corrects
+        # the historical values shipped by 20260624_03; a manually reviewed
+        # value different from that old seed is left alone.
+        #
+        # Permission rationale: level 1 is read-only/search/calculation;
+        # level 5 is hardware mutation, shell/filesystem destruction, external
+        # state-changing/posting, delegation, or device control; level 2 is an
+        # ordinary internal transform/write.  Existing PHI/database rows retain
+        # their stricter historical levels.
+        """
+        INSERT INTO tool_catalog (name, cost_tier, permission_level, provider, external) VALUES
+            ('bmc_event_log','free',1,'ilo_redfish',false),
+            ('bmc_flash_firmware','free',5,'ilo_redfish',false),
+            ('bmc_get_firmware','free',1,'ilo_redfish',false),
+            ('bmc_get_info','free',1,'ilo_redfish',false),
+            ('bmc_get_power','free',1,'ilo_redfish',false),
+            ('bmc_get_thermal','free',1,'ilo_redfish',false),
+            ('bmc_list_targets','free',1,'ilo_redfish',false),
+            ('bmc_power_control','free',5,'ilo_redfish',false),
+            ('browser','free',5,'browser',true),
+            ('code','free',2,'internal',false),
+            ('code_sandbox','free',2,'internal',false),
+            ('colonel_facts','free',1,'internal',false),
+            ('company','free',1,'business',true),
+            ('csv','free',1,'internal',false),
+            ('data_analyze','free',1,'internal',false),
+            ('get_document','free',1,'legal',false),
+            ('get_evidence_folders','free',1,'legal',false),
+            ('ha_call_service','free',5,'home_assistant',false),
+            ('ha_get_entity_state','free',1,'home_assistant',false),
+            ('ha_get_history','free',1,'home_assistant',false),
+            ('ha_get_services','free',1,'home_assistant',false),
+            ('ha_list_areas','free',1,'home_assistant',false),
+            ('ha_list_entities','free',1,'home_assistant',false),
+            ('ha_search_entities','free',1,'home_assistant',false),
+            ('image','paid',2,'image',true),
+            ('knowledge_ops_ground','free',1,'knowledge_ops',false),
+            ('knowledge_ops_save','free',2,'knowledge_ops',false),
+            ('knowledge_ops_search','free',1,'knowledge_ops',false),
+            ('qrcode','free',1,'internal',false),
+            ('rss','free',1,'business',true),
+            ('sandbox_session','free',2,'internal',false),
+            ('schedule','free',1,'internal',false),
+            ('screenshot','free',1,'internal',false),
+            ('slack','subscription',5,'slack',true),
+            ('text','free',1,'internal',false),
+            ('translate','free',1,'business',true),
+            ('ucb_click','free',5,'uc_browser',false),
+            ('ucb_console_messages','free',1,'uc_browser',false),
+            ('ucb_fill_form','free',5,'uc_browser',false),
+            ('ucb_navigate','free',1,'uc_browser',false),
+            ('ucb_page_text','free',1,'uc_browser',false),
+            ('ucb_pdf_save','free',2,'uc_browser',false),
+            ('ucb_screenshot','free',1,'uc_browser',false),
+            ('ucb_snapshot','free',1,'uc_browser',false),
+            ('ucb_type','free',5,'uc_browser',false),
+            ('url_preview','free',1,'internal',true),
+            ('weather','free',1,'business',true)
+        ON CONFLICT (name) DO NOTHING;
+
+        UPDATE tool_catalog
+        SET permission_level = CASE name
+            WHEN 'add_task_comment' THEN 5
+            WHEN 'analytics_sql' THEN 1
+            WHEN 'canvas_create' THEN 5
+            WHEN 'canvas_edit' THEN 5
+            WHEN 'canvas_rewrite' THEN 5
+            WHEN 'create_project' THEN 5
+            WHEN 'create_task' THEN 5
+            WHEN 'email' THEN 5
+            WHEN 'file' THEN 5
+            WHEN 'http_request' THEN 5
+            WHEN 'kg_query' THEN 2
+            WHEN 'memory' THEN 2
+            WHEN 'notify' THEN 5
+            WHEN 'pdf_extract' THEN 1
+            WHEN 'update_billing_fields' THEN 5
+            WHEN 'update_project_status' THEN 5
+            WHEN 'update_task_status' THEN 5
+            WHEN 'upload_document' THEN 5
+            ELSE permission_level
+        END,
+            updated_at = now()
+        WHERE (name = 'add_task_comment' AND permission_level = 2)
+           OR (name = 'analytics_sql' AND permission_level = 4)
+           OR (name IN ('canvas_create','canvas_edit','canvas_rewrite') AND permission_level = 2)
+           OR (name = 'create_project' AND permission_level = 3)
+           OR (name = 'create_task' AND permission_level = 2)
+           OR (name = 'email' AND permission_level = 3)
+           OR (name = 'file' AND permission_level = 2)
+           OR (name = 'http_request' AND permission_level = 4)
+           OR (name = 'kg_query' AND permission_level = 1)
+           OR (name = 'memory' AND permission_level = 1)
+           OR (name = 'notify' AND permission_level = 2)
+           OR (name = 'pdf_extract' AND permission_level = 2)
+           OR (name = 'update_billing_fields' AND permission_level = 4)
+           OR (name = 'update_project_status' AND permission_level = 3)
+           OR (name = 'update_task_status' AND permission_level = 2)
+           OR (name = 'upload_document' AND permission_level = 2);
+        """,
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.
