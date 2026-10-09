@@ -5,8 +5,8 @@ import copy
 import pytest
 from fastapi import HTTPException
 
-from app.api.agent_routes import _reject_unknown_agent_tools
 import app.llm.tool_resolver as tool_resolver
+from app.api.agent_routes import _reject_unknown_agent_tools
 from app.llm.tool_resolver import unknown_tool_names
 from scripts.report_unknown_agent_tools import build_report
 
