@@ -6,7 +6,8 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.agent_routes import _reject_unknown_agent_tools
-from app.llm.tool_resolver import UnknownToolNamesError, unknown_tool_names, validate_tool_names
+import app.llm.tool_resolver as tool_resolver
+from app.llm.tool_resolver import unknown_tool_names
 from scripts.report_unknown_agent_tools import build_report
 
 
@@ -18,8 +19,11 @@ def test_unknown_tool_names_are_sorted_and_deduplicated():
 
 
 def test_validate_tool_names_rejects_unknown_names_with_the_full_list():
-    with pytest.raises(UnknownToolNamesError) as exc:
-        validate_tool_names(["calculator", "missing-b", "missing-a"])
+    # Resolve the class and the function through the module at call time: another
+    # test in the session reloads app.llm.tool_resolver, which would otherwise leave
+    # this module holding a stale class object that pytest.raises cannot match.
+    with pytest.raises(tool_resolver.UnknownToolNamesError) as exc:
+        tool_resolver.validate_tool_names(["calculator", "missing-b", "missing-a"])
     assert exc.value.unknown_names == ["missing-a", "missing-b"]
 
 
