@@ -13,6 +13,10 @@ a late seed; it restores the legacy level-1 fallback.
 The two historical rows `agentic_rag` and `knowledge_graph` are retained for
 metadata compatibility but are not executable registry entries.
 
+To audit existing agent records without changing them, run
+`./.venv/bin/python scripts/report_unknown_agent_tools.py`. It reports only
+records whose stored names do not resolve in the current executable registry.
+
 | tool | level | rationale |
 | --- | ---: | --- |
 | `add_task_comment` | 5 | external Project Ops posting |
@@ -129,4 +133,3 @@ metadata compatibility but are not executable registry entries.
 | `url_preview` | 1 | read-only URL inspection |
 | `weather` | 1 | read-only weather lookup |
 | `web_search` | 1 | read-only web search |
-
