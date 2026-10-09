@@ -49,9 +49,11 @@ BENCHMARK_ONLY = pytest.mark.skipif(
 # BENCHMARK INFRASTRUCTURE
 # =============================================================================
 
+
 @dataclass
 class BenchmarkResult:
     """Result of a single benchmark run"""
+
     name: str
     operation: str
     samples: list[float] = field(default_factory=list)
@@ -280,6 +282,7 @@ class BenchmarkRunner:
 # FIXTURES
 # =============================================================================
 
+
 @pytest.fixture
 def benchmark_runner():
     """Provide a fresh benchmark runner for each test"""
@@ -310,7 +313,7 @@ def sample_agents():
             "displayName": f"Agent {i}",
             "domain": "general",
             "status": "active",
-            "tools": ["calculator", "web_search", "memory"][:min(i + 1, 3)],
+            "tools": ["calculator", "web_search", "memory"][: min(i + 1, 3)],
             "model": "openai/gpt-4o-mini",
             "temperature": 0.7,
             "maxTokens": 2000,
@@ -329,8 +332,16 @@ def sample_agent_with_tools():
         "domain": "general",
         "status": "active",
         "tools": [
-            "web_search", "calculator", "memory", "datetime", "json",
-            "http_request", "email", "file", "code", "text",
+            "web_search",
+            "calculator",
+            "memory",
+            "datetime",
+            "json",
+            "http_request",
+            "email",
+            "file",
+            "code",
+            "text",
         ],
         "model": "openai/gpt-4o-mini",
         "temperature": 0.7,
@@ -341,6 +352,7 @@ def sample_agent_with_tools():
 # =============================================================================
 # 1. TOOL RESOLUTION PERFORMANCE
 # =============================================================================
+
 
 @pytest.mark.perf
 @BENCHMARK_ONLY
@@ -416,10 +428,20 @@ class TestToolResolutionPerformance:
         """Benchmark resolving 10 tools for an agent"""
         from app.llm.tool_resolver import get_tools_for_agent
 
-        agent = {"tools": [
-            "calculator", "web_search", "memory", "datetime", "json",
-            "http_request", "email", "file", "code", "text"
-        ]}
+        agent = {
+            "tools": [
+                "calculator",
+                "web_search",
+                "memory",
+                "datetime",
+                "json",
+                "http_request",
+                "email",
+                "file",
+                "code",
+                "text",
+            ]
+        }
 
         result = benchmark_runner.run_sync(
             name="Tool Resolution Performance",
@@ -469,6 +491,7 @@ class TestToolResolutionPerformance:
 # =============================================================================
 # 2. AGENT LOADING PERFORMANCE
 # =============================================================================
+
 
 @pytest.mark.perf
 @BENCHMARK_ONLY
@@ -550,7 +573,9 @@ class TestAgentLoadingPerformance:
         assert result.passed, f"In-memory lookup too slow: {result.mean_ms:.3f}ms"
 
     @pytest.mark.asyncio
-    async def test_agent_repository_list_all_mock(self, benchmark_runner: BenchmarkRunner, sample_agents):
+    async def test_agent_repository_list_all_mock(
+        self, benchmark_runner: BenchmarkRunner, sample_agents
+    ):
         """Benchmark AgentRepository.list_all with mocked DB"""
         from unittest.mock import MagicMock
 
@@ -583,7 +608,9 @@ class TestAgentLoadingPerformance:
         assert result.passed, f"Agent list_all too slow: {result.mean_ms:.3f}ms"
 
     @pytest.mark.asyncio
-    async def test_agent_repository_get_mock(self, benchmark_runner: BenchmarkRunner, sample_agents):
+    async def test_agent_repository_get_mock(
+        self, benchmark_runner: BenchmarkRunner, sample_agents
+    ):
         """Benchmark AgentRepository.get with mocked DB"""
         from unittest.mock import MagicMock
 
@@ -621,6 +648,7 @@ class TestAgentLoadingPerformance:
 # =============================================================================
 # 3. WORKFLOW STEP EXECUTION BASELINE
 # =============================================================================
+
 
 @pytest.mark.perf
 @BENCHMARK_ONLY
@@ -741,15 +769,9 @@ class TestWorkflowStepExecutionBaseline:
 
         # Typical LLM response structures
         responses = [
-            {
-                "choices": [{"message": {"content": "This is the response content"}}]
-            },
-            {
-                "content": "Direct content response"
-            },
-            {
-                "choices": [{"message": {"content": None}}]
-            },
+            {"choices": [{"message": {"content": "This is the response content"}}]},
+            {"content": "Direct content response"},
+            {"choices": [{"message": {"content": None}}]},
         ]
         idx = 0
 
@@ -798,6 +820,7 @@ class TestWorkflowStepExecutionBaseline:
 # 4. MODEL CONFIG RESOLUTION
 # =============================================================================
 
+
 @pytest.mark.perf
 @BENCHMARK_ONLY
 class TestModelConfigResolution:
@@ -836,7 +859,16 @@ class TestModelConfigResolution:
         from app.workflows.model_config import ModelConfig, ModelRegistry
 
         config = ModelConfig()
-        domains = ["research", "finance", "content", "sales", "devops", "legal", "medical", "investigation"]
+        domains = [
+            "research",
+            "finance",
+            "content",
+            "sales",
+            "devops",
+            "legal",
+            "medical",
+            "investigation",
+        ]
         idx = 0
 
         def get_team_lead_model():
@@ -861,8 +893,12 @@ class TestModelConfigResolution:
 
         config = ModelConfig()
         worker_ids = [
-            "web-researcher", "academic-researcher", "trend-analyzer",
-            "ratio-calculator", "risk-assessor", "blog-writer",
+            "web-researcher",
+            "academic-researcher",
+            "trend-analyzer",
+            "ratio-calculator",
+            "risk-assessor",
+            "blog-writer",
         ]
         idx = 0
 
@@ -983,6 +1019,7 @@ class TestModelConfigResolution:
 # 5. MEMORY OPERATIONS (if Qdrant available)
 # =============================================================================
 
+
 @pytest.mark.perf
 @BENCHMARK_ONLY
 class TestMemoryOperations:
@@ -1033,10 +1070,12 @@ class TestMemoryOperations:
         # Create manager with mocked memory
         manager = MemoryManager.__new__(MemoryManager)
         manager.memory = MagicMock()
-        manager.memory.search = MagicMock(return_value=[
-            {"id": "mem-1", "content": "Previous conversation about AI", "score": 0.95},
-            {"id": "mem-2", "content": "Discussion about machine learning", "score": 0.85},
-        ])
+        manager.memory.search = MagicMock(
+            return_value=[
+                {"id": "mem-1", "content": "Previous conversation about AI", "score": 0.95},
+                {"id": "mem-2", "content": "Discussion about machine learning", "score": 0.85},
+            ]
+        )
 
         result = await benchmark_runner.run_async(
             name="Memory Operations",
@@ -1056,10 +1095,12 @@ class TestMemoryOperations:
         # Create manager with mocked memory
         manager = MemoryManager.__new__(MemoryManager)
         manager.memory = MagicMock()
-        manager.memory.get_all = MagicMock(return_value=[
-            {"id": f"mem-{i}", "content": f"Memory {i}", "agent_id": "agent-1"}
-            for i in range(20)
-        ])
+        manager.memory.get_all = MagicMock(
+            return_value=[
+                {"id": f"mem-{i}", "content": f"Memory {i}", "agent_id": "agent-1"}
+                for i in range(20)
+            ]
+        )
 
         result = await benchmark_runner.run_async(
             name="Memory Operations",
@@ -1075,6 +1116,7 @@ class TestMemoryOperations:
 # =============================================================================
 # 6. API RESPONSE TIME (using TestClient)
 # =============================================================================
+
 
 class TestAPIResponseTime:
     """
@@ -1166,9 +1208,7 @@ class TestAPIResponseTime:
         assert all(isinstance(agent, dict) for agent in returned_agents)
         assert len(returned_agents) == len(sample_agents)
 
-        expected_agents = sorted(
-            sample_agents, key=lambda agent: (agent["domain"], agent["name"])
-        )
+        expected_agents = sorted(sample_agents, key=lambda agent: (agent["domain"], agent["name"]))
         expected_ids = [agent["id"] for agent in expected_agents]
         assert [agent["id"] for agent in returned_agents] == expected_ids
         for expected, actual in zip(expected_agents, returned_agents):
@@ -1189,6 +1229,7 @@ class TestAPIResponseTime:
         self, benchmark_runner: BenchmarkRunner, test_client, sample_agents
     ):
         """Opt-in benchmark for GET /api/v1/agents latency."""
+
         def make_request():
             response = test_client.get("/api/v1/agents")
             assert response.status_code == 200
@@ -1236,6 +1277,7 @@ class TestAPIResponseTime:
     @BENCHMARK_ONLY
     def test_list_templates_api(self, benchmark_runner: BenchmarkRunner, test_client):
         """Benchmark GET /api/v1/hierarchical/templates"""
+
         def make_request():
             response = test_client.get("/api/v1/hierarchical/templates")
             # May return 503 if engine not initialized, but we're measuring response time
@@ -1255,6 +1297,7 @@ class TestAPIResponseTime:
 # =============================================================================
 # COMPREHENSIVE BENCHMARK REPORT
 # =============================================================================
+
 
 @pytest.mark.perf
 @BENCHMARK_ONLY
@@ -1359,10 +1402,13 @@ class TestBenchmarkReport:
 if __name__ == "__main__":
     """Run benchmarks directly"""
     import subprocess
-    subprocess.run([
-        "pytest",
-        __file__,
-        "-v",
-        "--tb=short",
-        "-x",  # Stop on first failure
-    ])
+
+    subprocess.run(
+        [
+            "pytest",
+            __file__,
+            "-v",
+            "--tb=short",
+            "-x",  # Stop on first failure
+        ]
+    )
