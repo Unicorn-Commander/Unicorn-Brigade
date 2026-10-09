@@ -1212,8 +1212,8 @@ class TestAPIResponseTime:
         expected_ids = [agent["id"] for agent in expected_agents]
         assert [agent["id"] for agent in returned_agents] == expected_ids
         for expected, actual in zip(expected_agents, returned_agents):
-            for field, value in expected.items():
-                assert actual[field] == value
+            for field_name, value in expected.items():
+                assert actual[field_name] == value
 
         max_list_queries = 2  # one agent query plus one tool-catalog query
         query_count = sum(session.query_count for session in agent_api_sessions)
