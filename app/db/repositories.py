@@ -18,6 +18,14 @@ from app.db.database import ensure_org_context
 logger = logging.getLogger(__name__)
 
 
+def _validate_agent_tools(data: Dict[str, Any]) -> None:
+    """Reject tool names that the executable registry cannot resolve."""
+    from app.llm.tool_resolver import validate_tool_names
+
+    if "tools" in data:
+        validate_tool_names(data.get("tools"))
+
+
 # ── Agent Repository ──────────────────────────────────────────────
 
 class AgentRepository:
@@ -38,6 +46,7 @@ class AgentRepository:
         return agent.to_dict() if agent else None
 
     async def create(self, data: Dict[str, Any]) -> Dict:
+        _validate_agent_tools(data)
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
@@ -101,6 +110,7 @@ class AgentRepository:
         return agent.to_dict()
 
     async def update(self, agent_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
+        _validate_agent_tools(updates)
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)

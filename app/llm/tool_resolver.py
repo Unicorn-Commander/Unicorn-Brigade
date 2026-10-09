@@ -69,6 +69,15 @@ from app.llm.stable_knowledge_tools import STABLE_KNOWLEDGE_TOOLS
 
 logger = logging.getLogger(__name__)
 
+
+class UnknownToolNamesError(ValueError):
+    """Raised when an agent payload names a tool absent from the executable registry."""
+
+    def __init__(self, unknown_names: list[str]):
+        self.unknown_names = sorted(set(unknown_names))
+        super().__init__(f"unknown tool names: {', '.join(self.unknown_names)}")
+
+
 # Registry mapping tool names to their definitions
 TOOL_REGISTRY: dict[str, ToolDefinition] = {
     # Core tools
@@ -222,6 +231,18 @@ if os.getenv("UC_BROWSER_MCP_URL"):
         logger.warning(f"uc-browser tools not available: {exc}")
 else:
     logger.info("uc-browser tools skipped (UC_BROWSER_MCP_URL not set)")
+
+
+def unknown_tool_names(names: list[str] | None) -> list[str]:
+    """Return sorted names that cannot resolve to executable tool definitions."""
+    return sorted({str(name) for name in (names or []) if str(name) not in TOOL_REGISTRY})
+
+
+def validate_tool_names(names: list[str] | None) -> None:
+    """Reject an agent tool list that would otherwise be silently dropped at run time."""
+    unknown = unknown_tool_names(names)
+    if unknown:
+        raise UnknownToolNamesError(unknown)
 
 
 def get_tools_for_agent(agent: dict[str, Any]) -> list[ToolDefinition]:

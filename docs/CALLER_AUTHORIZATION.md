@@ -95,10 +95,12 @@ Caller level resolution (first match wins):
    - anyone else → `BRIGADE_NO_USER_TOOL_LEVEL` (default **1** — the anonymous
      floor).
 
-Tools missing from `tool_catalog` require only
-`BRIGADE_UNKNOWN_TOOL_PERMISSION_LEVEL` (default 1 — matches the roster
-enrichment's long-standing neutral fallback, so an unseeded tool never bricks
-chat).
+Tools missing from `tool_catalog` are refused before the handler runs and emit a
+single structured `tool_catalog_missing` audit event per tool name and guard
+run. This fail-closed behavior is enabled by default. If a seed is late,
+`BRIGADE_TOOL_CATALOG_FAIL_CLOSED=false` is the explicit one-restart escape
+hatch; only then does `BRIGADE_UNKNOWN_TOOL_PERMISSION_LEVEL` (default 1)
+provide the legacy fallback.
 
 ### Rollout switch
 

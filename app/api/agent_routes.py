@@ -40,7 +40,7 @@ from app.integrations.ops_center_billing import (
 from app.llm.gemma_sanitize import strip_channel_artifacts
 from app.llm.mlx_provider import MLXLLMClient
 from app.llm.ops_center_client import DEFAULT_MODEL, OpsCenterLLMClient, ToolCall, ToolResult
-from app.llm.tool_resolver import get_tools_for_agent
+from app.llm.tool_resolver import get_tools_for_agent, unknown_tool_names
 from app.observability import get_tracer
 from app.observability.metrics import (
     agent_active,
@@ -156,6 +156,22 @@ def init_agent_routes(client: OpsCenterLLMClient, memory=None):
     global llm_client, memory_manager
     llm_client = client
     memory_manager = memory
+
+
+def _reject_unknown_agent_tools(tools: Optional[list[str]]) -> None:
+    """Return a stable 422 instead of persisting a name the resolver drops."""
+    unknown = unknown_tool_names(tools)
+    if not unknown:
+        return
+    raise HTTPException(
+        status_code=422,
+        detail={
+            "code": "unknown_agent_tools",
+            "message": "Agent tools must name executable registered tools.",
+            "unknown_tools": unknown,
+            "unknownTools": unknown,
+        },
+    )
 
 
 async def _log_rbac_denial(
@@ -1047,6 +1063,7 @@ async def create_agent(
     from app.agent_avatars import normalize_avatar_url, validate_explicit_avatar_url
 
     data = request.model_dump(exclude_none=True)
+    _reject_unknown_agent_tools(data.get("tools"))
     wants_shared = bool(data.pop("shared", False))
     # Registration-time avatar binding: carry an explicit avatarUrl if the
     # caller supplies one; otherwise leave null (consumers have fallbacks).
@@ -1126,6 +1143,7 @@ async def update_agent(
     updates = request.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+    _reject_unknown_agent_tools(updates.get("tools"))
     if "reportsTo" in updates:
         await _validate_reports_to(session, agent_id, updates["reportsTo"])
     async with _agent_writer(agent_id, session) as (agent, repo):
@@ -1221,6 +1239,35 @@ async def import_agents(
     because the shared-agent write runs on the RLS-exempt owner session, relocate/
     claim a shared seed agent fleet-wide.
     """
+    invalid = []
+    for agent_data in agents:
+        unknown = unknown_tool_names(agent_data.get("tools"))
+        if unknown:
+            invalid.append({
+                "id": agent_data.get("id"),
+                "name": agent_data.get("name"),
+                "unknown_tools": unknown,
+                "unknownTools": unknown,
+            })
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "unknown_agent_tools",
+                "message": "Agent tools must name executable registered tools.",
+                "unknown_tools": sorted({
+                    name
+                    for item in invalid
+                    for name in item["unknown_tools"]
+                }),
+                "unknownTools": sorted({
+                    name
+                    for item in invalid
+                    for name in item["unknown_tools"]
+                }),
+                "agents": invalid,
+            },
+        )
     repo = AgentRepository(session)
     created = 0
     updated = 0
@@ -2040,6 +2087,7 @@ async def attach_tool(
     owner session (``_agent_writer``); a per-org agent on the request session.
     """
     _ensure_agent_access(user, agent_id)
+    _reject_unknown_agent_tools([request.toolId])
 
     tool_entry = {
         "id": f"{agent_id}-{request.toolId}",
