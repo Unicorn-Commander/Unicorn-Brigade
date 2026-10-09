@@ -73,9 +73,9 @@ def _strip_thinking(text: str) -> str:
     """
     if not text:
         return text
-    cleaned = _re.sub(r'<think>.*?</think>\s*', '', text, flags=_re.DOTALL)
+    cleaned = _re.sub(r"<think>.*?</think>\s*", "", text, flags=_re.DOTALL)
     # Strip orphan opening tag but preserve content after it
-    cleaned = _re.sub(r'<think>\n?', '', cleaned)
+    cleaned = _re.sub(r"<think>\n?", "", cleaned)
     return cleaned.strip()
 
 
@@ -112,7 +112,7 @@ def _make_think_stripper():
                     st["buf"] = buf[n:]
                     break
                 out.append(buf[:i])
-                st["buf"] = buf[i + len(OPEN):]
+                st["buf"] = buf[i + len(OPEN) :]
                 st["in"] = True
             else:
                 i = buf.find(CLOSE)
@@ -121,7 +121,7 @@ def _make_think_stripper():
                     n = _safe_len(buf, CLOSE)
                     st["buf"] = buf[n:]
                     break
-                st["buf"] = buf[i + len(CLOSE):]
+                st["buf"] = buf[i + len(CLOSE) :]
                 st["in"] = False
         return "".join(out)
 
@@ -187,6 +187,7 @@ async def _log_rbac_denial(
         from sqlalchemy import text
 
         from app.auth.roles import derive_user_tier
+
         email = (getattr(user, "email", "") or "") or ""
         tier = derive_user_tier(email, user.role)
         role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
@@ -265,6 +266,7 @@ def _ensure_agent_access(
         raise HTTPException(status_code=403, detail="Access to agent denied")
     if agent is not None:
         from app.auth.roles import derive_user_tier, evaluate_agent_access
+
         email = (getattr(user, "email", "") or "") or ""
         tier = derive_user_tier(email, user.role)
         allowed, reason = evaluate_agent_access(
@@ -289,6 +291,7 @@ def _ensure_agent_access(
 # ---------------------------------------------------------------------------
 # BR-6.4: per-CALLER authorization (end-user policy + tool privilege guard)
 # ---------------------------------------------------------------------------
+
 
 async def _authorize_caller(
     session: AsyncSession,
@@ -322,35 +325,39 @@ async def _authorize_caller(
         user_policy_denial_detail,
     )
 
-    end_user, service_caller = await resolve_end_user(
-        auth_user, requested_user_id, session
-    )
+    end_user, service_caller = await resolve_end_user(auth_user, requested_user_id, session)
     allowed, reason = evaluate_user_policy(
         (agent or {}).get("accessPolicy"), end_user, service_caller
     )
     if not allowed:
         agent_id = (agent or {}).get("id") or ""
         log_agent_access_denied(
-            agent_id, f"user-policy:{reason}", end_user,
-            auth_user=auth_user, request_path=request_path,
+            agent_id,
+            f"user-policy:{reason}",
+            end_user,
+            auth_user=auth_user,
+            request_path=request_path,
         )
         await _log_rbac_denial(
-            session, auth_user, agent_id, f"user-policy:{reason}",
-            (agent or {}).get("accessPolicy"), request_path,
+            session,
+            auth_user,
+            agent_id,
+            f"user-policy:{reason}",
+            (agent or {}).get("accessPolicy"),
+            request_path,
         )
         raise HTTPException(
             status_code=403,
             detail=user_policy_denial_detail(agent_id, reason, end_user),
         )
-    tool_guard = await build_tool_guard(
-        session, agent, auth_user, end_user, service_caller
-    )
+    tool_guard = await build_tool_guard(session, agent, auth_user, end_user, service_caller)
     return end_user, service_caller, tool_guard
 
 
 # ---------------------------------------------------------------------------
 # Phase 7: billing preflight + metering
 # ---------------------------------------------------------------------------
+
 
 async def _user_apps(user_id: Optional[str]) -> list:
     """Look up users.apps for a given user_id. Cached briefly per call."""
@@ -361,6 +368,7 @@ async def _user_apps(user_id: Optional[str]) -> list:
 
         from app.db.database import async_session
         from app.db.models import User as _User
+
         async with async_session() as s:
             r = await s.execute(_select(_User).where(_User.id == user_id))
             u = r.scalar_one_or_none()
@@ -384,6 +392,7 @@ async def _user_orgs(user: AuthUser, session=None) -> list:
     if session is not None and user is not None:
         try:
             from app.db.org_service import list_user_orgs, resolve_user_row_id
+
             db_id = await resolve_user_row_id(session, user)
             if db_id:
                 for o in await list_user_orgs(session, db_id):
@@ -417,15 +426,25 @@ async def _fetch_user_attrs(user: AuthUser, session=None) -> tuple:
     memberships) that back the ``require_mfa`` / ``orgs`` accessPolicy gates —
     previously always absent, so those gates were decorative.
     """
-    apps = await _user_apps(getattr(user, "user_id", None) or getattr(user, "id", None)) if user else []
+    apps = (
+        await _user_apps(getattr(user, "user_id", None) or getattr(user, "id", None))
+        if user
+        else []
+    )
     mfa = bool(getattr(user, "mfa", False)) if user else False
     orgs = await _user_orgs(user, session)
     if not user or user.role == UserRole.ADMIN:
-        return {"paid": True, "key_name": (getattr(user, "key_name", "") or ""), "apps": apps, "mfa": mfa, "orgs": orgs}, {
+        return {
+            "paid": True,
+            "key_name": (getattr(user, "key_name", "") or ""),
+            "apps": apps,
+            "mfa": mfa,
+            "orgs": orgs,
+        }, {
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": "admin",
-            "lookup": "ok",   # admins are authoritatively unlimited
+            "lookup": "ok",  # admins are authoritatively unlimited
         }
     # Service-delegated callers: keys minted via /api/v1/admin/user-keys are by
     # definition for B2B customers whose upstream service is the paying
@@ -443,7 +462,7 @@ async def _fetch_user_attrs(user: AuthUser, session=None) -> tuple:
             "paid": True,
             "credits_remaining": float("inf"),
             "subscription_tier": f"service:{key_name}",
-            "lookup": "ok",   # trusted B2B service key: upstream is the subscriber
+            "lookup": "ok",  # trusted B2B service key: upstream is the subscriber
         }
     email = (getattr(user, "email", "") or "").lower()
     user_kn = (getattr(user, "key_name", "") or "").lower()
@@ -457,7 +476,13 @@ async def _fetch_user_attrs(user: AuthUser, session=None) -> tuple:
             "lookup_error": "caller has no email to look billing up by",
         }
     state = await get_billing_state(email)
-    return {"paid": bool(state.get("paid")), "key_name": user_kn, "apps": apps, "mfa": mfa, "orgs": orgs}, state
+    return {
+        "paid": bool(state.get("paid")),
+        "key_name": user_kn,
+        "apps": apps,
+        "mfa": mfa,
+        "orgs": orgs,
+    }, state
 
 
 def _enforce_billing_or_402(user: AuthUser, billing_state: dict) -> None:
@@ -559,7 +584,9 @@ async def _meter_chat_to_lago(
     used_rag = rag_used(tools_used)
     rate_tier = classify_rate_tier(agent, used_rag)
     try:
-        rate_multiplier = float(agent.get("rateMultiplier", agent.get("rate_multiplier", 1.0)) or 1.0)
+        rate_multiplier = float(
+            agent.get("rateMultiplier", agent.get("rate_multiplier", 1.0)) or 1.0
+        )
     except (TypeError, ValueError):
         rate_multiplier = 1.0
     agent_name = agent.get("displayName") or agent.get("name")
@@ -583,6 +610,7 @@ async def _meter_chat_to_lago(
 
 
 # ---- Pydantic Models ----
+
 
 class AgentCreateRequest(BaseModel):
     name: str
@@ -684,6 +712,7 @@ class ChatCompletionRequest(BaseModel):
 
 class DeepResearchRequest(BaseModel):
     """Request model for deep research"""
+
     topic: str
     depth: Optional[str] = "medium"  # quick, medium, thorough
     user_id: Optional[str] = "anonymous"
@@ -691,6 +720,7 @@ class DeepResearchRequest(BaseModel):
 
 class DeepResearchResponse(BaseModel):
     """Response model for deep research"""
+
     session_id: str
     status: str
     topic: str
@@ -704,6 +734,7 @@ class DeepResearchResponse(BaseModel):
 
 # ---- Agent CRUD (DB-backed) ----
 
+
 async def _load_tool_catalog(session: AsyncSession) -> dict[str, dict[str, Any]]:
     """name -> {costTier, permissionLevel, provider, external, displayName}.
 
@@ -712,11 +743,14 @@ async def _load_tool_catalog(session: AsyncSession) -> dict[str, dict[str, Any]]
     on a missing catalog.
     """
     from sqlalchemy import text
+
     try:
-        rows = await session.execute(text(
-            "SELECT name, display_name, cost_tier, permission_level, provider, external "
-            "FROM tool_catalog"
-        ))
+        rows = await session.execute(
+            text(
+                "SELECT name, display_name, cost_tier, permission_level, provider, external "
+                "FROM tool_catalog"
+            )
+        )
         return {
             r[0]: {
                 "name": r[0],
@@ -797,10 +831,12 @@ async def list_agents(
     # Apply per-agent RBAC. Admins see everything; others filtered by policy.
     if user and user.role != UserRole.ADMIN:
         from app.auth.roles import can_user_access_agent, derive_user_tier
+
         email = (getattr(user, "email", "") or "") or ""
         tier = derive_user_tier(email, user.role)
         agents = [
-            a for a in agents
+            a
+            for a in agents
             if can_user_access_agent(
                 user_email=email,
                 user_role=user.role,
@@ -885,9 +921,7 @@ async def _validate_reports_to(
         raise HTTPException(status_code=422, detail="An agent cannot report to itself")
     lines = await _reporting_lines(session)
     if parent_id not in lines:
-        raise HTTPException(
-            status_code=422, detail=f"reportsTo target not found: {parent_id}"
-        )
+        raise HTTPException(status_code=422, detail=f"reportsTo target not found: {parent_id}")
     seen = {agent_id}
     cursor: Optional[str] = parent_id
     while cursor is not None:
@@ -895,8 +929,7 @@ async def _validate_reports_to(
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    "reportsTo would create a cycle in the chain of command "
-                    f"via '{cursor}'"
+                    "reportsTo would create a cycle in the chain of command " f"via '{cursor}'"
                 ),
             )
         seen.add(cursor)
@@ -916,18 +949,14 @@ async def get_agent_hierarchy(
     which parts consumers are still guessing at.
     """
     lines = await _reporting_lines(session)
-    edges = [
-        {"agent": aid, "reportsTo": pid} for aid, pid in sorted(lines.items()) if pid
-    ]
+    edges = [{"agent": aid, "reportsTo": pid} for aid, pid in sorted(lines.items()) if pid]
     parents = {pid for pid in lines.values() if pid}
     return {
         # An apex leads people but reports to nobody. An agent with neither a
         # parent nor reports is not an apex — it is simply unstated, and every
         # consumer will fall back to its own rank/domain guess for that one.
         "apex": sorted(a for a, p in lines.items() if p is None and a in parents),
-        "unstated": sorted(
-            a for a, p in lines.items() if p is None and a not in parents
-        ),
+        "unstated": sorted(a for a, p in lines.items() if p is None and a not in parents),
         "edges": edges,
         "total": len(lines),
         "stated": len(edges),
@@ -952,9 +981,7 @@ async def set_agent_hierarchy(
         await _validate_reports_to(session, edit.id, edit.reportsTo)
         async with _agent_writer(edit.id, session) as (agent, repo):
             if agent is None:
-                raise HTTPException(
-                    status_code=404, detail=f"Agent not found: {edit.id}"
-                )
+                raise HTTPException(status_code=404, detail=f"Agent not found: {edit.id}")
             await repo.update(edit.id, {"reportsTo": edit.reportsTo})
         applied.append({"agent": edit.id, "reportsTo": edit.reportsTo})
     return {"applied": applied, "count": len(applied)}
@@ -1038,6 +1065,7 @@ async def _agent_writer(agent_id: str, session: AsyncSession):
         # session. Safe: the RLS read above already proved this is a SHARED agent,
         # not another tenant's private one.
         from app.db.database import admin_session
+
         async with admin_session() as owner_sess:
             yield agent, AgentRepository(owner_sess)
     else:
@@ -1105,6 +1133,7 @@ async def create_agent(
                 detail="Only admins can create shared (global) agents",
             )
         from app.db.database import admin_session
+
         data["org_id"] = None  # explicit NULL = global; overrides the org default
         try:
             async with admin_session() as owner_sess:
@@ -1179,6 +1208,7 @@ async def delete_agent(
 
 # ---- Export / Import ----
 
+
 @router.get("/agents/export/json")
 async def export_agents(
     session: AsyncSession = Depends(get_session),
@@ -1200,13 +1230,34 @@ async def export_agents(
 # ``id`` and server-managed columns (createdAt/updatedAt) are dropped. The
 # repository's ``AgentRepository.update`` strips the tenancy keys again as a
 # second layer, so org assignment is never client-settable on any path.
-_IMPORT_WRITABLE_FIELDS = frozenset({
-    "name", "displayName", "title", "rank", "avatar", "avatarUrl", "bio",
-    "persona", "systemPrompt", "domain", "subdomain", "status", "type",
-    "agentType", "capabilities", "model", "temperature", "maxTokens", "tools",
-    "billingTier", "rateMultiplier", "basePricePerCall", "accessPolicy",
-    "affiliation",
-})
+_IMPORT_WRITABLE_FIELDS = frozenset(
+    {
+        "name",
+        "displayName",
+        "title",
+        "rank",
+        "avatar",
+        "avatarUrl",
+        "bio",
+        "persona",
+        "systemPrompt",
+        "domain",
+        "subdomain",
+        "status",
+        "type",
+        "agentType",
+        "capabilities",
+        "model",
+        "temperature",
+        "maxTokens",
+        "tools",
+        "billingTier",
+        "rateMultiplier",
+        "basePricePerCall",
+        "accessPolicy",
+        "affiliation",
+    }
+)
 
 
 def _sanitize_agent_import_updates(agent_data: dict[str, Any]) -> dict[str, Any]:
@@ -1243,28 +1294,26 @@ async def import_agents(
     for agent_data in agents:
         unknown = unknown_tool_names(agent_data.get("tools"))
         if unknown:
-            invalid.append({
-                "id": agent_data.get("id"),
-                "name": agent_data.get("name"),
-                "unknown_tools": unknown,
-                "unknownTools": unknown,
-            })
+            invalid.append(
+                {
+                    "id": agent_data.get("id"),
+                    "name": agent_data.get("name"),
+                    "unknown_tools": unknown,
+                    "unknownTools": unknown,
+                }
+            )
     if invalid:
         raise HTTPException(
             status_code=422,
             detail={
                 "code": "unknown_agent_tools",
                 "message": "Agent tools must name executable registered tools.",
-                "unknown_tools": sorted({
-                    name
-                    for item in invalid
-                    for name in item["unknown_tools"]
-                }),
-                "unknownTools": sorted({
-                    name
-                    for item in invalid
-                    for name in item["unknown_tools"]
-                }),
+                "unknown_tools": sorted(
+                    {name for item in invalid for name in item["unknown_tools"]}
+                ),
+                "unknownTools": sorted(
+                    {name for item in invalid for name in item["unknown_tools"]}
+                ),
                 "agents": invalid,
             },
         )
@@ -1313,6 +1362,7 @@ async def import_agents(
 
 
 # ---- Chat with Function Calling ----
+
 
 def _legacy_memory_alias(user, effective_user_id):
     """The pre-BR-1.1 memory key (a Keycloak ``sub``) to DUAL-READ for this chat,
@@ -1364,6 +1414,7 @@ async def chat_with_agent(
     # authenticated identity. Admins may pass user_id explicitly (for delegation,
     # batch ops, admin tooling, etc.).
     from app.auth.roles import UserRole as _UserRole
+
     if user and user.role != _UserRole.ADMIN:
         authenticated_id = user.user_id or user.id
         if authenticated_id and authenticated_id not in ("admin", "dev-bypass", "anonymous"):
@@ -1376,7 +1427,10 @@ async def chat_with_agent(
 
     # Per-agent RBAC (with audit logging on denial)
     await _ensure_agent_access_audited(
-        session, user, agent_id, agent,
+        session,
+        user,
+        agent_id,
+        agent,
         request_path=f"POST /api/v1/agents/{agent_id}/chat",
         user_attrs=user_attrs,
     )
@@ -1385,7 +1439,10 @@ async def chat_with_agent(
     # against the effective END-USER (not the transport key) and build the
     # per-run tool privilege guard.
     _end_user, _service_caller, tool_guard = await _authorize_caller(
-        session, user, agent, request.user_id,
+        session,
+        user,
+        agent,
+        request.user_id,
         request_path=f"POST /api/v1/agents/{agent_id}/chat",
     )
 
@@ -1416,13 +1473,16 @@ async def chat_with_agent(
                         mem_lines.append(f"- {text}")
                 if mem_lines:
                     system_parts.append(
-                        "## Relevant context from prior conversations with this user:\n" + "\n".join(mem_lines)
+                        "## Relevant context from prior conversations with this user:\n"
+                        + "\n".join(mem_lines)
                     )
         except Exception as mem_err:
             logger.warning(f"Memory retrieval failed: {mem_err}")
 
-    system_content = "\n\n".join(system_parts) if system_parts else (
-        f"You are {agent.get('displayName', agent['name'])}, a specialized AI agent."
+    system_content = (
+        "\n\n".join(system_parts)
+        if system_parts
+        else (f"You are {agent.get('displayName', agent['name'])}, a specialized AI agent.")
     )
 
     # Inject speaker context when available (voice pipeline provides this)
@@ -1431,13 +1491,15 @@ async def chat_with_agent(
 
     # Build messages
     messages = [{"role": "system", "content": system_content}]
-    for msg in (request.history or []):
+    for msg in request.history or []:
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     messages.append({"role": "user", "content": request.message})
 
     # Resolve model and params
     model = request.model or agent.get("model") or DEFAULT_MODEL
-    temperature = request.temperature if request.temperature is not None else agent.get("temperature", 0.7)
+    temperature = (
+        request.temperature if request.temperature is not None else agent.get("temperature", 0.7)
+    )
     max_tokens = request.maxTokens or agent.get("maxTokens", 2000)
 
     # Resolve agent tools
@@ -1449,13 +1511,19 @@ async def chat_with_agent(
     if request.stream:
         return StreamingResponse(
             _stream_chat(
-                messages, model, temperature, max_tokens, agent,
-                request.user_id, agent_tools, session,
+                messages,
+                model,
+                temperature,
+                max_tokens,
+                agent,
+                request.user_id,
+                agent_tools,
+                session,
                 user_email=user_email_for_metering,
                 org_id=getattr(user, "org_id", None),
                 tool_guard=tool_guard,
             ),
-            media_type="text/event-stream"
+            media_type="text/event-stream",
         )
 
     # Non-streaming
@@ -1472,6 +1540,7 @@ async def chat_with_agent(
         # this chat with the same mission_id so a downstream subscriber can
         # filter events that belong only to this run. Generated if not given.
         import uuid as _uuid_mod
+
         mission_id = request.mission_id or f"chat-{_uuid_mod.uuid4().hex[:12]}"
         # Stash on a context var so delegate_to_agent_handler (called from a
         # tool handler) can read it without an explicit parameter chain.
@@ -1481,6 +1550,7 @@ async def chat_with_agent(
             _CURRENT_CASE_ID,
             _CURRENT_MISSION_ID,
         )
+
         _mission_token = _CURRENT_MISSION_ID.set(mission_id)
         _case_token = _CURRENT_CASE_ID.set(request.case_id) if request.case_id else None
         # Identify the running agent so a delegate_to_agent call from inside its
@@ -1489,6 +1559,7 @@ async def chat_with_agent(
         _CURRENT_AGENT_NAME.set(agent_name)
         # Stamp correlation ids onto every log record for this request.
         from app.observability import agent_id_ctx, mission_id_ctx
+
         mission_id_ctx.set(mission_id)
         agent_id_ctx.set(agent["id"])
 
@@ -1516,26 +1587,28 @@ async def chat_with_agent(
         if agent_tools:
             # ---- Function calling path ----
             def on_tool_call(tc: ToolCall):
-                tool_calls_log.append({
-                    "id": tc.id,
-                    "name": tc.name,
-                    "arguments": tc.arguments,
-                })
+                tool_calls_log.append(
+                    {
+                        "id": tc.id,
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                    }
+                )
                 try:
-                    agent_tool_calls_total.labels(
-                        agent=_metric_agent, tool=tc.name
-                    ).inc()
+                    agent_tool_calls_total.labels(agent=_metric_agent, tool=tc.name).inc()
                 except Exception:
                     pass
                 logger.info(f"Tool call: {tc.name}({tc.arguments})")
                 # Emit to orchestration event bus
-                _spawn(emit_tool_call(
-                    agent_id=agent["id"],
-                    agent_name=agent_name,
-                    tool_name=tc.name,
-                    arguments=tc.arguments,
-                    mission_id=mission_id,
-                ))
+                _spawn(
+                    emit_tool_call(
+                        agent_id=agent["id"],
+                        agent_name=agent_name,
+                        tool_name=tc.name,
+                        arguments=tc.arguments,
+                        mission_id=mission_id,
+                    )
+                )
 
             def on_tool_result(tr: ToolResult):
                 # Attach result to the matching tool call entry
@@ -1546,7 +1619,9 @@ async def chat_with_agent(
                         entry["error"] = tr.error
                         matched_entry = entry
                         break
-                logger.info(f"Tool result: {tr.name} -> {'error: ' + tr.error if tr.error else 'ok'}")
+                logger.info(
+                    f"Tool result: {tr.name} -> {'error: ' + tr.error if tr.error else 'ok'}"
+                )
                 # Log to Langfuse observability
                 tracer.log_tool_call(
                     tool_name=tr.name,
@@ -1555,13 +1630,15 @@ async def chat_with_agent(
                     success=not tr.error,
                 )
                 # Emit to orchestration event bus
-                _spawn(emit_tool_result(
-                    agent_id=agent["id"],
-                    agent_name=agent_name,
-                    tool_name=tr.name,
-                    result=tr.result if not tr.error else {"error": tr.error},
-                    mission_id=mission_id,
-                ))
+                _spawn(
+                    emit_tool_result(
+                        agent_id=agent["id"],
+                        agent_name=agent_name,
+                        tool_name=tr.name,
+                        result=tr.result if not tr.error else {"error": tr.error},
+                        mission_id=mission_id,
+                    )
+                )
 
             response = await llm_client.execute_tool_loop(
                 messages=messages,
@@ -1593,7 +1670,9 @@ async def chat_with_agent(
                 org_id=getattr(user, "org_id", None),
             )
 
-        content = strip_channel_artifacts(_strip_thinking(llm_client.get_response_content(response)))
+        content = strip_channel_artifacts(
+            _strip_thinking(llm_client.get_response_content(response))
+        )
         usage = response.get("usage", {})
 
         result = {
@@ -1619,11 +1698,13 @@ async def chat_with_agent(
             try:
                 tool_repo = ToolExecutionRepository(session)
                 for tc in tool_calls_log:
-                    te = await tool_repo.create({
-                        "agent_id": agent["id"],
-                        "tool_name": tc["name"],
-                        "input": tc.get("arguments"),
-                    })
+                    te = await tool_repo.create(
+                        {
+                            "agent_id": agent["id"],
+                            "tool_name": tc["name"],
+                            "input": tc.get("arguments"),
+                        }
+                    )
                     status = "failed" if tc.get("error") else "completed"
                     await tool_repo.complete(
                         str(te["id"]),
@@ -1666,6 +1747,7 @@ async def chat_with_agent(
             from sqlalchemy import text as _sa_text
 
             from app.db.repositories import ConversationRepository
+
             conv_repo = ConversationRepository(session)
             user_id = request.user_id or "anonymous"
 
@@ -1674,36 +1756,46 @@ async def chat_with_agent(
                 _sa_text(
                     "SELECT id FROM conversations WHERE agent_id = :aid AND user_id = :uid ORDER BY updated_at DESC LIMIT 1"
                 ),
-                {"aid": agent["id"], "uid": user_id}
+                {"aid": agent["id"], "uid": user_id},
             )
             row = existing.first()
 
             if row:
                 conv_id = str(row[0])
             else:
-                conv = await conv_repo.create({
-                    "agent_id": agent["id"],
-                    "user_id": user_id,
-                    "title": request.message[:100],
-                    "model": model,
-                })
+                conv = await conv_repo.create(
+                    {
+                        "agent_id": agent["id"],
+                        "user_id": user_id,
+                        "title": request.message[:100],
+                        "model": model,
+                    }
+                )
                 conv_id = str(conv["id"])
 
-            total_tokens = (usage.get("prompt_tokens", 0) or 0) + (usage.get("completion_tokens", 0) or 0)
+            total_tokens = (usage.get("prompt_tokens", 0) or 0) + (
+                usage.get("completion_tokens", 0) or 0
+            )
 
             # Save user message
-            await conv_repo.add_message(conv_id, {
-                "role": "user",
-                "content": request.message,
-            })
+            await conv_repo.add_message(
+                conv_id,
+                {
+                    "role": "user",
+                    "content": request.message,
+                },
+            )
             # Save assistant response
-            await conv_repo.add_message(conv_id, {
-                "role": "assistant",
-                "content": content or "",
-                "model": model,
-                "tokens_used": total_tokens,
-                "tool_calls": tool_calls_log if tool_calls_log else None,
-            })
+            await conv_repo.add_message(
+                conv_id,
+                {
+                    "role": "assistant",
+                    "content": content or "",
+                    "model": model,
+                    "tokens_used": total_tokens,
+                    "tool_calls": tool_calls_log if tool_calls_log else None,
+                },
+            )
             await session.commit()
         except Exception as persist_err:
             # LOUD. This used to be a warning and the request still returned 200,
@@ -1717,23 +1809,21 @@ async def chat_with_agent(
             except Exception:
                 logger.debug("rollback after persist failure also failed", exc_info=True)
             logger.error(
-                "MESSAGE PERSISTENCE FAILED — chat history was DROPPED for "
-                "agent=%s user=%s: %s",
-                agent.get("id"), request.user_id, persist_err,
+                "MESSAGE PERSISTENCE FAILED — chat history was DROPPED for " "agent=%s user=%s: %s",
+                agent.get("id"),
+                request.user_id,
+                persist_err,
                 exc_info=True,
             )
             try:
                 # Reuse the existing chat counter with a distinct outcome so this
                 # is alertable without adding a new metric surface.
-                agent_chat_total.labels(
-                    agent=_metric_agent, outcome="persist_failed"
-                ).inc()
+                agent_chat_total.labels(agent=_metric_agent, outcome="persist_failed").inc()
             except Exception:
                 pass
             result["persisted"] = False
             result["persistence_error"] = (
-                "conversation history was NOT saved: "
-                f"{type(persist_err).__name__}"
+                "conversation history was NOT saved: " f"{type(persist_err).__name__}"
             )
         else:
             result["persisted"] = True
@@ -1756,7 +1846,9 @@ async def chat_with_agent(
         # Phase 7: meter local-GPU LLM cost to Lago (cloud/gateway routes meter
         # themselves) + emit the per-agent value event (all routes).
         await _meter_chat_to_lago(
-            user_email_for_metering, model, result,
+            user_email_for_metering,
+            model,
+            result,
             agent=agent,
             tools_called=[t.get("name") for t in (tool_calls_log or [])],
             outcome=_chat_outcome(tool_calls_log),
@@ -1789,13 +1881,21 @@ async def chat_with_agent(
 
 
 async def _stream_chat(
-    messages, model, temperature, max_tokens, agent, user_id, agent_tools, session,
+    messages,
+    model,
+    temperature,
+    max_tokens,
+    agent,
+    user_id,
+    agent_tools,
+    session,
     user_email: Optional[str] = None,
     org_id: Optional[str] = None,
     tool_guard=None,  # BR-6.4 per-caller tool privilege guard (None = ungated)
 ):
     """SSE streaming chat generator with function calling support."""
     from app.llm.delegation_tools import _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME
+
     _agent_tok = _agentname_tok = None
     try:
         tool_names = [t.name for t in agent_tools] if agent_tools else []
@@ -1829,27 +1929,37 @@ async def _stream_chat(
         # emitting tool_call / tool_result events, then stream the final response.
         if agent_tools:
             import asyncio as _asyncio
+
             _live_q: _asyncio.Queue = _asyncio.Queue()
 
             def on_tool_call(tc: ToolCall):
-                tool_calls_log.append({
-                    "id": tc.id,
-                    "name": tc.name,
-                    "arguments": tc.arguments,
-                })
+                tool_calls_log.append(
+                    {
+                        "id": tc.id,
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                    }
+                )
                 # Mirror to the orchestration bus (live Activity view) and emit a
                 # live SSE frame mid-loop so the client shows "using <tool>…"
                 # progress DURING the wait, carrying the tool-call id.
-                _spawn(emit_tool_call(
-                    agent_id=agent["id"], agent_name=agent_name,
-                    tool_name=tc.name, arguments=tc.arguments, mission_id=None,
-                ))
-                _live_q.put_nowait({
-                    "type": "tool_call",
-                    "id": tc.id,
-                    "name": tc.name,
-                    "arguments": tc.arguments,
-                })
+                _spawn(
+                    emit_tool_call(
+                        agent_id=agent["id"],
+                        agent_name=agent_name,
+                        tool_name=tc.name,
+                        arguments=tc.arguments,
+                        mission_id=None,
+                    )
+                )
+                _live_q.put_nowait(
+                    {
+                        "type": "tool_call",
+                        "id": tc.id,
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                    }
+                )
 
             def on_tool_result(tr: ToolResult):
                 _name = None
@@ -1859,36 +1969,43 @@ async def _stream_chat(
                         entry["error"] = tr.error
                         _name = entry["name"]
                         break
-                _spawn(emit_tool_result(
-                    agent_id=agent["id"], agent_name=agent_name,
-                    tool_name=_name,
-                    result=tr.result if not tr.error else {"error": tr.error},
-                    mission_id=None,
-                ))
-                _live_q.put_nowait({
-                    "type": "tool_result",
-                    "id": tr.tool_call_id,
-                    "name": _name,
-                    "result": tr.result,
-                    "error": tr.error,
-                    "success": tr.error is None,
-                })
+                _spawn(
+                    emit_tool_result(
+                        agent_id=agent["id"],
+                        agent_name=agent_name,
+                        tool_name=_name,
+                        result=tr.result if not tr.error else {"error": tr.error},
+                        mission_id=None,
+                    )
+                )
+                _live_q.put_nowait(
+                    {
+                        "type": "tool_result",
+                        "id": tr.tool_call_id,
+                        "name": _name,
+                        "result": tr.result,
+                        "error": tr.error,
+                        "success": tr.error is None,
+                    }
+                )
 
             # Run the tool loop as a task and forward tool events from the queue
             # as the callbacks fire mid-loop; drain whatever's left once done.
-            _loop_task = _asyncio.create_task(llm_client.execute_tool_loop(
-                messages=messages,
-                tools=agent_tools,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                user_id=user_id,
-                user_email=user_email,
-                org_id=org_id,
-                on_tool_call=on_tool_call,
-                on_tool_result=on_tool_result,
-                tool_guard=tool_guard,
-            ))
+            _loop_task = _asyncio.create_task(
+                llm_client.execute_tool_loop(
+                    messages=messages,
+                    tools=agent_tools,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    user_id=user_id,
+                    user_email=user_email,
+                    org_id=org_id,
+                    on_tool_call=on_tool_call,
+                    on_tool_result=on_tool_result,
+                    tool_guard=tool_guard,
+                )
+            )
             # Forward each tool event from the queue as the callbacks fire
             # mid-loop (live progress), then settle the loop result.
             while not _loop_task.done() or not _live_q.empty():
@@ -1910,11 +2027,13 @@ async def _stream_chat(
                 try:
                     tool_repo = ToolExecutionRepository(session)
                     for tc in tool_calls_log:
-                        te = await tool_repo.create({
-                            "agent_id": agent["id"],
-                            "tool_name": tc["name"],
-                            "input": tc.get("arguments"),
-                        })
+                        te = await tool_repo.create(
+                            {
+                                "agent_id": agent["id"],
+                                "tool_name": tc["name"],
+                                "input": tc.get("arguments"),
+                            }
+                        )
                         status = "failed" if tc.get("error") else "completed"
                         await tool_repo.complete(
                             str(te["id"]),
@@ -1927,10 +2046,12 @@ async def _stream_chat(
 
             # The tool-loop response is already complete; emit it as a few larger
             # chunks (a light "typing" feel) rather than hundreds of tiny frames.
-            content = strip_channel_artifacts(_strip_thinking(llm_client.get_response_content(response)))
+            content = strip_channel_artifacts(
+                _strip_thinking(llm_client.get_response_content(response))
+            )
             chunk_size = 180
             for i in range(0, len(content), chunk_size):
-                chunk = content[i:i + chunk_size]
+                chunk = content[i : i + chunk_size]
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
 
             yield f"data: {json.dumps({'type': 'complete', 'content': content, 'model': model, 'toolCalls': tool_calls_log})}\n\n"
@@ -1938,7 +2059,9 @@ async def _stream_chat(
             # Phase 7: meter BEFORE [DONE] so a client disconnect after the answer
             # doesn't drop the billing row (the call is best-effort + idempotent).
             await _meter_chat_to_lago(
-                user_email, model, {
+                user_email,
+                model,
+                {
                     "model": response.get("model", model),
                     "provider": response.get("provider"),
                     "usage": response.get("usage", {}),
@@ -2005,11 +2128,15 @@ async def _stream_chat(
                 ):
                     meter_usage_payload = real_usage
                 else:
-                    prompt_chars = sum(len((m or {}).get("content", "") or "") for m in (messages or []))
+                    prompt_chars = sum(
+                        len((m or {}).get("content", "") or "") for m in (messages or [])
+                    )
                     est_tokens = max(1, (prompt_chars + len(accumulated)) // 4)
                     meter_usage_payload = {"total_tokens": est_tokens}
                 await _meter_chat_to_lago(
-                    user_email, model, {
+                    user_email,
+                    model,
+                    {
                         "model": model,
                         "provider": None,
                         "usage": meter_usage_payload,
@@ -2048,6 +2175,7 @@ async def _stream_chat(
 
 
 # ---- Agent Tools Management ----
+
 
 class AttachToolRequest(BaseModel):
     toolId: str
@@ -2155,9 +2283,7 @@ async def update_tool_config(
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
     if tool_id not in (agent.get("tools") or []):
-        raise HTTPException(
-            status_code=404, detail=f"Tool not attached to agent: {tool_id}"
-        )
+        raise HTTPException(status_code=404, detail=f"Tool not attached to agent: {tool_id}")
 
     raise HTTPException(
         status_code=501,
@@ -2169,6 +2295,7 @@ async def update_tool_config(
 
 
 # ---- Direct Chat ----
+
 
 @router.post("/chat/completions")
 async def direct_chat_completion(
@@ -2208,7 +2335,9 @@ async def direct_chat_completion(
             org_id=getattr(user, "org_id", None),
         )
 
-        content = strip_channel_artifacts(_strip_thinking(llm_client.get_response_content(response)))
+        content = strip_channel_artifacts(
+            _strip_thinking(llm_client.get_response_content(response))
+        )
         usage = response.get("usage", {})
 
         return {
@@ -2219,7 +2348,7 @@ async def direct_chat_completion(
                 "prompt_tokens": usage.get("prompt_tokens", 0),
                 "completion_tokens": usage.get("completion_tokens", 0),
                 "total_tokens": usage.get("total_tokens", 0),
-            }
+            },
         }
     except Exception as e:
         logger.error(f"Chat completion error: {e}")
@@ -2227,6 +2356,7 @@ async def direct_chat_completion(
 
 
 # ---- Local MLX Testing ----
+
 
 class MLXChatRequest(BaseModel):
     message: str
@@ -2265,7 +2395,10 @@ async def chat_with_agent_local(
 
     # Per-agent RBAC (with audit logging on denial)
     await _ensure_agent_access_audited(
-        session, user, agent_id, agent,
+        session,
+        user,
+        agent_id,
+        agent,
         request_path=f"POST /api/v1/agents/{agent_id}/chat/local",
         user_attrs=user_attrs,
     )
@@ -2274,7 +2407,10 @@ async def chat_with_agent_local(
     # field, so the end user is the authenticated human (or None for a
     # service credential — the userless-service case).
     _end_user, _service_caller, tool_guard = await _authorize_caller(
-        session, user, agent, None,
+        session,
+        user,
+        agent,
+        None,
         request_path=f"POST /api/v1/agents/{agent_id}/chat/local",
     )
 
@@ -2284,13 +2420,15 @@ async def chat_with_agent_local(
         system_parts.append(agent["persona"])
     if agent.get("systemPrompt"):
         system_parts.append(agent["systemPrompt"])
-    system_content = "\n\n".join(system_parts) if system_parts else (
-        f"You are {agent.get('displayName', agent['name'])}, a specialized AI agent."
+    system_content = (
+        "\n\n".join(system_parts)
+        if system_parts
+        else (f"You are {agent.get('displayName', agent['name'])}, a specialized AI agent.")
     )
 
     # Build messages
     messages = [{"role": "system", "content": system_content}]
-    for msg in (request.history or []):
+    for msg in request.history or []:
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     messages.append({"role": "user", "content": request.message})
 
@@ -2304,12 +2442,15 @@ async def chat_with_agent_local(
         tool_calls_log = []
 
         if agent_tools:
+
             def on_tool_call(tc: ToolCall):
-                tool_calls_log.append({
-                    "id": tc.id,
-                    "name": tc.name,
-                    "arguments": tc.arguments,
-                })
+                tool_calls_log.append(
+                    {
+                        "id": tc.id,
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                    }
+                )
                 logger.info(f"[MLX] Tool call: {tc.name}({tc.arguments})")
 
             def on_tool_result(tr: ToolResult):
@@ -2318,7 +2459,9 @@ async def chat_with_agent_local(
                         entry["result"] = tr.result
                         entry["error"] = tr.error
                         break
-                logger.info(f"[MLX] Tool result: {tr.name} -> {'error: ' + tr.error if tr.error else 'ok'}")
+                logger.info(
+                    f"[MLX] Tool result: {tr.name} -> {'error: ' + tr.error if tr.error else 'ok'}"
+                )
 
             response = await mlx_client.execute_tool_loop(
                 messages=messages,
@@ -2365,7 +2508,9 @@ async def chat_with_agent_local(
         # Phase 7: MLX is always a local path — meter to Lago.
         _mlx_user_email = (getattr(user, "email", "") or "").lower()
         await _meter_chat_to_lago(
-            _mlx_user_email, request.model, result,
+            _mlx_user_email,
+            request.model,
+            result,
             agent=agent,
             org_id=getattr(user, "org_id", None),
         )
@@ -2375,7 +2520,7 @@ async def chat_with_agent_local(
     except ImportError as e:
         raise HTTPException(
             status_code=503,
-            detail=f"MLX not available on this system: {e}. Install with: pip install mlx-lm"
+            detail=f"MLX not available on this system: {e}. Install with: pip install mlx-lm",
         ) from e
     except Exception as e:
         logger.error(f"[MLX] Chat error with agent {agent_id}: {e}")
@@ -2415,8 +2560,10 @@ async def list_local_models(
 
 # ---- Text-to-SQL Agent ----
 
+
 class TextToSQLRequest(BaseModel):
     """Request for natural language to SQL conversion."""
+
     question: str
     explain: Optional[bool] = True
     row_limit: Optional[int] = 100
@@ -2424,6 +2571,7 @@ class TextToSQLRequest(BaseModel):
 
 class TextToSQLResponse(BaseModel):
     """Response from text-to-SQL agent."""
+
     question: str
     sql: str
     results: list[dict[str, Any]]
@@ -2468,12 +2616,14 @@ async def text_to_sql(
         agent = get_text_to_sql_agent(llm_client)
 
         # Execute the text-to-SQL pipeline
-        result = await agent.execute({
-            "question": request.question,
-            "explain": request.explain,
-            "row_limit": min(request.row_limit or 100, 10000),
-            "user_id": user.user_id if user else "anonymous",
-        })
+        result = await agent.execute(
+            {
+                "question": request.question,
+                "explain": request.explain,
+                "row_limit": min(request.row_limit or 100, 10000),
+                "user_id": user.user_id if user else "anonymous",
+            }
+        )
 
         return TextToSQLResponse(
             question=result.get("question", request.question),
@@ -2517,6 +2667,7 @@ async def get_database_schema(
 
 # ---- Deep Research Agent ----
 
+
 @router.post("/agents/research", response_model=DeepResearchResponse)
 async def deep_research(
     request: DeepResearchRequest,
@@ -2547,8 +2698,7 @@ async def deep_research(
     depth = request.depth.lower() if request.depth else "medium"
     if depth not in valid_depths:
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid depth. Must be one of: {', '.join(valid_depths)}"
+            status_code=400, detail=f"Invalid depth. Must be one of: {', '.join(valid_depths)}"
         )
 
     logger.info(f"Deep research request: topic='{request.topic}', depth={depth}")
@@ -2643,6 +2793,7 @@ async def get_research_session(
 
 # ---- Admin: RBAC audit log ----
 
+
 @router.get("/admin/rbac/denials")
 async def list_rbac_denials(
     session: AsyncSession = Depends(get_session),
@@ -2656,6 +2807,7 @@ async def list_rbac_denials(
     Supports optional filtering by ``agent_id`` or ``user_email``. Newest first.
     """
     from sqlalchemy import text
+
     clauses = []
     params: dict[str, Any] = {"limit": max(1, min(1000, limit))}
     if agent_id:
@@ -2712,6 +2864,7 @@ async def list_conversations_for_user(
     from datetime import datetime, timedelta
 
     from sqlalchemy import text
+
     if not user_id:
         return {"conversations": [], "count": 0}
     since_dt = None
@@ -2731,7 +2884,9 @@ async def list_conversations_for_user(
         ORDER BY created_at DESC
         LIMIT :lim
     """
-    result = await session.execute(text(sql), {"uid": user_id, "since": since_dt, "lim": max(1, min(500, limit))})
+    result = await session.execute(
+        text(sql), {"uid": user_id, "since": since_dt, "lim": max(1, min(500, limit))}
+    )
     rows = result.mappings().all()
     return {
         "conversations": [

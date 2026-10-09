@@ -1184,11 +1184,13 @@ async def run_identity_remap(engine) -> None:
     a re-run (were the guard row missing) is harmless."""
     try:
         async with engine.begin() as conn:
-            await conn.execute(text(
-                "CREATE TABLE IF NOT EXISTS schema_migrations ("
-                "version varchar(255) PRIMARY KEY, "
-                "applied_at timestamptz NOT NULL DEFAULT now())"
-            ))
+            await conn.execute(
+                text(
+                    "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                    "version varchar(255) PRIMARY KEY, "
+                    "applied_at timestamptz NOT NULL DEFAULT now())"
+                )
+            )
             rows = await conn.execute(text("SELECT version FROM schema_migrations"))
             applied = {r[0] for r in rows}
         if _IDENTITY_REMAP_VERSION in applied:
@@ -1196,8 +1198,10 @@ async def run_identity_remap(engine) -> None:
         async with engine.begin() as conn:
             await remap_forked_keycloak_rows(conn)
             await conn.execute(
-                text("INSERT INTO schema_migrations (version) VALUES (:v) "
-                     "ON CONFLICT (version) DO NOTHING"),
+                text(
+                    "INSERT INTO schema_migrations (version) VALUES (:v) "
+                    "ON CONFLICT (version) DO NOTHING"
+                ),
                 {"v": _IDENTITY_REMAP_VERSION},
             )
         logger.info(f"Applied identity remap {_IDENTITY_REMAP_VERSION}")
@@ -1211,11 +1215,13 @@ async def run_additive_migrations(engine) -> None:
     statement is ``IF NOT EXISTS``, a partial/again run is harmless."""
     try:
         async with engine.begin() as conn:
-            await conn.execute(text(
-                "CREATE TABLE IF NOT EXISTS schema_migrations ("
-                "version varchar(255) PRIMARY KEY, "
-                "applied_at timestamptz NOT NULL DEFAULT now())"
-            ))
+            await conn.execute(
+                text(
+                    "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                    "version varchar(255) PRIMARY KEY, "
+                    "applied_at timestamptz NOT NULL DEFAULT now())"
+                )
+            )
             rows = await conn.execute(text("SELECT version FROM schema_migrations"))
             applied = {r[0] for r in rows}
     except Exception as exc:  # noqa: BLE001
@@ -1235,8 +1241,10 @@ async def run_additive_migrations(engine) -> None:
                 for stmt in statements:
                     await conn.execute(text(stmt))
                 await conn.execute(
-                    text("INSERT INTO schema_migrations (version) VALUES (:v) "
-                         "ON CONFLICT (version) DO NOTHING"),
+                    text(
+                        "INSERT INTO schema_migrations (version) VALUES (:v) "
+                        "ON CONFLICT (version) DO NOTHING"
+                    ),
                     {"v": version},
                 )
             logger.info(f"Applied schema migration {version}: {desc}")

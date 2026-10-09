@@ -2,23 +2,35 @@
 Repository classes for database CRUD operations.
 Each repository handles one entity type with async SQLAlchemy sessions.
 """
-import hashlib
-import secrets
-import logging
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select, func, delete, update
+import hashlib
+import logging
+import secrets
+from datetime import datetime, timedelta
+from typing import Any, Optional
+
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import Agent, Conversation, Message, ApiKey, BuilderSession, ToolExecution, User, UserApiKey, CodeAttribution, SpeakerProfile
 from app.db.database import ensure_org_context
+from app.db.models import (
+    Agent,
+    ApiKey,
+    BuilderSession,
+    CodeAttribution,
+    Conversation,
+    Message,
+    SpeakerProfile,
+    ToolExecution,
+    User,
+    UserApiKey,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _validate_agent_tools(data: Dict[str, Any]) -> None:
+def _validate_agent_tools(data: dict[str, Any]) -> None:
     """Reject tool names that the executable registry cannot resolve."""
     from app.llm.tool_resolver import validate_tool_names
 
@@ -28,24 +40,21 @@ def _validate_agent_tools(data: Dict[str, Any]) -> None:
 
 # ── Agent Repository ──────────────────────────────────────────────
 
+
 class AgentRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def list_all(self) -> List[Dict]:
-        result = await self.session.execute(
-            select(Agent).order_by(Agent.domain, Agent.name)
-        )
+    async def list_all(self) -> list[dict]:
+        result = await self.session.execute(select(Agent).order_by(Agent.domain, Agent.name))
         return [a.to_dict() for a in result.scalars().all()]
 
-    async def get(self, agent_id: str) -> Optional[Dict]:
-        result = await self.session.execute(
-            select(Agent).where(Agent.id == agent_id)
-        )
+    async def get(self, agent_id: str) -> Optional[dict]:
+        result = await self.session.execute(select(Agent).where(Agent.id == agent_id))
         agent = result.scalar_one_or_none()
         return agent.to_dict() if agent else None
 
-    async def create(self, data: Dict[str, Any]) -> Dict:
+    async def create(self, data: dict[str, Any]) -> dict:
         _validate_agent_tools(data)
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
@@ -109,14 +118,12 @@ class AgentRepository:
         await self.session.commit()
         return agent.to_dict()
 
-    async def update(self, agent_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
+    async def update(self, agent_id: str, updates: dict[str, Any]) -> Optional[dict]:
         _validate_agent_tools(updates)
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
-        result = await self.session.execute(
-            select(Agent).where(Agent.id == agent_id)
-        )
+        result = await self.session.execute(select(Agent).where(Agent.id == agent_id))
         agent = result.scalar_one_or_none()
         if not agent:
             return None
@@ -131,17 +138,18 @@ class AgentRepository:
         # three here UNCONDITIONALLY (defense in depth beneath the route-level
         # import whitelist). Org assignment happens only at ``create()`` — via the
         # DB default ``current_org_id()`` or the explicit admin shared-agent path.
-        updates = {
-            k: v for k, v in updates.items()
-            if k not in ("org_id", "orgId", "id")
-        }
+        updates = {k: v for k, v in updates.items() if k not in ("org_id", "orgId", "id")}
 
         field_map = {
-            "displayName": "display_name", "systemPrompt": "system_prompt",
+            "displayName": "display_name",
+            "systemPrompt": "system_prompt",
             "avatarUrl": "avatar_url",
-            "agentType": "agent_type", "maxTokens": "max_tokens",
-            "accessPolicy": "access_policy", "reportsTo": "reports_to",
-            "billingTier": "billing_tier", "rateMultiplier": "rate_multiplier",
+            "agentType": "agent_type",
+            "maxTokens": "max_tokens",
+            "accessPolicy": "access_policy",
+            "reportsTo": "reports_to",
+            "billingTier": "billing_tier",
+            "rateMultiplier": "rate_multiplier",
             "basePricePerCall": "base_price_per_call",
         }
         for key, value in updates.items():
@@ -164,9 +172,7 @@ class AgentRepository:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
-        result = await self.session.execute(
-            select(Agent).where(Agent.id == agent_id)
-        )
+        result = await self.session.execute(select(Agent).where(Agent.id == agent_id))
         agent = result.scalar_one_or_none()
         if not agent:
             return False
@@ -174,7 +180,7 @@ class AgentRepository:
         await self.session.commit()
         return True
 
-    async def get_domains(self) -> List[Dict]:
+    async def get_domains(self) -> list[dict]:
         result = await self.session.execute(
             select(Agent.domain, func.count(Agent.id).label("count"))
             .group_by(Agent.domain)
@@ -195,11 +201,12 @@ class AgentRepository:
 
 # ── Conversation Repository ───────────────────────────────────────
 
+
 class ConversationRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def list_for_user(self, user_id: str = "anonymous", limit: int = 50) -> List[Dict]:
+    async def list_for_user(self, user_id: str = "anonymous", limit: int = 50) -> list[dict]:
         result = await self.session.execute(
             select(Conversation)
             .options(selectinload(Conversation.agent))
@@ -209,7 +216,7 @@ class ConversationRepository:
         )
         return [c.to_dict() for c in result.scalars().all()]
 
-    async def get(self, conv_id: str, include_messages: bool = False) -> Optional[Dict]:
+    async def get(self, conv_id: str, include_messages: bool = False) -> Optional[dict]:
         query = select(Conversation).where(Conversation.id == conv_id)
         if include_messages:
             query = query.options(
@@ -223,7 +230,7 @@ class ConversationRepository:
         conv = result.scalar_one_or_none()
         return conv.to_dict(include_messages=include_messages) if conv else None
 
-    async def create(self, data: Dict[str, Any]) -> Dict:
+    async def create(self, data: dict[str, Any]) -> dict:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
@@ -248,13 +255,11 @@ class ConversationRepository:
         await self.session.commit()
         return result
 
-    async def update(self, conv_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
+    async def update(self, conv_id: str, updates: dict[str, Any]) -> Optional[dict]:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
-        result = await self.session.execute(
-            select(Conversation).where(Conversation.id == conv_id)
-        )
+        result = await self.session.execute(select(Conversation).where(Conversation.id == conv_id))
         conv = result.scalar_one_or_none()
         if not conv:
             return None
@@ -276,13 +281,11 @@ class ConversationRepository:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
-        result = await self.session.execute(
-            delete(Conversation).where(Conversation.id == conv_id)
-        )
+        result = await self.session.execute(delete(Conversation).where(Conversation.id == conv_id))
         await self.session.commit()
         return result.rowcount > 0
 
-    async def add_message(self, conv_id: str, data: Dict[str, Any]) -> Dict:
+    async def add_message(self, conv_id: str, data: dict[str, Any]) -> dict:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
@@ -299,9 +302,7 @@ class ConversationRepository:
         self.session.add(msg)
 
         # Update conversation counters
-        result = await self.session.execute(
-            select(Conversation).where(Conversation.id == conv_id)
-        )
+        result = await self.session.execute(select(Conversation).where(Conversation.id == conv_id))
         conv = result.scalar_one_or_none()
         if conv:
             conv.message_count = (conv.message_count or 0) + 1
@@ -323,11 +324,14 @@ class ConversationRepository:
 
 # ── API Key Repository ────────────────────────────────────────────
 
+
 class ApiKeyRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def generate(self, agent_id: str, data: Dict[str, Any], org_id: Optional[str] = None) -> Dict:
+    async def generate(
+        self, agent_id: str, data: dict[str, Any], org_id: Optional[str] = None
+    ) -> dict:
         raw_key = f"ubk-{secrets.token_urlsafe(32)}"
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
         key_prefix = raw_key[:8]
@@ -360,7 +364,7 @@ class ApiKeyRepository:
         result["key"] = raw_key  # Only returned on creation
         return result
 
-    async def list_for_agent(self, agent_id: str) -> List[Dict]:
+    async def list_for_agent(self, agent_id: str) -> list[dict]:
         # S9: org-scope key metadata even on a SHARED (NULL-org) agent. api_keys
         # carries NO RLS (the key lookup in validate_api_key must run before any
         # org is bound), so key rows are not policy-isolated on their own — for a
@@ -379,10 +383,8 @@ class ApiKeyRepository:
         )
         return [k.to_dict() for k in result.scalars().all()]
 
-    async def get(self, key_id: str) -> Optional[Dict]:
-        result = await self.session.execute(
-            select(ApiKey).where(ApiKey.id == key_id)
-        )
+    async def get(self, key_id: str) -> Optional[dict]:
+        result = await self.session.execute(select(ApiKey).where(ApiKey.id == key_id))
         key = result.scalar_one_or_none()
         return key.to_dict() if key else None
 
@@ -406,11 +408,14 @@ class ApiKeyRepository:
 
 # ── Builder Session Repository ────────────────────────────────────
 
+
 class BuilderSessionRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_or_create(self, session_id: Optional[str] = None, user_id: str = "anonymous") -> Dict:
+    async def get_or_create(
+        self, session_id: Optional[str] = None, user_id: str = "anonymous"
+    ) -> dict:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
@@ -432,7 +437,7 @@ class BuilderSessionRepository:
         await self.session.commit()
         return bs.to_dict()
 
-    async def add_messages(self, session_id: str, user_msg: str, assistant_msg: str) -> Dict:
+    async def add_messages(self, session_id: str, user_msg: str, assistant_msg: str) -> dict:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
@@ -455,14 +460,14 @@ class BuilderSessionRepository:
         await self.session.commit()
         return bs.to_dict()
 
-    async def get(self, session_id: str) -> Optional[Dict]:
+    async def get(self, session_id: str) -> Optional[dict]:
         result = await self.session.execute(
             select(BuilderSession).where(BuilderSession.id == session_id)
         )
         bs = result.scalar_one_or_none()
         return bs.to_dict() if bs else None
 
-    async def set_agent_config(self, session_id: str, config: Dict) -> Optional[Dict]:
+    async def set_agent_config(self, session_id: str, config: dict) -> Optional[dict]:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
@@ -481,25 +486,22 @@ class BuilderSessionRepository:
 
 # ── User Repository ───────────────────────────────────────────────
 
+
 class UserRepository:
     """Repository for User CRUD operations"""
 
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_id(self, user_id: str) -> Optional[Dict]:
+    async def get_by_id(self, user_id: str) -> Optional[dict]:
         """Get user by ID"""
-        result = await self.session.execute(
-            select(User).where(User.id == user_id)
-        )
+        result = await self.session.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
         return user.to_dict() if user else None
 
     async def get_by_email(self, email: str) -> Optional[User]:
         """Get user by email (returns ORM object for password verification)"""
-        result = await self.session.execute(
-            select(User).where(User.email == email.lower())
-        )
+        result = await self.session.execute(select(User).where(User.email == email.lower()))
         return result.scalar_one_or_none()
 
     async def email_exists(self, email: str) -> bool:
@@ -509,7 +511,7 @@ class UserRepository:
         )
         return (result.scalar() or 0) > 0
 
-    async def create(self, data: Dict[str, Any]) -> Dict:
+    async def create(self, data: dict[str, Any]) -> dict:
         """Create a new user"""
         user = User(
             email=data["email"].lower(),
@@ -523,11 +525,9 @@ class UserRepository:
         await self.session.refresh(user)
         return user.to_dict()
 
-    async def update(self, user_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
+    async def update(self, user_id: str, updates: dict[str, Any]) -> Optional[dict]:
         """Update user profile"""
-        result = await self.session.execute(
-            select(User).where(User.id == user_id)
-        )
+        result = await self.session.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
         if not user:
             return None
@@ -547,9 +547,7 @@ class UserRepository:
 
     async def deactivate(self, user_id: str) -> bool:
         """Deactivate user account"""
-        result = await self.session.execute(
-            select(User).where(User.id == user_id)
-        )
+        result = await self.session.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
         if not user:
             return False
@@ -566,13 +564,14 @@ class UserRepository:
 
 # ── User API Key Repository ───────────────────────────────────────
 
+
 class UserApiKeyRepository:
     """Repository for user API key operations"""
 
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def generate(self, user_id: str, data: Dict[str, Any]) -> Dict:
+    async def generate(self, user_id: str, data: dict[str, Any]) -> dict:
         """Generate a new API key for a user"""
         raw_key = f"ubk-{secrets.token_urlsafe(32)}"
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -600,7 +599,7 @@ class UserApiKeyRepository:
         result["key"] = raw_key  # Only returned on creation
         return result
 
-    async def list_for_user(self, user_id: str) -> List[Dict]:
+    async def list_for_user(self, user_id: str) -> list[dict]:
         """List all API keys for a user"""
         result = await self.session.execute(
             select(UserApiKey)
@@ -609,11 +608,9 @@ class UserApiKeyRepository:
         )
         return [k.to_dict() for k in result.scalars().all()]
 
-    async def get(self, key_id: str) -> Optional[Dict]:
+    async def get(self, key_id: str) -> Optional[dict]:
         """Get API key by ID"""
-        result = await self.session.execute(
-            select(UserApiKey).where(UserApiKey.id == key_id)
-        )
+        result = await self.session.execute(select(UserApiKey).where(UserApiKey.id == key_id))
         key = result.scalar_one_or_none()
         return key.to_dict() if key else None
 
@@ -657,11 +654,12 @@ class UserApiKeyRepository:
 
 # ── Tool Execution Repository ─────────────────────────────────────
 
+
 class ToolExecutionRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self, data: Dict[str, Any]) -> Dict:
+    async def create(self, data: dict[str, Any]) -> dict:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
@@ -681,7 +679,9 @@ class ToolExecutionRepository:
         await self.session.commit()
         return te.to_dict()
 
-    async def complete(self, exec_id: str, output: Any, duration_ms: int, status: str = "completed") -> Optional[Dict]:
+    async def complete(
+        self, exec_id: str, output: Any, duration_ms: int, status: str = "completed"
+    ) -> Optional[dict]:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
@@ -700,7 +700,7 @@ class ToolExecutionRepository:
         await self.session.commit()
         return te.to_dict()
 
-    async def list_for_conversation(self, conv_id: str) -> List[Dict]:
+    async def list_for_conversation(self, conv_id: str) -> list[dict]:
         result = await self.session.execute(
             select(ToolExecution)
             .where(ToolExecution.conversation_id == conv_id)
@@ -711,13 +711,14 @@ class ToolExecutionRepository:
 
 # ── Code Attribution Repository (Agent Trace) ─────────────────────
 
+
 class CodeAttributionRepository:
     """Repository for code attribution tracking"""
 
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self, data: Dict[str, Any]) -> Dict:
+    async def create(self, data: dict[str, Any]) -> dict:
         """Record a code attribution"""
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
@@ -748,12 +749,7 @@ class CodeAttributionRepository:
         await self.session.commit()
         return attribution.to_dict()
 
-    async def get_by_file(
-        self,
-        file_path: str,
-        limit: int = 100,
-        offset: int = 0
-    ) -> List[Dict]:
+    async def get_by_file(self, file_path: str, limit: int = 100, offset: int = 0) -> list[dict]:
         """Get all attributions for a specific file"""
         # Normalize file path to handle both /path and path formats
         normalized_path = file_path if file_path.startswith("/") else f"/{file_path}"
@@ -766,12 +762,7 @@ class CodeAttributionRepository:
         )
         return [a.to_dict() for a in result.scalars().all()]
 
-    async def get_by_agent(
-        self,
-        agent_id: str,
-        limit: int = 100,
-        offset: int = 0
-    ) -> List[Dict]:
+    async def get_by_agent(self, agent_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
         """Get all code attributions by a specific agent"""
         result = await self.session.execute(
             select(CodeAttribution)
@@ -783,11 +774,8 @@ class CodeAttributionRepository:
         return [a.to_dict() for a in result.scalars().all()]
 
     async def get_by_session(
-        self,
-        session_id: str,
-        limit: int = 100,
-        offset: int = 0
-    ) -> List[Dict]:
+        self, session_id: str, limit: int = 100, offset: int = 0
+    ) -> list[dict]:
         """Get all code attributions in a session"""
         result = await self.session.execute(
             select(CodeAttribution)
@@ -798,12 +786,7 @@ class CodeAttributionRepository:
         )
         return [a.to_dict() for a in result.scalars().all()]
 
-    async def get_recent(
-        self,
-        days: int = 1,
-        limit: int = 100,
-        offset: int = 0
-    ) -> List[Dict]:
+    async def get_recent(self, days: int = 1, limit: int = 100, offset: int = 0) -> list[dict]:
         """Get recent attributions within the last N days"""
         cutoff = datetime.utcnow() - timedelta(days=days)
         result = await self.session.execute(
@@ -815,7 +798,7 @@ class CodeAttributionRepository:
         )
         return [a.to_dict() for a in result.scalars().all()]
 
-    async def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         """Get attribution statistics"""
         # Total lines of code
         total_lines_result = await self.session.execute(
@@ -844,10 +827,8 @@ class CodeAttributionRepository:
         # By change type (operation)
         operations_result = await self.session.execute(
             select(
-                CodeAttribution.change_type,
-                func.count(CodeAttribution.id).label("count")
-            )
-            .group_by(CodeAttribution.change_type)
+                CodeAttribution.change_type, func.count(CodeAttribution.id).label("count")
+            ).group_by(CodeAttribution.change_type)
         )
         operations = {row.change_type: row.count for row in operations_result.all()}
 
@@ -855,8 +836,10 @@ class CodeAttributionRepository:
         top_agents_result = await self.session.execute(
             select(
                 CodeAttribution.agent_name,
-                func.sum(CodeAttribution.end_line - CodeAttribution.start_line + 1).label("total_lines"),
-                func.count(CodeAttribution.id).label("attribution_count")
+                func.sum(CodeAttribution.end_line - CodeAttribution.start_line + 1).label(
+                    "total_lines"
+                ),
+                func.count(CodeAttribution.id).label("attribution_count"),
             )
             .group_by(CodeAttribution.agent_name)
             .order_by(func.sum(CodeAttribution.end_line - CodeAttribution.start_line + 1).desc())
@@ -866,7 +849,7 @@ class CodeAttributionRepository:
             {
                 "agentName": row.agent_name,
                 "totalLines": int(row.total_lines or 0),
-                "attributionCount": row.attribution_count
+                "attributionCount": row.attribution_count,
             }
             for row in top_agents_result.all()
         ]
@@ -876,7 +859,9 @@ class CodeAttributionRepository:
             select(
                 CodeAttribution.file_path,
                 func.count(CodeAttribution.id).label("attribution_count"),
-                func.sum(CodeAttribution.end_line - CodeAttribution.start_line + 1).label("total_lines")
+                func.sum(CodeAttribution.end_line - CodeAttribution.start_line + 1).label(
+                    "total_lines"
+                ),
             )
             .group_by(CodeAttribution.file_path)
             .order_by(func.count(CodeAttribution.id).desc())
@@ -886,7 +871,7 @@ class CodeAttributionRepository:
             {
                 "filePath": row.file_path,
                 "attributionCount": row.attribution_count,
-                "totalLines": int(row.total_lines or 0)
+                "totalLines": int(row.total_lines or 0),
             }
             for row in top_files_result.all()
         ]
@@ -910,7 +895,7 @@ class CodeAttributionRepository:
         end_date: Optional[datetime] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Search attributions with filters"""
         query = select(CodeAttribution)
 
@@ -932,33 +917,32 @@ class CodeAttributionRepository:
 
 # ── Speaker Profile Repository ────────────────────────────────────
 
+
 class SpeakerProfileRepository:
     """Repository for speaker voice profiles (speaker identification)."""
 
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def list_all(self) -> List[Dict]:
-        result = await self.session.execute(
-            select(SpeakerProfile).order_by(SpeakerProfile.name)
-        )
+    async def list_all(self) -> list[dict]:
+        result = await self.session.execute(select(SpeakerProfile).order_by(SpeakerProfile.name))
         return [p.to_dict() for p in result.scalars().all()]
 
-    async def get(self, profile_id: str) -> Optional[Dict]:
+    async def get(self, profile_id: str) -> Optional[dict]:
         result = await self.session.execute(
             select(SpeakerProfile).where(SpeakerProfile.id == profile_id)
         )
         profile = result.scalar_one_or_none()
         return profile.to_dict() if profile else None
 
-    async def get_by_name(self, name: str) -> Optional[Dict]:
+    async def get_by_name(self, name: str) -> Optional[dict]:
         result = await self.session.execute(
             select(SpeakerProfile).where(SpeakerProfile.name == name)
         )
         profile = result.scalar_one_or_none()
         return profile.to_dict() if profile else None
 
-    async def create(self, data: Dict[str, Any]) -> Dict:
+    async def create(self, data: dict[str, Any]) -> dict:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)
@@ -976,7 +960,7 @@ class SpeakerProfileRepository:
         await self.session.commit()
         return profile.to_dict()
 
-    async def update(self, profile_id: str, updates: Dict[str, Any]) -> Optional[Dict]:
+    async def update(self, profile_id: str, updates: dict[str, Any]) -> Optional[dict]:
         # BR-RLS: a prior commit in this request may have released the connection;
         # re-assert the org GUC so this write cannot be silently rejected by RLS.
         await ensure_org_context(self.session)

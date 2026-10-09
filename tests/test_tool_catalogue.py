@@ -7,7 +7,6 @@ from pathlib import Path
 from app.db.migrations import MIGRATIONS
 from app.llm.tool_resolver import TOOL_REGISTRY
 
-
 ROOT = Path(__file__).resolve().parents[1]
 OPTIONAL_MAPS = {
     "crisis_mcp_tools.py": "CRISIS_MCP_TOOLS",
@@ -27,9 +26,7 @@ def _catalogue_names() -> set[str]:
     names: set[str] = set()
     for _version, _description, sql in MIGRATIONS:
         sql_text = "\n".join(sql) if isinstance(sql, list) else sql
-        names.update(
-            re.findall(r"\(\s*'([a-z0-9_]+)'\s*,\s*'[^']+'\s*,", sql_text)
-        )
+        names.update(re.findall(r"\(\s*'([a-z0-9_]+)'\s*,\s*'[^']+'\s*,", sql_text))
     return names
 
 
@@ -64,7 +61,8 @@ def _all_source_registry_names() -> set[str]:
         if "TOOL_REGISTRY" in targets and isinstance(node.value, ast.Dict):
             names.update(key.value for key in node.value.keys if isinstance(key, ast.Constant))
         if isinstance(node.value, ast.Dict) and any(
-            key in targets for key in (
+            key in targets
+            for key in (
                 # The Home Assistant map is an inline update in tool_resolver.
                 "TOOL_REGISTRY",
             )
@@ -76,15 +74,17 @@ def _all_source_registry_names() -> set[str]:
     names.add("generate_pdf")
     for filename, variable in OPTIONAL_MAPS.items():
         names.update(_dict_keys(ROOT / "app/llm" / filename, variable))
-    names.update({
-        "ha_list_entities",
-        "ha_get_entity_state",
-        "ha_call_service",
-        "ha_search_entities",
-        "ha_get_history",
-        "ha_list_areas",
-        "ha_get_services",
-    })
+    names.update(
+        {
+            "ha_list_entities",
+            "ha_get_entity_state",
+            "ha_call_service",
+            "ha_search_entities",
+            "ha_get_history",
+            "ha_list_areas",
+            "ha_get_services",
+        }
+    )
     return names
 
 
@@ -101,8 +101,11 @@ def test_optional_registry_sources_are_catalogued_before_enablement():
 
 
 def test_high_risk_new_tools_have_level_five_seed_rows():
-    sql = next(sql for version, _description, sql in MIGRATIONS
-               if version == "20261009_01_tool_catalogue_complete")
+    sql = next(
+        sql
+        for version, _description, sql in MIGRATIONS
+        if version == "20261009_01_tool_catalogue_complete"
+    )
     assert "('bmc_flash_firmware','free',5,'ilo_redfish',false)" in sql
     assert "('bmc_power_control','free',5,'ilo_redfish',false)" in sql
     assert "('ha_call_service','free',5,'home_assistant',false)" in sql

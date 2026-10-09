@@ -62,8 +62,8 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any, Optional
 
 from app.auth.roles import UserRole
 
@@ -97,11 +97,13 @@ def _int_env(name: str, default: int) -> int:
 
 def enforcement_mode() -> str:
     """enforce (default) | log (evaluate+audit but allow) | off (no guard)."""
-    mode = (os.getenv("BRIGADE_TOOL_PERMISSION_ENFORCEMENT", "enforce") or "enforce").strip().lower()
+    mode = (
+        (os.getenv("BRIGADE_TOOL_PERMISSION_ENFORCEMENT", "enforce") or "enforce").strip().lower()
+    )
     return mode if mode in ("enforce", "log", "off") else "enforce"
 
 
-def role_tool_levels() -> Dict[str, int]:
+def role_tool_levels() -> dict[str, int]:
     """Role → tool level map. ``BRIGADE_ROLE_TOOL_LEVELS`` (JSON) overrides
     individual entries; unknown/garbage input falls back to the defaults."""
     levels = dict(DEFAULT_ROLE_TOOL_LEVELS)
@@ -117,7 +119,7 @@ def role_tool_levels() -> Dict[str, int]:
     return levels
 
 
-def user_tool_level_overrides() -> Dict[str, int]:
+def user_tool_level_overrides() -> dict[str, int]:
     """Explicit per-user levels, keyed by user id OR email (lowercased).
 
     Sources merge in this order (later wins): the JSON FILE named by
@@ -126,11 +128,11 @@ def user_tool_level_overrides() -> Dict[str, int]:
     best-effort: unreadable/unparseable sources are logged and skipped, never
     fatal to a chat call.
     """
-    overrides: Dict[str, int] = {}
+    overrides: dict[str, int] = {}
     path = (os.getenv("BRIGADE_USER_TOOL_LEVELS_FILE", "") or "").strip()
     if path:
         try:
-            with open(path, "r", encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 parsed = json.load(fh)
             if isinstance(parsed, dict):
                 for k, v in parsed.items():
@@ -210,13 +212,14 @@ class EndUser:
     bound human) backs this identity; only resolved users have a trustworthy
     ``role``.
     """
+
     raw_id: str
-    user_id: Optional[str] = None      # canonical users.id when resolved
+    user_id: Optional[str] = None  # canonical users.id when resolved
     email: Optional[str] = None
-    role: Optional[str] = None         # "admin" | "operator" | "viewer" when resolved
+    role: Optional[str] = None  # "admin" | "operator" | "viewer" when resolved
     keycloak_id: Optional[str] = None
     resolved: bool = False
-    source: str = "forwarded"          # "caller" | "delegated" | "forwarded"
+    source: str = "forwarded"  # "caller" | "delegated" | "forwarded"
 
 
 def is_service_caller(auth_user: Any) -> bool:
@@ -245,7 +248,9 @@ async def _lookup_user_row(session, requested: str):
         return None
     try:
         from uuid import UUID as _UUID
+
         from sqlalchemy import or_, select
+
         from app.db.models import User as _User
 
         conds = [_User.keycloak_id == requested]
@@ -267,7 +272,7 @@ async def resolve_end_user(
     auth_user: Any,
     requested_user_id: Optional[str],
     session=None,
-) -> Tuple[Optional[EndUser], bool]:
+) -> tuple[Optional[EndUser], bool]:
     """Resolve ``(end_user, service_caller)`` for a chat/run call.
 
     Mirrors the memory-isolation identity rules exactly:
@@ -278,11 +283,13 @@ async def resolve_end_user(
         → no end user (``None``) — the service-flow case.
     """
     service = is_service_caller(auth_user)
-    requested = (str(requested_user_id).strip() if requested_user_id is not None else "")
+    requested = str(requested_user_id).strip() if requested_user_id is not None else ""
     if requested in _PLACEHOLDER_USER_IDS:
         requested = ""
 
-    own_id = getattr(auth_user, "user_id", None) or getattr(auth_user, "id", None) if auth_user else None
+    own_id = (
+        getattr(auth_user, "user_id", None) or getattr(auth_user, "id", None) if auth_user else None
+    )
     if (
         auth_user is not None
         and not service
@@ -305,10 +312,13 @@ async def resolve_end_user(
         row = await _lookup_user_row(session, requested)
         if row is not None:
             return EndUser(
-                raw_id=requested, user_id=str(row.id), email=row.email,
+                raw_id=requested,
+                user_id=str(row.id),
+                email=row.email,
                 role=_role_str(row.role) or None,
                 keycloak_id=getattr(row, "keycloak_id", None),
-                resolved=True, source="delegated",
+                resolved=True,
+                source="delegated",
             ), False
         return EndUser(raw_id=requested, resolved=False, source="delegated"), False
 
@@ -332,10 +342,13 @@ async def resolve_end_user(
     row = await _lookup_user_row(session, requested)
     if row is not None:
         return EndUser(
-            raw_id=requested, user_id=str(row.id), email=row.email,
+            raw_id=requested,
+            user_id=str(row.id),
+            email=row.email,
             role=_role_str(row.role) or None,
             keycloak_id=getattr(row, "keycloak_id", None),
-            resolved=True, source="forwarded",
+            resolved=True,
+            source="forwarded",
         ), service
     return EndUser(raw_id=requested, resolved=False, source="forwarded"), service
 
@@ -349,7 +362,7 @@ def evaluate_user_policy(
     access_policy: Any,
     end_user: Optional[EndUser],
     service_caller: bool = False,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Evaluate ``accessPolicy.user_policy`` against the EFFECTIVE END-USER.
 
     Returns ``(allowed, reason)``. No policy (or an empty one) → allow —
@@ -393,12 +406,14 @@ def evaluate_user_policy(
     allowed_users = policy.get("users") or []
     if allowed_users:
         needles = {
-            s for s in (
+            s
+            for s in (
                 (end_user.raw_id or "").lower(),
                 (end_user.user_id or "").lower(),
                 (end_user.email or "").lower(),
                 (end_user.keycloak_id or "").lower(),
-            ) if s
+            )
+            if s
         }
         haystack = {str(u).strip().lower() for u in allowed_users if str(u).strip()}
         if needles & haystack:
@@ -418,7 +433,7 @@ def user_policy_denial_detail(
     agent_id: str,
     reason: str,
     end_user: Optional[EndUser],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Machine-readable 403 body for a user_policy denial. The ``code`` is the
     stable contract consumers (Stable's runtime) branch on to surface a clean
     message; everything else is context."""
@@ -445,20 +460,24 @@ def log_agent_access_denied(
 ) -> None:
     """Structured audit event for an agent-level per-user denial."""
     try:
-        audit_logger.warning(json.dumps({
-            "event": "agent_access_denied",
-            "layer": "user_policy",
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "agent_id": agent_id,
-            "reason": reason,
-            "end_user": (end_user.raw_id if end_user else None),
-            "end_user_resolved": bool(end_user and end_user.resolved),
-            "transport_id": str(getattr(auth_user, "id", "") or ""),
-            "transport_key": getattr(auth_user, "key_name", None),
-            "transport_role": _role_str(getattr(auth_user, "role", None)),
-            "auth_source": getattr(auth_user, "auth_source", None),
-            "path": request_path,
-        }))
+        audit_logger.warning(
+            json.dumps(
+                {
+                    "event": "agent_access_denied",
+                    "layer": "user_policy",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "agent_id": agent_id,
+                    "reason": reason,
+                    "end_user": (end_user.raw_id if end_user else None),
+                    "end_user_resolved": bool(end_user and end_user.resolved),
+                    "transport_id": str(getattr(auth_user, "id", "") or ""),
+                    "transport_key": getattr(auth_user, "key_name", None),
+                    "transport_role": _role_str(getattr(auth_user, "role", None)),
+                    "auth_source": getattr(auth_user, "auth_source", None),
+                    "path": request_path,
+                }
+            )
+        )
     except Exception:  # noqa: BLE001 — auditing must never break the request
         logger.debug("agent_access_denied audit emit failed", exc_info=True)
 
@@ -471,13 +490,13 @@ def log_agent_access_denied(
 def resolve_caller_tool_level(
     end_user: Optional[EndUser],
     service_caller: bool = False,
-) -> Tuple[int, str]:
+) -> tuple[int, str]:
     """The privilege LEVEL a caller's tools run at, plus the basis for it
     (override / role:<r> / unknown-user / service / no-user) for audit."""
     if end_user is not None:
         overrides = user_tool_level_overrides()
         for key in (end_user.user_id, end_user.raw_id, end_user.email):
-            k = (str(key).strip().lower() if key else "")
+            k = str(key).strip().lower() if key else ""
             if k and k in overrides:
                 return overrides[k], "override"
         if end_user.resolved:
@@ -497,9 +516,10 @@ class ToolPermissionGuard:
     loop only calls ``check``). ``check`` returns None to allow, or the
     model-visible refusal string; refusals are audited here so every execution
     site gets auditing for free."""
+
     caller_level: int
     caller_basis: str
-    levels: Dict[str, int] = field(default_factory=dict)
+    levels: dict[str, int] = field(default_factory=dict)
     agent_id: str = ""
     end_user_id: Optional[str] = None
     transport: str = ""
@@ -537,19 +557,23 @@ class ToolPermissionGuard:
 
     def _audit(self, tool_name: str, required: int) -> None:
         try:
-            audit_logger.warning(json.dumps({
-                "event": "tool_permission_denied",
-                "layer": "tool_permission",
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "agent_id": self.agent_id,
-                "tool": tool_name,
-                "required_level": required,
-                "caller_level": self.caller_level,
-                "caller_basis": self.caller_basis,
-                "end_user": self.end_user_id,
-                "transport": self.transport,
-                "mode": self.mode,
-            }))
+            audit_logger.warning(
+                json.dumps(
+                    {
+                        "event": "tool_permission_denied",
+                        "layer": "tool_permission",
+                        "ts": datetime.now(UTC).isoformat(),
+                        "agent_id": self.agent_id,
+                        "tool": tool_name,
+                        "required_level": required,
+                        "caller_level": self.caller_level,
+                        "caller_basis": self.caller_basis,
+                        "end_user": self.end_user_id,
+                        "transport": self.transport,
+                        "mode": self.mode,
+                    }
+                )
+            )
         except Exception:  # noqa: BLE001
             logger.debug("tool_permission_denied audit emit failed", exc_info=True)
 
@@ -559,23 +583,27 @@ class ToolPermissionGuard:
             return
         self._missing_catalogue_logged.add(tool_name)
         try:
-            audit_logger.error(json.dumps({
-                "event": "tool_catalog_missing",
-                "layer": "tool_permission",
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "agent_id": self.agent_id,
-                "tool": tool_name,
-                "caller_level": self.caller_level,
-                "caller_basis": self.caller_basis,
-                "end_user": self.end_user_id,
-                "transport": self.transport,
-                "fail_closed": True,
-            }))
+            audit_logger.error(
+                json.dumps(
+                    {
+                        "event": "tool_catalog_missing",
+                        "layer": "tool_permission",
+                        "ts": datetime.now(UTC).isoformat(),
+                        "agent_id": self.agent_id,
+                        "tool": tool_name,
+                        "caller_level": self.caller_level,
+                        "caller_basis": self.caller_basis,
+                        "end_user": self.end_user_id,
+                        "transport": self.transport,
+                        "fail_closed": True,
+                    }
+                )
+            )
         except Exception:  # noqa: BLE001
             logger.debug("tool_catalog_missing audit emit failed", exc_info=True)
 
 
-async def load_tool_permission_levels(session) -> Dict[str, int]:
+async def load_tool_permission_levels(session) -> dict[str, int]:
     """Load ``tool_catalog`` name → permission level.
 
     An unavailable or pre-migration catalogue returns ``{}``; with the safe
@@ -586,9 +614,8 @@ async def load_tool_permission_levels(session) -> Dict[str, int]:
         return {}
     try:
         from sqlalchemy import text as _text
-        rows = await session.execute(
-            _text("SELECT name, permission_level FROM tool_catalog")
-        )
+
+        rows = await session.execute(_text("SELECT name, permission_level FROM tool_catalog"))
         return {r[0]: int(r[1] or 1) for r in rows}
     except Exception as exc:  # noqa: BLE001
         logger.warning(
@@ -600,7 +627,7 @@ async def load_tool_permission_levels(session) -> Dict[str, int]:
 
 async def build_tool_guard(
     session,
-    agent: Optional[Dict[str, Any]],
+    agent: Optional[dict[str, Any]],
     auth_user: Any,
     end_user: Optional[EndUser],
     service_caller: bool,

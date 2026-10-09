@@ -39,10 +39,12 @@ def test_unknown_agent_report_is_read_only_and_lists_records():
 
     report = build_report(agents, {"calculator"})
 
-    assert report == [{
-        "id": "librarian",
-        "name": "Librarian",
-        "unknown_tools": ["knowledge.deep_read"],
-        "unknownTools": ["knowledge.deep_read"],
-    }]
+    assert report == [
+        {
+            "id": "librarian",
+            "name": "Librarian",
+            "unknown_tools": ["knowledge.deep_read"],
+            "unknownTools": ["knowledge.deep_read"],
+        }
+    ]
     assert agents == before

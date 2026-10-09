@@ -24,18 +24,18 @@ def build_report(
     """Build a deterministic report without mutating the supplied records."""
     report = []
     for agent in agents:
-        unknown = sorted({
-            str(name)
-            for name in (agent.get("tools") or [])
-            if str(name) not in known_tool_names
-        })
+        unknown = sorted(
+            {str(name) for name in (agent.get("tools") or []) if str(name) not in known_tool_names}
+        )
         if unknown:
-            report.append({
-                "id": agent.get("id"),
-                "name": agent.get("name") or agent.get("displayName"),
-                "unknown_tools": unknown,
-                "unknownTools": unknown,
-            })
+            report.append(
+                {
+                    "id": agent.get("id"),
+                    "name": agent.get("name") or agent.get("displayName"),
+                    "unknown_tools": unknown,
+                    "unknownTools": unknown,
+                }
+            )
     return sorted(report, key=lambda item: str(item.get("id") or ""))
 
 

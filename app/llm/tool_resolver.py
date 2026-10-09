@@ -161,15 +161,18 @@ if os.getenv("HOMEASSISTANT_TOKEN") or os.getenv("HOMEASSISTANT_URL"):
             HA_LIST_ENTITIES_TOOL,
             HA_SEARCH_ENTITIES_TOOL,
         )
-        TOOL_REGISTRY.update({
-            "ha_list_entities": HA_LIST_ENTITIES_TOOL,
-            "ha_get_entity_state": HA_GET_ENTITY_STATE_TOOL,
-            "ha_call_service": HA_CALL_SERVICE_TOOL,
-            "ha_search_entities": HA_SEARCH_ENTITIES_TOOL,
-            "ha_get_history": HA_GET_HISTORY_TOOL,
-            "ha_list_areas": HA_LIST_AREAS_TOOL,
-            "ha_get_services": HA_GET_SERVICES_TOOL,
-        })
+
+        TOOL_REGISTRY.update(
+            {
+                "ha_list_entities": HA_LIST_ENTITIES_TOOL,
+                "ha_get_entity_state": HA_GET_ENTITY_STATE_TOOL,
+                "ha_call_service": HA_CALL_SERVICE_TOOL,
+                "ha_search_entities": HA_SEARCH_ENTITIES_TOOL,
+                "ha_get_history": HA_GET_HISTORY_TOOL,
+                "ha_list_areas": HA_LIST_AREAS_TOOL,
+                "ha_get_services": HA_GET_SERVICES_TOOL,
+            }
+        )
         logger.info("Home Assistant tools registered (HOMEASSISTANT_TOKEN/URL configured)")
     except ImportError:
         logger.warning("Home Assistant tools not available (ha_tools.py not found)")
@@ -183,6 +186,7 @@ else:
 if os.getenv("GLITTERMANE_API_URL"):
     try:
         from app.llm.glittermane_mcp_tools import GLITTERMANE_MCP_TOOLS
+
         TOOL_REGISTRY.update(GLITTERMANE_MCP_TOOLS)
         logger.info(f"Glitter Mane medical tools registered ({len(GLITTERMANE_MCP_TOOLS)} tools)")
     except ImportError as exc:
@@ -198,6 +202,7 @@ else:
 if os.getenv("ILO_TARGETS"):
     try:
         from app.llm.ilo_redfish_tools import ILO_REDFISH_TOOLS
+
         TOOL_REGISTRY.update(ILO_REDFISH_TOOLS)
         logger.info(f"iLO Redfish BMC tools registered ({len(ILO_REDFISH_TOOLS)} tools)")
     except ImportError as exc:
@@ -211,6 +216,7 @@ else:
 if os.getenv("KNOWLEDGE_OPS_URL"):
     try:
         from app.llm.knowledge_ops_tools import KNOWLEDGE_OPS_TOOLS
+
         TOOL_REGISTRY.update(KNOWLEDGE_OPS_TOOLS)
         logger.info(f"Knowledge-Ops tools registered ({len(KNOWLEDGE_OPS_TOOLS)} tools)")
     except ImportError as exc:
@@ -225,6 +231,7 @@ else:
 if os.getenv("UC_BROWSER_MCP_URL"):
     try:
         from app.llm.ucbrowser_mcp_tools import UC_BROWSER_MCP_TOOLS
+
         TOOL_REGISTRY.update(UC_BROWSER_MCP_TOOLS)
         logger.info(f"uc-browser tools registered ({len(UC_BROWSER_MCP_TOOLS)} tools)")
     except ImportError as exc:
