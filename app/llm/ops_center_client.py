@@ -5,6 +5,8 @@ import builtins
 import json
 import logging
 import os
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Callable, Optional
 
@@ -45,6 +47,42 @@ except Exception:  # pragma: no cover - reliability layer should always import
 DEFAULT_TOOL_EXECUTION_TIMEOUT: float = float(
     os.getenv("TOOL_EXECUTION_TIMEOUT_SECONDS", "60") or 60
 )
+
+# A model sometimes DESCRIBES a tool call in prose instead of emitting one
+# ("I'll use the following tools: X"). That is structurally identical to a
+# finished answer, so the turn ends and the user is handed the announcement
+# instead of an answer. Matching needs BOTH halves - an intent to act AND a
+# configured tool name - so an ordinary reply that merely mentions a tool
+# ("I can add that for you with glitter_add_appointment") is left alone.
+_TOOL_INTENT = re.compile(
+    r"(?i)\b(?:i'?ll|i will|let me|i'?m going to|i am going to|i need to|"
+    r"i should|next,? i'?ll)\b[^.!?\n]{0,120}?"
+    r"\b(?:use|call|run|query|check|retrieve|fetch|look up|pull)\b"
+)
+
+# Sent as a USER turn, never a system one: several local chat templates reject
+# a system message that is not the first message (the P40 Qwen template answers
+# HTTP 400 "System message must be at the beginning").
+TOOL_NUDGE = (
+    "That was a description of a tool call, not a tool call, so nothing ran. "
+    "Emit a real tool call now, or answer directly from what you already have."
+)
+
+
+def announced_tool_without_calling(
+    text: str, tool_names: Iterable[str]
+) -> Optional[str]:
+    """Return the tool a response only TALKED about calling, else ``None``.
+
+    Used to tell a stalled turn apart from a genuine final answer, so the
+    caller can nudge once instead of returning the announcement to the user.
+    """
+    if not text:
+        return None
+    named = next((n for n in tool_names if n and n in text), None)
+    if not named:
+        return None
+    return named if _TOOL_INTENT.search(text) else None
 
 logger = logging.getLogger(__name__)
 
@@ -1017,6 +1055,9 @@ class OpsCenterLLMClient:
         current_messages = list(messages)
         iteration = 0
         retry_with_fallback = False
+        # One nudge per stall (reset after every executed tool round), so a
+        # model that keeps describing calls still terminates on max_iterations.
+        nudged = False
 
         while iteration < max_iterations:
             iteration += 1
@@ -1048,6 +1089,30 @@ class OpsCenterLLMClient:
 
             # Check for tool calls
             if not self.has_tool_calls(response):
+                # The model may have DESCRIBED a tool call rather than emitting
+                # one, which reads to this check exactly like a final answer.
+                # Returning it hands the user "I'll use the following tools: X"
+                # and no answer. One nudge recovers a real call.
+                announced = announced_tool_without_calling(
+                    self.get_response_content(response), tool_registry
+                )
+                if announced and not nudged:
+                    nudged = True
+                    logger.warning(
+                        f"Model described tool '{announced}' without emitting a "
+                        f"call; nudging once (iteration {iteration})"
+                    )
+                    current_messages.append({
+                        "role": "assistant",
+                        "content": self.get_response_content(response),
+                    })
+                    current_messages.append({"role": "user", "content": TOOL_NUDGE})
+                    continue
+                if announced:
+                    logger.warning(
+                        f"Model still only described tool '{announced}' after a "
+                        f"nudge; returning its text as the answer"
+                    )
                 logger.info("No tool calls in response, completing loop")
 
                 # Record code attribution if tracing is enabled
@@ -1173,6 +1238,10 @@ class OpsCenterLLMClient:
                     on_tool_result(result)
 
                 tool_results.append(result)
+
+            # A real tool round ran, so allow one nudge again if the model
+            # stalls later in the same turn.
+            nudged = False
 
             # Add messages based on fallback mode
             if use_user_message_fallback:
