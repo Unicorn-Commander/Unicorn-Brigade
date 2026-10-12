@@ -5,6 +5,7 @@
 #
 # Each agent's persona + systemPrompt + tools are applied automatically.
 
+import hmac
 import logging
 import time
 import uuid
@@ -65,7 +66,9 @@ def _verify_admin_key(x_api_key: Optional[str], authorization: Optional[str]) ->
     provided = x_api_key
     if not provided and authorization and authorization.startswith("Bearer "):
         provided = authorization[len("Bearer "):]
-    if provided != admin_key:
+    if not provided or not hmac.compare_digest(
+        provided.encode("utf-8"), admin_key.encode("utf-8")
+    ):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 

@@ -12,6 +12,7 @@ from typing import Any, AsyncGenerator, Callable, Optional
 
 import httpx
 
+from app.core.service_key import ConfigError, is_strong_service_key, warn_if_weak_service_key
 from app.llm.org_gateway import gateway_headers
 
 # Phase 7b.2: consecutive-failure monitor for local inference endpoints.
@@ -330,7 +331,11 @@ class OpsCenterLLMClient:
             # Auto-detect: use external URL if not in Docker network
             self.ops_center_url = self._detect_url()
 
+        self._uses_brigade_service_key = not service_key
         self.service_key = service_key or BRIGADE_SERVICE_KEY
+        self._service_key_enabled = bool(service_key) or is_strong_service_key(self.service_key)
+        if self._uses_brigade_service_key and not self._service_key_enabled:
+            warn_if_weak_service_key("Ops-Center client", logger)
         self.local_llm_url = LOCAL_LLM_URL
         # BR-4: explicit total timeout on EVERY outbound LLM call. ``connect``
         # is short so an unreachable backend fails fast; ``read`` (applied
@@ -468,6 +473,11 @@ class OpsCenterLLMClient:
         if route_type == "gateway":
             return f"{target_url}/chat/completions", gateway_headers(
                 shared_key=UC_GATEWAY_KEY, org_id=org_id, user_id=user_id,
+            )
+        if self._uses_brigade_service_key and not self._service_key_enabled:
+            raise ConfigError(
+                "BRIGADE_SERVICE_KEY is required for the Ops-Center client; it must be "
+                "at least 32 characters and must not be a known placeholder/default literal"
             )
         headers = {
             "Authorization": f"Bearer {self.service_key}",

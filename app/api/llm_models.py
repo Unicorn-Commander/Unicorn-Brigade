@@ -1,5 +1,6 @@
 """LLM model catalog proxy routes."""
 
+import logging
 import os
 import time
 from typing import Any, Dict, List
@@ -8,7 +9,9 @@ import httpx
 from fastapi import APIRouter, Depends
 
 from app.auth.middleware import AuthUser, require_admin
+from app.core.service_key import is_strong_service_key, warn_if_weak_service_key
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 OPS_CENTER_MODELS_URL = "http://ops-center-direct:8084/api/v1/llm/models"
@@ -131,6 +134,11 @@ def _enrich_model(model: Dict[str, Any]) -> Dict[str, Any]:
 
 async def _fetch_ops_center_models() -> Any:
     service_key = os.getenv("BRIGADE_SERVICE_KEY", "")
+    if not service_key:
+        return FALLBACK_MODELS
+    if not is_strong_service_key(service_key):
+        warn_if_weak_service_key("Ops-Center client", logger)
+        return FALLBACK_MODELS
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(
             OPS_CENTER_MODELS_URL,
