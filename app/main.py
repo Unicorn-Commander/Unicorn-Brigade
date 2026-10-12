@@ -80,6 +80,7 @@ from app.security.headers import SecurityHeadersMiddleware
 from app.security.limits import RequestSizeLimitMiddleware
 from app.security.ratelimit import RateLimitMiddleware
 from app.security.bootstrap import assert_auth_bypass_safe, is_production_env
+from app.core.service_key import ConfigError, require_service_key, warn_if_weak_service_key
 # ───────────────────────────────────────────────────────────────────────────
 
 # Load environment variables
@@ -116,6 +117,24 @@ memory_manager = None
 workflow_manager = None
 llm_client = None
 
+
+def _validate_service_key_startup() -> None:
+    """Enforce the service-key posture for the selected deployment mode."""
+    if FEDERATION_ONLY:
+        try:
+            require_service_key("the federation-only public surface")
+        except ConfigError as exc:
+            logger.error("FATAL SERVICE-KEY MISCONFIGURATION: %s; refusing to boot", exc)
+            raise
+        return
+
+    for purpose in (
+        "billing preflight",
+        "admin service-key routes",
+        "Ops-Center client",
+    ):
+        warn_if_weak_service_key(purpose, logger)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
@@ -126,6 +145,7 @@ async def lifespan(app: FastAPI):
     # BR-6 security hardening: fail closed on a dangerous auth misconfiguration.
     # Refuses to boot (raises) if AUTH_BYPASS=true in a production-like env.
     assert_auth_bypass_safe()
+    _validate_service_key_startup()
 
     # Initialize memory manager (Graphiti + FalkorDB)
     memory_manager = GraphitiMemoryManager()

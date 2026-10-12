@@ -22,6 +22,7 @@ from app.auth.roles import UserRole
 from app.integrations import ops_center_billing as billing
 
 EMAIL = "deploy-smoke@magicunicorn.tech"
+TEST_SERVICE_KEY = "test-service-key-" + "x" * 32
 _ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -29,7 +30,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 def _reset_billing(monkeypatch):
     billing._cache.clear()
     billing._advisory_logged_at.clear()
-    monkeypatch.setattr(billing, "BRIGADE_SERVICE_KEY", "test-brigade-service-key")
+    monkeypatch.setattr(billing, "BRIGADE_SERVICE_KEY", TEST_SERVICE_KEY)
     monkeypatch.setattr(billing, "OPS_CENTER_URL", "http://ops-center.test")
     monkeypatch.setattr(agent_routes, "_BILLING_STRICT", False)
     yield
@@ -110,7 +111,7 @@ async def test_401_is_fail_open_and_warns_once_per_caller(monkeypatch, caplog):
     assert state["lookup"] == "unavailable"
     assert state["lookup_error"] == "HTTP 401"
     assert calls[0][0] == "http://ops-center.test/api/v1/billing/state"
-    assert calls[0][1]["X-Service-Key"] == "test-brigade-service-key"
+    assert calls[0][1]["X-Service-Key"] == TEST_SERVICE_KEY
     assert calls[0][1]["X-User-ID"] == EMAIL
     assert "Authorization" not in calls[0][1]
 
@@ -217,6 +218,24 @@ async def test_missing_service_key_does_not_call_out(monkeypatch, caplog):
     agent_routes._enforce_billing_or_402(_operator(), state)
     assert len(_warnings(caplog)) == 1
     assert _errors(caplog) == []
+
+
+async def test_weak_service_key_does_not_call_out(monkeypatch, caplog):
+    caplog.set_level(logging.DEBUG, logger="app.integrations.ops_center_billing")
+    monkeypatch.setattr(billing, "BRIGADE_SERVICE_KEY", "1234567")
+    called = {"n": 0}
+
+    async def handler(url, headers):
+        called["n"] += 1
+        return _Resp(200, {"paid": True, "credits_remaining": 1})
+
+    _install(monkeypatch, handler)
+    state = await billing.get_billing_state(EMAIL)
+
+    assert called["n"] == 0
+    assert state["lookup"] == "unavailable"
+    assert "weak" in state["lookup_error"]
+    assert len(_warnings(caplog)) == 1
 
 
 async def test_transport_error_is_cached_and_advisory(monkeypatch, caplog):

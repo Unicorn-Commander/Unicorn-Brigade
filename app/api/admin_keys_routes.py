@@ -25,9 +25,14 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.service_key import (
+    ConfigError,
+    require_service_key as require_configured_service_key,
+    warn_if_weak_service_key,
+)
 from app.db.database import get_session
 from app.db.models import User, UserApiKey
-from app.db.repositories import UserApiKeyRepository, UserRepository
+from app.db.repositories import UserApiKeyRepository
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +42,6 @@ _SERVICE_KEY_ENV = "BRIGADE_SERVICE_KEY"
 _NON_LOGIN_PASSWORD_HASH = "NOLOGIN-SSO-ONLY"  # fails every bcrypt.checkpw
 _VALID_ROLES = {"admin", "operator", "viewer"}
 
-# Known-bad default that shipped in the codebase/committed .env. Treated as
-# "unconfigured" so a deploy that forgot to set a real secret fails closed
-# instead of accepting the public literal.
-_KNOWN_BAD_SERVICE_KEY = "sk-brigade-service-key-2025"
-
-
 # ── Auth dependency ─────────────────────────────────────────────
 
 def require_service_key(
@@ -50,22 +49,32 @@ def require_service_key(
 ) -> str:
     """Verify the X-API-Key header matches the configured service key.
 
-    Fails closed: if BRIGADE_SERVICE_KEY is unset (or still set to the known
-    public default), service delegation is refused with 503 rather than
+    Fails closed: if BRIGADE_SERVICE_KEY is unset, weak, or still set to the
+    known public default, service delegation is refused with 503 rather than
     authenticating callers against a guessable secret. The header comparison
     uses hmac.compare_digest for constant-time matching.
     """
     expected = os.getenv(_SERVICE_KEY_ENV, "") or ""
-    if not expected or hmac.compare_digest(expected, _KNOWN_BAD_SERVICE_KEY):
+    if not expected:
         logger.error(
-            "BRIGADE_SERVICE_KEY is not configured (unset or set to the known "
-            "default); refusing service-delegation requests"
+            "BRIGADE_SERVICE_KEY is not configured (unset); refusing "
+            "service-delegation requests"
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Service delegation is not configured on this Brigade instance",
         )
-    if not x_api_key or not hmac.compare_digest(x_api_key, expected):
+    try:
+        expected = require_configured_service_key("admin user-key delegation")
+    except ConfigError:
+        warn_if_weak_service_key("admin service-key routes", logger)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service delegation is not configured on this Brigade instance",
+        ) from None
+    if not x_api_key or not hmac.compare_digest(
+        x_api_key.encode("utf-8"), expected.encode("utf-8")
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Service key required",
