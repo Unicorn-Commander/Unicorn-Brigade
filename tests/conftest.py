@@ -1,8 +1,11 @@
 """Test configuration and fixtures"""
 
-import pytest
 import os
+
+import pytest
 from dotenv import load_dotenv
+
+from app.core import service_key
 
 # Load test environment
 load_dotenv()
@@ -13,6 +16,13 @@ if not os.getenv("OPENAI_API_KEY"):
 
 if not os.getenv("QDRANT_URL"):
     os.environ["QDRANT_URL"] = "http://localhost:6333"
+
+
+@pytest.fixture(autouse=True)
+def _reset_weak_key_warnings():
+    service_key.reset_weak_key_warnings()
+    yield
+    service_key.reset_weak_key_warnings()
 
 @pytest.fixture
 def test_task():

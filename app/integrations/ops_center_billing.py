@@ -91,7 +91,7 @@ async def get_billing_state(user_email: str) -> dict[str, object]:
         logger.debug("BRIGADE_SERVICE_KEY not set; billing preflight disabled")
         return _unknown("BRIGADE_SERVICE_KEY not configured")
     if not is_strong_service_key(BRIGADE_SERVICE_KEY):
-        warn_if_weak_service_key("billing preflight", logger)
+        warn_if_weak_service_key("billing preflight", log=logger)
         return _unknown("BRIGADE_SERVICE_KEY is weak; billing preflight disabled")
 
     now = time.monotonic()

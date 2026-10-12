@@ -222,7 +222,9 @@ async def test_missing_service_key_does_not_call_out(monkeypatch, caplog):
 
 async def test_weak_service_key_does_not_call_out(monkeypatch, caplog):
     caplog.set_level(logging.DEBUG, logger="app.integrations.ops_center_billing")
-    monkeypatch.setattr(billing, "BRIGADE_SERVICE_KEY", "1234567")
+    weak_key = "1234567"
+    monkeypatch.setattr(billing, "BRIGADE_SERVICE_KEY", weak_key)
+    monkeypatch.setenv("BRIGADE_SERVICE_KEY", weak_key)
     called = {"n": 0}
 
     async def handler(url, headers):

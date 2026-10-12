@@ -50,6 +50,22 @@ def test_service_key_validation_uses_constant_time_placeholder_compare(monkeypat
     assert calls
 
 
+def test_weak_service_key_warning_state_can_be_reset(monkeypatch, caplog):
+    monkeypatch.setenv("BRIGADE_SERVICE_KEY", "1234567")
+    caplog.set_level("WARNING", logger="app.core.service_key")
+
+    assert service_key.warn_if_weak_service_key("unit test") is True
+    assert service_key.warn_if_weak_service_key("unit test") is False
+
+    service_key.reset_weak_key_warnings()
+
+    assert service_key.warn_if_weak_service_key("unit test") is True
+    assert [record for record in caplog.records if record.name == "app.core.service_key"]
+    assert len(
+        [record for record in caplog.records if record.name == "app.core.service_key"]
+    ) == 2
+
+
 def test_missing_required_service_key_names_env_and_rule(monkeypatch):
     monkeypatch.delenv("BRIGADE_SERVICE_KEY", raising=False)
 

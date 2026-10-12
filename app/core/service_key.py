@@ -23,6 +23,11 @@ class ConfigError(RuntimeError):
     """Raised when a required runtime credential is absent or unsafe."""
 
 
+def reset_weak_key_warnings() -> None:
+    """Clear process-local weak-key warning state for test isolation."""
+    _weak_key_warnings.clear()
+
+
 def is_strong_service_key(value: str | None) -> bool:
     """Return whether ``value`` meets the service-key safety rule.
 
