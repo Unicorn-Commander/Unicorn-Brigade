@@ -1,77 +1,97 @@
 """Main FastAPI application"""
 
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
-import logging
-import os
-from dotenv import load_dotenv
 
-from app.api import router
-from app.api.routes import init_managers
-from app.memory.graphiti_manager import GraphitiMemoryManager
-from app.graph.workflow import WorkflowManager
-
-# Stores and route modules
-from app.stores.model_catalog import ModelCatalog
-from app.llm.ops_center_client import OpsCenterLLMClient
-from app.api.agent_routes import router as agent_router, init_agent_routes
-from app.api.avatar_routes import router as avatar_router
-from app.api.openai_compat_routes import router as openai_compat_router
-from app.api.welcome_route import router as welcome_router
-from app.observability.metrics import metrics_middleware, metrics_endpoint
-from app.api.landing_route import router as landing_router
-from app.api.memory_inspector_routes import router as memory_inspector_router, init_memory_routes as init_memory_inspector
-from app.api.tool_routes import router as tool_router
-from app.api.system_routes import router as system_router, init_system_routes
-from app.api.billing_routes import router as billing_router  # BR-3.7 usage/billing surface
-from app.api.builder_routes import router as builder_router, init_builder_routes
-from app.api.apikey_routes import router as apikey_router
-from app.api.admin_keys_routes import router as admin_keys_router
-from app.api.conversation_routes import router as conversation_router
-from app.api.mcp_routes import router as mcp_router
-from app.api.a2a_routes import router as a2a_router, init_a2a_routes
-from app.api.orchestration_routes import router as orchestration_router, init_orchestration_routes
-from app.api.voice_routes import router as voice_router, init_voice_routes
-from app.api.voice_settings_routes import router as voice_settings_router, init_voice_settings_routes
-from app.api.langflow_routes import router as langflow_router, init_langflow_routes
-from app.api.slack_routes import router as slack_router, init_slack_routes
-from app.api.knowledge_routes import router as knowledge_router, init_knowledge_routes
-from app.api.mcp_registry_routes import router as mcp_registry_router
-from app.api.user_routes import router as user_router
-from app.api.org_routes import router as org_router
-from app.api.support_routes import router as support_router, init_support_routes
-from app.api.github_routes import router as github_router, shutdown_github_routes
-from app.api.document_routes import router as document_router
-from app.api.calendar_routes import router as calendar_router, init_calendar_routes
-from app.api.sales_routes import router as sales_router, init_sales_routes
-from app.api.content_routes import router as content_router, init_content_routes
-from app.api.finance_routes import router as finance_router, init_finance_routes
-from app.api.monitoring_routes import router as monitoring_router, init_monitoring_routes, shutdown_monitoring_routes
-from app.api.hierarchical_routes import router as hierarchical_router, init_hierarchical_routes
-from app.api.medical_routes import router as medical_router, init_medical_routes, shutdown_medical_routes
-from app.api.benchmark_routes import router as benchmark_router
-from app.api.ralph_routes import router as ralph_router
-from app.api.crisis_routes import router as crisis_router, init_crisis_routes
-from app.api.scheduled_run_routes import router as scheduled_run_router
-from app.services.scheduler import init_scheduler, get_scheduler
-from app.agents.crisis_registration import register_crisis_agents
-from app.api.trace_routes import router as trace_router
-from app.api.speaker_routes import router as speaker_router
-from app.api.oidc_routes import router as oidc_router
-from app.api.llm_models import router as llm_models_router
-from app.federation.jwks_routes import router as jwks_router
-from app.federation.registration_routes import router as federation_admin_router
-from app.federation.mcp_gateway import router as federation_mcp_router
-from app.federation.exchange import router as federation_exchange_router
-from app.workflows.benchmark import init_benchmark_engine
-from app.db.database import init_db, close_db
-from app.db.init_db import seed_agents
-from app.observability import flush as langfuse_flush, shutdown as langfuse_shutdown
-from app.observability import configure_logging, request_id_middleware
-from app.config import FEDERATION_ONLY, INTERNAL_AGENTS_ENABLED
 from app import __version__  # BR-0.10: single source of truth for the app version
+from app.agents.crisis_registration import register_crisis_agents
+from app.api import router
+from app.api.a2a_routes import init_a2a_routes
+from app.api.a2a_routes import router as a2a_router
+from app.api.admin_keys_routes import router as admin_keys_router
+from app.api.agent_routes import init_agent_routes
+from app.api.agent_routes import router as agent_router
+from app.api.apikey_routes import router as apikey_router
+from app.api.avatar_routes import router as avatar_router
+from app.api.benchmark_routes import router as benchmark_router
+from app.api.billing_routes import router as billing_router  # BR-3.7 usage/billing surface
+from app.api.builder_routes import init_builder_routes
+from app.api.builder_routes import router as builder_router
+from app.api.calendar_routes import init_calendar_routes
+from app.api.calendar_routes import router as calendar_router
+from app.api.content_routes import init_content_routes
+from app.api.content_routes import router as content_router
+from app.api.conversation_routes import router as conversation_router
+from app.api.crisis_routes import init_crisis_routes
+from app.api.crisis_routes import router as crisis_router
+from app.api.document_routes import router as document_router
+from app.api.finance_routes import init_finance_routes
+from app.api.finance_routes import router as finance_router
+from app.api.github_routes import router as github_router
+from app.api.github_routes import shutdown_github_routes
+from app.api.hierarchical_routes import init_hierarchical_routes
+from app.api.hierarchical_routes import router as hierarchical_router
+from app.api.knowledge_routes import init_knowledge_routes
+from app.api.knowledge_routes import router as knowledge_router
+from app.api.landing_route import router as landing_router
+from app.api.langflow_routes import init_langflow_routes
+from app.api.langflow_routes import router as langflow_router
+from app.api.llm_models import router as llm_models_router
+from app.api.mcp_registry_routes import router as mcp_registry_router
+from app.api.mcp_routes import router as mcp_router
+from app.api.medical_routes import init_medical_routes, shutdown_medical_routes
+from app.api.medical_routes import router as medical_router
+from app.api.memory_inspector_routes import init_memory_routes as init_memory_inspector
+from app.api.memory_inspector_routes import router as memory_inspector_router
+from app.api.monitoring_routes import init_monitoring_routes, shutdown_monitoring_routes
+from app.api.monitoring_routes import router as monitoring_router
+from app.api.oidc_routes import router as oidc_router
+from app.api.openai_compat_routes import router as openai_compat_router
+from app.api.orchestration_routes import init_orchestration_routes
+from app.api.orchestration_routes import router as orchestration_router
+from app.api.org_routes import router as org_router
+from app.api.ralph_routes import router as ralph_router
+from app.api.routes import init_managers
+from app.api.sales_routes import init_sales_routes
+from app.api.sales_routes import router as sales_router
+from app.api.scheduled_run_routes import router as scheduled_run_router
+from app.api.slack_routes import init_slack_routes
+from app.api.slack_routes import router as slack_router
+from app.api.speaker_routes import router as speaker_router
+from app.api.support_routes import init_support_routes
+from app.api.support_routes import router as support_router
+from app.api.system_routes import init_system_routes
+from app.api.system_routes import router as system_router
+from app.api.tool_routes import router as tool_router
+from app.api.trace_routes import router as trace_router
+from app.api.user_routes import router as user_router
+from app.api.voice_routes import init_voice_routes
+from app.api.voice_routes import router as voice_router
+from app.api.voice_settings_routes import init_voice_settings_routes
+from app.api.voice_settings_routes import router as voice_settings_router
+from app.api.welcome_route import router as welcome_router
+from app.config import FEDERATION_ONLY, INTERNAL_AGENTS_ENABLED
+from app.core.service_key import ConfigError, require_service_key, warn_if_weak_service_key
+from app.db.database import close_db, init_db
+from app.db.init_db import seed_agents
+from app.federation.exchange import router as federation_exchange_router
+from app.federation.jwks_routes import router as jwks_router
+from app.federation.mcp_gateway import router as federation_mcp_router
+from app.federation.registration_routes import router as federation_admin_router
+from app.graph.workflow import WorkflowManager
+from app.llm.ops_center_client import OpsCenterLLMClient
+from app.memory.graphiti_manager import GraphitiMemoryManager
+from app.observability import configure_logging, request_id_middleware
+from app.observability import flush as langfuse_flush
+from app.observability import shutdown as langfuse_shutdown
+from app.observability.metrics import metrics_endpoint, metrics_middleware
+from app.security.bootstrap import assert_auth_bypass_safe, is_production_env
 
 # ── BR-6 security hardening ────────────────────────────────────────────────
 # Response-headers / body-size / per-identity-rate-limit middleware + the
@@ -79,8 +99,12 @@ from app import __version__  # BR-0.10: single source of truth for the app versi
 from app.security.headers import SecurityHeadersMiddleware
 from app.security.limits import RequestSizeLimitMiddleware
 from app.security.ratelimit import RateLimitMiddleware
-from app.security.bootstrap import assert_auth_bypass_safe, is_production_env
-from app.core.service_key import ConfigError, require_service_key, warn_if_weak_service_key
+from app.services.scheduler import get_scheduler, init_scheduler
+
+# Stores and route modules
+from app.stores.model_catalog import ModelCatalog
+from app.workflows.benchmark import init_benchmark_engine
+
 # ───────────────────────────────────────────────────────────────────────────
 
 # Load environment variables
@@ -240,8 +264,8 @@ async def lifespan(app: FastAPI):
         # pending human-approval checkpoint — survives a process restart and is
         # reachable on a fresh replica. Best-effort: a failure here never blocks boot.
         try:
-            from app.workflows.engine import get_workflow_engine
             from app.api.ralph_routes import rehydrate_active_executions
+            from app.workflows.engine import get_workflow_engine
 
             n_wf = await get_workflow_engine().rehydrate()
             n_ralph = await rehydrate_active_executions()
@@ -724,6 +748,7 @@ async def readyz():
     that the scheduler is running. Returns 503 with per-check detail when any
     required dependency is degraded so a load balancer drains this instance."""
     from sqlalchemy import text
+
     from app.db.database import async_session
 
     checks: dict = {}

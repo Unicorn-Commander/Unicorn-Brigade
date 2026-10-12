@@ -9,7 +9,7 @@ import hmac
 import logging
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
@@ -32,33 +32,33 @@ class OpenAIChatMessage(BaseModel):
 class OpenAIChatRequest(BaseModel):
     model: str
     messages: list[OpenAIChatMessage]
-    stream: Optional[bool] = False
-    temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
-    user: Optional[str] = None
+    stream: bool | None = False
+    temperature: float | None = None
+    max_tokens: int | None = None
+    user: str | None = None
     # Passthrough-mode inputs (OpenCode / any OpenAI SDK that does client-side
     # tool execution). When present, the adapter runs in passthrough mode:
     # Brigade's persona + memory are injected into the system prompt, but the
     # LLM sees ONLY the client's tools. Client executes tool calls locally and
     # sends follow-up messages (role=tool) back. See /api/v1/openai/v1 docs.
-    tools: Optional[list[dict[str, Any]]] = None
-    tool_choice: Optional[Any] = None
-    response_format: Optional[dict[str, Any]] = None
+    tools: list[dict[str, Any]] | None = None
+    tool_choice: Any | None = None
+    response_format: dict[str, Any] | None = None
     # Per-call model override: if set, replaces the agent's configured model.
     # Lets a UI surface (Crisis Ops Drafts wizard) pick best/cheap/local per call
     # without forking an agent definition per quality tier.
-    model_override: Optional[str] = None
+    model_override: str | None = None
     # Per-call correlation id. Forwarded to chat_with_agent's mission_id so a
     # downstream subscriber to /api/v1/orchestration/events?mission_id=X
     # receives only events from THIS chat call (and any nested delegations).
-    mission_id: Optional[str] = None
+    mission_id: str | None = None
     # Per-case scope. When set, memory groups become {user}__{case}__{agent}
     # so memories don't bleed across cases. Forwarded through ChatRequest +
     # delegate_to_agent's downstream calls.
-    case_id: Optional[str] = None
+    case_id: str | None = None
 
 
-def _verify_admin_key(x_api_key: Optional[str], authorization: Optional[str]) -> None:
+def _verify_admin_key(x_api_key: str | None, authorization: str | None) -> None:
     import os
     admin_key = os.getenv("BRIGADE_ADMIN_KEY", "")
     if not admin_key:
@@ -92,8 +92,8 @@ def _agent_server_tools_for(agent: dict[str, Any]):
 @router.get("/models")
 async def list_models(
     session: AsyncSession = Depends(get_session),
-    x_api_key: Optional[str] = Header(None),
-    authorization: Optional[str] = Header(None),
+    x_api_key: str | None = Header(None),
+    authorization: str | None = Header(None),
 ):
     """OpenAI-compatible model listing. Each Brigade agent appears as a model."""
     # Accept admin key OR user API key (Bearer or X-API-Key).
@@ -150,8 +150,8 @@ async def list_models(
 async def openai_chat_completions(
     request: OpenAIChatRequest,
     session: AsyncSession = Depends(get_session),
-    x_api_key: Optional[str] = Header(None),
-    authorization: Optional[str] = Header(None),
+    x_api_key: str | None = Header(None),
+    authorization: str | None = Header(None),
 ):
     """OpenAI-compatible chat completions. `model` = Brigade agent ID.
 
@@ -654,7 +654,7 @@ async def _dual_layer_chat(
         content = msg.get("content") or ""
         tool_calls = msg.get("tool_calls") or []
 
-        def _chunk(delta: dict[str, Any], finish: Optional[str] = None) -> str:
+        def _chunk(delta: dict[str, Any], finish: str | None = None) -> str:
             payload = {
                 "id": chat_id,
                 "object": "chat.completion.chunk",

@@ -8,7 +8,7 @@ import os
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Callable, Optional
+from typing import Any, AsyncGenerator, Callable
 
 import httpx
 
@@ -72,7 +72,7 @@ TOOL_NUDGE = (
 
 def announced_tool_without_calling(
     text: str, tool_names: Iterable[str]
-) -> Optional[str]:
+) -> str | None:
     """Return the tool a response only TALKED about calling, else ``None``.
 
     Used to tell a stalled turn apart from a genuine final answer, so the
@@ -100,9 +100,9 @@ class ToolParameter:
     type: str  # "string", "number", "boolean", "array", "object"
     description: str
     required: bool = True
-    enum: Optional[list[str]] = None
+    enum: list[str] | None = None
     default: Any = None
-    items: Optional[dict[str, Any]] = None  # For array types: {"type": "string"} or {"type": "object", ...}
+    items: dict[str, Any] | None = None  # For array types: {"type": "string"} or {"type": "object", ...}
 
 
 @dataclass
@@ -111,7 +111,7 @@ class ToolDefinition:
     name: str
     description: str
     parameters: list[ToolParameter] = field(default_factory=list)
-    handler: Optional[Callable] = None  # Async function to execute the tool
+    handler: Callable | None = None  # Async function to execute the tool
     # If True, the tool invocation layer injects caller context (e.g.
     # caller_user_id) into the handler kwargs. Tools that make authenticated
     # downstream calls on behalf of the caller use this to preserve identity.
@@ -175,7 +175,7 @@ class ToolResult:
     tool_call_id: str
     name: str
     result: Any
-    error: Optional[str] = None
+    error: str | None = None
 
     def to_message(self) -> dict[str, Any]:
         """Convert to a message for the LLM (OpenAI format)"""
@@ -211,7 +211,7 @@ class ToolRegistry:
         self.tools[tool.name] = tool
         logger.info(f"Registered tool: {tool.name}")
 
-    def get(self, name: str) -> Optional[ToolDefinition]:
+    def get(self, name: str) -> ToolDefinition | None:
         """Get a tool by name"""
         return self.tools.get(name)
 
@@ -436,7 +436,7 @@ class OpsCenterLLMClient:
         return self.ops_center_url, model, "ops-center"
 
     def _endpoint_and_headers(
-        self, route_type: str, target_url: str, user_id: Optional[str] = None, org_id: Optional[str] = None
+        self, route_type: str, target_url: str, user_id: str | None = None, org_id: str | None = None
     ) -> tuple:
         """Map a route_type from ``_resolve_local_model`` to endpoint + headers."""
         if route_type == "local":
@@ -505,8 +505,8 @@ class OpsCenterLLMClient:
         temperature: float = 0.7,
         max_tokens: int = 2000,
         stream: bool = False,
-        user_id: Optional[str] = None,
-        org_id: Optional[str] = None,
+        user_id: str | None = None,
+        org_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Create chat completion via Ops-Center (single attempt).
@@ -669,8 +669,8 @@ class OpsCenterLLMClient:
         model: str = "default",
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        user_id: Optional[str] = None,
-        org_id: Optional[str] = None,
+        user_id: str | None = None,
+        org_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Stream chat completion via Ops-Center
@@ -812,8 +812,8 @@ class OpsCenterLLMClient:
         temperature: float = 0.7,
         max_tokens: int = 2000,
         tool_choice: str = "auto",  # "auto", "none", or {"type": "function", "function": {"name": "..."}}
-        user_id: Optional[str] = None,
-        org_id: Optional[str] = None,
+        user_id: str | None = None,
+        org_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Chat completion with function calling support (single attempt).
@@ -1011,18 +1011,18 @@ class OpsCenterLLMClient:
         temperature: float = 0.7,
         max_tokens: int = 2000,
         max_iterations: int = 10,
-        user_id: Optional[str] = None,
-        user_email: Optional[str] = None,
-        org_id: Optional[str] = None,
-        on_tool_call: Optional[Callable[[ToolCall], None]] = None,
-        on_tool_result: Optional[Callable[[ToolResult], None]] = None,
+        user_id: str | None = None,
+        user_email: str | None = None,
+        org_id: str | None = None,
+        on_tool_call: Callable[[ToolCall], None] | None = None,
+        on_tool_result: Callable[[ToolResult], None] | None = None,
         use_user_message_fallback: bool = True,  # Use user messages for tool results (works with more providers)
         trace_recorder=None,  # Optional AgentTraceRecorder for code attribution
-        agent_id: Optional[str] = None,  # Agent ID for tracing
-        agent_name: Optional[str] = None,  # Agent name for tracing
-        room_id: Optional[str] = None,  # Stable room id (for needs_room_context tools)
-        room_name: Optional[str] = None,  # Stable livekit room name (for needs_room_context tools)
-        tool_timeout: Optional[float] = None,  # BR-4: per-tool wall-clock cap (s); None=env default, <=0 disables
+        agent_id: str | None = None,  # Agent ID for tracing
+        agent_name: str | None = None,  # Agent name for tracing
+        room_id: str | None = None,  # Stable room id (for needs_room_context tools)
+        room_name: str | None = None,  # Stable livekit room name (for needs_room_context tools)
+        tool_timeout: float | None = None,  # BR-4: per-tool wall-clock cap (s); None=env default, <=0 disables
         tool_guard=None,  # BR-6.4: per-caller ToolPermissionGuard; None = no per-caller gating (internal/service flows)
     ) -> dict[str, Any]:
         """

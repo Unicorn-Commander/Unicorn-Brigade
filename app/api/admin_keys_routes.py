@@ -18,7 +18,7 @@ import hmac
 import logging
 import os
 from datetime import datetime
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
@@ -27,8 +27,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.service_key import (
     ConfigError,
-    require_service_key as require_configured_service_key,
     warn_if_weak_service_key,
+)
+from app.core.service_key import (
+    require_service_key as require_configured_service_key,
 )
 from app.db.database import get_session
 from app.db.models import User, UserApiKey
@@ -45,7 +47,7 @@ _VALID_ROLES = {"admin", "operator", "viewer"}
 # ── Auth dependency ─────────────────────────────────────────────
 
 def require_service_key(
-    x_api_key: Annotated[Optional[str], Header(alias="X-API-Key")] = None,
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
 ) -> str:
     """Verify the X-API-Key header matches the configured service key.
 
@@ -87,12 +89,12 @@ def require_service_key(
 class CreateUserKeyRequest(BaseModel):
     email: EmailStr
     role: str = Field("operator", description="Role to apply: admin, operator, or viewer")
-    display_name: Optional[str] = Field(None, description="Full name for new user rows")
+    display_name: str | None = Field(None, description="Full name for new user rows")
     name: str = Field(..., min_length=1, max_length=255, description="Key label")
-    permissions: Optional[List[str]] = None
-    rate_limit: Optional[int] = Field(None, description="Requests per minute")
-    expires_in_days: Optional[int] = Field(90, description="Days until the key expires; null for no expiry")
-    apps: Optional[List[str]] = Field(None, description="Brigade-consumer apps this user is a member of (e.g., ['crisis-ops','librechat']). Merged into user.apps; existing apps are preserved.")
+    permissions: list[str] | None = None
+    rate_limit: int | None = Field(None, description="Requests per minute")
+    expires_in_days: int | None = Field(90, description="Days until the key expires; null for no expiry")
+    apps: list[str] | None = Field(None, description="Brigade-consumer apps this user is a member of (e.g., ['crisis-ops','librechat']). Merged into user.apps; existing apps are preserved.")
 
 
 class KeyResponse(BaseModel):
@@ -101,15 +103,15 @@ class KeyResponse(BaseModel):
     email: str
     name: str
     key_prefix: str
-    permissions: List[str]
-    rate_limit: Optional[int] = None
-    expires_at: Optional[str] = None
-    last_used_at: Optional[str] = None
+    permissions: list[str]
+    rate_limit: int | None = None
+    expires_at: str | None = None
+    last_used_at: str | None = None
     usage_count: int = 0
     is_active: bool = True
-    created_at: Optional[str] = None
-    created_via: Optional[str] = None
-    key: Optional[str] = Field(None, description="Full raw key; present only on create")
+    created_at: str | None = None
+    created_via: str | None = None
+    key: str | None = Field(None, description="Full raw key; present only on create")
 
 
 # ── Helpers ─────────────────────────────────────────────────────
@@ -118,8 +120,8 @@ async def _upsert_user(
     session: AsyncSession,
     email: str,
     role: str,
-    display_name: Optional[str],
-    apps: Optional[List[str]] = None,
+    display_name: str | None,
+    apps: list[str] | None = None,
 ) -> User:
     """Find-or-create a Brigade users row and refresh role/name from the caller."""
     if role not in _VALID_ROLES:
@@ -172,13 +174,13 @@ async def _upsert_user(
     return user
 
 
-def _permissions_for_role(role: str) -> List[str]:
+def _permissions_for_role(role: str) -> list[str]:
     # BR-2.6: single source of truth — see app.auth.roles.permissions_for_role.
     from app.auth.roles import permissions_for_role
     return permissions_for_role(role)
 
 
-def _serialize(key: UserApiKey, email: str, raw_key: Optional[str] = None) -> dict:
+def _serialize(key: UserApiKey, email: str, raw_key: str | None = None) -> dict:
     return {
         "id": key.id,
         "user_id": str(key.user_id),
@@ -234,7 +236,7 @@ async def create_user_api_key(
     return _serialize(key, user.email, raw_key=result["key"])
 
 
-@router.get("", response_model=List[KeyResponse])
+@router.get("", response_model=list[KeyResponse])
 async def list_user_api_keys(
     email: str,
     session: AsyncSession = Depends(get_session),
