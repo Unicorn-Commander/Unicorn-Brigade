@@ -41,11 +41,11 @@ from sqlalchemy import select, text
 # before writing history so each write is attributed to the correct org and the
 # same set_config path is exercised. Requires the admin role to be superuser or
 # BYPASSRLS (it is the owner/migration role).
-from app.db.database import admin_session, MIGRATION_DATABASE_URL
+from app.db.database import MIGRATION_DATABASE_URL, admin_session
 from app.db.models import Agent, ScheduledRun, ScheduledRunHistory
-from app.llm.tool_resolver import get_tools_for_agent
-from app.llm.ops_center_client import DEFAULT_MODEL
 from app.integrations.metering import meter_usage
+from app.llm.ops_center_client import DEFAULT_MODEL
+from app.llm.tool_resolver import get_tools_for_agent
 from app.observability.metrics import scheduled_run_total
 from app.services.leader_election import PgAdvisoryLeaderLock, lock_key_from_name
 
@@ -446,7 +446,7 @@ class BrigadeScheduler:
                     self._invoke_agent(agent_dict, prompt, user_id, org_id_for_run),
                     timeout=timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 _record_run_outcome("timeout")
                 await self._finalize(
                     history_id,

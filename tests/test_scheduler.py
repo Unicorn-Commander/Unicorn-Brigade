@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 import app.services.scheduler as scheduler_module
-from app.services.scheduler import _parse_cron, BrigadeScheduler
+from app.services.scheduler import BrigadeScheduler, _parse_cron
 
 
 class _FakeHistory:
@@ -85,7 +85,7 @@ def test_parse_cron_rejects_bad_field_count():
 
 
 def test_parse_cron_rejects_bad_field_values():
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         _parse_cron("99 99 99 99 99", "UTC")
 
 

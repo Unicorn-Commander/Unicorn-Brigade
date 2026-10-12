@@ -67,7 +67,7 @@ def _validate_cron(expr: str, tz: str) -> None:
     try:
         _parse_cron(expr, tz or "UTC")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"invalid cron: {e}")
+        raise HTTPException(status_code=400, detail=f"invalid cron: {e}") from e
 
 
 async def _ensure_agent_exists(session: AsyncSession, agent_id: str) -> None:

@@ -3,9 +3,21 @@ SQLAlchemy ORM models for Unicorn Brigade.
 """
 import uuid
 from datetime import datetime
+
 from sqlalchemy import (
-    Column, String, Text, Float, Integer, BigInteger, Boolean, DateTime,
-    ForeignKey, JSON, Index, UniqueConstraint, text
+    JSON,
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
