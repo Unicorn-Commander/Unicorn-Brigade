@@ -51,6 +51,14 @@ from app.services.leader_election import PgAdvisoryLeaderLock, lock_key_from_nam
 
 logger = logging.getLogger(__name__)
 
+RUN_TRIGGER_SCHEDULE = "schedule"
+RUN_TRIGGER_MANUAL = "manual"
+RUN_TRIGGER_IMPORT = "import"
+RUN_TRIGGERS = frozenset(
+    {RUN_TRIGGER_SCHEDULE, RUN_TRIGGER_MANUAL, RUN_TRIGGER_IMPORT}
+)
+SCHEDULED_RUN_ACTOR = "scheduler"
+
 # BR-4: deploy-wide default cap on a scheduled run's wall-clock time, used when a
 # ScheduledRun row does not set its own ``max_runtime_seconds``. Configurable via
 # env so operators can tune without a code change. The per-run value still wins.
@@ -345,12 +353,44 @@ class BrigadeScheduler:
 
     # ── execution ─────────────────────────────────────────────
 
-    async def trigger_now(self, scheduled_run_id: str) -> str:
-        """Run a job immediately. Returns the history row id."""
-        return await self._fire(scheduled_run_id=scheduled_run_id, manual=True)
+    async def trigger_now(
+        self,
+        scheduled_run_id: str,
+        *,
+        actor: str = "unknown",
+        allow_disabled: bool = False,
+    ) -> str:
+        """Run a job immediately. Returns the history row id.
 
-    async def _fire(self, scheduled_run_id: str, manual: bool = False) -> str:
-        """The actual execution path, called by APScheduler or trigger_now."""
+        A disabled schedule may only be run manually when the caller has made
+        that exception explicit with ``allow_disabled=True``. The API layer
+        supplies the authenticated actor for the history audit row.
+        """
+        return await self._fire(
+            scheduled_run_id=scheduled_run_id,
+            manual=True,
+            actor=actor,
+            allow_disabled=allow_disabled,
+        )
+
+    async def _fire(
+        self,
+        scheduled_run_id: str,
+        manual: bool = False,
+        *,
+        actor: str = "unknown",
+        allow_disabled: bool = False,
+    ) -> str:
+        """The actual execution path, called by APScheduler or trigger_now.
+
+        The enabled check stays inside the database read/transaction so a row
+        disabled after registration cannot be executed by a pending APScheduler
+        callback. Manual execution is the only exception, and only when the
+        request explicitly opted into running a disabled schedule.
+        """
+        trigger = RUN_TRIGGER_MANUAL if manual else RUN_TRIGGER_SCHEDULE
+        if trigger not in RUN_TRIGGERS:  # defensive guard for future callers
+            raise ValueError(f"unsupported scheduled-run trigger: {trigger}")
         history_id: Optional[str] = None
         try:
             async with admin_session() as session:
@@ -358,7 +398,7 @@ class BrigadeScheduler:
                 if run is None:
                     logger.warning("ScheduledRun %s vanished before fire", scheduled_run_id)
                     return ""
-                if not run.enabled and not manual:
+                if not run.enabled and not (manual and allow_disabled):
                     logger.info("ScheduledRun %s disabled, skipping", scheduled_run_id)
                     return ""
 
@@ -368,6 +408,8 @@ class BrigadeScheduler:
                     org_id=run.org_id,
                     started_at=datetime.utcnow(),
                     status="running",
+                    trigger=trigger,
+                    actor=(str(actor or "unknown")[:255] if manual else SCHEDULED_RUN_ACTOR),
                 )
                 session.add(history)
                 await session.commit()

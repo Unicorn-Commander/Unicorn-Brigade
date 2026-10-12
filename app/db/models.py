@@ -850,6 +850,12 @@ class ScheduledRunHistory(Base):
     started_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     finished_at = Column(DateTime, nullable=True)
     status = Column(String(32), nullable=False, default="running")
+    trigger = Column(
+        String(16), nullable=False, default="schedule", server_default="schedule"
+    )
+    actor = Column(
+        String(255), nullable=False, default="scheduler", server_default="scheduler"
+    )
     output_summary = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
     tool_calls_count = Column(Integer, nullable=False, default=0)
@@ -864,6 +870,8 @@ class ScheduledRunHistory(Base):
             "startedAt": self.started_at.isoformat() + "Z" if self.started_at else None,
             "finishedAt": self.finished_at.isoformat() + "Z" if self.finished_at else None,
             "status": self.status,
+            "trigger": self.trigger,
+            "actor": self.actor,
             "outputSummary": self.output_summary,
             "error": self.error,
             "toolCallsCount": self.tool_calls_count,

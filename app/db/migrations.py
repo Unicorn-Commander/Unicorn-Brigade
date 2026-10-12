@@ -1110,6 +1110,16 @@ MIGRATIONS = [
            OR (name = 'upload_document' AND permission_level = 2);
         """,
     ),
+    (
+        "20261012_01_scheduled_run_audit",
+        "Record the trigger and actor for every scheduled-run history row",
+        """
+        ALTER TABLE scheduled_run_history
+            ADD COLUMN IF NOT EXISTS "trigger" varchar(16) NOT NULL DEFAULT 'schedule';
+        ALTER TABLE scheduled_run_history
+            ADD COLUMN IF NOT EXISTS actor varchar(255) NOT NULL DEFAULT 'scheduler';
+        """,
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.

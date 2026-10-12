@@ -42,6 +42,15 @@ class ScheduledRunUpdate(BaseModel):
     maxRuntimeSeconds: Optional[int] = Field(None, ge=5, le=3600)
 
 
+class ScheduledRunNowRequest(BaseModel):
+    """Controls the exceptional manual execution of a disabled schedule."""
+
+    allowDisabled: bool = Field(
+        False,
+        description="Explicitly allow this manual run when the schedule is disabled.",
+    )
+
+
 def _is_admin(user: AuthUser) -> bool:
     return user is not None and user.role == UserRole.ADMIN
 
@@ -216,6 +225,7 @@ async def delete_scheduled_run(
 @router.post("/{run_id}/run-now")
 async def run_now(
     run_id: str,
+    body: Optional[ScheduledRunNowRequest] = None,
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_operator)] = None,
 ):
@@ -224,12 +234,24 @@ async def run_now(
         raise HTTPException(status_code=404, detail="scheduled run not found")
     _ensure_owner_or_admin(user, run)
 
+    allow_disabled = bool(body and body.allowDisabled)
+    if not run.enabled and not allow_disabled:
+        raise HTTPException(
+            status_code=409,
+            detail="scheduled run is disabled; set allowDisabled=true to run it manually",
+        )
+
     sched = get_scheduler()
     if sched is None:
         raise HTTPException(status_code=503, detail="scheduler not running")
-    history_id = await sched.trigger_now(str(run.id))
+    actor = str(
+        getattr(user, "user_id", None) or getattr(user, "id", None) or "unknown"
+    )
+    history_id = await sched.trigger_now(
+        str(run.id), actor=actor, allow_disabled=allow_disabled
+    )
     if not history_id:
-        raise HTTPException(status_code=500, detail="run failed to start")
+        raise HTTPException(status_code=409, detail="scheduled run is no longer enabled")
     history = await session.get(ScheduledRunHistory, history_id)
     return history.to_dict() if history else {"id": history_id}
 
