@@ -13,7 +13,7 @@ import math
 import operator as _operator
 import os
 import socket
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -1074,9 +1074,9 @@ def _colonel_filter_display(value: Optional[str]) -> Optional[str]:
 def _colonel_facts_parse_timestamp(value: Any) -> Optional[datetime]:
     if isinstance(value, bool):
         return None
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         try:
-            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+            return datetime.fromtimestamp(float(value), tz=UTC)
         except (OverflowError, OSError, ValueError):
             return None
     if not isinstance(value, str):
@@ -1091,7 +1091,7 @@ def _colonel_facts_parse_timestamp(value: Any) -> Optional[datetime]:
         numeric = None
     if numeric is not None:
         try:
-            return datetime.fromtimestamp(numeric, tz=timezone.utc)
+            return datetime.fromtimestamp(numeric, tz=UTC)
         except (OverflowError, OSError, ValueError):
             return None
 
@@ -1101,8 +1101,8 @@ def _colonel_facts_parse_timestamp(value: Any) -> Optional[datetime]:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _colonel_facts_timestamp(payload: Any) -> tuple[Optional[str], Optional[datetime]]:
@@ -1124,7 +1124,7 @@ def _colonel_facts_timestamp(payload: Any) -> tuple[Optional[str], Optional[date
 
 def _colonel_facts_now() -> datetime:
     """Clock seam for staleness tests; production uses the current UTC time."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _colonel_facts_staleness(
@@ -1142,9 +1142,9 @@ def _colonel_facts_staleness(
 
     current = now or _colonel_facts_now()
     if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone.utc)
+        current = current.replace(tzinfo=UTC)
     else:
-        current = current.astimezone(timezone.utc)
+        current = current.astimezone(UTC)
     age_seconds = max(0.0, (current - timestamp_dt).total_seconds())
     age_minutes = round(age_seconds / 60, 2)
     return {
