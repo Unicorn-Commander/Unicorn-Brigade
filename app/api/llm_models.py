@@ -1,20 +1,23 @@
 """LLM model catalog proxy routes."""
 
+import logging
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends
 
 from app.auth.middleware import AuthUser, require_admin
+from app.core.service_key import is_strong_service_key, warn_if_weak_service_key
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 OPS_CENTER_MODELS_URL = "http://ops-center-direct:8084/api/v1/llm/models"
 CACHE_TTL_SECONDS = 300
 
-_cache: Dict[str, Any] = {"expires_at": 0.0, "payload": None}
+_cache: dict[str, Any] = {"expires_at": 0.0, "payload": None}
 
 
 FALLBACK_MODELS = {
@@ -49,7 +52,7 @@ FALLBACK_MODELS = {
 }
 
 
-def _model_id(model: Dict[str, Any]) -> str:
+def _model_id(model: dict[str, Any]) -> str:
     return str(
         model.get("id")
         or model.get("model")
@@ -59,7 +62,7 @@ def _model_id(model: Dict[str, Any]) -> str:
     )
 
 
-def _price_value(model: Dict[str, Any], keys: List[str]) -> float | None:
+def _price_value(model: dict[str, Any], keys: list[str]) -> float | None:
     pricing = model.get("pricing") if isinstance(model.get("pricing"), dict) else {}
     for key in keys:
         value = model.get(key)
@@ -74,7 +77,7 @@ def _price_value(model: Dict[str, Any], keys: List[str]) -> float | None:
     return None
 
 
-def _is_free(model: Dict[str, Any]) -> bool:
+def _is_free(model: dict[str, Any]) -> bool:
     input_price = _price_value(
         model,
         ["input", "input_price", "inputPrice", "prompt_price", "promptPrice", "input_cost_per_1m", "inputCostPer1M"],
@@ -89,7 +92,7 @@ def _is_free(model: Dict[str, Any]) -> bool:
     return (input_price or 0) == 0 and (output_price or 0) == 0
 
 
-def _category_for(model: Dict[str, Any]) -> str:
+def _category_for(model: dict[str, Any]) -> str:
     provider = str(model.get("provider") or model.get("source") or "").lower()
     model_id = _model_id(model).lower()
 
@@ -123,7 +126,7 @@ def _enrich_payload(payload: Any) -> Any:
     }
 
 
-def _enrich_model(model: Dict[str, Any]) -> Dict[str, Any]:
+def _enrich_model(model: dict[str, Any]) -> dict[str, Any]:
     if model.get("category"):
         return model
     return {**model, "category": _category_for(model)}
@@ -131,6 +134,11 @@ def _enrich_model(model: Dict[str, Any]) -> Dict[str, Any]:
 
 async def _fetch_ops_center_models() -> Any:
     service_key = os.getenv("BRIGADE_SERVICE_KEY", "")
+    if not service_key:
+        return FALLBACK_MODELS
+    if not is_strong_service_key(service_key):
+        warn_if_weak_service_key("Ops-Center client", logger)
+        return FALLBACK_MODELS
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(
             OPS_CENTER_MODELS_URL,

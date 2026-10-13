@@ -24,6 +24,8 @@ import time
 
 import httpx
 
+from app.core.service_key import is_strong_service_key, warn_if_weak_service_key
+
 logger = logging.getLogger(__name__)
 
 OPS_CENTER_URL = os.getenv("OPS_CENTER_URL", "http://ops-center-direct:8084").rstrip("/")
@@ -85,14 +87,17 @@ async def get_billing_state(user_email: str) -> dict[str, object]:
     if not user_email:
         return _unknown("no user email on the request")
 
+    if not BRIGADE_SERVICE_KEY:
+        logger.debug("BRIGADE_SERVICE_KEY not set; billing preflight disabled")
+        return _unknown("BRIGADE_SERVICE_KEY not configured")
+    if not is_strong_service_key(BRIGADE_SERVICE_KEY):
+        warn_if_weak_service_key("billing preflight", log=logger)
+        return _unknown("BRIGADE_SERVICE_KEY is weak; billing preflight disabled")
+
     now = time.monotonic()
     cached = _cache.get(user_email)
     if cached and (now - cached[0]) < _CACHE_TTL:
         return cached[1]
-
-    if not BRIGADE_SERVICE_KEY:
-        logger.debug("BRIGADE_SERVICE_KEY not set; billing preflight disabled")
-        return _unknown("BRIGADE_SERVICE_KEY not configured")
 
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:

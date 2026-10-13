@@ -120,11 +120,17 @@ Routes to cloud inference providers through unified endpoint.
 
 **Authentication**: Service key (`BRIGADE_SERVICE_KEY`)
 
+**Service-key safety**: `BRIGADE_SERVICE_KEY` must be at least 32 characters
+and must not be a known placeholder/default literal. Generate a deployment
+value with `openssl rand -base64 48`; store it in the deployment secret store
+and rotate it with the owning operator.
+
 **Configuration**:
 ```bash
 # .env
 OPS_CENTER_URL=https://unicorncommander.ai
-BRIGADE_SERVICE_KEY=sk-brigade-service-key-2025
+# Generate with: openssl rand -base64 48
+BRIGADE_SERVICE_KEY="$(openssl rand -base64 48)"
 ```
 
 **Models Available**:
@@ -430,7 +436,8 @@ LLAMACPP_CTX_SIZE=4096
 
 # Cloud fallback
 OPS_CENTER_URL=https://unicorncommander.ai
-BRIGADE_SERVICE_KEY=sk-brigade-service-key-2025
+# Generate with: openssl rand -base64 48
+BRIGADE_SERVICE_KEY="$(openssl rand -base64 48)"
 ```
 
 **Expected Performance** (8-core CPU):
@@ -896,7 +903,8 @@ ENABLE_LOCAL_MODELS=true
 # Ops-Center (Cloud Models)
 # ============================================================================
 OPS_CENTER_URL=https://unicorncommander.ai
-BRIGADE_SERVICE_KEY=sk-brigade-service-key-2025
+# Generate with: openssl rand -base64 48
+BRIGADE_SERVICE_KEY="$(openssl rand -base64 48)"
 
 # ============================================================================
 # MLX (Apple Silicon)

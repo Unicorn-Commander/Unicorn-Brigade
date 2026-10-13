@@ -18,16 +18,23 @@ import hmac
 import logging
 import os
 from datetime import datetime
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.service_key import (
+    ConfigError,
+    warn_if_weak_service_key,
+)
+from app.core.service_key import (
+    require_service_key as require_configured_service_key,
+)
 from app.db.database import get_session
 from app.db.models import User, UserApiKey
-from app.db.repositories import UserApiKeyRepository, UserRepository
+from app.db.repositories import UserApiKeyRepository
 
 logger = logging.getLogger(__name__)
 
@@ -37,35 +44,39 @@ _SERVICE_KEY_ENV = "BRIGADE_SERVICE_KEY"
 _NON_LOGIN_PASSWORD_HASH = "NOLOGIN-SSO-ONLY"  # fails every bcrypt.checkpw
 _VALID_ROLES = {"admin", "operator", "viewer"}
 
-# Known-bad default that shipped in the codebase/committed .env. Treated as
-# "unconfigured" so a deploy that forgot to set a real secret fails closed
-# instead of accepting the public literal.
-_KNOWN_BAD_SERVICE_KEY = "sk-brigade-service-key-2025"
-
-
 # ── Auth dependency ─────────────────────────────────────────────
 
 def require_service_key(
-    x_api_key: Annotated[Optional[str], Header(alias="X-API-Key")] = None,
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
 ) -> str:
     """Verify the X-API-Key header matches the configured service key.
 
-    Fails closed: if BRIGADE_SERVICE_KEY is unset (or still set to the known
-    public default), service delegation is refused with 503 rather than
+    Fails closed: if BRIGADE_SERVICE_KEY is unset, weak, or still set to the
+    known public default, service delegation is refused with 503 rather than
     authenticating callers against a guessable secret. The header comparison
     uses hmac.compare_digest for constant-time matching.
     """
     expected = os.getenv(_SERVICE_KEY_ENV, "") or ""
-    if not expected or hmac.compare_digest(expected, _KNOWN_BAD_SERVICE_KEY):
+    if not expected:
         logger.error(
-            "BRIGADE_SERVICE_KEY is not configured (unset or set to the known "
-            "default); refusing service-delegation requests"
+            "BRIGADE_SERVICE_KEY is not configured (unset); refusing "
+            "service-delegation requests"
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Service delegation is not configured on this Brigade instance",
         )
-    if not x_api_key or not hmac.compare_digest(x_api_key, expected):
+    try:
+        expected = require_configured_service_key("admin user-key delegation")
+    except ConfigError:
+        warn_if_weak_service_key("admin service-key routes", logger)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service delegation is not configured on this Brigade instance",
+        ) from None
+    if not x_api_key or not hmac.compare_digest(
+        x_api_key.encode("utf-8"), expected.encode("utf-8")
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Service key required",
@@ -78,12 +89,12 @@ def require_service_key(
 class CreateUserKeyRequest(BaseModel):
     email: EmailStr
     role: str = Field("operator", description="Role to apply: admin, operator, or viewer")
-    display_name: Optional[str] = Field(None, description="Full name for new user rows")
+    display_name: str | None = Field(None, description="Full name for new user rows")
     name: str = Field(..., min_length=1, max_length=255, description="Key label")
-    permissions: Optional[List[str]] = None
-    rate_limit: Optional[int] = Field(None, description="Requests per minute")
-    expires_in_days: Optional[int] = Field(90, description="Days until the key expires; null for no expiry")
-    apps: Optional[List[str]] = Field(None, description="Brigade-consumer apps this user is a member of (e.g., ['crisis-ops','librechat']). Merged into user.apps; existing apps are preserved.")
+    permissions: list[str] | None = None
+    rate_limit: int | None = Field(None, description="Requests per minute")
+    expires_in_days: int | None = Field(90, description="Days until the key expires; null for no expiry")
+    apps: list[str] | None = Field(None, description="Brigade-consumer apps this user is a member of (e.g., ['crisis-ops','librechat']). Merged into user.apps; existing apps are preserved.")
 
 
 class KeyResponse(BaseModel):
@@ -92,15 +103,15 @@ class KeyResponse(BaseModel):
     email: str
     name: str
     key_prefix: str
-    permissions: List[str]
-    rate_limit: Optional[int] = None
-    expires_at: Optional[str] = None
-    last_used_at: Optional[str] = None
+    permissions: list[str]
+    rate_limit: int | None = None
+    expires_at: str | None = None
+    last_used_at: str | None = None
     usage_count: int = 0
     is_active: bool = True
-    created_at: Optional[str] = None
-    created_via: Optional[str] = None
-    key: Optional[str] = Field(None, description="Full raw key; present only on create")
+    created_at: str | None = None
+    created_via: str | None = None
+    key: str | None = Field(None, description="Full raw key; present only on create")
 
 
 # ── Helpers ─────────────────────────────────────────────────────
@@ -109,8 +120,8 @@ async def _upsert_user(
     session: AsyncSession,
     email: str,
     role: str,
-    display_name: Optional[str],
-    apps: Optional[List[str]] = None,
+    display_name: str | None,
+    apps: list[str] | None = None,
 ) -> User:
     """Find-or-create a Brigade users row and refresh role/name from the caller."""
     if role not in _VALID_ROLES:
@@ -163,13 +174,13 @@ async def _upsert_user(
     return user
 
 
-def _permissions_for_role(role: str) -> List[str]:
+def _permissions_for_role(role: str) -> list[str]:
     # BR-2.6: single source of truth — see app.auth.roles.permissions_for_role.
     from app.auth.roles import permissions_for_role
     return permissions_for_role(role)
 
 
-def _serialize(key: UserApiKey, email: str, raw_key: Optional[str] = None) -> dict:
+def _serialize(key: UserApiKey, email: str, raw_key: str | None = None) -> dict:
     return {
         "id": key.id,
         "user_id": str(key.user_id),
@@ -225,7 +236,7 @@ async def create_user_api_key(
     return _serialize(key, user.email, raw_key=result["key"])
 
 
-@router.get("", response_model=List[KeyResponse])
+@router.get("", response_model=list[KeyResponse])
 async def list_user_api_keys(
     email: str,
     session: AsyncSession = Depends(get_session),
