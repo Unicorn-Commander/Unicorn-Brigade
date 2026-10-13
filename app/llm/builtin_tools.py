@@ -13,7 +13,7 @@ import math
 import operator as _operator
 import os
 import socket
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -998,10 +998,13 @@ DEFAULT_COLONEL_FACTS_URL = "http://colonel-facts/facts.json"
 COLONEL_FACTS_TIMEOUT_SECONDS = 5.0
 COLONEL_FACTS_MAX_BYTES = 1024 * 1024  # 1 MiB
 COLONEL_FACTS_MAX_AGE_MINUTES = 15
+COLONEL_FACTS_ARGUMENT_MAX_CHARS = 128
 
 # Document-level clocks. The collector's own timestamp is what makes a stale
 # answer visible; host/section filters must not drop it.
 _COLONEL_FACTS_TIMESTAMP_KEYS = (
+    "generated_utc",
+    "generated_epoch",
     "timestamp",
     "collected_at",
     "generated_at",
@@ -1027,8 +1030,25 @@ def colonel_facts_url() -> str:
 
 
 def _colonel_facts_url_allowed(url: str) -> bool:
-    parsed = urlparse(url)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+    except ValueError:
+        return False
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        return False
+
+    allowed_hosts = {
+        item.strip().lower().rstrip(".")
+        for item in os.getenv("COLONEL_FACTS_ALLOWED_HOSTS", "").split(",")
+        if item.strip()
+    }
+    normalized_hostname = hostname.lower().rstrip(".")
+    if not allowed_hosts:
+        # With no explicit allowlist, the fixed configured URL is the only
+        # host this tool can request.
+        allowed_hosts = {normalized_hostname}
+    return normalized_hostname in allowed_hosts
 
 
 def _colonel_filter_str(value: Any, label: str) -> tuple[Optional[str], Optional[str]]:
@@ -1041,24 +1061,112 @@ def _colonel_filter_str(value: Any, label: str) -> tuple[Optional[str], Optional
     return (text, None) if text else (None, None)
 
 
-def _colonel_facts_timestamp(payload: Any) -> Any:
-    if not isinstance(payload, dict):
+def _colonel_filter_display(value: Optional[str]) -> Optional[str]:
+    """Return a bounded, printable representation for result/error echoes."""
+    if value is None:
         return None
+    printable = "".join(char for char in value if char.isprintable())
+    if not printable:
+        return "<non-printable>"
+    return printable[:COLONEL_FACTS_ARGUMENT_MAX_CHARS]
+
+
+def _colonel_facts_parse_timestamp(value: Any) -> Optional[datetime]:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        try:
+            return datetime.fromtimestamp(float(value), tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        numeric = float(text)
+    except ValueError:
+        numeric = None
+    if numeric is not None:
+        try:
+            return datetime.fromtimestamp(numeric, tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+
+    iso_text = f"{text[:-1]}+00:00" if text.endswith(("Z", "z")) else text
+    try:
+        parsed = datetime.fromisoformat(iso_text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _colonel_facts_timestamp(payload: Any) -> tuple[Optional[str], Optional[datetime]]:
+    if not isinstance(payload, dict):
+        return None, None
     for key in _COLONEL_FACTS_TIMESTAMP_KEYS:
         stamp = payload.get(key)
-        if stamp not in (None, ""):
-            return stamp
-    return None
+        if stamp in (None, ""):
+            continue
+        parsed = _colonel_facts_parse_timestamp(stamp)
+        if parsed is None:
+            continue
+        iso = parsed.isoformat()
+        if iso.endswith("+00:00"):
+            iso = f"{iso[:-6]}Z"
+        return iso, parsed
+    return None, None
 
 
-def _colonel_select_host(payload: Any, host: str) -> tuple[Any, Optional[str]]:
+def _colonel_facts_now() -> datetime:
+    """Clock seam for staleness tests; production uses the current UTC time."""
+    return datetime.now(UTC)
+
+
+def _colonel_facts_staleness(
+    timestamp_dt: Optional[datetime],
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    if timestamp_dt is None:
+        return {
+            "timestamp": None,
+            "age_minutes": None,
+            "max_age_minutes": COLONEL_FACTS_MAX_AGE_MINUTES,
+            "stale": True,
+            "reason": "no_timestamp",
+        }
+
+    current = now or _colonel_facts_now()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    else:
+        current = current.astimezone(UTC)
+    age_seconds = max(0.0, (current - timestamp_dt).total_seconds())
+    age_minutes = round(age_seconds / 60, 2)
+    return {
+        "age_minutes": age_minutes,
+        "max_age_minutes": COLONEL_FACTS_MAX_AGE_MINUTES,
+        "stale": age_seconds > COLONEL_FACTS_MAX_AGE_MINUTES * 60,
+    }
+
+
+def _colonel_select_host(
+    payload: Any,
+    host: str,
+    host_display: Optional[str] = None,
+) -> tuple[Any, Optional[str]]:
+    host_display = host_display or _colonel_filter_display(host)
     if not isinstance(payload, dict):
-        return None, f"host {host!r} not in facts"
+        return None, f"host {host_display!r} not in facts"
     hosts = payload.get("hosts")
     if isinstance(hosts, dict):
         if host in hosts:
             return hosts[host], None
-        return None, f"host {host!r} not in facts"
+        return None, f"host {host_display!r} not in facts"
     if isinstance(hosts, list):
         for item in hosts:
             if not isinstance(item, dict):
@@ -1066,26 +1174,39 @@ def _colonel_select_host(payload: Any, host: str) -> tuple[Any, Optional[str]]:
             names = (item.get("host"), item.get("hostname"), item.get("name"), item.get("id"))
             if host in names:
                 return item, None
-        return None, f"host {host!r} not in facts"
+        return None, f"host {host_display!r} not in facts"
     entry = payload.get(host)
     if host not in _COLONEL_FACTS_NON_HOST_KEYS and isinstance(entry, dict | list):
         return entry, None
-    return None, f"host {host!r} not in facts"
+    return None, f"host {host_display!r} not in facts"
 
 
-def _colonel_select_section(payload: Any, section: str) -> tuple[Any, Optional[str]]:
+def _colonel_select_section(
+    payload: Any,
+    section: str,
+    section_display: Optional[str] = None,
+) -> tuple[Any, Optional[str]]:
+    section_display = section_display or _colonel_filter_display(section)
     if isinstance(payload, dict) and section in payload:
         return payload[section], None
     if isinstance(payload, dict):
         sections = payload.get("sections")
         if isinstance(sections, dict) and section in sections:
             return sections[section], None
-    return None, f"section {section!r} not in facts"
+    return None, f"section {section_display!r} not in facts"
 
 
-def _colonel_facts_error(message: str, timestamp: Any = None) -> dict[str, Any]:
+def _colonel_facts_error(
+    message: str,
+    timestamp: Any = None,
+    staleness: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     body: dict[str, Any] = {"success": False, "error": message}
-    if timestamp is not None:
+    if staleness is not None:
+        body.update(staleness)
+        if timestamp is not None:
+            body["timestamp"] = timestamp
+    elif timestamp is not None:
         body["timestamp"] = timestamp
         body["max_age_minutes"] = COLONEL_FACTS_MAX_AGE_MINUTES
     return body
@@ -1130,7 +1251,9 @@ async def colonel_facts_handler(
 
     url = colonel_facts_url()
     if not _colonel_facts_url_allowed(url):
-        return _colonel_facts_error("COLONEL_FACTS_URL must be an absolute http(s) URL")
+        return _colonel_facts_error(
+            "COLONEL_FACTS_URL must be an absolute http(s) URL on an allowed host"
+        )
 
     timeout = httpx.Timeout(COLONEL_FACTS_TIMEOUT_SECONDS)
     try:
@@ -1160,26 +1283,32 @@ async def colonel_facts_handler(
         return _colonel_facts_error("colonel facts response was not JSON")
 
     timestamp = _colonel_facts_timestamp(payload)
+    timestamp_iso, timestamp_dt = timestamp
+    staleness = _colonel_facts_staleness(timestamp_dt)
     facts = payload
     if host_name is not None:
-        facts, err = _colonel_select_host(facts, host_name)
+        facts, err = _colonel_select_host(
+            facts, host_name, _colonel_filter_display(host_name)
+        )
         if err:
-            return _colonel_facts_error(err, timestamp)
+            return _colonel_facts_error(err, timestamp_iso, staleness)
     if section_name is not None:
-        facts, err = _colonel_select_section(facts, section_name)
+        facts, err = _colonel_select_section(
+            facts, section_name, _colonel_filter_display(section_name)
+        )
         if err:
-            return _colonel_facts_error(err, timestamp)
+            return _colonel_facts_error(err, timestamp_iso, staleness)
 
     result: dict[str, Any] = {
         "success": True,
-        "timestamp": timestamp,
-        "max_age_minutes": COLONEL_FACTS_MAX_AGE_MINUTES,
+        "timestamp": timestamp_iso,
+        **staleness,
         "facts": facts,
     }
     if host_name is not None:
-        result["host"] = host_name
+        result["host"] = _colonel_filter_display(host_name)
     if section_name is not None:
-        result["section"] = section_name
+        result["section"] = _colonel_filter_display(section_name)
     return result
 
 
@@ -1189,7 +1318,8 @@ COLONEL_FACTS_TOOL = ToolDefinition(
         "Read The Colonel's fleet facts snapshot (read-only JSON from the internal "
         "collector). The snapshot is refreshed every 15 minutes and may be up to "
         "15 minutes old; use the returned timestamp before treating a figure as "
-        "current. Optional host returns only that host's entry. Optional section "
+        "current. The result includes age_minutes and stale. Optional host returns only "
+        "that host's entry. Optional section "
         "returns only that section of the document (or of the selected host). "
         "This tool always reads the configured collector URL and cannot be pointed "
         "at another address."
