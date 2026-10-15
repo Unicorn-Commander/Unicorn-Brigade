@@ -31,21 +31,21 @@ _PUBLIC_BASE_URL = (
 )
 
 from app.db.database import get_session  # noqa: E402  (legacy: imports after the module preamble)
-from app.db.repositories import (
-    AgentRepository,  # noqa: E402  (legacy: imports after the module preamble)
+from app.db.repositories import (  # noqa: E402
+    AgentRepository,
 )
-from app.integrations.metering import (
-    meter_usage,  # noqa: E402  (legacy: imports after the module preamble)
+from app.integrations.metering import (  # noqa: E402
+    meter_usage,
 )
 from app.llm.ops_center_client import (  # noqa: E402  (legacy: imports after the module preamble)
     OpsCenterLLMClient,
     UpstreamBudgetExhausted,
 )
-from app.llm.tool_resolver import (
-    get_tools_for_agent,  # noqa: E402  (legacy: imports after the module preamble)
+from app.llm.tool_resolver import (  # noqa: E402
+    get_tools_for_agent,
 )
-from app.orchestration import (
-    emit_agent_invocation,  # noqa: E402  (legacy: imports after the module preamble)
+from app.orchestration import (  # noqa: E402
+    emit_agent_invocation,
 )
 from app.protocols.a2a import (  # noqa: E402  (legacy: imports after the module preamble)
     A2AInvokeResponse,
