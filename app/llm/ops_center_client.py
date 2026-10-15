@@ -623,6 +623,7 @@ class OpsCenterLLMClient:
         headers: dict[str, str],
         route_type: str,
         model: str,
+        streaming: bool = False,
     ):
         """Open one chat response, with one Retry-After-aware 402/429 retry.
 
@@ -663,6 +664,9 @@ class OpsCenterLLMClient:
                     )
 
                 if response.status_code >= 400:
+                    if streaming:
+                        response.raise_for_status()
+
                     error_text = await self._response_text(response)
                     logger.error(
                         "Ops-Center error %s: %s", response.status_code, error_text
@@ -895,6 +899,7 @@ class OpsCenterLLMClient:
                 headers,
                 route_type,
                 model,
+                streaming=True,
             ) as response:
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):

@@ -199,6 +199,29 @@ async def test_500_remains_http_status_error_without_budget_retry(route_environm
 
 
 @pytest.mark.asyncio
+async def test_stream_500_preserves_http_status_error_without_budget_retry(
+    route_environment, monkeypatch
+):
+    monkeypatch.setattr(client_module, "OPENROUTER_API_KEY", "test-key")
+    with respx.mock(assert_all_called=True) as router:
+        upstream = router.post("https://openrouter.ai/api/v1/chat/completions")
+        upstream.mock(return_value=httpx.Response(500, text="provider failed"))
+        client = _make_client()
+        try:
+            stream = client.chat_completion_stream(
+                messages=[{"role": "user", "content": "hello"}],
+                model="openrouter/vendor/model",
+            )
+            with pytest.raises(httpx.HTTPStatusError) as raised:
+                await anext(stream)
+        finally:
+            await client.close()
+
+    assert upstream.call_count == 1
+    assert raised.value.response.status_code == 500
+
+
+@pytest.mark.asyncio
 async def test_tool_completion_uses_the_shared_budget_retry_path(route_environment, monkeypatch):
     monkeypatch.setattr(client_module, "OPENROUTER_API_KEY", "test-key")
     with respx.mock(assert_all_called=True) as router:
