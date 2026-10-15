@@ -30,7 +30,7 @@ _PUBLIC_BASE_URL = os.environ.get("BRIGADE_URL") or os.environ.get("BRIGADE_PUBL
 
 from app.db.database import get_session
 from app.db.repositories import AgentRepository
-from app.llm.ops_center_client import OpsCenterLLMClient
+from app.llm.ops_center_client import OpsCenterLLMClient, UpstreamBudgetExhausted
 from app.llm.tool_resolver import get_tools_for_agent
 from app.integrations.metering import meter_usage
 from app.orchestration import emit_agent_invocation
@@ -382,6 +382,8 @@ async def invoke_agent(
         logger.info(f"A2A invoke complete: task_id={task_id}, duration={duration:.2f}s")
         return a2a_response.model_dump()
 
+    except UpstreamBudgetExhausted:
+        raise
     except Exception as e:
         logger.error(f"A2A invoke error: agent={agent_id}, error={e}")
         error_response = A2AInvokeResponse(

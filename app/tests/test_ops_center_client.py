@@ -109,9 +109,10 @@ async def test_402_then_200_retries_once_and_logs_route_and_retry(
         ]
         client = _make_client()
         try:
-            with patch(
-                "app.llm.ops_center_client.asyncio.sleep", new=AsyncMock()
-            ) as sleep, caplog.at_level(logging.INFO, logger=client_module.__name__):
+            with (
+                patch("app.llm.ops_center_client.asyncio.sleep", new=AsyncMock()) as sleep,
+                caplog.at_level(logging.INFO, logger=client_module.__name__),
+            ):
                 response = await client.chat_completion(
                     messages=[{"role": "user", "content": "hello"}],
                     model="openrouter/vendor/model",
@@ -165,9 +166,7 @@ async def test_429_uses_retry_after_seconds_and_waits_once(route_environment, mo
         ]
         client = _make_client()
         try:
-            with patch(
-                "app.llm.ops_center_client.asyncio.sleep", new=AsyncMock()
-            ) as sleep:
+            with patch("app.llm.ops_center_client.asyncio.sleep", new=AsyncMock()) as sleep:
                 await client.chat_completion(
                     messages=[{"role": "user", "content": "hello"}],
                     model="openrouter/vendor/model",
@@ -180,9 +179,7 @@ async def test_429_uses_retry_after_seconds_and_waits_once(route_environment, mo
 
 
 @pytest.mark.asyncio
-async def test_500_remains_http_status_error_without_budget_retry(
-    route_environment, monkeypatch
-):
+async def test_500_remains_http_status_error_without_budget_retry(route_environment, monkeypatch):
     monkeypatch.setattr(client_module, "OPENROUTER_API_KEY", "test-key")
     with respx.mock(assert_all_called=True) as router:
         upstream = router.post("https://openrouter.ai/api/v1/chat/completions")
