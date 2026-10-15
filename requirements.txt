@@ -78,6 +78,7 @@ docker>=7.0.0
 pytest==8.3.3
 pytest-asyncio==0.24.0
 pytest-cov==5.0.0
+respx==0.22.0  # httpx mock transport for the upstream 402/429 tests
 black==24.10.0
 ruff==0.7.0
 mypy==1.13.0
