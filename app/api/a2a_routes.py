@@ -13,40 +13,39 @@ Endpoints:
 - GET /a2a/discover - Search for agents by capability/domain/query
 """
 
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import Dict, List, Any, Optional, Annotated
-from sqlalchemy.ext.asyncio import AsyncSession
-import logging
-
-from app.auth.middleware import require_operator, AuthUser
-import uuid
-import time
 import json
+import logging
 import os
+import time
+import uuid
+from typing import Annotated, Any, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.middleware import AuthUser, require_operator
 
 _PUBLIC_BASE_URL = os.environ.get("BRIGADE_URL") or os.environ.get("BRIGADE_PUBLIC_URL") or "http://localhost:8100"
 
-from app.db.database import get_session
-from app.db.repositories import AgentRepository
-from app.llm.ops_center_client import OpsCenterLLMClient, UpstreamBudgetExhausted
-from app.llm.tool_resolver import get_tools_for_agent
-from app.integrations.metering import meter_usage
-from app.orchestration import emit_agent_invocation
-from app.protocols.a2a import (
+from app.db.database import get_session  # noqa: E402  (legacy: imports after the module preamble)
+from app.db.repositories import AgentRepository  # noqa: E402  (legacy: imports after the module preamble)
+from app.integrations.metering import meter_usage  # noqa: E402  (legacy: imports after the module preamble)
+from app.llm.ops_center_client import OpsCenterLLMClient, UpstreamBudgetExhausted  # noqa: E402  (legacy: imports after the module preamble)
+from app.llm.tool_resolver import get_tools_for_agent  # noqa: E402  (legacy: imports after the module preamble)
+from app.orchestration import emit_agent_invocation  # noqa: E402  (legacy: imports after the module preamble)
+from app.protocols.a2a import (  # noqa: E402  (legacy: imports after the module preamble)
+    A2AInvokeResponse,
+    AgentCapability,
     AgentCard,
     AgentEndpoint,
-    AgentCapability,
-    AuthConfig,
-    RateLimitConfig,
-    PricingConfig,
     AgentMetadata,
-    A2AInvokeRequest,
-    A2AInvokeResponse,
-    InvocationStatus,
-    AuthType,
     AgentStatus,
+    AuthConfig,
+    AuthType,
+    InvocationStatus,
+    PricingConfig,
+    RateLimitConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +55,7 @@ router = APIRouter()
 llm_client: OpsCenterLLMClient = None
 
 # In-memory task storage (for async invocations)
-_tasks: Dict[str, Dict[str, Any]] = {}
+_tasks: dict[str, dict[str, Any]] = {}
 
 
 def init_a2a_routes(client: OpsCenterLLMClient):
@@ -65,7 +64,7 @@ def init_a2a_routes(client: OpsCenterLLMClient):
     llm_client = client
 
 
-def _agent_to_card(agent: Dict[str, Any], base_url: str = None) -> AgentCard:
+def _agent_to_card(agent: dict[str, Any], base_url: str = None) -> AgentCard:
     if base_url is None:
         base_url = _PUBLIC_BASE_URL
     """Convert a DB agent to an A2A AgentCard."""
@@ -129,10 +128,10 @@ class A2AInvokeBody(BaseModel):
     """Request body for A2A invocation."""
     task: str
     capability: Optional[str] = None
-    context: Dict[str, Any] = {}
-    input_data: Optional[Dict[str, Any]] = None
+    context: dict[str, Any] = {}
+    input_data: Optional[dict[str, Any]] = None
     session_id: Optional[str] = None
-    conversation_history: List[Dict[str, Any]] = []
+    conversation_history: list[dict[str, Any]] = []
     user_id: Optional[str] = None
     timeout_seconds: int = 120
     stream: bool = False
@@ -143,7 +142,7 @@ class A2ADiscoverQuery(BaseModel):
     query: Optional[str] = None
     domain: Optional[str] = None
     capability: Optional[str] = None
-    tags: Optional[List[str]] = None
+    tags: Optional[list[str]] = None
     limit: int = 50
 
 
