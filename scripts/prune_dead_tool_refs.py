@@ -34,7 +34,7 @@ def _tool_names(value: object) -> list[str]:
         return []
     if isinstance(value, dict):
         return [str(name) for name, enabled in value.items() if enabled]
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [str(name) for name in value]
     return [str(value)]
 
