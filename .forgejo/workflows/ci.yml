@@ -67,7 +67,7 @@ jobs:
           # GRAPHITI_AVAILABLE=False when it is absent.
           pip install -r requirements-prod.txt
           # Test + lint tooling (kept out of the prod image).
-          pip install pytest==8.3.3 pytest-asyncio==0.24.0 pytest-cov==5.0.0 \
+          pip install pytest==8.3.3 pytest-asyncio==0.24.0 pytest-cov==5.0.0 respx==0.22.0 \
                       ruff==0.7.0 mypy==1.13.0
 
       - name: Ruff (gate — real breakage only)

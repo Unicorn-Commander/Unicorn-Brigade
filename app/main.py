@@ -85,7 +85,7 @@ from app.federation.jwks_routes import router as jwks_router
 from app.federation.mcp_gateway import router as federation_mcp_router
 from app.federation.registration_routes import router as federation_admin_router
 from app.graph.workflow import WorkflowManager
-from app.llm.ops_center_client import OpsCenterLLMClient
+from app.llm.ops_center_client import OpsCenterLLMClient, UpstreamBudgetExhausted
 from app.memory.graphiti_manager import GraphitiMemoryManager
 from app.observability import configure_logging, request_id_middleware
 from app.observability import flush as langfuse_flush
@@ -334,6 +334,14 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         status_code=exc.status_code,
         content={"detail": payload},
     )
+
+
+@app.exception_handler(UpstreamBudgetExhausted)
+async def upstream_budget_exhausted_handler(
+    request: Request, exc: UpstreamBudgetExhausted
+):
+    """Expose bounded upstream budget failures as a stable service error."""
+    return JSONResponse(status_code=503, content=exc.as_dict())
 
 # CORS is configured LAST (outermost) — see the BR-6 security block below. C3: it
 # must wrap the security middlewares so a 413/429 reject (or any outer-middleware

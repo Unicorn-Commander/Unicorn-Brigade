@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,7 +39,13 @@ from app.integrations.ops_center_billing import (
 )
 from app.llm.gemma_sanitize import strip_channel_artifacts
 from app.llm.mlx_provider import MLXLLMClient
-from app.llm.ops_center_client import DEFAULT_MODEL, OpsCenterLLMClient, ToolCall, ToolResult
+from app.llm.ops_center_client import (
+    DEFAULT_MODEL,
+    OpsCenterLLMClient,
+    ToolCall,
+    ToolResult,
+    UpstreamBudgetExhausted,
+)
 from app.llm.tool_resolver import get_tools_for_agent, unknown_tool_names
 from app.observability import get_tracer
 from app.observability.metrics import (
@@ -1509,20 +1515,45 @@ async def chat_with_agent(
     user_email_for_metering = (getattr(user, "email", "") or "").lower()
 
     if request.stream:
+        stream = _stream_chat(
+            messages,
+            model,
+            temperature,
+            max_tokens,
+            agent,
+            request.user_id,
+            agent_tools,
+            session,
+            user_email=user_email_for_metering,
+            org_id=getattr(user, "org_id", None),
+            tool_guard=tool_guard,
+        )
+        # Prime through the initial envelope before sending StreamingResponse
+        # headers. If the first upstream response exhausts its one bounded
+        # retry, the caller can still receive the normal JSON 503 payload.
+        initial_events = []
+        try:
+            while True:
+                event = await stream.__anext__()
+                initial_events.append(event)
+                try:
+                    event_payload = json.loads(event.removeprefix("data: ").strip())
+                except (AttributeError, json.JSONDecodeError):
+                    break
+                if event_payload.get("type") != "start":
+                    break
+        except UpstreamBudgetExhausted as exc:
+            await stream.aclose()
+            return JSONResponse(status_code=503, content=exc.as_dict())
+
+        async def replay_initial_events():
+            for initial_event in initial_events:
+                yield initial_event
+            async for remaining_event in stream:
+                yield remaining_event
+
         return StreamingResponse(
-            _stream_chat(
-                messages,
-                model,
-                temperature,
-                max_tokens,
-                agent,
-                request.user_id,
-                agent_tools,
-                session,
-                user_email=user_email_for_metering,
-                org_id=getattr(user, "org_id", None),
-                tool_guard=tool_guard,
-            ),
+            replay_initial_events(),
             media_type="text/event-stream",
         )
 
@@ -1872,6 +1903,8 @@ async def chat_with_agent(
             tracer.end_trace(output={"error": str(e)}, status="error")
         except Exception:
             pass
+        if isinstance(e, UpstreamBudgetExhausted):
+            raise
         raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
         try:
@@ -1897,6 +1930,7 @@ async def _stream_chat(
     from app.llm.delegation_tools import _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME
 
     _agent_tok = _agentname_tok = None
+    upstream_started = False
     try:
         tool_names = [t.name for t in agent_tools] if agent_tools else []
 
@@ -2011,10 +2045,12 @@ async def _stream_chat(
             while not _loop_task.done() or not _live_q.empty():
                 try:
                     _evt = await _asyncio.wait_for(_live_q.get(), timeout=0.25)
+                    upstream_started = True
                     yield f"data: {json.dumps(_evt)}\n\n"
                 except TimeoutError:
                     continue
             response = await _loop_task
+            upstream_started = True
 
             # Log tool executions to DB. This generator body runs AFTER
             # get_session's dependency teardown (FastAPI >=0.106), which has
@@ -2089,6 +2125,7 @@ async def _stream_chat(
                 user_id=user_id,
                 org_id=org_id,
             ):
+                upstream_started = True
                 try:
                     chunk = json.loads(chunk_data)
                     # Final usage chunk (stream_options.include_usage) carries the
@@ -2150,6 +2187,11 @@ async def _stream_chat(
 
             yield "data: [DONE]\n\n"
 
+    except UpstreamBudgetExhausted as e:
+        if not upstream_started:
+            raise
+        logger.error(f"Stream upstream budget exhausted after output started: {e}")
+        yield f"data: {json.dumps({'type': 'error', **e.as_dict()})}\n\n"
     except Exception as e:
         logger.error(f"Stream error: {e}")
         yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
@@ -2352,6 +2394,8 @@ async def direct_chat_completion(
         }
     except Exception as e:
         logger.error(f"Chat completion error: {e}")
+        if isinstance(e, UpstreamBudgetExhausted):
+            raise
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

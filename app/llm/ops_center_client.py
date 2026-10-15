@@ -4,11 +4,14 @@ import asyncio
 import builtins
 import json
 import logging
+import math
 import os
 import re
 from collections.abc import Iterable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Callable
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -91,6 +94,28 @@ logger = logging.getLogger(__name__)
 class ModelUnavailableError(Exception):
     """Raised when a requested model is not available (e.g., Ollama not running)"""
     pass
+
+
+class UpstreamBudgetExhausted(Exception):
+    """Raised after one bounded retry still returns an upstream 402 or 429."""
+
+    def __init__(self, route: str, retry_after: float, reason: str):
+        self.route = route
+        self.retry_after = float(retry_after)
+        self.reason = reason
+        super().__init__(
+            f"upstream budget exhausted on {route}; retry_after={self.retry_after:g}s; "
+            f"reason={reason}"
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return the stable API error payload for this upstream failure."""
+        return {
+            "error": "upstream_budget_exhausted",
+            "route": self.route,
+            "retry_after": self.retry_after,
+            "reason": self.reason,
+        }
 
 
 @dataclass
@@ -314,6 +339,131 @@ BRIGADE_SERVICE_KEY = os.getenv("BRIGADE_SERVICE_KEY", "")
 DEFAULT_MODEL = os.getenv("DEFAULT_LLM_MODEL", "uc/chat-default-nothink")
 
 
+def _target_host(target_url: str) -> str:
+    """Return only the host portion of a resolved target URL."""
+    return urlsplit(target_url).hostname or "unknown"
+
+
+def _retry_after_seconds(value: str | None) -> float:
+    """Parse a seconds-based Retry-After value and cap it at 30 seconds."""
+    try:
+        parsed = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(parsed):
+        return 0.0
+    return min(30.0, max(0.0, parsed))
+
+
+def _body_reason(error_text: str) -> str:
+    """Extract a short provider reason from a JSON error body when available."""
+    try:
+        body = json.loads(error_text)
+    except (TypeError, json.JSONDecodeError):
+        body = None
+
+    def _walk(value: Any) -> str | None:
+        if isinstance(value, dict):
+            reason = value.get("reason")
+            if isinstance(reason, str) and reason.strip():
+                return reason.strip()[:200]
+            for key in ("error", "metadata", "details"):
+                nested = _walk(value.get(key))
+                if nested:
+                    return nested
+            message = value.get("message")
+            if isinstance(message, str) and message.strip():
+                return message.strip()[:200]
+        return None
+
+    return _walk(body) or (error_text.strip()[:200] if error_text.strip() else "unknown")
+
+
+def _resolve_model_route(
+    model: str,
+    *,
+    local_llm_url: str,
+    ops_center_url: str,
+) -> tuple[str, str, str]:
+    """Resolve a model without performing I/O."""
+    if model.startswith("local/"):
+        local_model = model[6:]  # Remove 'local/' prefix
+        return local_llm_url, local_model, "local"
+    if model.startswith("midboy1/"):
+        midboy1_model = model[len("midboy1/"):]
+        return MIDBOY1_LLM_URL, midboy1_model, "local"
+    if UC_GATEWAY_URL and model.startswith("uc/"):
+        # Metered UC gateway: keep the full 'uc/<model>' name the gateway expects.
+        return UC_GATEWAY_URL, model, "gateway"
+    # Explicit OpenRouter ids still go to OpenRouter.
+    if model.startswith("openrouter/"):
+        if OPENROUTER_API_KEY:
+            return OPENROUTER_URL, model[len("openrouter/"):], "openrouter"
+        if UC_GATEWAY_URL:
+            return UC_GATEWAY_URL, model, "gateway"
+    # Direct provider keys beat OpenRouter. Anthropic's native API is Messages-
+    # format, not OpenAI chat/completions, so Claude goes through the UC gateway
+    # (LiteLLM already holds ANTHROPIC_API_KEY).
+    if _is_anthropic_model(model):
+        if UC_GATEWAY_URL:
+            # LiteLLM catalog uses unprefixed names (claude-opus-4.8).
+            short = model.split("/", 1)[-1] if model.lower().startswith("anthropic/") else model
+            return UC_GATEWAY_URL, short, "gateway"
+    if _is_openai_model(model):
+        resolved = model[len("openai/"):] if model.startswith("openai/") else model
+        if _usable_key(OPENAI_DIRECT_KEY):
+            return OPENAI_URL, resolved, "openai"
+        if UC_GATEWAY_URL:
+            return UC_GATEWAY_URL, resolved, "gateway"
+    if _is_dashscope_model(model):
+        resolved = model.split("/", 1)[-1] if "/" in model else model
+        if _usable_key(DASHSCOPE_API_KEY):
+            return DASHSCOPE_URL, resolved, "dashscope"
+        if UC_GATEWAY_URL:
+            return UC_GATEWAY_URL, model, "gateway"
+    if OPENROUTER_API_KEY:
+        # OpenRouter native API expects bare/namespaced slugs (e.g.
+        # "anthropic/claude-sonnet-4.6"), NOT the litellm-style
+        # "openrouter/" provider prefix.
+        or_model = (
+            model[len("openrouter/"):]
+            if model.startswith("openrouter/")
+            else model
+        )
+        return OPENROUTER_URL, or_model, "openrouter"
+    if OPS_CENTER_LLM_ENDPOINT:
+        # Direct hit on an OpenAI-compatible endpoint (e.g. llama.cpp router).
+        # Normalize a BARE base URL (no chat-completions path) to the standard
+        # OpenAI path — otherwise a POST lands on the server root and an
+        # OpenAI-compatible gateway (LiteLLM/vLLM) returns 405 Method Not
+        # Allowed. Idempotent: an endpoint already carrying a completions path
+        # (…/v1/chat/completions) is left untouched.
+        ep = OPS_CENTER_LLM_ENDPOINT
+        if "/chat/completions" not in ep:
+            ep = ep.rstrip("/") + "/v1/chat/completions"
+        return ep, model, "direct"
+    return ops_center_url, model, "ops-center"
+
+
+def describe_route(model: str) -> dict[str, str]:
+    """Describe the route a model would take without making a request."""
+    requested_model = model
+    if model in ("default", "auto"):
+        model = DEFAULT_MODEL
+    target_url, resolved_model, route_type = _resolve_model_route(
+        model,
+        local_llm_url=LOCAL_LLM_URL,
+        # A pure description must not run the client's socket auto-detection.
+        ops_center_url=os.getenv("OPS_CENTER_URL") or DEFAULT_EXTERNAL_URL,
+    )
+    return {
+        "model_requested": requested_model,
+        "model_resolved": resolved_model,
+        "route_type": route_type,
+        "target_host": _target_host(target_url),
+    }
+
+
 class OpsCenterLLMClient:
     """Client for Ops-Center LLM inference (vLLM, OpenRouter, etc.)"""
 
@@ -377,63 +527,11 @@ class OpsCenterLLMClient:
           "openrouter"  — OpenRouter BYOK, last resort for remaining cloud slugs
           "ops-center"  — Ops-Center cloud proxy (default)
         """
-        if model.startswith("local/"):
-            local_model = model[6:]  # Remove 'local/' prefix
-            return self.local_llm_url, local_model, "local"
-        if model.startswith("midboy1/"):
-            midboy1_model = model[len("midboy1/"):]
-            return MIDBOY1_LLM_URL, midboy1_model, "local"
-        if UC_GATEWAY_URL and model.startswith("uc/"):
-            # Metered UC gateway: keep the full 'uc/<model>' name the gateway expects.
-            return UC_GATEWAY_URL, model, "gateway"
-        # Explicit OpenRouter ids still go to OpenRouter.
-        if model.startswith("openrouter/"):
-            if OPENROUTER_API_KEY:
-                return OPENROUTER_URL, model[len("openrouter/"):], "openrouter"
-            if UC_GATEWAY_URL:
-                return UC_GATEWAY_URL, model, "gateway"
-        # Direct provider keys beat OpenRouter. Anthropic's native API is
-        # Messages-format, not OpenAI chat/completions, so Claude goes through
-        # the UC gateway (LiteLLM already holds ANTHROPIC_API_KEY).
-        if _is_anthropic_model(model):
-            if UC_GATEWAY_URL:
-                # LiteLLM catalog uses unprefixed names (claude-opus-4.8).
-                short = model.split("/", 1)[-1] if model.lower().startswith("anthropic/") else model
-                return UC_GATEWAY_URL, short, "gateway"
-        if _is_openai_model(model):
-            resolved = model[len("openai/"):] if model.startswith("openai/") else model
-            if _usable_key(OPENAI_DIRECT_KEY):
-                return OPENAI_URL, resolved, "openai"
-            if UC_GATEWAY_URL:
-                return UC_GATEWAY_URL, resolved, "gateway"
-        if _is_dashscope_model(model):
-            resolved = model.split("/", 1)[-1] if "/" in model else model
-            if _usable_key(DASHSCOPE_API_KEY):
-                return DASHSCOPE_URL, resolved, "dashscope"
-            if UC_GATEWAY_URL:
-                return UC_GATEWAY_URL, model, "gateway"
-        if OPENROUTER_API_KEY:
-            # OpenRouter native API expects bare/namespaced slugs (e.g.
-            # "anthropic/claude-sonnet-4.6"), NOT the litellm-style
-            # "openrouter/" provider prefix.
-            or_model = (
-                model[len("openrouter/"):]
-                if model.startswith("openrouter/")
-                else model
-            )
-            return OPENROUTER_URL, or_model, "openrouter"
-        if OPS_CENTER_LLM_ENDPOINT:
-            # Direct hit on an OpenAI-compatible endpoint (e.g. llama.cpp router).
-            # Normalize a BARE base URL (no chat-completions path) to the standard
-            # OpenAI path — otherwise a POST lands on the server root and an
-            # OpenAI-compatible gateway (LiteLLM/vLLM) returns 405 Method Not
-            # Allowed. Idempotent: an endpoint already carrying a completions path
-            # (…/v1/chat/completions) is left untouched.
-            ep = OPS_CENTER_LLM_ENDPOINT
-            if "/chat/completions" not in ep:
-                ep = ep.rstrip("/") + "/v1/chat/completions"
-            return ep, model, "direct"
-        return self.ops_center_url, model, "ops-center"
+        return _resolve_model_route(
+            model,
+            local_llm_url=self.local_llm_url,
+            ops_center_url=self.ops_center_url,
+        )
 
     def _endpoint_and_headers(
         self, route_type: str, target_url: str, user_id: str | None = None, org_id: str | None = None
@@ -487,6 +585,109 @@ class OpsCenterLLMClient:
             headers["X-User-ID"] = user_id
         return f"{target_url}/api/v1/llm/chat/completions", headers
 
+    def _record_route(
+        self,
+        model_requested: str,
+        target_url: str,
+        resolved_model: str,
+        route_type: str,
+    ) -> dict[str, str]:
+        """Record route truth when no caller-owned run/trace object is present."""
+        route = {
+            "model_requested": model_requested,
+            "model_resolved": resolved_model,
+            "route_type": route_type,
+            "target_host": _target_host(target_url),
+        }
+        logger.info(
+            "llm.route model=%s resolved=%s route=%s host=%s",
+            route["model_requested"],
+            route["model_resolved"],
+            route["route_type"],
+            route["target_host"],
+        )
+        return route
+
+    async def _response_text(self, response: httpx.Response) -> str:
+        """Read a response body while it is still inside the stream context."""
+        body = await response.aread()
+        if not body:
+            return "Unknown error"
+        return body.decode(response.encoding or "utf-8", errors="replace")
+
+    @asynccontextmanager
+    async def _request_chat_response(
+        self,
+        endpoint: str,
+        payload: dict[str, Any],
+        headers: dict[str, str],
+        route_type: str,
+        model: str,
+        streaming: bool = False,
+    ):
+        """Open one chat response, with one Retry-After-aware 402/429 retry.
+
+        All three LLM request forms use this context manager. Successful
+        responses remain open for the caller to parse or stream; non-budget
+        statuses retain the previous HTTPStatusError/ModelUnavailableError
+        behavior.
+        """
+        for attempt in range(2):
+            async with self.client.stream(
+                "POST",
+                endpoint,
+                json=payload,
+                headers=headers,
+            ) as response:
+                if response.status_code in (402, 429):
+                    error_text = await self._response_text(response)
+                    retry_after = _retry_after_seconds(response.headers.get("Retry-After"))
+                    logger.error(
+                        "Ops-Center error %s: %s", response.status_code, error_text
+                    )
+                    logger.error("Request model: %s", model)
+
+                    if attempt == 0:
+                        logger.warning(
+                            "llm.upstream_retry status=%s route=%s retry_after=%s attempt=2",
+                            response.status_code,
+                            route_type,
+                            retry_after,
+                        )
+                        await asyncio.sleep(retry_after)
+                        continue
+
+                    raise UpstreamBudgetExhausted(
+                        route=route_type,
+                        retry_after=retry_after,
+                        reason=_body_reason(error_text),
+                    )
+
+                if response.status_code >= 400:
+                    if streaming:
+                        response.raise_for_status()
+
+                    error_text = await self._response_text(response)
+                    logger.error(
+                        "Ops-Center error %s: %s", response.status_code, error_text
+                    )
+                    logger.error("Request model: %s", model)
+
+                    # Preserve the existing Ollama fallback signal.
+                    if "ollama" in model.lower():
+                        raise ModelUnavailableError(
+                            f"Local Ollama model {model} unavailable: {error_text[:200]}"
+                        )
+
+                    raise httpx.HTTPStatusError(
+                        message=error_text,
+                        request=response.request,
+                        response=response,
+                    )
+
+                yield response
+                return
+
     def _detect_url(self) -> str:
         """Detect whether to use internal or external URL"""
         # Check if we can reach the internal URL (Docker network)
@@ -535,12 +736,14 @@ class OpsCenterLLMClient:
             OpenAI-compatible response dict
         """
         try:
+            model_requested = model
             # Resolve model aliases
             if model in ("default", "auto"):
                 model = DEFAULT_MODEL
 
             # Check for local model routing (local/ prefix) or OpenRouter BYOK
             target_url, resolved_model, route_type = self._resolve_local_model(model)
+            self._record_route(model_requested, target_url, resolved_model, route_type)
 
             # Build request payload
             payload = {
@@ -563,34 +766,14 @@ class OpsCenterLLMClient:
             # Use streaming client to handle SSE-wrapped responses
             # (Ops-Center returns SSE format due to Traefik chunked encoding bug)
             _monitor_endpoint = endpoint  # captured for Phase 7b.2 failure tracking
-            async with self.client.stream(
-                "POST",
+            async with self._request_chat_response(
                 endpoint,
-                json=payload,
-                headers=headers
+                payload,
+                headers,
+                route_type,
+                model,
             ) as response:
                 content_type = response.headers.get("content-type", "")
-
-                # Handle error responses first
-                if response.status_code >= 400:
-                    # For streaming responses, read all bytes first
-                    error_bytes = b""
-                    async for chunk in response.aiter_bytes():
-                        error_bytes += chunk
-                    error_text = error_bytes.decode() if error_bytes else "Unknown error"
-                    logger.error(f"Ops-Center error {response.status_code}: {error_text}")
-                    logger.error(f"Request model: {model}")
-
-                    # Check if this is an Ollama model error - trigger fallback to API models
-                    if "ollama" in model.lower():
-                        raise ModelUnavailableError(f"Local Ollama model {model} unavailable: {error_text[:200]}")
-
-                    # For non-Ollama errors, raise HTTP error
-                    raise httpx.HTTPStatusError(
-                        message=error_text,
-                        request=response.request,
-                        response=response
-                    )
 
                 # Parse successful response based on content-type
                 if "text/event-stream" in content_type:
@@ -679,11 +862,13 @@ class OpsCenterLLMClient:
             Server-sent events with tokens
         """
         try:
+            model_requested = model
             # Resolve model aliases
             if model in ("default", "local", "auto"):
                 model = DEFAULT_MODEL
 
             target_url, resolved_model, route_type = self._resolve_local_model(model)
+            self._record_route(model_requested, target_url, resolved_model, route_type)
 
             payload = {
                 "messages": messages,
@@ -708,14 +893,14 @@ class OpsCenterLLMClient:
 
             logger.info(f"Starting streaming request ({route_type}): {resolved_model}")
 
-            async with self.client.stream(
-                "POST",
+            async with self._request_chat_response(
                 endpoint,
-                json=payload,
-                headers=headers
+                payload,
+                headers,
+                route_type,
+                model,
+                streaming=True,
             ) as response:
-                response.raise_for_status()
-
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
                         data = line[6:]  # Remove "data: " prefix
@@ -834,12 +1019,14 @@ class OpsCenterLLMClient:
             Response with potential tool_calls
         """
         try:
+            model_requested = model
             # Resolve model aliases
             if model in ("default", "auto"):
                 model = DEFAULT_MODEL
 
             # Check for local model routing (local/ prefix) or OpenRouter BYOK
             target_url, resolved_model, route_type = self._resolve_local_model(model)
+            self._record_route(model_requested, target_url, resolved_model, route_type)
 
             # Convert tools to OpenAI format
             tools_payload = [tool.to_openai_format() for tool in tools]
@@ -869,36 +1056,14 @@ class OpsCenterLLMClient:
                     logger.info(f"Tool message being sent: tool_call_id={m.get('tool_call_id')}, name={m.get('name')}")
 
             _monitor_endpoint = endpoint  # Phase 7b.2
-            async with self.client.stream(
-                "POST",
+            async with self._request_chat_response(
                 endpoint,
-                json=payload,
-                headers=headers
+                payload,
+                headers,
+                route_type,
+                model,
             ) as response:
-                # Read response body first (fixes httpx streaming error)
                 content_type = response.headers.get("content-type", "")
-
-                # Handle error responses before checking content-type
-                if response.status_code >= 400:
-                    # For streaming responses, we need to read all bytes first
-                    error_bytes = b""
-                    async for chunk in response.aiter_bytes():
-                        error_bytes += chunk
-                    error_text = error_bytes.decode() if error_bytes else "Unknown error"
-                    logger.error(f"Ops-Center error {response.status_code}: {error_text}")
-                    logger.error(f"Request model: {model}")
-                    logger.error(f"Request payload (first 2000 chars): {json.dumps(payload)[:2000]}")
-
-                    # Check if this is an Ollama model error - trigger fallback to API models
-                    if "ollama" in model.lower():
-                        raise ModelUnavailableError(f"Local Ollama model {model} unavailable: {error_text[:200]}")
-
-                    # For non-Ollama errors, raise HTTP error
-                    raise httpx.HTTPStatusError(
-                        message=error_text,
-                        request=response.request,
-                        response=response
-                    )
 
                 # Parse successful response based on content-type
                 if "text/event-stream" in content_type:

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_session
 from app.db.repositories import AgentRepository
 from app.llm.gemma_sanitize import strip_channel_artifacts
+from app.llm.ops_center_client import UpstreamBudgetExhausted
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -257,7 +258,7 @@ async def openai_chat_completions(
             _rl=None,
             _size=None,
         )
-    except HTTPException:
+    except (HTTPException, UpstreamBudgetExhausted):
         raise
     except Exception as e:
         logger.error(f"OpenAI-compat call failed for agent={agent_id}: {e}")

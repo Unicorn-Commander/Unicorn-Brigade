@@ -13,40 +13,52 @@ Endpoints:
 - GET /a2a/discover - Search for agents by capability/domain/query
 """
 
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import Dict, List, Any, Optional, Annotated
-from sqlalchemy.ext.asyncio import AsyncSession
-import logging
-
-from app.auth.middleware import require_operator, AuthUser
-import uuid
-import time
 import json
+import logging
 import os
+import time
+import uuid
+from typing import Annotated, Any, Optional
 
-_PUBLIC_BASE_URL = os.environ.get("BRIGADE_URL") or os.environ.get("BRIGADE_PUBLIC_URL") or "http://localhost:8100"
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_session
-from app.db.repositories import AgentRepository
-from app.llm.ops_center_client import OpsCenterLLMClient
-from app.llm.tool_resolver import get_tools_for_agent
-from app.integrations.metering import meter_usage
-from app.orchestration import emit_agent_invocation
-from app.protocols.a2a import (
+from app.auth.middleware import AuthUser, require_operator
+
+_PUBLIC_BASE_URL = (
+    os.environ.get("BRIGADE_URL") or os.environ.get("BRIGADE_PUBLIC_URL") or "http://localhost:8100"
+)
+
+from app.db.database import get_session  # noqa: E402  (legacy: imports after the module preamble)
+from app.db.repositories import (  # noqa: E402
+    AgentRepository,
+)
+from app.integrations.metering import (  # noqa: E402
+    meter_usage,
+)
+from app.llm.ops_center_client import (  # noqa: E402  (legacy: imports after the module preamble)
+    OpsCenterLLMClient,
+    UpstreamBudgetExhausted,
+)
+from app.llm.tool_resolver import (  # noqa: E402
+    get_tools_for_agent,
+)
+from app.orchestration import (  # noqa: E402
+    emit_agent_invocation,
+)
+from app.protocols.a2a import (  # noqa: E402  (legacy: imports after the module preamble)
+    A2AInvokeResponse,
+    AgentCapability,
     AgentCard,
     AgentEndpoint,
-    AgentCapability,
-    AuthConfig,
-    RateLimitConfig,
-    PricingConfig,
     AgentMetadata,
-    A2AInvokeRequest,
-    A2AInvokeResponse,
-    InvocationStatus,
-    AuthType,
     AgentStatus,
+    AuthConfig,
+    AuthType,
+    InvocationStatus,
+    PricingConfig,
+    RateLimitConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,7 +68,7 @@ router = APIRouter()
 llm_client: OpsCenterLLMClient = None
 
 # In-memory task storage (for async invocations)
-_tasks: Dict[str, Dict[str, Any]] = {}
+_tasks: dict[str, dict[str, Any]] = {}
 
 
 def init_a2a_routes(client: OpsCenterLLMClient):
@@ -65,7 +77,7 @@ def init_a2a_routes(client: OpsCenterLLMClient):
     llm_client = client
 
 
-def _agent_to_card(agent: Dict[str, Any], base_url: str = None) -> AgentCard:
+def _agent_to_card(agent: dict[str, Any], base_url: str = None) -> AgentCard:
     if base_url is None:
         base_url = _PUBLIC_BASE_URL
     """Convert a DB agent to an A2A AgentCard."""
@@ -74,19 +86,23 @@ def _agent_to_card(agent: Dict[str, Any], base_url: str = None) -> AgentCard:
     # Build capabilities from agent's capabilities list
     capabilities = []
     for cap_name in agent.get("capabilities", []):
-        capabilities.append(AgentCapability(
-            name=cap_name,
-            description=f"{cap_name} capability",
-            domains=[agent.get("domain", "general")],
-        ))
+        capabilities.append(
+            AgentCapability(
+                name=cap_name,
+                description=f"{cap_name} capability",
+                domains=[agent.get("domain", "general")],
+            )
+        )
 
     # Add tool-based capabilities
     for tool_name in agent.get("tools", []):
-        capabilities.append(AgentCapability(
-            name=f"tool:{tool_name}",
-            description=f"Can use the {tool_name} tool",
-            tags=["tool", tool_name],
-        ))
+        capabilities.append(
+            AgentCapability(
+                name=f"tool:{tool_name}",
+                description=f"Can use the {tool_name} tool",
+                tags=["tool", tool_name],
+            )
+        )
 
     return AgentCard(
         id=agent_id,
@@ -125,14 +141,16 @@ def _agent_to_card(agent: Dict[str, Any], base_url: str = None) -> AgentCard:
 
 # ---- Request/Response Models ----
 
+
 class A2AInvokeBody(BaseModel):
     """Request body for A2A invocation."""
+
     task: str
     capability: Optional[str] = None
-    context: Dict[str, Any] = {}
-    input_data: Optional[Dict[str, Any]] = None
+    context: dict[str, Any] = {}
+    input_data: Optional[dict[str, Any]] = None
     session_id: Optional[str] = None
-    conversation_history: List[Dict[str, Any]] = []
+    conversation_history: list[dict[str, Any]] = []
     user_id: Optional[str] = None
     timeout_seconds: int = 120
     stream: bool = False
@@ -140,14 +158,16 @@ class A2AInvokeBody(BaseModel):
 
 class A2ADiscoverQuery(BaseModel):
     """Query parameters for agent discovery."""
+
     query: Optional[str] = None
     domain: Optional[str] = None
     capability: Optional[str] = None
-    tags: Optional[List[str]] = None
+    tags: Optional[list[str]] = None
     limit: int = 50
 
 
 # ---- Endpoints ----
+
 
 @router.get("/a2a/info")
 async def get_a2a_info():
@@ -266,8 +286,10 @@ async def invoke_agent(
         system_parts.append(agent["persona"])
     if agent.get("systemPrompt"):
         system_parts.append(agent["systemPrompt"])
-    system_content = "\n\n".join(system_parts) if system_parts else (
-        f"You are {agent.get('displayName', agent['name'])}, a specialized AI agent."
+    system_content = (
+        "\n\n".join(system_parts)
+        if system_parts
+        else (f"You are {agent.get('displayName', agent['name'])}, a specialized AI agent.")
     )
 
     # Build messages
@@ -299,12 +321,14 @@ async def invoke_agent(
         if agent_tools:
             # Function calling path
             def on_tool_call(tc):
-                tool_calls_log.append({
-                    "id": tc.id,
-                    "name": tc.name,
-                    "arguments": tc.arguments,
-                    "timestamp": time.time(),
-                })
+                tool_calls_log.append(
+                    {
+                        "id": tc.id,
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                        "timestamp": time.time(),
+                    }
+                )
 
             def on_tool_result(tr):
                 for entry in tool_calls_log:
@@ -357,7 +381,9 @@ async def invoke_agent(
                 agent_name=agent.get("displayName") or agent.get("name"),
                 agent_domain=agent.get("domain"),
                 tools_used=[t.get("name") for t in (tool_calls_log or [])] or None,
-                outcome="partial" if any(t.get("error") for t in (tool_calls_log or [])) else "success",
+                outcome="partial"
+                if any(t.get("error") for t in (tool_calls_log or []))
+                else "success",
             )
         except Exception as _me:
             logger.debug(f"A2A meter skipped: {_me}")
@@ -366,7 +392,9 @@ async def invoke_agent(
         a2a_response = A2AInvokeResponse(
             status=InvocationStatus.COMPLETED,
             result=content,
-            output_data={"content": content, "tool_calls": tool_calls_log} if tool_calls_log else None,
+            output_data={"content": content, "tool_calls": tool_calls_log}
+            if tool_calls_log
+            else None,
             task_id=task_id,
             tool_calls=[],  # Simplified for now
             tokens_used={
@@ -382,6 +410,8 @@ async def invoke_agent(
         logger.info(f"A2A invoke complete: task_id={task_id}, duration={duration:.2f}s")
         return a2a_response.model_dump()
 
+    except UpstreamBudgetExhausted:
+        raise
     except Exception as e:
         logger.error(f"A2A invoke error: agent={agent_id}, error={e}")
         error_response = A2AInvokeResponse(
@@ -426,7 +456,10 @@ async def discover_agents(
 
         # Capability filter
         if query.capability:
-            if not any(cap.name == query.capability or f"tool:{query.capability}" == cap.name for cap in card.capabilities):
+            if not any(
+                cap.name == query.capability or f"tool:{query.capability}" == cap.name
+                for cap in card.capabilities
+            ):
                 continue
 
         # Tags filter
@@ -437,7 +470,7 @@ async def discover_agents(
         matching.append(card)
 
     # Apply limit
-    matching = matching[:query.limit]
+    matching = matching[: query.limit]
 
     return {
         "agents": [card.model_dump() for card in matching],
