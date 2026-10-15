@@ -46,6 +46,7 @@ from app.llm.delegation_tools import (
     DELEGATE_TO_AGENT_TOOL,
 )
 from app.llm.extended_tools import (
+    AGENTIC_RAG_TOOL,
     CODE_TOOL,
     DATABASE_TOOL,
     EMAIL_TOOL,
@@ -106,6 +107,7 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
     "database": DATABASE_TOOL,
     "notify": NOTIFY_TOOL,
     "qrcode": QRCODE_TOOL,
+    "agentic_rag": AGENTIC_RAG_TOOL,
     "analytics_sql": ANALYTICS_SQL_TOOL,
     # Advanced tools (cutting-edge capabilities)
     "browser": BROWSER_TOOL,

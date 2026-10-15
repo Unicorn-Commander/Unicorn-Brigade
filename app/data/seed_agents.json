@@ -554,7 +554,7 @@
       "memory",
       "file",
       "agentic_rag",
-      "knowledge_graph"
+      "kg_query"
     ],
     "createdAt": "2026-01-31T00:00:00Z"
   }
