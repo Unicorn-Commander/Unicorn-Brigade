@@ -46,6 +46,7 @@ from app.llm.delegation_tools import (
     DELEGATE_TO_AGENT_TOOL,
 )
 from app.llm.extended_tools import (
+    AGENTIC_RAG_TOOL,
     CODE_TOOL,
     DATABASE_TOOL,
     EMAIL_TOOL,
@@ -68,6 +69,12 @@ from app.llm.stable_canvas_tools import STABLE_CANVAS_TOOLS
 from app.llm.stable_knowledge_tools import STABLE_KNOWLEDGE_TOOLS
 
 logger = logging.getLogger(__name__)
+
+# Keep unresolved-reference warnings useful without turning every agent
+# invocation into a repeated warning. The process-local key is the agent's
+# stable id/slug, not the missing tool set, so one warning covers the record's
+# advertised unresolved names for the lifetime of this process.
+_UNRESOLVED_LOGGED_AGENTS: set[str] = set()
 
 
 class UnknownToolNamesError(ValueError):
@@ -100,6 +107,7 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
     "database": DATABASE_TOOL,
     "notify": NOTIFY_TOOL,
     "qrcode": QRCODE_TOOL,
+    "agentic_rag": AGENTIC_RAG_TOOL,
     "analytics_sql": ANALYTICS_SQL_TOOL,
     # Advanced tools (cutting-edge capabilities)
     "browser": BROWSER_TOOL,
@@ -252,6 +260,11 @@ def validate_tool_names(names: list[str] | None) -> None:
         raise UnknownToolNamesError(unknown)
 
 
+def _agent_slug(agent: dict[str, Any]) -> str:
+    """Return the stable roster identifier used in unresolved-tool logs."""
+    return str(agent.get("slug") or agent.get("id") or agent.get("name") or "<unknown>")
+
+
 def get_tools_for_agent(agent: dict[str, Any]) -> list[ToolDefinition]:
     """
     Resolve an agent's tool names to executable ToolDefinition objects.
@@ -262,7 +275,14 @@ def get_tools_for_agent(agent: dict[str, Any]) -> list[ToolDefinition]:
     Returns:
         List of ToolDefinition objects the agent can use
     """
-    tool_names = agent.get("tools") or []
+    tool_names = [str(name) for name in (agent.get("tools") or [])]
+    missing = unknown_tool_names(tool_names)
+    if missing:
+        slug = _agent_slug(agent)
+        if slug not in _UNRESOLVED_LOGGED_AGENTS:
+            logger.warning("agent.tools.unresolved agent=%s missing=%s", slug, missing)
+            _UNRESOLVED_LOGGED_AGENTS.add(slug)
+
     tools = []
     for name in tool_names:
         tool_def = TOOL_REGISTRY.get(name)
