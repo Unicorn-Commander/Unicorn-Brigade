@@ -1892,8 +1892,6 @@ async def chat_with_agent(
             pass
         return result
 
-    except UpstreamBudgetExhausted:
-        raise
     except Exception as e:
         logger.error(f"Chat error with agent {agent_id}: {e}")
         try:
@@ -1905,6 +1903,8 @@ async def chat_with_agent(
             tracer.end_trace(output={"error": str(e)}, status="error")
         except Exception:
             pass
+        if isinstance(e, UpstreamBudgetExhausted):
+            raise
         raise HTTPException(status_code=500, detail=str(e)) from e
     finally:
         try:
@@ -2392,10 +2392,10 @@ async def direct_chat_completion(
                 "total_tokens": usage.get("total_tokens", 0),
             },
         }
-    except UpstreamBudgetExhausted:
-        raise
     except Exception as e:
         logger.error(f"Chat completion error: {e}")
+        if isinstance(e, UpstreamBudgetExhausted):
+            raise
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
