@@ -29,6 +29,8 @@ from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
+from app.core.timezones import BUSINESS_TIMEZONE
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -77,7 +79,7 @@ class GoogleCalendarClient:
         self._credentials = None
         self._service = None
         self._user_email = GOOGLE_USER_EMAIL or GOOGLE_DELEGATED_USER
-        self._default_timezone = "America/Los_Angeles"
+        self._default_timezone = BUSINESS_TIMEZONE
 
     def _get_oauth2_credentials(self):
         """
@@ -197,11 +199,11 @@ class GoogleCalendarClient:
                     dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
                 else:
                     dt = datetime.fromisoformat(dt_str)
-                return dt.astimezone(tz)
+                return self._localize_or_convert(dt, tz)
             else:
                 # Date only
                 dt = datetime.strptime(dt_str, "%Y-%m-%d")
-                return dt.replace(tzinfo=tz)
+                return self._localize_or_convert(dt, tz)
         except ValueError:
             pass
 
@@ -215,11 +217,18 @@ class GoogleCalendarClient:
         for fmt in formats:
             try:
                 dt = datetime.strptime(dt_str, fmt)
-                return dt.replace(tzinfo=tz)
+                return self._localize_or_convert(dt, tz)
             except ValueError:
                 continue
 
         raise ValueError(f"Unable to parse datetime: {dt_str}")
+
+    @staticmethod
+    def _localize_or_convert(dt: datetime, tz: ZoneInfo) -> datetime:
+        """Attach the requested zone to naive wall time, or convert aware time."""
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=tz)
+        return dt.astimezone(tz)
 
     def _format_datetime(self, dt: datetime, timezone: str = None) -> Dict[str, str]:
         """Format datetime for Google Calendar API."""
@@ -255,7 +264,7 @@ class GoogleCalendarClient:
             attendees: List of attendee email addresses
             description: Event description
             location: Event location
-            timezone: Timezone for the event (default: America/Los_Angeles)
+            timezone: Timezone for the event (default: America/New_York)
             send_notifications: Send email notifications to attendees
             conference_data: Add Google Meet video conferencing
             reminders: Custom reminders configuration

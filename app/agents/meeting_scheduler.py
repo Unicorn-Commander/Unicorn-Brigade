@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from app.agents.base import BaseAgent
+from app.core.timezones import BUSINESS_TIMEZONE
 from app.integrations import google_calendar
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ DEFAULT_PREFERENCES = {
     "no_meetings_after": 18,  # No meetings scheduled after this hour
     "buffer_minutes": 15,  # Buffer between meetings
     "default_duration": 30,  # Default meeting duration in minutes
-    "timezone": "America/Los_Angeles",
+    "timezone": BUSINESS_TIMEZONE,
     "exclude_weekends": True,
     "prefer_earlier": True,  # Prefer earlier slots when finding times
     "max_slots_to_show": 5,  # Maximum number of time slots to suggest
@@ -83,7 +84,7 @@ class MeetingRequest:
         location: Optional[str] = None,
         description: Optional[str] = None,
         add_video: bool = False,
-        timezone: str = "America/Los_Angeles",
+        timezone: str = BUSINESS_TIMEZONE,
         urgency: str = "normal",  # normal, urgent, flexible
         raw_text: str = "",
     ):
@@ -246,7 +247,7 @@ class MeetingScheduler(BaseAgent):
             request.urgency = "flexible"
 
         # Set timezone from preferences
-        request.timezone = self.preferences.get("timezone", "America/Los_Angeles")
+        request.timezone = self.preferences.get("timezone", BUSINESS_TIMEZONE)
 
         return request
 
@@ -276,7 +277,7 @@ class MeetingScheduler(BaseAgent):
 
     def _extract_date(self, message: str) -> Optional[str]:
         """Extract preferred date from message."""
-        tz = ZoneInfo(self.preferences.get("timezone", "America/Los_Angeles"))
+        tz = ZoneInfo(self.preferences.get("timezone", BUSINESS_TIMEZONE))
         now = datetime.now(tz)
 
         # Relative date keywords
@@ -459,7 +460,7 @@ class MeetingScheduler(BaseAgent):
         Returns:
             Dict with availability information
         """
-        tz = ZoneInfo(self.preferences.get("timezone", "America/Los_Angeles"))
+        tz = ZoneInfo(self.preferences.get("timezone", BUSINESS_TIMEZONE))
         now = datetime.now(tz)
 
         # Default date range: next 7 days
@@ -496,7 +497,7 @@ class MeetingScheduler(BaseAgent):
             Dict with ranked time slots
         """
         prefs = {**self.preferences, **(preferences or {})}
-        tz = ZoneInfo(prefs.get("timezone", "America/Los_Angeles"))
+        tz = ZoneInfo(prefs.get("timezone", BUSINESS_TIMEZONE))
         now = datetime.now(tz)
 
         # Set date range
@@ -613,7 +614,7 @@ class MeetingScheduler(BaseAgent):
         Returns:
             Dict with created event details
         """
-        tz = timezone or self.preferences.get("timezone", "America/Los_Angeles")
+        tz = timezone or self.preferences.get("timezone", BUSINESS_TIMEZONE)
 
         # Calculate end time
         start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))

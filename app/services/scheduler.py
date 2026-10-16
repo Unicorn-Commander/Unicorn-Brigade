@@ -33,6 +33,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select, text
 
+from app.core.timezones import BUSINESS_TIMEZONE
+
 # BR-1.2/BR-1.3: the scheduler is a trusted CROSS-TENANT dispatcher — it enumerates
 # and fires jobs across EVERY org. It therefore uses the admin/owner-bound session
 # factory (RLS-exempt), because the runtime app-role session with no bound
@@ -143,7 +145,7 @@ def _record_run_outcome(outcome: str) -> None:
         pass
 
 
-def _parse_cron(expr: str, tz: str = "UTC") -> CronTrigger:
+def _parse_cron(expr: str, tz: str = BUSINESS_TIMEZONE) -> CronTrigger:
     """Parse a 5-field cron expression. Raises ValueError on bad input."""
     parts = expr.strip().split()
     if len(parts) != 5:
@@ -312,7 +314,7 @@ class BrigadeScheduler:
     def _register(self, run: ScheduledRun) -> None:
         if self.scheduler is None:
             raise RuntimeError("scheduler not started")
-        trigger = _parse_cron(run.cron, run.timezone or "UTC")
+        trigger = _parse_cron(run.cron, run.timezone or BUSINESS_TIMEZONE)
         run_id = str(run.id)
         self.scheduler.add_job(
             self._fire,

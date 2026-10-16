@@ -11,6 +11,7 @@ from sqlalchemy import desc, select
 
 from app.auth.middleware import AuthUser, require_admin, require_operator
 from app.auth.roles import UserRole
+from app.core.timezones import BUSINESS_TIMEZONE
 from app.db.database import AsyncSession, get_session
 from app.db.models import Agent, ScheduledRun, ScheduledRunHistory
 from app.services.scheduler import _parse_cron, get_scheduler
@@ -25,7 +26,7 @@ class ScheduledRunCreate(BaseModel):
     agentId: str
     prompt: str
     cron: str
-    timezone: str = "UTC"
+    timezone: str = BUSINESS_TIMEZONE
     ownerUserId: Optional[str] = None
     enabled: bool = True
     maxRuntimeSeconds: int = Field(300, ge=5, le=3600)
@@ -65,7 +66,7 @@ def _own_filter(user: AuthUser):
 
 def _validate_cron(expr: str, tz: str) -> None:
     try:
-        _parse_cron(expr, tz or "UTC")
+        _parse_cron(expr, tz or BUSINESS_TIMEZONE)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"invalid cron: {e}") from e
 
@@ -118,7 +119,7 @@ async def create_scheduled_run(
         agent_id=body.agentId,
         prompt=body.prompt,
         cron=body.cron,
-        timezone=body.timezone or "UTC",
+        timezone=body.timezone or BUSINESS_TIMEZONE,
         owner_user_id=owner_id,
         enabled=body.enabled,
         max_runtime_seconds=body.maxRuntimeSeconds,

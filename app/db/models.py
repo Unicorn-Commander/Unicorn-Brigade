@@ -22,6 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
+from app.core.timezones import BUSINESS_TIMEZONE
 from app.db.database import Base
 
 
@@ -721,7 +722,7 @@ class ScheduledRun(Base):
                       nullable=False, index=True)
     prompt = Column(Text, nullable=False)
     cron = Column(String(120), nullable=False)  # standard 5-field cron
-    timezone = Column(String(64), nullable=False, default="UTC")
+    timezone = Column(String(64), nullable=False, default=BUSINESS_TIMEZONE)
     # Free-form opaque user identifier. NOT a FK to users.id, because
     # scheduled runs frequently target a downstream service's user namespace
     # (e.g. Project-Ops user uuids) — that id is passed straight through as

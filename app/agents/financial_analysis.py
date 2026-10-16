@@ -18,19 +18,65 @@ Key features:
 """
 
 from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from enum import Enum
 from decimal import Decimal
 import uuid
 import logging
 import statistics
+from zoneinfo import ZoneInfo
 
 from app.agents.base import BaseAgent
+from app.core.timezones import BUSINESS_TIMEZONE
 from app.llm.ops_center_client import OpsCenterLLMClient
 from app.memory.manager import MemoryManager
 
 logger = logging.getLogger(__name__)
+
+BUSINESS_ZONE = ZoneInfo(BUSINESS_TIMEZONE)
+
+
+def _now_utc() -> datetime:
+    """Return the current instant as an aware UTC datetime."""
+    return datetime.now(timezone.utc)
+
+
+def _normalize_legacy_utc(value: datetime) -> datetime:
+    """Normalize a stored datetime, treating legacy naive values as UTC."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _parse_query_bound(value: str, *, end: bool = False) -> datetime:
+    """Parse a query bound into an aware UTC instant.
+
+    A bare date names a New York business day.  An end-date bound advances to
+    the next local midnight so callers can use a half-open interval.
+    Other naive datetimes are New York wall time; aware values retain their
+    represented instant while being normalized to UTC for comparison.
+    """
+    try:
+        parsed_date = datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=BUSINESS_ZONE)
+        return parsed.astimezone(timezone.utc)
+
+    local_bound = parsed_date.replace(tzinfo=BUSINESS_ZONE)
+    if end:
+        local_bound += timedelta(days=1)
+    return local_bound.astimezone(timezone.utc)
+
+
+def _parse_business_datetime(value: str) -> datetime:
+    """Parse a newly supplied transaction time as an aware UTC instant."""
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=BUSINESS_ZONE)
+    return parsed.astimezone(timezone.utc)
 
 
 class TransactionType(str, Enum):
@@ -103,13 +149,17 @@ class Transaction:
     category: ExpenseCategory = ExpenseCategory.UNCATEGORIZED
     description: str = ""
     vendor: Optional[str] = None
-    date: datetime = field(default_factory=datetime.utcnow)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    date: datetime = field(default_factory=_now_utc)
+    created_at: datetime = field(default_factory=_now_utc)
     tags: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
     user_id: str = "system"
     account_id: Optional[str] = None
     confidence: float = 1.0  # Confidence in categorization
+
+    def __post_init__(self):
+        self.date = _normalize_legacy_utc(self.date)
+        self.created_at = _normalize_legacy_utc(self.created_at)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -146,12 +196,19 @@ class Budget:
     period: ReportPeriod = ReportPeriod.MONTHLY
     alert_threshold: float = 0.8  # Alert at 80% by default
     critical_threshold: float = 0.95  # Critical at 95%
-    start_date: datetime = field(default_factory=datetime.utcnow)
+    start_date: datetime = field(default_factory=_now_utc)
     end_date: Optional[datetime] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=_now_utc)
+    updated_at: datetime = field(default_factory=_now_utc)
     user_id: str = "system"
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.start_date = _normalize_legacy_utc(self.start_date)
+        if self.end_date is not None:
+            self.end_date = _normalize_legacy_utc(self.end_date)
+        self.created_at = _normalize_legacy_utc(self.created_at)
+        self.updated_at = _normalize_legacy_utc(self.updated_at)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -184,10 +241,15 @@ class BudgetAlert:
     current_spend: Decimal = Decimal("0.00")
     budget_amount: Decimal = Decimal("0.00")
     percentage_used: float = 0.0
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=_now_utc)
     acknowledged: bool = False
     acknowledged_at: Optional[datetime] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.created_at = _normalize_legacy_utc(self.created_at)
+        if self.acknowledged_at is not None:
+            self.acknowledged_at = _normalize_legacy_utc(self.acknowledged_at)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -212,8 +274,8 @@ class FinancialReport:
     """A financial report summary"""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     period: ReportPeriod = ReportPeriod.MONTHLY
-    start_date: datetime = field(default_factory=datetime.utcnow)
-    end_date: datetime = field(default_factory=datetime.utcnow)
+    start_date: datetime = field(default_factory=_now_utc)
+    end_date: datetime = field(default_factory=_now_utc)
     total_income: Decimal = Decimal("0.00")
     total_expenses: Decimal = Decimal("0.00")
     net_flow: Decimal = Decimal("0.00")
@@ -224,8 +286,13 @@ class FinancialReport:
     budget_status: List[Dict[str, Any]] = field(default_factory=list)
     trends: Dict[str, Any] = field(default_factory=dict)
     recommendations: List[str] = field(default_factory=list)
-    generated_at: datetime = field(default_factory=datetime.utcnow)
+    generated_at: datetime = field(default_factory=_now_utc)
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.start_date = _normalize_legacy_utc(self.start_date)
+        self.end_date = _normalize_legacy_utc(self.end_date)
+        self.generated_at = _normalize_legacy_utc(self.generated_at)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -432,7 +499,7 @@ Format your response as a numbered list:
             tx_type = TransactionType.EXPENSE
 
         # Parse date
-        tx_date = datetime.fromisoformat(date) if date else datetime.utcnow()
+        tx_date = _parse_business_datetime(date) if date else _now_utc()
 
         # Auto-categorize if not provided
         confidence = 1.0
@@ -518,11 +585,15 @@ Format your response as a numbered list:
             except ValueError:
                 pass
         if start_date:
-            start = datetime.fromisoformat(start_date)
-            transactions = [t for t in transactions if t.date >= start]
+            start = _parse_query_bound(start_date)
+            transactions = [
+                t for t in transactions if self._transaction_date_utc(t) >= start
+            ]
         if end_date:
-            end = datetime.fromisoformat(end_date)
-            transactions = [t for t in transactions if t.date <= end]
+            end = _parse_query_bound(end_date, end=True)
+            transactions = [
+                t for t in transactions if self._transaction_date_utc(t) < end
+            ]
         if vendor:
             vendor_lower = vendor.lower()
             transactions = [t for t in transactions if t.vendor and vendor_lower in t.vendor.lower()]
@@ -534,7 +605,7 @@ Format your response as a numbered list:
             transactions = [t for t in transactions if t.currency == currency.upper()]
 
         # Sort by date descending
-        transactions.sort(key=lambda t: t.date, reverse=True)
+        transactions.sort(key=self._transaction_date_utc, reverse=True)
 
         # Apply pagination
         return transactions[offset:offset + limit]
@@ -589,8 +660,8 @@ Format your response as a numbered list:
             budget_period = ReportPeriod.MONTHLY
 
         # Parse dates
-        start = datetime.fromisoformat(start_date) if start_date else datetime.utcnow()
-        end = datetime.fromisoformat(end_date) if end_date else None
+        start = _parse_query_bound(start_date) if start_date else _now_utc()
+        end = _parse_query_bound(end_date, end=True) if end_date else None
 
         budget = Budget(
             name=name,
@@ -646,13 +717,13 @@ Format your response as a numbered list:
                     t for t in self._transactions.values()
                     if t.category == budget.category
                     and t.transaction_type == TransactionType.EXPENSE
-                    and period_start <= t.date <= period_end
+                    and period_start <= self._transaction_date_utc(t) < period_end
                 ]
             else:
                 transactions = [
                     t for t in self._transactions.values()
                     if t.transaction_type == TransactionType.EXPENSE
-                    and period_start <= t.date <= period_end
+                    and period_start <= self._transaction_date_utc(t) < period_end
                 ]
 
             # Calculate total spend (convert to budget currency)
@@ -734,13 +805,13 @@ Format your response as a numbered list:
             Spend analysis with breakdowns and insights
         """
         # Default to last 30 days
-        end = datetime.fromisoformat(end_date) if end_date else datetime.utcnow()
-        start = datetime.fromisoformat(start_date) if start_date else end - timedelta(days=30)
+        end = _parse_query_bound(end_date, end=True) if end_date else _now_utc()
+        start = _parse_query_bound(start_date) if start_date else end - timedelta(days=30)
 
         # Get transactions
         transactions = [
             t for t in self._transactions.values()
-            if start <= t.date <= end
+            if start <= self._transaction_date_utc(t) < end
         ]
         if user_id:
             transactions = [t for t in transactions if t.user_id == user_id]
@@ -835,7 +906,7 @@ Format your response as a numbered list:
 
         # Collect historical period totals
         historical_totals = []
-        now = datetime.utcnow()
+        now = _now_utc()
 
         # Get last 12 periods of data
         for i in range(12, 0, -1):
@@ -847,7 +918,7 @@ Format your response as a numbered list:
             period_total = Decimal("0.00")
             for tx in self._transactions.values():
                 if (tx.transaction_type == TransactionType.EXPENSE and
-                    period_start <= tx.date <= period_end):
+                    period_start <= self._transaction_date_utc(tx) < period_end):
                     if user_id is None or tx.user_id == user_id:
                         usd_amount = tx.to_usd()
                         period_total += usd_amount / Decimal(str(target_rate))
@@ -1041,10 +1112,10 @@ Categories:
             report_period = ReportPeriod.MONTHLY
 
         # Calculate dates
-        now = datetime.utcnow()
+        now = _now_utc()
         if start_date and end_date:
-            start = datetime.fromisoformat(start_date)
-            end = datetime.fromisoformat(end_date)
+            start = _parse_query_bound(start_date)
+            end = _parse_query_bound(end_date, end=True)
         else:
             start, end = self._get_period_dates(report_period, now)
 
@@ -1104,7 +1175,7 @@ Categories:
     def list_reports(self, limit: int = 10) -> List[FinancialReport]:
         """List recent reports"""
         reports = list(self._reports.values())
-        reports.sort(key=lambda r: r.generated_at, reverse=True)
+        reports.sort(key=lambda r: _normalize_legacy_utc(r.generated_at), reverse=True)
         return reports[:limit]
 
     # ---- Alerts ----
@@ -1128,7 +1199,7 @@ Categories:
             except ValueError:
                 pass
 
-        alerts.sort(key=lambda a: a.created_at, reverse=True)
+        alerts.sort(key=lambda a: _normalize_legacy_utc(a.created_at), reverse=True)
         return alerts[:limit]
 
     def acknowledge_alert(self, alert_id: str) -> Optional[BudgetAlert]:
@@ -1136,7 +1207,7 @@ Categories:
         alert = self._alerts.get(alert_id)
         if alert:
             alert.acknowledged = True
-            alert.acknowledged_at = datetime.utcnow()
+            alert.acknowledged_at = _now_utc()
         return alert
 
     # ---- Helper Methods ----
@@ -1189,33 +1260,50 @@ Categories:
         # Trigger async budget check
         await self.check_budget_status()
 
-    def _get_period_dates(self, period: ReportPeriod, reference: datetime) -> tuple:
-        """Get start and end dates for a period"""
-        if period == ReportPeriod.DAILY:
-            start = reference.replace(hour=0, minute=0, second=0, microsecond=0)
-            end = start + timedelta(days=1) - timedelta(microseconds=1)
-        elif period == ReportPeriod.WEEKLY:
-            start = reference - timedelta(days=reference.weekday())
-            start = start.replace(hour=0, minute=0, second=0, microsecond=0)
-            end = start + timedelta(days=7) - timedelta(microseconds=1)
-        elif period == ReportPeriod.MONTHLY:
-            start = reference.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            if reference.month == 12:
-                end = start.replace(year=reference.year + 1, month=1) - timedelta(microseconds=1)
-            else:
-                end = start.replace(month=reference.month + 1) - timedelta(microseconds=1)
-        elif period == ReportPeriod.QUARTERLY:
-            quarter = (reference.month - 1) // 3
-            start = reference.replace(month=quarter * 3 + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
-            if quarter == 3:
-                end = start.replace(year=reference.year + 1, month=1) - timedelta(microseconds=1)
-            else:
-                end = start.replace(month=(quarter + 1) * 3 + 1) - timedelta(microseconds=1)
-        else:  # YEARLY
-            start = reference.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-            end = start.replace(year=reference.year + 1) - timedelta(microseconds=1)
+    @staticmethod
+    def _transaction_date_utc(transaction: Transaction) -> datetime:
+        """Return and retain a transaction's normalized UTC timestamp."""
+        transaction.date = _normalize_legacy_utc(transaction.date)
+        return transaction.date
 
-        return start, end
+    def _get_period_dates(self, period: ReportPeriod, reference: datetime) -> tuple:
+        """Get half-open UTC bounds for a New York calendar period."""
+        reference_local = _normalize_legacy_utc(reference).astimezone(BUSINESS_ZONE)
+
+        if period == ReportPeriod.DAILY:
+            start = reference_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + timedelta(days=1)
+        elif period == ReportPeriod.WEEKLY:
+            start = reference_local - timedelta(days=reference_local.weekday())
+            start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + timedelta(days=7)
+        elif period == ReportPeriod.MONTHLY:
+            start = reference_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            if reference_local.month == 12:
+                end = start.replace(year=reference_local.year + 1, month=1)
+            else:
+                end = start.replace(month=reference_local.month + 1)
+        elif period == ReportPeriod.QUARTERLY:
+            quarter = (reference_local.month - 1) // 3
+            start = reference_local.replace(
+                month=quarter * 3 + 1,
+                day=1,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            if quarter == 3:
+                end = start.replace(year=reference_local.year + 1, month=1)
+            else:
+                end = start.replace(month=(quarter + 1) * 3 + 1)
+        else:  # YEARLY
+            start = reference_local.replace(
+                month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+            )
+            end = start.replace(year=reference_local.year + 1)
+
+        return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
 
     def _get_period_days(self, period: ReportPeriod) -> int:
         """Get approximate days in a period"""

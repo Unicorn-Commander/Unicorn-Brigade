@@ -34,6 +34,7 @@ from app.agents.meeting_scheduler import (
 )
 from app.integrations import google_calendar
 from app.auth.middleware import require_api_key, require_operator, AuthUser
+from app.core.timezones import BUSINESS_TIMEZONE
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ class AvailabilityRequest(BaseModel):
         description="End of date range (ISO format or YYYY-MM-DD)",
     )
     timezone: str = Field(
-        default="America/Los_Angeles",
+        default=BUSINESS_TIMEZONE,
         description="Timezone for the availability check",
     )
 
@@ -142,7 +143,7 @@ class FindSlotsRequest(BaseModel):
         description="End of date range to search",
     )
     timezone: str = Field(
-        default="America/Los_Angeles",
+        default=BUSINESS_TIMEZONE,
         description="Timezone for the search",
     )
     preferences: Optional[Dict[str, Any]] = Field(
@@ -257,7 +258,7 @@ class CreateEventRequest(BaseModel):
     )
     description: Optional[str] = Field(default=None, description="Event description")
     location: Optional[str] = Field(default=None, description="Event location")
-    timezone: str = Field(default="America/Los_Angeles", description="Timezone")
+    timezone: str = Field(default=BUSINESS_TIMEZONE, description="Timezone")
     add_video: bool = Field(
         default=False, description="Add Google Meet video conferencing"
     )
@@ -363,7 +364,7 @@ async def api_check_availability(
     duration_minutes: int = Query(default=30, ge=15, le=480),
     date_start: Optional[str] = Query(default=None),
     date_end: Optional[str] = Query(default=None),
-    timezone: str = Query(default="America/Los_Angeles"),
+    timezone: str = Query(default=BUSINESS_TIMEZONE),
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
     """

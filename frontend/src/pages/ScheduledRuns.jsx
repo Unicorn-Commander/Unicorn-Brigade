@@ -76,24 +76,34 @@ async function api(path, options = {}) {
   return data;
 }
 
-const EMPTY_FORM = {
-  name: '',
-  agentId: '',
-  prompt: '',
-  cron: '0 13 * * *',
-  timezone: 'UTC',
-  ownerUserId: '',
-  enabled: true,
-  maxRuntimeSeconds: 300,
-};
+function viewerTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+function createEmptyForm() {
+  return {
+    name: '',
+    agentId: '',
+    prompt: '',
+    cron: '0 13 * * *',
+    timezone: viewerTimezone(),
+    ownerUserId: '',
+    enabled: true,
+    maxRuntimeSeconds: 300,
+  };
+}
 
 function EditModal({ open, initial, agents, onClose, onSave }) {
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(createEmptyForm);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm(initial ? { ...EMPTY_FORM, ...initial } : EMPTY_FORM);
+      setForm(initial ? { ...createEmptyForm(), ...initial } : createEmptyForm());
     }
   }, [open, initial]);
 
