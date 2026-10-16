@@ -24,7 +24,8 @@ def test_omitted_timezone_schedules_two_am_in_new_york_across_dst():
     assert body.timezone == BUSINESS_TIMEZONE
 
     trigger = _parse_cron(body.cron, body.timezone)
-    cursor = datetime(2026, 10, 30, tzinfo=timezone.utc)
+    # 2026-10-31 00:00Z is Oct 30 20:00 EDT, so the next 02:00 ET is Oct 31 (EDT), then Nov 1 (EST).
+    cursor = datetime(2026, 10, 31, tzinfo=timezone.utc)
     fires = []
     for _ in range(3):
         cursor = trigger.get_next_fire_time(cursor, cursor)
