@@ -252,8 +252,8 @@ class ToolRegistry:
 DEFAULT_INTERNAL_URL = "http://ops-center-direct:8084"
 DEFAULT_EXTERNAL_URL = "https://unicorncommander.ai"
 
-# OpenRouter direct — BYOK mode.  When set, non-local models route
-# directly to OpenRouter instead of going through Ops-Center.
+# OpenRouter direct — BYOK mode.  When set, models with an explicit
+# ``openrouter/`` prefix route directly to OpenRouter.
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
 
@@ -421,16 +421,12 @@ def _resolve_model_route(
             return DASHSCOPE_URL, resolved, "dashscope"
         if UC_GATEWAY_URL:
             return UC_GATEWAY_URL, model, "gateway"
-    if OPENROUTER_API_KEY:
-        # OpenRouter native API expects bare/namespaced slugs (e.g.
-        # "anthropic/claude-sonnet-4.6"), NOT the litellm-style
-        # "openrouter/" provider prefix.
-        or_model = (
-            model[len("openrouter/"):]
-            if model.startswith("openrouter/")
-            else model
-        )
-        return OPENROUTER_URL, or_model, "openrouter"
+    # Unprefixed/otherwise-unrecognised models stay on the configured UC
+    # gateway when one is available.  OpenRouter is opt-in via the explicit
+    # ``openrouter/`` branch above, so merely mounting an OpenRouter key cannot
+    # silently reroute a model selected by an agent or stored in the database.
+    if UC_GATEWAY_URL:
+        return UC_GATEWAY_URL, model, "gateway"
     if OPS_CENTER_LLM_ENDPOINT:
         # Direct hit on an OpenAI-compatible endpoint (e.g. llama.cpp router).
         # Normalize a BARE base URL (no chat-completions path) to the standard
@@ -524,7 +520,7 @@ class OpsCenterLLMClient:
           "openai"      — OpenAI API (when a real OPENAI_API_KEY is set)
           "dashscope"   — Alibaba DashScope compatible-mode (DASHSCOPE_API_KEY)
           "gateway"     — UC LiteLLM gateway (has Anthropic/OpenAI/DashScope keys)
-          "openrouter"  — OpenRouter BYOK, last resort for remaining cloud slugs
+          "openrouter"  — explicit ``openrouter/`` OpenRouter BYOK route
           "ops-center"  — Ops-Center cloud proxy (default)
         """
         return _resolve_model_route(
