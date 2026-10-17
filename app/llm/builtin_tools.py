@@ -1684,9 +1684,33 @@ async def colonel_facts_handler(
     # Schema-v2 is deliberately kept on the old tree/filter path. It gets the
     # new verdict/refusal fields, but retains its historical values so Brigade
     # can deploy the reader before the aggregator cutover without a surprise
-    # shape change. Schema-v3 is the hard-refusal contract above.
+    # shape change. The one exception is the refuse TTL (Aaron 2026-10-17:
+    # withhold values on refuse): past it a v2 document is blind and carries
+    # no values either, exactly like v3.
     legacy_verdict = "usable"
     legacy_refusal: Optional[dict[str, Any]] = None
+    if (
+        timestamp_dt is not None
+        and not future
+        and age_seconds > COLONEL_FACTS_REFUSE_AFTER_MINUTES * 60
+    ):
+        result = {
+            "success": True,
+            "timestamp": timestamp_iso,
+            **staleness,
+            "verdict": "blind",
+            "refusal": _colonel_refusal(
+                "snapshot_past_refuse_ttl",
+                timestamp=timestamp_iso,
+                age_minutes=staleness["age_minutes"],
+            ),
+            "withheld": {"hosts": ["*"], "sections": ["*"]},
+        }
+        if host_name is not None:
+            result["host"] = _colonel_filter_display(host_name)
+        if section_name is not None:
+            result["section"] = _colonel_filter_display(section_name)
+        return result
     if timestamp_dt is None:
         legacy_verdict = "blind"
         legacy_refusal = _colonel_refusal("no_timestamp")
