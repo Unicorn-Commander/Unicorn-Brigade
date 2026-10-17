@@ -257,3 +257,15 @@ def test_prune_known_set_includes_all_sibling_names():
     )
     assert diff.missing == []
     assert diff.after == sorted(configured_sibling_tool_names())
+
+
+def test_canonical_sibling_tools_have_guard_catalogue_rows():
+    from app.db.migrations import MIGRATIONS
+
+    version, _description, sql = next(
+        migration for migration in MIGRATIONS if migration[0] == "20261017_01_sibling_tool_catalogue"
+    )
+    assert version == "20261017_01_sibling_tool_catalogue"
+    canonical_names = {name for name in configured_sibling_tool_names() if "." in name}
+    assert all(f"'{name}'" in sql for name in canonical_names)
+    assert "'knowledge.delete_doc'" not in sql

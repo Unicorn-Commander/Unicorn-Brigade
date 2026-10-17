@@ -1120,6 +1120,39 @@ MIGRATIONS = [
             ADD COLUMN IF NOT EXISTS actor varchar(255) NOT NULL DEFAULT 'scheduler';
         """,
     ),
+    (
+        "20261017_01_sibling_tool_catalogue",
+        "BR-14dc3bf5: catalogue canonical sibling-app tool names for guarded calls",
+        """
+        INSERT INTO tool_catalog (name, cost_tier, permission_level, provider, external) VALUES
+            ('accounting-ops.get_p_and_l','free',1,'accounting-ops',true),
+            ('accounting-ops.get_balance_sheet','free',1,'accounting-ops',true),
+            ('accounting-ops.get_cash_position','free',1,'accounting-ops',true),
+            ('accounting-ops.get_runway','free',1,'accounting-ops',true),
+            ('accounting-ops.get_trial_balance','free',1,'accounting-ops',true),
+            ('accounting-ops.list_pending_approvals','free',1,'accounting-ops',true),
+            ('accounting-ops.list_recent_transactions','free',1,'accounting-ops',true),
+            ('accounting-ops.flag_for_cpa_review','free',5,'accounting-ops',true),
+            ('customer-ops.get_customer_360','free',1,'customer-ops',true),
+            ('customer-ops.list_customers','free',1,'customer-ops',true),
+            ('customer-ops.pipeline_board','free',1,'customer-ops',true),
+            ('customer-ops.triage_customer','free',5,'customer-ops',true),
+            ('customer-ops.draft_followup','free',1,'customer-ops',true),
+            ('customer-ops.record_customer_engagement','free',5,'customer-ops',true),
+            ('customer-ops.list_customer_invoices','free',1,'customer-ops',true),
+            ('knowledge.search','free',1,'knowledge',false),
+            ('knowledge.ground','free',1,'knowledge',false),
+            ('knowledge.list_sources','free',1,'knowledge',false),
+            ('knowledge.get_doc','free',1,'knowledge',false),
+            ('knowledge.list_docs','free',1,'knowledge',false),
+            ('knowledge.doc_history','free',1,'knowledge',false),
+            ('knowledge.find_file','free',1,'knowledge',false),
+            ('knowledge.deep_read','free',1,'knowledge',false),
+            ('knowledge.upsert_doc','free',2,'knowledge',false),
+            ('knowledge.record_metric','free',2,'knowledge',false)
+        ON CONFLICT (name) DO NOTHING;
+        """,
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.
