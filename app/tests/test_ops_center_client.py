@@ -70,7 +70,7 @@ def _make_client() -> OpsCenterLLMClient:
     return OpsCenterLLMClient(ops_center_url="https://ops.test", service_key="x" * 32)
 
 
-def test_describe_route_reports_precedence_with_and_without_openrouter_key(
+def test_describe_route_reports_explicit_openrouter_only(
     route_environment, monkeypatch
 ):
     models = {
@@ -87,10 +87,7 @@ def test_describe_route_reports_precedence_with_and_without_openrouter_key(
 
     monkeypatch.setattr(client_module, "OPENROUTER_API_KEY", "test-key")
     with_key = {model: describe_route(model) for model in models}
-    assert with_key["anthropic/claude-sonnet-4.6"]["route_type"] == "openrouter"
-    assert with_key["anthropic/claude-sonnet-4.6"]["model_resolved"] == (
-        "anthropic/claude-sonnet-4.6"
-    )
+    assert with_key["anthropic/claude-sonnet-4.6"]["route_type"] == "ops-center"
     assert with_key["local/qwen3.6-35b"]["route_type"] == "local"
     assert with_key["openrouter/vendor/model"]["route_type"] == "openrouter"
     assert with_key["openrouter/vendor/model"]["model_resolved"] == "vendor/model"

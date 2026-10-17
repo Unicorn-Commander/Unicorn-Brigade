@@ -7,12 +7,12 @@ hitting OpenRouter's native API (which expects bare/namespaced slugs such as
 import pytest
 
 from app.llm import ops_center_client
+from app.llm.ops_center_client import OpsCenterLLMClient
 from app.llm.org_gateway import (
     clear_org_gateway_cache,
     gateway_headers,
     get_org_gateway_credential,
 )
-from app.llm.ops_center_client import OpsCenterLLMClient
 
 
 @pytest.fixture
@@ -38,8 +38,6 @@ def test_openrouter_prefix_is_stripped(client, monkeypatch):
     [
         ("openrouter/anthropic/claude-haiku-4.5", "anthropic/claude-haiku-4.5"),
         ("openrouter/moonshotai/kimi-k2.5", "moonshotai/kimi-k2.5"),
-        ("deepseek-v4-flash", "deepseek-v4-flash"),  # no prefix -> unchanged
-        ("anthropic/claude-sonnet-4.6", "anthropic/claude-sonnet-4.6"),
     ],
 )
 def test_openrouter_slug_resolution(client, monkeypatch, model, expected):
@@ -48,6 +46,24 @@ def test_openrouter_slug_resolution(client, monkeypatch, model, expected):
     _, resolved, route = client._resolve_local_model(model)
     assert route == "openrouter"
     assert resolved == expected
+
+
+def test_unknown_model_uses_gateway_even_with_openrouter_key(client, monkeypatch):
+    monkeypatch.setattr(ops_center_client, "OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setattr(ops_center_client, "UC_GATEWAY_URL", "http://gw/v1")
+    url, resolved, route = client._resolve_local_model("meta-llama/x")
+    assert route == "gateway"
+    assert resolved == "meta-llama/x"
+    assert url == "http://gw/v1"
+
+
+def test_anthropic_prefix_keeps_gateway_routing(client, monkeypatch):
+    monkeypatch.setattr(ops_center_client, "OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setattr(ops_center_client, "UC_GATEWAY_URL", "http://gw/v1")
+    url, resolved, route = client._resolve_local_model("anthropic/claude-x")
+    assert route == "gateway"
+    assert resolved == "claude-x"
+    assert url == "http://gw/v1"
 
 
 def test_only_leading_prefix_stripped(client, monkeypatch):

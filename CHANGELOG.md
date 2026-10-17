@@ -31,6 +31,16 @@ privileges. See [docs/CALLER_AUTHORIZATION.md](docs/CALLER_AUTHORIZATION.md).
   table `_log_rbac_denial` always inserted into (and `/admin/rbac/denials`
   reads) finally ships; it previously no-oped silently wherever it was never
   created by hand.
+- **Sibling app tools** (`app/llm/sibling_app_tools.py`) — lazily discovers
+  schema-driven Accounting-Ops, Customer-Ops, and Knowledge-Ops tools, keeps
+  configured names visible when a sibling is unavailable, and defaults the
+  manifest transport to read-only.
+
+### Changed
+- Unrecognized model strings no longer fall through to OpenRouter merely
+  because `OPENROUTER_API_KEY` is set. They use the UC gateway when configured,
+  then the existing direct Ops-Center fallbacks; OpenRouter remains explicit via
+  the `openrouter/` prefix.
 
 ### Fixed
 - `MLXLLMClient.execute_tool_loop` referenced an undefined `user_id` when
