@@ -1584,6 +1584,7 @@ async def colonel_facts_handler(
             withheld_hosts.update(known_hosts)
         elif future:
             result["verdict"] = "blind"
+            result["stale"] = True
             result["refusal"] = _colonel_refusal(
                 "future_timestamp", timestamp=timestamp_iso, age_minutes=staleness["age_minutes"]
             )
@@ -1596,7 +1597,9 @@ async def colonel_facts_handler(
                 age_minutes=staleness["age_minutes"],
             )
             withheld_hosts.update(known_hosts)
-            withheld_sections.update(("summary", "expiring", "changes"))
+            withheld_sections.update(
+                ("summary", "expiring", "stale_unrouted", "changes", "contradictions")
+            )
         elif age_seconds > COLONEL_FACTS_MAX_AGE_MINUTES * 60:
             result["verdict"] = "stale"
             result["refusal"] = _colonel_refusal(
@@ -1616,6 +1619,9 @@ async def colonel_facts_handler(
             "hosts": sorted(withheld_hosts),
             "sections": sorted(withheld_sections),
         }
+        if result["verdict"] == "blind":
+            for key in ("summary", "expiring", "stale_unrouted", "changes", "contradictions"):
+                result.pop(key, None)
 
         selected_facts = annotated
         if host_name is not None:
@@ -1656,7 +1662,18 @@ async def colonel_facts_handler(
 
         if result["verdict"] != "blind":
             result["facts"] = selected_facts
-        if result.get("contradictions") and isinstance(result.get("summary"), dict):
+        contradiction_hosts = {
+            _colonel_fact_host(member)
+            for contradiction in result.get("contradictions", [])
+            if isinstance(contradiction, dict)
+            for member in contradiction.get("members", [])
+            if isinstance(member, dict)
+        }
+        if (
+            result.get("contradictions")
+            and isinstance(result.get("summary"), dict)
+            and (host_name is None or host_name in contradiction_hosts)
+        ):
             result["summary"]["trust"] = "contradicted"
         if host_name is not None:
             result["host"] = _colonel_filter_display(host_name)
