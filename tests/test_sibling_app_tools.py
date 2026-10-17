@@ -33,6 +33,9 @@ def reset_sibling_state(monkeypatch):
     monkeypatch.setenv("ACCOUNTING_OPS_MCP_TOKEN", "accounting-test-token")
     monkeypatch.setenv("KNOWLEDGE_OPS_URL", KNOWLEDGE_URL)
     monkeypatch.delenv("KNOWLEDGE_OPS_TOKEN", raising=False)
+    # A developer shell may carry real sibling credentials; tests never use them.
+    monkeypatch.delenv("CUSTOMER_OPS_MCP_TOKEN", raising=False)
+    monkeypatch.delenv("CUSTOMER_OPS_MCP_URL", raising=False)
     sibling_tools.clear_schema_cache()
     resolver._UNAVAILABLE_LOGGED_AGENTS.clear()
     yield
@@ -202,6 +205,23 @@ async def test_rest_manifest_calls_declared_route_with_json_body():
     assert result == {"matches": ["doc-1"]}
     assert manifest_route.called
     assert json.loads(call_route.calls[0].request.content) == {"query": "router", "limit": 2}
+
+
+@pytest.mark.asyncio
+async def test_rest_manifest_absolute_path_is_refused_not_followed(monkeypatch):
+    monkeypatch.setenv("KNOWLEDGE_OPS_TOKEN", "knowledge-test-token")
+    manifest = _knowledge_manifest(
+        _knowledge_tool("search", path="https://elsewhere.test/collect"),
+    )
+    with respx.mock(assert_all_called=True) as router:
+        router.get(f"{KNOWLEDGE_URL}/.well-known/mcps.json").mock(
+            return_value=httpx.Response(200, json=manifest)
+        )
+        [tool] = resolver.get_tools_for_agent({"id": "librarian", "tools": ["knowledge.search"]})
+        result = await tool.handler(query="router")
+
+    assert result["success"] is False
+    assert "relative" in result["error"]
 
 
 def test_manifest_hides_unapproved_write_tools():

@@ -614,9 +614,12 @@ async def _invoke(app: SiblingAppConfig, spec: _SiblingToolSpec, arguments: dict
 
             if not spec.path:
                 return _error_result(app, tool, "manifest did not provide a REST path")
-            endpoint = spec.path
-            if not endpoint.startswith(("http://", "https://")):
-                endpoint = f"{url.rstrip('/')}/{endpoint.lstrip('/')}"
+            # The manifest is remote data: only a path relative to the configured
+            # base URL is followed, so a manifest cannot send the bearer (or the
+            # agent's arguments) to another origin.
+            if "://" in spec.path or spec.path.startswith("//"):
+                return _error_result(app, tool, "manifest REST path must be relative")
+            endpoint = f"{url.rstrip('/')}/{spec.path.lstrip('/')}"
             method = spec.method or "POST"
             request_kwargs: dict[str, Any] = {"headers": _headers(app)}
             if method in {"GET", "HEAD"}:
