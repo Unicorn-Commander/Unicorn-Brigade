@@ -22,3 +22,10 @@ by default and stay dormant until an operator arms `ILO_ALLOW_MUTATE=1`.
 
 **Access**: the template ships with `accessPolicy: {"tiers": ["admin"]}` (admins only) — a
 BMC power/firmware agent should be admin-gated. Adjust to your policy if needed.
+
+## the-colonel — Infrastructure Fleet Watch
+
+The Colonel is an optional read-only agent with only the `colonel_facts` tool. Its prompt
+contains no fleet values; it reports the current measured feed, carries ages and provenance,
+surfaces contradictions, and refuses stale or withheld readings. Install it deliberately with
+`POST /api/v1/agents` using `app/data/optional_agents/colonel.json`; it is not auto-seeded.

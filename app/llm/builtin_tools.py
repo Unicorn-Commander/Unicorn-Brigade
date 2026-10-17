@@ -998,7 +998,28 @@ DEFAULT_COLONEL_FACTS_URL = "http://colonel-facts/facts.json"
 COLONEL_FACTS_TIMEOUT_SECONDS = 5.0
 COLONEL_FACTS_MAX_BYTES = 1024 * 1024  # 1 MiB
 COLONEL_FACTS_MAX_AGE_MINUTES = 15
+COLONEL_FACTS_REFUSE_AFTER_MINUTES = 60
+COLONEL_FACTS_FUTURE_SKEW_SECONDS = 120
 COLONEL_FACTS_ARGUMENT_MAX_CHARS = 128
+
+# predicate prefix -> (caveat/stale-after seconds, refuse-after seconds).
+# Unknown predicates use the document-level clocks. The aggregator rejects
+# unknown predicates, but keeping the fallback here makes the reader safe
+# during the schema-v2 to schema-v3 rollout.
+_COLONEL_FACT_CLASS_TTL = {
+    "host.": (1200, 3600),
+    "container.": (1200, 3600),
+    "zfs.": (1200, 3600),
+    "dstate.": (1200, 3600),
+    "endpoint.": (1200, 3600),
+    "disk.": (7200, 86400),
+    "smart.": (7200, 86400),
+    "updates.": (7200, 86400),
+    "fs.": (7200, 86400),
+    "cert.": (21600, 172800),
+    "acme.": (21600, 172800),
+    "sensor.": (2700, 3600),
+}
 
 # Document-level clocks. The collector's own timestamp is what makes a stale
 # answer visible; host/section filters must not drop it.
@@ -1013,6 +1034,15 @@ _COLONEL_FACTS_TIMESTAMP_KEYS = (
 )
 # Top-level keys that are snapshot metadata, not a host entry.
 _COLONEL_FACTS_NON_HOST_KEYS = frozenset(_COLONEL_FACTS_TIMESTAMP_KEYS) | {
+    "schema_version",
+    "facts",
+    "sensors",
+    "contradictions",
+    "summary",
+    "expiring",
+    "stale_unrouted",
+    "changes",
+    "withheld",
     "hosts",
     "sections",
     "note",
@@ -1145,13 +1175,205 @@ def _colonel_facts_staleness(
         current = current.replace(tzinfo=UTC)
     else:
         current = current.astimezone(UTC)
-    age_seconds = max(0.0, (current - timestamp_dt).total_seconds())
+    age_seconds = (current - timestamp_dt).total_seconds()
     age_minutes = round(age_seconds / 60, 2)
     return {
         "age_minutes": age_minutes,
         "max_age_minutes": COLONEL_FACTS_MAX_AGE_MINUTES,
         "stale": age_seconds > COLONEL_FACTS_MAX_AGE_MINUTES * 60,
     }
+
+
+def _colonel_fact_state(
+    fact: dict[str, Any],
+    now: Optional[datetime] = None,
+) -> dict[str, Any]:
+    """Compute one fact's read-time age and state from its measured clock."""
+    timestamp = _colonel_facts_parse_timestamp(fact.get("measured_at"))
+    current = now or _colonel_facts_now()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    else:
+        current = current.astimezone(UTC)
+    if timestamp is None:
+        return {"age_minutes": None, "stale": True, "state": "refused"}
+
+    age_seconds = (current - timestamp).total_seconds()
+    age_minutes = round(age_seconds / 60, 2)
+    predicate = str(fact.get("predicate") or "")
+    stale_after, refuse_after = next(
+        (ttl for prefix, ttl in _COLONEL_FACT_CLASS_TTL.items() if predicate.startswith(prefix)),
+        (COLONEL_FACTS_MAX_AGE_MINUTES * 60, COLONEL_FACTS_REFUSE_AFTER_MINUTES * 60),
+    )
+    if age_seconds < -COLONEL_FACTS_FUTURE_SKEW_SECONDS:
+        state = "refused"
+    elif age_seconds > refuse_after:
+        state = "refused"
+    elif age_seconds > stale_after:
+        state = "stale"
+    else:
+        state = "usable"
+    return {
+        "age_minutes": age_minutes,
+        "stale": state != "usable",
+        "state": state,
+    }
+
+
+def _colonel_fact_host(fact: Any) -> Optional[str]:
+    if not isinstance(fact, dict):
+        return None
+    subject = fact.get("subject")
+    if isinstance(subject, str) and ":" in subject:
+        return subject.split(":", 1)[1].split("/", 1)[0]
+    source = fact.get("source")
+    actor = source.get("actor") if isinstance(source, dict) else None
+    if isinstance(actor, str) and "@" in actor:
+        return actor.rsplit("@", 1)[1]
+    return None
+
+
+def _colonel_v3_sensors(payload: dict[str, Any], now: datetime) -> list[dict[str, Any]]:
+    raw_sensors = payload.get("sensors")
+    if not isinstance(raw_sensors, list):
+        raw_sensors = []
+        for fact in payload.get("facts", []):
+            if not isinstance(fact, dict) or fact.get("predicate") != "sensor.last_seen":
+                continue
+            host = _colonel_fact_host(fact)
+            if host:
+                raw_sensors.append({"host": host, "last_seen": fact.get("value")})
+
+    sensors: list[dict[str, Any]] = []
+    for item in raw_sensors:
+        if not isinstance(item, dict) or not isinstance(item.get("host"), str):
+            continue
+        sensor_fact = {
+            "predicate": "sensor.last_seen",
+            "measured_at": item.get("last_seen"),
+        }
+        state = _colonel_fact_state(sensor_fact, now)
+        sensors.append(
+            {
+                "host": item["host"],
+                "last_seen": item.get("last_seen"),
+                "age_minutes": state["age_minutes"],
+                "state": state["state"],
+            }
+        )
+    return sorted(sensors, key=lambda item: item["host"])
+
+
+def _colonel_v3_hosts(payload: dict[str, Any], facts: list[dict[str, Any]]) -> list[str]:
+    hosts = payload.get("hosts")
+    names: set[str] = set()
+    if isinstance(hosts, dict):
+        names.update(str(name) for name in hosts)
+    elif isinstance(hosts, list):
+        names.update(
+            str(item.get("host"))
+            for item in hosts
+            if isinstance(item, dict) and item.get("host")
+        )
+    for fact in facts:
+        host = _colonel_fact_host(fact)
+        if host:
+            names.add(host)
+    for sensor in _colonel_v3_sensors(payload, _colonel_facts_now()):
+        names.add(sensor["host"])
+    return sorted(names)
+
+
+def _colonel_refusal(
+    code: str,
+    *,
+    timestamp: Optional[str] = None,
+    age_minutes: Optional[float] = None,
+    hosts: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """Return the bounded, model-facing sentence for a refusal."""
+    age_text = "unknown" if age_minutes is None else f"{age_minutes:g}"
+    if code == "fetch_failed":
+        say = "I cannot report fleet health: the Colonel's collector could not be fetched."
+    elif code == "not_json":
+        say = "I cannot report fleet health: the collector returned a non-JSON document."
+    elif code == "no_timestamp":
+        say = "I cannot report fleet health: the collection has no usable timestamp."
+    elif code == "future_timestamp":
+        say = (
+            "I cannot report fleet health: the collection timestamp is ahead of the clock; "
+            "I will not quote a future reading."
+        )
+    elif code == "snapshot_past_refuse_ttl":
+        say = (
+            f"I cannot report fleet health: the last collection is {age_text} minutes old "
+            f"and I do not quote readings older than {COLONEL_FACTS_REFUSE_AFTER_MINUTES} "
+            "minutes. The collector or its publisher is not refreshing; that is itself "
+            "the finding."
+        )
+    elif code == "snapshot_past_caveat_ttl":
+        say = (
+            f"The last collection is {age_text} minutes old, past the {COLONEL_FACTS_MAX_AGE_MINUTES}-"
+            "minute caveat window; I will report the returned values as stale."
+        )
+    elif code == "partial_refusal":
+        refused = ", ".join(hosts or []) or "one or more hosts"
+        say = (
+            f"I cannot quote the last readings for {refused}: its sensor reading is past "
+            f"the {COLONEL_FACTS_REFUSE_AFTER_MINUTES}-minute refusal window. "
+            "The other returned facts remain available with their measured ages."
+        )
+    else:
+        say = "I cannot report fleet health: the requested reading is not trustworthy."
+    result: dict[str, Any] = {"code": code, "say": say}
+    if timestamp is not None:
+        result["measured_at"] = timestamp
+    if age_minutes is not None:
+        result["age_minutes"] = age_minutes
+    if code == "snapshot_past_refuse_ttl":
+        result["refuse_after_minutes"] = COLONEL_FACTS_REFUSE_AFTER_MINUTES
+    return result
+
+
+def _colonel_v3_payload(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    try:
+        return int(payload.get("schema_version", 0)) >= 3
+    except (TypeError, ValueError):
+        return False
+
+
+def _colonel_annotate_v3_facts(
+    facts: list[Any],
+    *,
+    now: datetime,
+    document_stale: bool,
+    refused_hosts: set[str],
+) -> tuple[list[dict[str, Any]], set[str], set[str]]:
+    result: list[dict[str, Any]] = []
+    withheld_hosts = set(refused_hosts)
+    withheld_sections: set[str] = set()
+    for raw_fact in facts:
+        if not isinstance(raw_fact, dict):
+            continue
+        host = _colonel_fact_host(raw_fact)
+        if host in refused_hosts:
+            withheld_hosts.add(host)
+            continue
+        row = dict(raw_fact)
+        state = _colonel_fact_state(row, now)
+        if state["state"] == "refused":
+            if host:
+                withheld_hosts.add(host)
+            predicate = str(row.get("predicate") or "unknown")
+            withheld_sections.add(predicate.split(".", 1)[0])
+            continue
+        if document_stale and state["state"] == "usable":
+            state = {**state, "stale": True, "state": "stale"}
+        row.update(state)
+        result.append(row)
+    return result, withheld_hosts, withheld_sections
 
 
 def _colonel_select_host(
@@ -1200,6 +1422,9 @@ def _colonel_facts_error(
     message: str,
     timestamp: Any = None,
     staleness: Optional[dict[str, Any]] = None,
+    *,
+    verdict: Optional[str] = None,
+    refusal: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"success": False, "error": message}
     if staleness is not None:
@@ -1209,6 +1434,10 @@ def _colonel_facts_error(
     elif timestamp is not None:
         body["timestamp"] = timestamp
         body["max_age_minutes"] = COLONEL_FACTS_MAX_AGE_MINUTES
+    if verdict is not None:
+        body["verdict"] = verdict
+    if refusal is not None:
+        body["refusal"] = refusal
     return body
 
 
@@ -1265,44 +1494,273 @@ async def colonel_facts_handler(
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             async with client.stream("GET", url) as response:
                 if response.status_code != 200:
-                    return _colonel_facts_error(f"colonel facts HTTP {response.status_code}")
+                    refusal = _colonel_refusal("fetch_failed")
+                    return _colonel_facts_error(
+                        f"colonel facts HTTP {response.status_code}",
+                        verdict="blind",
+                        refusal=refusal,
+                    )
                 body, size_err = await _read_capped_body(response, COLONEL_FACTS_MAX_BYTES)
                 if size_err:
-                    return _colonel_facts_error(size_err)
+                    return _colonel_facts_error(
+                        size_err,
+                        verdict="blind",
+                        refusal=_colonel_refusal("fetch_failed"),
+                    )
     except httpx.TimeoutException:
         return _colonel_facts_error(
-            f"colonel facts request timed out after {int(COLONEL_FACTS_TIMEOUT_SECONDS)}s"
+            f"colonel facts request timed out after {int(COLONEL_FACTS_TIMEOUT_SECONDS)}s",
+            verdict="blind",
+            refusal=_colonel_refusal("fetch_failed"),
         )
     except httpx.HTTPError as exc:
         logger.warning("colonel_facts request failed: %s", type(exc).__name__)
-        return _colonel_facts_error(f"colonel facts request failed: {type(exc).__name__}")
+        return _colonel_facts_error(
+            f"colonel facts request failed: {type(exc).__name__}",
+            verdict="blind",
+            refusal=_colonel_refusal("fetch_failed"),
+        )
 
     try:
         payload = json.loads(body or b"")
     except (json.JSONDecodeError, UnicodeDecodeError):
-        return _colonel_facts_error("colonel facts response was not JSON")
+        return _colonel_facts_error(
+            "colonel facts response was not JSON",
+            verdict="blind",
+            refusal=_colonel_refusal("not_json"),
+        )
 
-    timestamp = _colonel_facts_timestamp(payload)
-    timestamp_iso, timestamp_dt = timestamp
+    timestamp_iso, timestamp_dt = _colonel_facts_timestamp(payload)
     staleness = _colonel_facts_staleness(timestamp_dt)
+    now = _colonel_facts_now()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    else:
+        now = now.astimezone(UTC)
+    age_seconds = (now - timestamp_dt).total_seconds() if timestamp_dt else None
+    future = age_seconds is not None and age_seconds < -COLONEL_FACTS_FUTURE_SKEW_SECONDS
+
+    if _colonel_v3_payload(payload):
+        assert isinstance(payload, dict)
+        raw_facts = payload.get("facts")
+        raw_facts = raw_facts if isinstance(raw_facts, list) else []
+        sensors = _colonel_v3_sensors(payload, now)
+        refused_hosts = {item["host"] for item in sensors if item["state"] == "refused"}
+        fact_hosts = {
+            host for fact in raw_facts if (host := _colonel_fact_host(fact)) is not None
+        }
+        known_hosts = _colonel_v3_hosts(payload, raw_facts)
+
+        result: dict[str, Any] = {
+            "success": True,
+            "timestamp": timestamp_iso,
+            **staleness,
+            "schema_version": int(payload.get("schema_version", 3)),
+            "verdict": "usable",
+            "refusal": None,
+            "sensors": sensors,
+        }
+        if isinstance(payload.get("summary"), dict):
+            result["summary"] = dict(payload["summary"])
+        for key in ("contradictions", "expiring", "stale_unrouted", "changes"):
+            if key in payload:
+                result[key] = payload[key]
+
+        withheld_hosts = set(refused_hosts)
+        withheld_sections: set[str] = set()
+        document_stale = bool(age_seconds is not None and age_seconds > COLONEL_FACTS_MAX_AGE_MINUTES * 60)
+        annotated, row_withheld_hosts, row_withheld_sections = _colonel_annotate_v3_facts(
+            raw_facts,
+            now=now,
+            document_stale=document_stale,
+            refused_hosts=refused_hosts,
+        )
+        withheld_hosts.update(row_withheld_hosts)
+        withheld_sections.update(row_withheld_sections)
+
+        if timestamp_dt is None:
+            result["verdict"] = "blind"
+            result["refusal"] = _colonel_refusal("no_timestamp")
+            withheld_hosts.update(known_hosts)
+        elif future:
+            result["verdict"] = "blind"
+            result["stale"] = True
+            result["refusal"] = _colonel_refusal(
+                "future_timestamp", timestamp=timestamp_iso, age_minutes=staleness["age_minutes"]
+            )
+            withheld_hosts.update(known_hosts)
+        elif age_seconds > COLONEL_FACTS_REFUSE_AFTER_MINUTES * 60:
+            result["verdict"] = "blind"
+            result["refusal"] = _colonel_refusal(
+                "snapshot_past_refuse_ttl",
+                timestamp=timestamp_iso,
+                age_minutes=staleness["age_minutes"],
+            )
+            withheld_hosts.update(known_hosts)
+            withheld_sections.update(
+                ("summary", "expiring", "stale_unrouted", "changes", "contradictions")
+            )
+        elif age_seconds > COLONEL_FACTS_MAX_AGE_MINUTES * 60:
+            result["verdict"] = "stale"
+            result["refusal"] = _colonel_refusal(
+                "snapshot_past_caveat_ttl",
+                timestamp=timestamp_iso,
+                age_minutes=staleness["age_minutes"],
+            )
+
+        partial_hosts = withheld_hosts & fact_hosts
+        if partial_hosts and result["verdict"] == "usable":
+            result["verdict"] = "stale"
+            result["refusal"] = _colonel_refusal(
+                "partial_refusal", hosts=sorted(partial_hosts)
+            )
+
+        result["withheld"] = {
+            "hosts": sorted(withheld_hosts),
+            "sections": sorted(withheld_sections),
+        }
+        if result["verdict"] == "blind":
+            for key in ("summary", "expiring", "stale_unrouted", "changes", "contradictions"):
+                result.pop(key, None)
+
+        selected_facts = annotated
+        if host_name is not None:
+            if host_name in _COLONEL_FACTS_NON_HOST_KEYS or host_name not in known_hosts:
+                error = f"host {_colonel_filter_display(host_name)!r} not in facts"
+                result.update({"success": False, "error": error})
+                result.pop("facts", None)
+                return result
+            selected_facts = [fact for fact in annotated if _colonel_fact_host(fact) == host_name]
+
+        if section_name is not None:
+            if section_name == "facts":
+                selected = selected_facts
+            elif section_name in {
+                "summary",
+                "expiring",
+                "stale_unrouted",
+                "changes",
+                "contradictions",
+                "sensors",
+            }:
+                if section_name not in result:
+                    error = f"section {_colonel_filter_display(section_name)!r} not in facts"
+                    result.update({"success": False, "error": error})
+                    return result
+                selected = result[section_name]
+            else:
+                selected = [
+                    fact
+                    for fact in selected_facts
+                    if str(fact.get("predicate", "")).startswith(f"{section_name}.")
+                ]
+                if not selected:
+                    error = f"section {_colonel_filter_display(section_name)!r} not in facts"
+                    result.update({"success": False, "error": error})
+                    return result
+            selected_facts = selected
+
+        if result["verdict"] != "blind":
+            result["facts"] = selected_facts
+        contradiction_hosts = {
+            _colonel_fact_host(member)
+            for contradiction in result.get("contradictions", [])
+            if isinstance(contradiction, dict)
+            for member in contradiction.get("members", [])
+            if isinstance(member, dict)
+        }
+        if (
+            result.get("contradictions")
+            and isinstance(result.get("summary"), dict)
+            and (host_name is None or host_name in contradiction_hosts)
+        ):
+            result["summary"]["trust"] = "contradicted"
+        if host_name is not None:
+            result["host"] = _colonel_filter_display(host_name)
+        if section_name is not None:
+            result["section"] = _colonel_filter_display(section_name)
+        return result
+
+    # Schema-v2 is deliberately kept on the old tree/filter path. It gets the
+    # new verdict/refusal fields, but retains its historical values so Brigade
+    # can deploy the reader before the aggregator cutover without a surprise
+    # shape change. The one exception is the refuse TTL (Aaron 2026-10-17:
+    # withhold values on refuse): past it a v2 document is blind and carries
+    # no values either, exactly like v3.
+    legacy_verdict = "usable"
+    legacy_refusal: Optional[dict[str, Any]] = None
+    if (
+        timestamp_dt is not None
+        and not future
+        and age_seconds > COLONEL_FACTS_REFUSE_AFTER_MINUTES * 60
+    ):
+        result = {
+            "success": True,
+            "timestamp": timestamp_iso,
+            **staleness,
+            "verdict": "blind",
+            "refusal": _colonel_refusal(
+                "snapshot_past_refuse_ttl",
+                timestamp=timestamp_iso,
+                age_minutes=staleness["age_minutes"],
+            ),
+            "withheld": {"hosts": ["*"], "sections": ["*"]},
+        }
+        if host_name is not None:
+            result["host"] = _colonel_filter_display(host_name)
+        if section_name is not None:
+            result["section"] = _colonel_filter_display(section_name)
+        return result
+    if timestamp_dt is None:
+        legacy_verdict = "blind"
+        legacy_refusal = _colonel_refusal("no_timestamp")
+    elif future:
+        legacy_verdict = "blind"
+        legacy_refusal = _colonel_refusal(
+            "future_timestamp", timestamp=timestamp_iso, age_minutes=staleness["age_minutes"]
+        )
+    elif age_seconds > COLONEL_FACTS_MAX_AGE_MINUTES * 60:
+        legacy_verdict = "stale"
+        legacy_refusal = _colonel_refusal(
+            "snapshot_past_caveat_ttl",
+            timestamp=timestamp_iso,
+            age_minutes=staleness["age_minutes"],
+        )
+
     facts = payload
     if host_name is not None:
         facts, err = _colonel_select_host(
             facts, host_name, _colonel_filter_display(host_name)
         )
         if err:
-            return _colonel_facts_error(err, timestamp_iso, staleness)
+            result = _colonel_facts_error(
+                err,
+                timestamp_iso,
+                staleness,
+                verdict=legacy_verdict,
+                refusal=legacy_refusal,
+            )
+            return result
     if section_name is not None:
         facts, err = _colonel_select_section(
             facts, section_name, _colonel_filter_display(section_name)
         )
         if err:
-            return _colonel_facts_error(err, timestamp_iso, staleness)
+            result = _colonel_facts_error(
+                err,
+                timestamp_iso,
+                staleness,
+                verdict=legacy_verdict,
+                refusal=legacy_refusal,
+            )
+            return result
 
-    result: dict[str, Any] = {
+    result = {
         "success": True,
         "timestamp": timestamp_iso,
         **staleness,
+        "verdict": legacy_verdict,
+        "refusal": legacy_refusal,
         "facts": facts,
     }
     if host_name is not None:
@@ -1318,7 +1776,11 @@ COLONEL_FACTS_TOOL = ToolDefinition(
         "Read The Colonel's fleet facts snapshot (read-only JSON from the internal "
         "collector). The snapshot is refreshed every 15 minutes and may be up to "
         "15 minutes old; use the returned timestamp before treating a figure as "
-        "current. The result includes age_minutes and stale. Optional host returns only "
+        "current. The result carries verdict (usable | stale | blind) and, when not "
+        "usable, refusal.say, the sentence to say before anything else. Facts past "
+        "their class TTL are withheld, not returned; a host listed in sensors with "
+        "state refused cannot be quoted. The result includes age_minutes and stale. "
+        "Optional host returns only "
         "that host's entry. Optional section "
         "returns only that section of the document (or of the selected host). "
         "This tool always reads the configured collector URL and cannot be pointed "
