@@ -62,6 +62,13 @@ from app.llm.knowledge_tools import (
 )
 from app.llm.ops_center_client import ToolDefinition
 from app.llm.projectops_mcp_tools import PROJECT_OPS_MCP_TOOLS
+from app.llm.sibling_app_tools import (
+    classify_tool_names as classify_sibling_tool_names,
+)
+from app.llm.sibling_app_tools import (
+    configured_sibling_tool_names,
+    resolve_sibling_tool,
+)
 from app.llm.slack_tools import (
     SLACK_TOOL,
 )
@@ -75,6 +82,7 @@ logger = logging.getLogger(__name__)
 # stable id/slug, not the missing tool set, so one warning covers the record's
 # advertised unresolved names for the lifetime of this process.
 _UNRESOLVED_LOGGED_AGENTS: set[str] = set()
+_UNAVAILABLE_LOGGED_AGENTS: set[tuple[str, str]] = set()
 
 
 class UnknownToolNamesError(ValueError):
@@ -250,7 +258,13 @@ else:
 
 def unknown_tool_names(names: list[str] | None) -> list[str]:
     """Return sorted names that cannot resolve to executable tool definitions."""
-    return sorted({str(name) for name in (names or []) if str(name) not in TOOL_REGISTRY})
+    known = set(TOOL_REGISTRY) | configured_sibling_tool_names()
+    return sorted({str(name) for name in (names or []) if str(name) not in known})
+
+
+def classify_tool_names(names: list[str] | None) -> list[dict[str, str]]:
+    """Report each name as resolved, unavailable(reason), or unknown."""
+    return classify_sibling_tool_names(names, known_names=TOOL_REGISTRY)
 
 
 def validate_tool_names(names: list[str] | None) -> None:
@@ -263,6 +277,19 @@ def validate_tool_names(names: list[str] | None) -> None:
 def _agent_slug(agent: dict[str, Any]) -> str:
     """Return the stable roster identifier used in unresolved-tool logs."""
     return str(agent.get("slug") or agent.get("id") or agent.get("name") or "<unknown>")
+
+
+def _log_unavailable_once(agent_slug: str, app: str, reason: str) -> None:
+    key = (agent_slug, app)
+    if key in _UNAVAILABLE_LOGGED_AGENTS:
+        return
+    logger.warning(
+        "agent.tools.unavailable agent=%s app=%s reason=%s",
+        agent_slug,
+        app,
+        reason,
+    )
+    _UNAVAILABLE_LOGGED_AGENTS.add(key)
 
 
 def get_tools_for_agent(agent: dict[str, Any]) -> list[ToolDefinition]:
@@ -284,16 +311,28 @@ def get_tools_for_agent(agent: dict[str, Any]) -> list[ToolDefinition]:
             _UNRESOLVED_LOGGED_AGENTS.add(slug)
 
     tools = []
+    slug = _agent_slug(agent)
     for name in tool_names:
         tool_def = TOOL_REGISTRY.get(name)
         if tool_def:
             tools.append(tool_def)
+            continue
+
+        sibling_tool, status = resolve_sibling_tool(name)
+        if sibling_tool:
+            tools.append(sibling_tool)
+        elif status.app:
+            _log_unavailable_once(slug, status.app, status.reason or "unknown_tool")
     return tools
 
 
 def get_tool_by_name(name: str) -> ToolDefinition:
     """Get a single tool definition by name."""
-    return TOOL_REGISTRY.get(name)
+    tool_def = TOOL_REGISTRY.get(name)
+    if tool_def:
+        return tool_def
+    sibling_tool, _ = resolve_sibling_tool(name)
+    return sibling_tool
 
 
 def get_tools_by_names(names: list[str]) -> list[ToolDefinition]:
@@ -311,4 +350,8 @@ def get_tools_by_names(names: list[str]) -> list[ToolDefinition]:
         tool_def = TOOL_REGISTRY.get(name)
         if tool_def:
             tools.append(tool_def)
+            continue
+        sibling_tool, _ = resolve_sibling_tool(name)
+        if sibling_tool:
+            tools.append(sibling_tool)
     return tools

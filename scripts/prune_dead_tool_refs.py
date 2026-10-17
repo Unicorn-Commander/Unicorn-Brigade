@@ -57,12 +57,16 @@ async def _run(*, apply: bool) -> int:
 
     from app.db.database import admin_session
     from app.db.models import Agent
-    from app.llm.tool_resolver import TOOL_REGISTRY
+    from app.llm.sibling_app_tools import configured_sibling_tool_names
+    from app.llm.tool_resolver import TOOL_REGISTRY, classify_tool_names
 
     async with admin_session() as session:
         catalog_rows = await session.execute(text("SELECT name FROM tool_catalog"))
         catalog_names = {str(row[0]) for row in catalog_rows if row[0] is not None}
-        known_tool_names = set(TOOL_REGISTRY) | catalog_names
+        # Sibling names are statically valid even when their app is offline or
+        # credentials are not mounted in this process.  Pruning them would
+        # destroy the honest unavailable state that the resolver reports.
+        known_tool_names = set(TOOL_REGISTRY) | catalog_names | configured_sibling_tool_names()
 
         result = await session.execute(select(Agent).order_by(Agent.id))
         changed = 0
@@ -72,9 +76,10 @@ async def _run(*, apply: bool) -> int:
                 continue
 
             prefix = "APPLY" if apply else "DRY-RUN"
+            statuses = classify_tool_names(diff.before)
             print(
                 f"{prefix} agent={agent.id} before={diff.before!r} "
-                f"missing={diff.missing!r} after={diff.after!r}"
+                f"status={statuses!r} missing={diff.missing!r} after={diff.after!r}"
             )
             changed += 1
             if apply:

@@ -1,0 +1,89 @@
+[
+  {
+    "name": "accounting-ops",
+    "namespace": "accounting-ops",
+    "transport": "mcp",
+    "url_env": "ACCOUNTING_OPS_MCP_URL",
+    "default_url": "https://accounting-ops.magicunicorn.dev/mcp/",
+    "token_env": "ACCOUNTING_OPS_MCP_TOKEN",
+    "token_required": true,
+    "timeout": 15,
+    "tools": [
+      "accounting-ops.get_p_and_l",
+      "accounting-ops.get_balance_sheet",
+      "accounting-ops.get_cash_position",
+      "accounting-ops.get_runway",
+      "accounting-ops.get_trial_balance",
+      "accounting-ops.list_pending_approvals",
+      "accounting-ops.list_recent_transactions",
+      "accounting-ops.flag_for_cpa_review"
+    ],
+    "allow_writes": [],
+    "aliases": [
+      {"alias": "get_p_and_l", "target": "accounting-ops.get_p_and_l"},
+      {"alias": "get_balance_sheet", "target": "accounting-ops.get_balance_sheet"},
+      {"alias": "get_cash_position", "target": "accounting-ops.get_cash_position"},
+      {"alias": "get_runway", "target": "accounting-ops.get_runway"},
+      {"alias": "get_trial_balance", "target": "accounting-ops.get_trial_balance"},
+      {"alias": "list_pending_approvals", "target": "accounting-ops.list_pending_approvals"},
+      {"alias": "list_recent_transactions", "target": "accounting-ops.list_recent_transactions"},
+      {"alias": "flag_for_cpa_review", "target": "accounting-ops.flag_for_cpa_review"}
+    ]
+  },
+  {
+    "name": "customer-ops",
+    "namespace": "customer-ops",
+    "transport": "mcp",
+    "url_env": "CUSTOMER_OPS_MCP_URL",
+    "default_url": "https://customer-ops.magicunicorn.dev/api/v1/mcp",
+    "token_env": "CUSTOMER_OPS_MCP_TOKEN",
+    "token_required": true,
+    "timeout": 15,
+    "tools": [
+      "customer-ops.get_customer_360",
+      "customer-ops.list_customers",
+      "customer-ops.pipeline_board",
+      "customer-ops.triage_customer",
+      "customer-ops.draft_followup",
+      "customer-ops.record_customer_engagement",
+      "customer-ops.list_customer_invoices"
+    ],
+    "allow_writes": [],
+    "aliases": [
+      {"alias": "get_customer_360", "target": "customer-ops.get_customer_360"},
+      {"alias": "list_customers", "target": "customer-ops.list_customers"},
+      {"alias": "pipeline_board", "target": "customer-ops.pipeline_board"},
+      {"alias": "triage_customer", "target": "customer-ops.triage_customer"},
+      {"alias": "draft_followup", "target": "customer-ops.draft_followup"},
+      {"alias": "record_customer_engagement", "target": "customer-ops.record_customer_engagement"},
+      {"alias": "list_customer_invoices", "target": "customer-ops.list_customer_invoices"}
+    ]
+  },
+  {
+    "name": "knowledge-ops",
+    "namespace": "knowledge",
+    "transport": "rest-manifest",
+    "url_env": "KNOWLEDGE_OPS_URL",
+    "default_url": "http://knowledge-ops:8765",
+    "token_env": "KNOWLEDGE_OPS_TOKEN",
+    "token_required": false,
+    "timeout": 15,
+    "tools": [
+      "knowledge.search",
+      "knowledge.ground",
+      "knowledge.list_sources",
+      "knowledge.get_doc",
+      "knowledge.list_docs",
+      "knowledge.doc_history",
+      "knowledge.find_file",
+      "knowledge.deep_read",
+      "knowledge.upsert_doc",
+      "knowledge.record_metric"
+    ],
+    "allow_writes": [
+      "knowledge.upsert_doc",
+      "knowledge.record_metric"
+    ],
+    "aliases": []
+  }
+]
