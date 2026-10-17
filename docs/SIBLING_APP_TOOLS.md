@@ -13,10 +13,11 @@ an unavailable service is not hammered.
 | --- | --- | --- | --- |
 | Accounting-Ops | `ACCOUNTING_OPS_MCP_URL` (defaults to the public MCP URL) | `ACCOUNTING_OPS_MCP_TOKEN` | Streamable HTTP MCP |
 | Customer-Ops | `CUSTOMER_OPS_MCP_URL` (defaults to the public MCP URL) | `CUSTOMER_OPS_MCP_TOKEN` | Streamable HTTP MCP |
-| Knowledge-Ops | `KNOWLEDGE_OPS_URL` (defaults to `http://knowledge-ops:8765`) | `KNOWLEDGE_OPS_TOKEN` (optional) | REST manifest |
+| Knowledge-Ops | `KNOWLEDGE_OPS_URL` (defaults to `http://knowledge-ops:8765`) | `KNOWLEDGE_OPS_TOKEN` (required) | REST manifest |
 
-Accounting-Ops and Customer-Ops require their bearer token. Knowledge-Ops' internal
-REST routes do not require one today, but the optional token is sent when set.
+All three apps require their bearer token. Knowledge-Ops' internal REST routes answer
+401 "missing bearer token" without one (measured 2026-10-17), so its tools report
+`unavailable(no_token)` until `KNOWLEDGE_OPS_TOKEN` is set.
 Tokens are read from the environment and are never logged.
 
 ## Safety and configuration

@@ -32,7 +32,8 @@ def reset_sibling_state(monkeypatch):
     monkeypatch.setenv("ACCOUNTING_OPS_MCP_URL", ACCOUNTING_URL)
     monkeypatch.setenv("ACCOUNTING_OPS_MCP_TOKEN", "accounting-test-token")
     monkeypatch.setenv("KNOWLEDGE_OPS_URL", KNOWLEDGE_URL)
-    monkeypatch.delenv("KNOWLEDGE_OPS_TOKEN", raising=False)
+    # Knowledge-Ops answers 401 "missing bearer token" without one (measured 2026-10-17).
+    monkeypatch.setenv("KNOWLEDGE_OPS_TOKEN", "knowledge-test-token")
     # A developer shell may carry real sibling credentials; tests never use them.
     monkeypatch.delenv("CUSTOMER_OPS_MCP_TOKEN", raising=False)
     monkeypatch.delenv("CUSTOMER_OPS_MCP_URL", raising=False)
@@ -289,3 +290,10 @@ def test_canonical_sibling_tools_have_guard_catalogue_rows():
     canonical_names = {name for name in configured_sibling_tool_names() if "." in name}
     assert all(f"'{name}'" in sql for name in canonical_names)
     assert "'knowledge.delete_doc'" not in sql
+
+
+def test_knowledge_ops_without_token_is_unavailable_not_resolved(monkeypatch):
+    monkeypatch.delenv("KNOWLEDGE_OPS_TOKEN", raising=False)
+    [status] = resolver.classify_tool_names(["knowledge.search"])
+    assert status["status"] == "unavailable"
+    assert status["reason"] == "no_token"
