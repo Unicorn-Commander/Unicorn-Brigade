@@ -66,7 +66,7 @@
     "url_env": "KNOWLEDGE_OPS_URL",
     "default_url": "http://knowledge-ops:8765",
     "token_env": "KNOWLEDGE_OPS_TOKEN",
-    "token_required": false,
+    "token_required": true,
     "timeout": 15,
     "tools": [
       "knowledge.search",
