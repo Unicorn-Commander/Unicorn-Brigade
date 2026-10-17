@@ -640,4 +640,3 @@ async def _invoke(app: SiblingAppConfig, spec: _SiblingToolSpec, arguments: dict
             type(exc).__name__,
         )
         return _error_result(app, tool, "request failed")
-
