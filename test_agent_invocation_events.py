@@ -8,10 +8,11 @@ the 3D visualization to show complete agent collaboration networks.
 
 import asyncio
 import sys
+
 from app.orchestration import (
-    event_bus,
-    emit_agent_invocation,
     EventType,
+    emit_agent_invocation,
+    event_bus,
 )
 
 
