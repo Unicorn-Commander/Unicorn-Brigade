@@ -8,10 +8,11 @@ the 3D visualization to show complete agent collaboration networks.
 
 import asyncio
 import sys
+
 from app.orchestration import (
-    event_bus,
-    emit_agent_invocation,
     EventType,
+    emit_agent_invocation,
+    event_bus,
 )
 
 
@@ -113,13 +114,13 @@ async def test_agent_invocation_events():
     print("- agentName: source agent name")
     print("- data.toAgent: target agent ID (for connection rendering)")
     print("- data.toAgentName: target agent name")
-    print("- data.protocol: connection color (internal/a2a/ap2/peer)")
+    print("- data.protocol: connection color (internal/a2a/paid/peer)")
     print("- data.purpose: reason for invocation")
     print("- mission_id: optional mission tracking")
     print("\nProtocol Colors:")
     print("- 'internal': Purple (hierarchical workflows)")
     print("- 'a2a': Blue (A2A protocol)")
-    print("- 'ap2': Cyan (AP2 protocol)")
+    print("- 'paid': Cyan (paid external API)")
     print("- 'peer': Yellow/Orange (peer-to-peer)")
 
 

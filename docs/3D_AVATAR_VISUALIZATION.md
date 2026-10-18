@@ -104,11 +104,15 @@ if (agentType !== 'local') {
 
 #### Protocol Colors
 
+`paid` is the canonical value for paid external API calls. The renderer also
+accepts the legacy `ap2` value for older stored or streamed events; this is a
+visualization label, not Google's AP2 Agent Payments Protocol.
+
 | Protocol | Connection Color | Particle Color | Width | Particles |
 |----------|-----------------|----------------|-------|-----------|
 | `internal` | `rgba(139, 92, 246, 0.8)` | `#c084fc` (purple) | 2.5 | 4 |
 | `a2a` | `rgba(59, 130, 246, 0.8)` | `#60a5fa` (blue) | 2.5 | 4 |
-| `ap2` | `rgba(6, 182, 212, 0.8)` | `#22d3ee` (cyan) | 2.5 | 4 |
+| `paid` | `rgba(6, 182, 212, 0.8)` | `#22d3ee` (cyan) | 2.5 | 4 |
 
 #### Connection Lifecycle
 
@@ -158,7 +162,7 @@ The legend now shows:
 2. **Protocols** (3 types)
    - Internal (purple line)
    - A2A (blue line)
-   - AP2 (cyan line)
+   - paid (external API) (cyan line)
 
 3. **Agent Types** (4 types)
    - Local (white border)
@@ -196,7 +200,7 @@ Events must include:
   agentId: "source-agent-id",
   data: {
     toAgent: "target-agent-id",
-    protocol: "internal" | "a2a" | "ap2"  // optional
+    protocol: "internal" | "a2a" | "paid"  // optional; legacy "ap2" is accepted
   }
 }
 ```

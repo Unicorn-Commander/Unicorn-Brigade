@@ -9,14 +9,14 @@ This module provides:
 """
 
 import asyncio
-from contextvars import ContextVar
-from typing import Dict, Any, List, Optional, Set, Callable, AsyncGenerator
-from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum
 import json
 import logging
 import uuid
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, AsyncGenerator, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +94,10 @@ class OrchestrationEvent:
     org_id: Optional[str] = None
 
     # Event data
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
     message: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "type": self.type.value,
@@ -125,7 +125,7 @@ class ActiveMission:
     progress: int = 0
 
     # Agents involved
-    agents: List[str] = field(default_factory=list)
+    agents: list[str] = field(default_factory=list)
     lead_agent: Optional[str] = None
 
     # Timing
@@ -134,7 +134,7 @@ class ActiveMission:
     completed_at: Optional[datetime] = None
 
     # Results
-    result: Optional[Dict[str, Any]] = None
+    result: Optional[dict[str, Any]] = None
     error: Optional[str] = None
 
     # S4 tenancy: the org that owns this mission, auto-stamped from the bound
@@ -143,7 +143,7 @@ class ActiveMission:
     # never sees another's mission name/description/task.
     org_id: Optional[str] = field(default_factory=lambda: current_org_id_var.get())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
@@ -172,7 +172,7 @@ class AgentState:
     # the active-agents snapshot can be scoped to the caller's org.
     org_id: Optional[str] = field(default_factory=lambda: current_org_id_var.get())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "agentId": self.agent_id,
             "agentName": self.agent_name,
@@ -205,10 +205,10 @@ class OrchestrationEventBus:
         self._initialized = True
 
         # Event queue for subscribers
-        self._subscribers: Set[asyncio.Queue] = set()
+        self._subscribers: set[asyncio.Queue] = set()
 
         # State tracking
-        self._missions: Dict[str, ActiveMission] = {}
+        self._missions: dict[str, ActiveMission] = {}
         # S4/audit-2 F2: agent state is keyed by (org_id, agent_id), NOT agent_id
         # alone. A SHARED agent (gunny, col-finance) is one agent_id across every
         # tenant; keying by agent_id alone made it a single AgentState object whose
@@ -217,8 +217,8 @@ class OrchestrationEventBus:
         # read another org's task text through /state + /agents/active. Segregating
         # by (org_id, agent_id) gives each tenant its own state for the same shared
         # agent, so activity never crosses orgs.
-        self._agent_states: Dict[tuple, AgentState] = {}
-        self._recent_events: List[OrchestrationEvent] = []
+        self._agent_states: dict[tuple, AgentState] = {}
+        self._recent_events: list[OrchestrationEvent] = []
         self._max_recent_events = 100
 
         logger.info("OrchestrationEventBus initialized")
@@ -360,7 +360,7 @@ class OrchestrationEventBus:
         self,
         name: str,
         description: str = "",
-        agents: List[str] = None,
+        agents: list[str] = None,
         lead_agent: str = None,
     ) -> ActiveMission:
         """Create a new mission"""
@@ -386,10 +386,10 @@ class OrchestrationEventBus:
     def get_mission(self, mission_id: str) -> Optional[ActiveMission]:
         return self._missions.get(mission_id)
 
-    def get_active_missions(self) -> List[ActiveMission]:
+    def get_active_missions(self) -> list[ActiveMission]:
         return [m for m in self._missions.values() if m.status == "active"]
 
-    def get_all_missions(self) -> List[ActiveMission]:
+    def get_all_missions(self) -> list[ActiveMission]:
         return list(self._missions.values())
 
     # Agent state
@@ -408,20 +408,20 @@ class OrchestrationEventBus:
         """
         return self._agent_states.get((org_id, agent_id))
 
-    def get_active_agents(self) -> List[AgentState]:
+    def get_active_agents(self) -> list[AgentState]:
         return [s for s in self._agent_states.values() if s.status != "idle"]
 
-    def get_all_agent_states(self) -> List[AgentState]:
+    def get_all_agent_states(self) -> list[AgentState]:
         return list(self._agent_states.values())
 
     # Recent events
 
-    def get_recent_events(self, limit: int = 50) -> List[OrchestrationEvent]:
+    def get_recent_events(self, limit: int = 50) -> list[OrchestrationEvent]:
         return self._recent_events[-limit:]
 
     # State snapshot for initial load
 
-    def get_state_snapshot(self, viewer_org_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_state_snapshot(self, viewer_org_id: Optional[str] = None) -> dict[str, Any]:
         """Get current state for initial page load.
 
         S4 tenancy: when ``viewer_org_id`` is provided, missions / agent states /
@@ -456,6 +456,16 @@ event_bus = OrchestrationEventBus()
 
 # Helper functions for agents to easily publish events
 
+def normalize_protocol(protocol: str) -> str:
+    """Return the canonical visualization protocol value.
+
+    ``ap2`` was an internal label for paid external API calls. Keep accepting
+    it at the event boundary so callers can be migrated safely, but never emit
+    the ambiguous label into a new event stream.
+    """
+    return "paid" if protocol == "ap2" else protocol
+
+
 async def emit_agent_started(agent_id: str, agent_name: str, task: str, mission_id: str = None):
     await event_bus.publish(OrchestrationEvent(
         type=EventType.AGENT_STARTED,
@@ -477,7 +487,7 @@ async def emit_agent_thinking(agent_id: str, agent_name: str, thought: str, miss
     ))
 
 
-async def emit_tool_call(agent_id: str, agent_name: str, tool_name: str, arguments: Dict, mission_id: str = None):
+async def emit_tool_call(agent_id: str, agent_name: str, tool_name: str, arguments: dict, mission_id: str = None):
     await event_bus.publish(OrchestrationEvent(
         type=EventType.TOOL_CALL,
         agent_id=agent_id,
@@ -521,7 +531,7 @@ async def emit_agent_message(agent_id: str, agent_name: str, message: str, to_ag
     ))
 
 
-async def emit_agent_created(creator_id: str, creator_name: str, new_agent: Dict, mission_id: str = None):
+async def emit_agent_created(creator_id: str, creator_name: str, new_agent: dict, mission_id: str = None):
     await event_bus.publish(OrchestrationEvent(
         type=EventType.AGENT_CREATED,
         agent_id=creator_id,
@@ -539,7 +549,7 @@ async def emit_agent_invocation(
     target_agent_name: str,
     purpose: str,
     protocol: str = "internal",
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: Optional[dict[str, Any]] = None,
     mission_id: str = None,
 ):
     """
@@ -551,7 +561,8 @@ async def emit_agent_invocation(
         target_agent_id: ID of the agent being invoked
         target_agent_name: Name of the agent being invoked
         purpose: Why the agent is being invoked (e.g., "request data", "query knowledge")
-        protocol: Communication protocol ('internal', 'a2a', 'ap2')
+        protocol: Communication protocol ('internal', 'a2a', 'paid', 'peer')
+            Legacy ``ap2`` input is accepted and emitted as ``paid``.
         metadata: Additional context
         mission_id: Optional mission ID
     """
@@ -564,8 +575,8 @@ async def emit_agent_invocation(
         data={
             "toAgent": target_agent_id,  # For frontend connection rendering
             "toAgentName": target_agent_name,
-            "protocol": protocol,  # For connection color (internal, a2a, ap2, peer)
             "purpose": purpose,
             **(metadata or {}),
+            "protocol": normalize_protocol(protocol),
         },
     ))

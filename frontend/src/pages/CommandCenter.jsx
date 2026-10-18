@@ -23,6 +23,7 @@ import BriefingView from '../components/command/BriefingView';
 const WorkflowVisualization3D = lazy(() => import('../components/WorkflowVisualization3D'));
 import { useAgents } from '../hooks/useAgents';
 import { buildOrgTree } from '../utils/orgTree';
+import { normalizeProtocol } from '../utils/protocol';
 import { useOrgLayout, ORG_NODE_W, ORG_NODE_H } from '../hooks/useOrgLayout';
 import OrgAgentNode from '../components/command/OrgAgentNode';
 
@@ -140,7 +141,7 @@ function FitAllButton({ onFit }) {
 const PROTOCOL_COLOR = {
   internal: '#ec4899', // unicorn pink — in-Brigade delegation
   a2a: '#22d3ee', // cyan — agent-to-agent
-  ap2: '#f59e0b', // amber — agent payments
+  paid: '#f59e0b', // amber — paid external API
   peer: '#a855f7', // purple — peer comms
 };
 const RESTING_EDGE = { stroke: '#475569', strokeWidth: 1.5 };
@@ -263,7 +264,8 @@ export default function CommandCenter() {
       const live =
         liveByPair.get(`${e.source}->${e.target}`) || liveByPair.get(`${e.target}->${e.source}`);
       if (live) {
-        const color = PROTOCOL_COLOR[live.protocol] || PROTOCOL_COLOR.internal;
+        const protocol = normalizeProtocol(live.protocol);
+        const color = PROTOCOL_COLOR[protocol] || PROTOCOL_COLOR.internal;
         return {
           ...e,
           type: 'smoothstep',
@@ -278,7 +280,8 @@ export default function CommandCenter() {
     const extra = [];
     for (const [key, inv] of liveByPair) {
       if (staticPairs.has(key)) continue;
-      const color = PROTOCOL_COLOR[inv.protocol] || PROTOCOL_COLOR.internal;
+      const protocol = normalizeProtocol(inv.protocol);
+      const color = PROTOCOL_COLOR[protocol] || PROTOCOL_COLOR.internal;
       extra.push({
         id: `live-${key}`,
         source: inv.source,

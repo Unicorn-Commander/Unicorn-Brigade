@@ -44,7 +44,7 @@ async def emit_agent_invocation(
         target_agent_id: ID of the agent being invoked
         target_agent_name: Name of the agent being invoked
         purpose: Why the agent is being invoked
-        protocol: Communication protocol ('internal', 'a2a', 'ap2', 'peer')
+        protocol: Communication protocol ('internal', 'a2a', 'paid', 'peer')
         metadata: Additional context
         mission_id: Optional mission ID
     """
@@ -145,11 +145,15 @@ Events emitted to the SSE stream have the following structure:
 
 The `protocol` field determines how the connection is rendered in the 3D visualization:
 
+`paid` is the canonical label for paid external API calls. Consumers accept
+legacy `ap2` values from older events and normalize them to `paid`; Brigade
+does not implement Google's AP2 Agent Payments Protocol.
+
 | Protocol | Color | Use Case |
 |----------|-------|----------|
 | `internal` | Purple | Hierarchical workflow delegation (Orchestrator → Team Lead → Worker) |
 | `a2a` | Blue | A2A protocol agent invocations (external agents) |
-| `ap2` | Cyan | AP2 protocol (future use) |
+| `paid` | Cyan | Paid external API calls |
 | `peer` | Yellow/Orange | True peer-to-peer lateral communication (agent-to-agent without hierarchy) |
 
 ## Frontend Integration
@@ -213,7 +217,7 @@ Expected output:
 
 1. **Tool-Based Agent Invocations**: If a tool invokes another agent (e.g., `query_agent` tool), emit invocation events
 2. **Agent Chat Forwarding**: If one agent's chat is forwarded to another agent, emit invocation event with `protocol="peer"`
-3. **AP2 Protocol Support**: When AP2 protocol is implemented, connections will automatically render in cyan
+3. **Paid external API visualization**: Emit `protocol="paid"`; legacy `ap2` events are normalized to the same cyan rendering
 4. **RAG/Knowledge Agent Queries**: When agents query knowledge graphs or RAG systems, emit with `protocol="peer"`
 
 ## Backward Compatibility

@@ -30,7 +30,7 @@ Yellow connections in the 3D Orchestration view for peer-to-peer agent communica
    - 🟡 Yellow connections appear between agents
    - Activity feed shows yellow-highlighted peer invocations
    - Connections auto-fade after 5 seconds
-   - Legend shows: Hierarchical, Peer-to-Peer, A2A, AP2
+   - Legend shows: Hierarchical, Peer-to-Peer, A2A, paid (external API)
 
 ## Color Scheme
 
@@ -39,7 +39,7 @@ Yellow connections in the 3D Orchestration view for peer-to-peer agent communica
 | 🟣 Purple | Hierarchical | Boss → Subordinate |
 | 🟡 Yellow | **Peer-to-Peer** | Colleague → Colleague |
 | 🔵 Blue | A2A Protocol | Internal → External |
-| 🔷 Cyan | AP2 Protocol | Internal → Paid API |
+| 🔷 Cyan | paid (external API) | Internal → Paid API |
 
 ## Files Changed
 
