@@ -2,6 +2,10 @@
 
 Quick reference guide for the 4 connection types in the Orchestration 3D view.
 
+The canonical value for paid external calls is `paid`. The legacy `ap2` value
+is accepted only when reading older events; Brigade does not implement
+Google's AP2 Agent Payments Protocol.
+
 ## Connection Color Scheme
 
 ```
@@ -24,7 +28,7 @@ Quick reference guide for the 4 connection types in the Orchestration 3D view.
 │     Use: Internal → External Federated Agent                    │
 │     Example: Col. Finance → External Market Data Agent          │
 │                                                                 │
-│  🔷 AP2 PROTOCOL (Cyan)                                         │
+│  🔷 PAID EXTERNAL API (Cyan)                                   │
 │     Color: rgba(6, 182, 212, 0.8)  |  #22d3ee                  │
 │     Use: Internal → Paid External Service                       │
 │     Example: Lt. Researcher → OpenAI API                        │
@@ -68,10 +72,10 @@ Connections shown in **yellow** - lateral communication between equals.
 ```
 Connections shown in **blue** - external federated agent invocation.
 
-### AP2 Protocol (Cyan)
+### paid (external API) (Cyan)
 ```
     Internal Agent ─────────> Paid External Service
-                    [AP2 Protocol]
+                    [paid (external API)]
 
     Lt. Researcher ─────────> OpenAI GPT-4 API
                               Anthropic Claude API
@@ -86,7 +90,7 @@ Connections shown in **cyan** - paid external service calls.
 | **Hierarchical** | Superior → Subordinate | Command/Delegation | Free | Task assignment, workflow orchestration |
 | **Peer-to-Peer** | Colleague → Colleague | Request/Collaboration | Free | Cross-functional data requests, expertise queries |
 | **A2A** | Internal → External | Federated Protocol | Free | Partner agent invocation, trusted external agents |
-| **AP2** | Internal → Paid | Paid Protocol | $$ | API calls, paid data sources, premium services |
+| **paid** | Internal → Paid | Paid external API | $$ | API calls, paid data sources, premium services |
 
 ## Implementation Details
 
@@ -97,7 +101,7 @@ Connections shown in **cyan** - paid external service calls.
 protocol = "internal"  # Default hierarchical (purple)
 protocol = "peer"      # Peer-to-peer (yellow)
 protocol = "a2a"       # Agent-to-Agent (blue)
-protocol = "ap2"       # Agent-to-Paid (cyan)
+protocol = "paid"      # Paid external API (cyan)
 ```
 
 ### Frontend Detection
@@ -110,7 +114,7 @@ if (conn.protocol === 'peer') {
 } else if (conn.protocol === 'a2a') {
   linkColor = 'rgba(59, 130, 246, 0.8)'; // Blue
   particleColor = '#60a5fa';
-} else if (conn.protocol === 'ap2') {
+} else if (conn.protocol === 'paid' || conn.protocol === 'ap2') {
   linkColor = 'rgba(6, 182, 212, 0.8)'; // Cyan
   particleColor = '#22d3ee';
 } else {
@@ -134,7 +138,7 @@ The connection type legend is located in the **bottom-left corner** of the 3D Or
 │  │ 🟣 Hierarchical  │              │
 │  │ 🟡 Peer-to-Peer  │              │
 │  │ 🔵 A2A Protocol  │              │
-│  │ 🔷 AP2 Protocol  │              │
+│  │ 🔷 paid (external API) │        │
 │  └──────────────────┘              │
 └─────────────────────────────────────┘
 ```

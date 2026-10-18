@@ -37,6 +37,8 @@ privileges. See [docs/CALLER_AUTHORIZATION.md](docs/CALLER_AUTHORIZATION.md).
   manifest transport to read-only.
 
 ### Changed
+- Canonicalized the orchestration visualization protocol label to `paid` for
+  paid external API calls; consumers still accept legacy `ap2` event values.
 - Unrecognized model strings no longer fall through to OpenRouter merely
   because `OPENROUTER_API_KEY` is set. They use the UC gateway when configured,
   then the existing direct Ops-Center fallbacks; OpenRouter remains explicit via

@@ -7,6 +7,10 @@
 
 Added visual distinction for peer-to-peer agent communication in the 3D Orchestration view. When agents communicate laterally (colleague-to-colleague rather than hierarchical boss-to-subordinate), connections now appear in **yellow/amber** instead of purple.
 
+The canonical paid external API label is `paid`. The frontend accepts legacy
+`ap2` values when reading older events, but Brigade does not implement Google's
+AP2 Agent Payments Protocol.
+
 ## Visual Design
 
 ### Connection Types (Color Coding)
@@ -16,7 +20,7 @@ Added visual distinction for peer-to-peer agent communication in the 3D Orchestr
 | **Hierarchical** | Purple (`#c084fc`) | Boss → Subordinate | The General → Team Lead |
 | **Peer-to-Peer** | Yellow (`#fbbf24`) | Colleague → Colleague | Data Analyst → Finance Agent |
 | **A2A Protocol** | Blue (`#3b82f6`) | External federated agents | Internal → External Agent |
-| **AP2 Protocol** | Cyan (`#22d3ee`) | Paid external services | Internal → Paid API Service |
+| **paid (external API)** | Cyan (`#22d3ee`) | Paid external services | Internal → Paid API Service |
 
 ## Implementation Details
 
@@ -32,7 +36,7 @@ await emit_agent_invocation(
     target_agent_id="col-finance",
     target_agent_name="Col. Finance",
     purpose="Request financial metrics",
-    protocol="peer",  # Can be: internal, peer, a2a, ap2
+    protocol="peer",  # Can be: internal, peer, a2a, paid
     mission_id="mission-123"
 )
 ```
@@ -156,7 +160,7 @@ if (conn.protocol === 'peer') {
 } else if (conn.protocol === 'a2a') {
   linkColor = 'rgba(59, 130, 246, 0.8)'; // Blue
   particleColor = '#60a5fa';
-} else if (conn.protocol === 'ap2') {
+} else if (conn.protocol === 'paid' || conn.protocol === 'ap2') {
   linkColor = 'rgba(6, 182, 212, 0.8)'; // Cyan
   particleColor = '#22d3ee';
 } else {
@@ -173,7 +177,7 @@ if (conn.protocol === 'peer') {
     <div>🟣 Hierarchical</div>
     <div>🟡 Peer-to-Peer</div>
     <div>🔵 A2A Protocol</div>
-    <div>🔷 AP2 Protocol</div>
+    <div>🔷 paid (external API)</div>
   </div>
 </div>
 ```
@@ -245,7 +249,7 @@ python scripts/test_peer_visualization.py
 ### Legend
 - Shows all 4 connection types
 - Color-coded dots for easy identification
-- Clear labels: "Hierarchical", "Peer-to-Peer", "A2A Protocol", "AP2 Protocol"
+- Clear labels: "Hierarchical", "Peer-to-Peer", "A2A Protocol", "paid (external API)"
 
 ## Key Differentiators
 

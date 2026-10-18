@@ -667,7 +667,7 @@ const WorkflowVisualization3D = ({
             </div>
             <div className="flex items-center space-x-1.5">
               <div className="w-2 h-2 rounded-full bg-cyan-400" />
-              <span className="text-[10px] text-slate-400">AP2 Protocol</span>
+              <span className="text-[10px] text-slate-400">paid (external API)</span>
             </div>
           </div>
         </div>

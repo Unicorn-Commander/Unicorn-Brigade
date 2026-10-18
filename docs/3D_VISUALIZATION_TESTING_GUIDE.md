@@ -27,6 +27,10 @@ Open browser: `http://localhost:5173/orchestration`
 
 #### Expected Results
 
+Use `paid` for new events. The frontend accepts `ap2` as a legacy alias so
+replayed stored or streamed events keep the same rendering; Brigade does not
+implement Google's AP2 Agent Payments Protocol.
+
 1. **The General**
    - Should show `/The_General_Logo.png` image
    - White border (local agent type)
@@ -158,7 +162,7 @@ curl -X POST http://localhost:8100/api/v1/agents/the-general/chat \
 |----------|-----------------|----------------|----------------|
 | Internal | Purple (rgba 139,92,246) | Light purple (#c084fc) | Default for agent-to-agent |
 | A2A | Blue (rgba 59,130,246) | Light blue (#60a5fa) | Set `protocol: 'a2a'` in event |
-| AP2 | Cyan (rgba 6,182,212) | Light cyan (#22d3ee) | Set `protocol: 'ap2'` in event |
+| paid (external API) | Cyan (rgba 6,182,212) | Light cyan (#22d3ee) | Set `protocol: 'paid'` in event |
 
 #### Testing
 
@@ -174,7 +178,7 @@ async def test_connection(protocol: str = "internal"):
         agent_name="The General",
         data={
             "toAgent": "col-finance",
-            "protocol": protocol,  # 'internal', 'a2a', or 'ap2'
+            "protocol": protocol,  # 'internal', 'a2a', or 'paid'
         },
     ))
     return {"status": "ok"}
@@ -189,7 +193,10 @@ curl -X POST "http://localhost:8100/api/v1/orchestration/test-connection?protoco
 # A2A (blue)
 curl -X POST "http://localhost:8100/api/v1/orchestration/test-connection?protocol=a2a"
 
-# AP2 (cyan)
+# Paid external API (cyan)
+curl -X POST "http://localhost:8100/api/v1/orchestration/test-connection?protocol=paid"
+
+# Legacy event replay alias (also renders as paid)
 curl -X POST "http://localhost:8100/api/v1/orchestration/test-connection?protocol=ap2"
 ```
 
@@ -207,7 +214,7 @@ curl -X POST "http://localhost:8100/api/v1/orchestration/test-connection?protoco
 
 2. **Protocols Section**
    - Shows 3 line colors
-   - Labels: Internal (purple), A2A (blue), AP2 (cyan)
+   - Labels: Internal (purple), A2A (blue), paid (external API) (cyan)
 
 3. **Agent Types Section**
    - Shows 4 border styles
