@@ -25,6 +25,7 @@ import {
 
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
+import { normalizeProtocol } from '../utils/protocol';
 
 // Domain colors — one per seed domain, matched to the org chart's ring hues so
 // the 3D graph and the org chart speak the same color language.
@@ -240,18 +241,19 @@ const WorkflowVisualization3D = ({
     const allConnections = [...connections, ...activeConnections];
 
     const links = allConnections.map((conn, index) => {
+      const protocol = normalizeProtocol(conn.protocol || 'internal');
       // Protocol-based coloring with peer-to-peer support
       let linkColor = 'rgba(139, 92, 246, 0.4)'; // Default purple for internal/hierarchical
       let particleColor = '#c084fc';
 
-      if (conn.protocol === 'peer') {
+      if (protocol === 'peer') {
         linkColor = 'rgba(251, 191, 36, 0.8)'; // Yellow/amber for peer-to-peer
         particleColor = '#fbbf24';
-      } else if (conn.protocol === 'a2a') {
+      } else if (protocol === 'a2a') {
         linkColor = 'rgba(59, 130, 246, 0.8)'; // Blue for A2A
         particleColor = '#60a5fa';
-      } else if (conn.protocol === 'ap2') {
-        linkColor = 'rgba(6, 182, 212, 0.8)'; // Cyan for AP2
+      } else if (protocol === 'paid') {
+        linkColor = 'rgba(6, 182, 212, 0.8)'; // Cyan for paid external API
         particleColor = '#22d3ee';
       } else if (conn.temporary) {
         // Temporary hierarchical connections are more vibrant
@@ -265,10 +267,10 @@ const WorkflowVisualization3D = ({
         label: conn.label,
         color: linkColor,
         particleColor: particleColor,
-        protocol: conn.protocol || 'internal',
         temporary: conn.temporary || false,
         isPeer: conn.isPeer || false,
         ...conn,
+        protocol,
       };
     });
 
