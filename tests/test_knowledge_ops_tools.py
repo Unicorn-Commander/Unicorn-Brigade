@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from urllib.parse import parse_qs
 
@@ -71,6 +72,75 @@ async def test_oidc_token_is_minted_once_and_reused(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("expiry_fields", "case"),
+    [({}, "missing"), ({"expires_in": 0}, "zero"), ({"expires_in": "invalid"}, "invalid")],
+)
+async def test_invalid_oidc_expiry_is_not_cached_and_logs_once_per_mint(
+    caplog, monkeypatch, expiry_fields, case
+):
+    _configure_oidc(monkeypatch)
+
+    with respx.mock(assert_all_called=True) as router:
+        token_route = router.post(TOKEN_URL).mock(
+            side_effect=[
+                httpx.Response(200, json={"access_token": "oidc-token-1", **expiry_fields}),
+                httpx.Response(200, json={"access_token": "oidc-token-2", **expiry_fields}),
+            ]
+        )
+        knowledge_route = router.post(f"{KNOWLEDGE_URL}/kb.search").mock(
+            side_effect=[httpx.Response(200, json={"ok": 1}), httpx.Response(200, json={"ok": 2})]
+        )
+
+        with caplog.at_level(logging.WARNING, logger=knowledge_tools.logger.name):
+            assert await knowledge_tools._search_handler(f"{case}-one") == {"ok": 1}
+            assert await knowledge_tools._search_handler(f"{case}-two") == {"ok": 2}
+
+    assert token_route.call_count == 2
+    assert [call.request.headers["authorization"] for call in knowledge_route.calls] == [
+        "Bearer oidc-token-1",
+        "Bearer oidc-token-2",
+    ]
+    expiry_warnings = [
+        record for record in caplog.records if "invalid expires_in" in record.message
+    ]
+    assert len(expiry_warnings) == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrent_oidc_misses_share_one_mint(monkeypatch):
+    _configure_oidc(monkeypatch)
+    mint_started = asyncio.Event()
+    release_mint = asyncio.Event()
+    mint_calls = 0
+
+    async def mint(_request):
+        nonlocal mint_calls
+        mint_calls += 1
+        mint_started.set()
+        await release_mint.wait()
+        return httpx.Response(200, json={"access_token": "oidc-token-1", "expires_in": 300})
+
+    with respx.mock(assert_all_called=True) as router:
+        token_route = router.post(TOKEN_URL).mock(side_effect=mint)
+        first = asyncio.create_task(knowledge_tools._get_oidc_token())
+        second = None
+        try:
+            await asyncio.wait_for(mint_started.wait(), timeout=1)
+            second = asyncio.create_task(knowledge_tools._get_oidc_token())
+            await asyncio.sleep(0)
+            assert mint_calls == 1
+        finally:
+            release_mint.set()
+            tasks = [first] if second is None else [first, second]
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        assert await first == "oidc-token-1"
+        assert await second == "oidc-token-1"
+        assert token_route.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_oidc_token_refreshes_after_the_early_expiry_window(monkeypatch):
     _configure_oidc(monkeypatch)
     clock = {"now": 100.0}
@@ -99,7 +169,10 @@ async def test_oidc_token_refreshes_after_the_early_expiry_window(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_oidc_401_refreshes_once_then_returns_clean_error(caplog, monkeypatch):
+@pytest.mark.parametrize("rejection_status", [401, 403])
+async def test_oidc_401_or_403_refreshes_once_then_returns_clean_error(
+    caplog, monkeypatch, rejection_status
+):
     _configure_oidc(monkeypatch)
 
     with respx.mock(assert_all_called=True) as router:
@@ -111,15 +184,15 @@ async def test_oidc_401_refreshes_once_then_returns_clean_error(caplog, monkeypa
         )
         knowledge_route = router.post(f"{KNOWLEDGE_URL}/kb.search").mock(
             side_effect=[
-                httpx.Response(401, text="sensitive upstream body one"),
-                httpx.Response(401, text="sensitive upstream body two"),
+                httpx.Response(rejection_status, text="sensitive upstream body one"),
+                httpx.Response(rejection_status, text="sensitive upstream body two"),
             ]
         )
 
         with caplog.at_level(logging.WARNING, logger=knowledge_tools.logger.name):
             result = await knowledge_tools._search_handler("protected")
 
-    assert result == {"error": "knowledge-ops rejected the credential (401)"}
+    assert result == {"error": f"knowledge-ops rejected the credential ({rejection_status})"}
     assert token_route.call_count == 2
     assert knowledge_route.call_count == 2
     assert [call.request.headers["authorization"] for call in knowledge_route.calls] == [
@@ -130,6 +203,47 @@ async def test_oidc_401_refreshes_once_then_returns_clean_error(caplog, monkeypa
     assert len(warnings) == 1
     assert warnings[0].message == "knowledge-ops credential rejected route=kb.search"
     assert "sensitive upstream body" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_oidc_mint_exception_logs_type_without_client_secret(caplog, monkeypatch):
+    _configure_oidc(monkeypatch)
+    client_secret = "client-secret-for-log-test"
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_CLIENT_SECRET", client_secret)
+
+    with respx.mock(assert_all_called=True) as router:
+        router.post(TOKEN_URL).mock(side_effect=RuntimeError(client_secret))
+        with caplog.at_level(logging.ERROR, logger=knowledge_tools.logger.name):
+            result = await knowledge_tools._search_handler("mint-failure")
+
+    assert result == {"error": "knowledge-ops could not obtain an OIDC credential"}
+    assert "RuntimeError" in caplog.text
+    assert client_secret not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_oidc_mint_failure_falls_back_to_static_token_once_with_route_warning(
+    caplog, monkeypatch
+):
+    _configure_oidc(monkeypatch)
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_TOKEN", "static-token")
+
+    with respx.mock(assert_all_called=True) as router:
+        token_route = router.post(TOKEN_URL).mock(return_value=httpx.Response(503))
+        knowledge_route = router.post(f"{KNOWLEDGE_URL}/kb.search").mock(
+            return_value=httpx.Response(200, json={"matches": ["fallback"]})
+        )
+        with caplog.at_level(logging.WARNING, logger=knowledge_tools.logger.name):
+            result = await knowledge_tools._search_handler("fallback")
+
+    assert result == {"matches": ["fallback"]}
+    assert token_route.call_count == 1
+    assert knowledge_route.calls[0].request.headers["authorization"] == "Bearer static-token"
+    fallback_warnings = [
+        record for record in caplog.records if "falling back to static token" in record.message
+    ]
+    assert len(fallback_warnings) == 1
+    assert "route=kb.search" in fallback_warnings[0].message
 
 
 @pytest.mark.asyncio
