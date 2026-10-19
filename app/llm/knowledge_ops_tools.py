@@ -21,10 +21,13 @@ Registered only when ``KNOWLEDGE_OPS_URL`` is set (see tool_resolver).
 When all three ``KNOWLEDGE_OPS_OIDC_*`` credentials are configured, requests use
 an in-process Keycloak client-credentials bearer. Otherwise the legacy static
 ``KNOWLEDGE_OPS_TOKEN`` bearer is used when present, and otherwise no bearer is
-sent.
+sent. If an OIDC mint fails and a static token is configured, the request falls
+back to that token once and logs the route.
 """
 
+import asyncio
 import logging
+import math
 import os
 import re
 import time
@@ -41,7 +44,7 @@ KNOWLEDGE_OPS_URL = os.getenv("KNOWLEDGE_OPS_URL", "http://knowledge-ops:8765")
 # Legacy optional static bearer. Never logged.
 KNOWLEDGE_OPS_TOKEN = os.getenv("KNOWLEDGE_OPS_TOKEN", "")
 # Keycloak client-credentials configuration. When all three required values are
-# set, this takes precedence over the legacy static bearer.
+# set, this takes precedence over the legacy static bearer unless minting fails.
 KNOWLEDGE_OPS_OIDC_TOKEN_URL = os.getenv("KNOWLEDGE_OPS_OIDC_TOKEN_URL", "")
 KNOWLEDGE_OPS_OIDC_CLIENT_ID = os.getenv("KNOWLEDGE_OPS_OIDC_CLIENT_ID", "")
 KNOWLEDGE_OPS_OIDC_CLIENT_SECRET = os.getenv("KNOWLEDGE_OPS_OIDC_CLIENT_SECRET", "")
@@ -51,6 +54,7 @@ KNOWLEDGE_OPS_TIMEOUT = float(os.getenv("KNOWLEDGE_OPS_TIMEOUT", "30.0"))
 _DEFAULT_K = 5
 _USER_AGENT = "unicorn-brigade-ko-client/1.0"
 _TOKEN_CACHE: dict[str, Any] = {"token": None, "exp": 0.0}
+_TOKEN_CACHE_LOCK = asyncio.Lock()
 _TOKEN_REFRESH_SKEW = 30.0
 # Defaults for agent-authored docs. Scope is Knowledge-Ops' free-form RLS filter
 # ("global" = fleet-wide readable); owner is a denormalized attribution label.
@@ -73,52 +77,72 @@ async def _get_oidc_token(*, force_refresh: bool = False) -> Optional[str]:
     if not _oidc_configured():
         return None
 
-    if force_refresh:
-        _TOKEN_CACHE.update(token=None, exp=0.0)
+    async with _TOKEN_CACHE_LOCK:
+        if force_refresh:
+            _TOKEN_CACHE.update(token=None, exp=0.0)
 
-    now = time.monotonic()
-    cached = _TOKEN_CACHE.get("token")
-    if cached and now < float(_TOKEN_CACHE.get("exp", 0.0)):
-        return cached
+        now = time.monotonic()
+        cached = _TOKEN_CACHE.get("token")
+        if cached and now < float(_TOKEN_CACHE.get("exp", 0.0)):
+            return cached
 
-    data = {
-        "grant_type": "client_credentials",
-        "client_id": KNOWLEDGE_OPS_OIDC_CLIENT_ID,
-        "client_secret": KNOWLEDGE_OPS_OIDC_CLIENT_SECRET,
-    }
-    if KNOWLEDGE_OPS_OIDC_AUDIENCE:
-        data["audience"] = KNOWLEDGE_OPS_OIDC_AUDIENCE
-    if KNOWLEDGE_OPS_OIDC_SCOPE:
-        data["scope"] = KNOWLEDGE_OPS_OIDC_SCOPE
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": _USER_AGENT,
-    }
-    try:
-        async with httpx.AsyncClient(timeout=KNOWLEDGE_OPS_TIMEOUT) as client:
-            resp = await client.post(KNOWLEDGE_OPS_OIDC_TOKEN_URL, data=data, headers=headers)
-        if resp.status_code >= 400:
-            logger.error("knowledge-ops OIDC token mint HTTP %s", resp.status_code)
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": KNOWLEDGE_OPS_OIDC_CLIENT_ID,
+            "client_secret": KNOWLEDGE_OPS_OIDC_CLIENT_SECRET,
+        }
+        if KNOWLEDGE_OPS_OIDC_AUDIENCE:
+            data["audience"] = KNOWLEDGE_OPS_OIDC_AUDIENCE
+        if KNOWLEDGE_OPS_OIDC_SCOPE:
+            data["scope"] = KNOWLEDGE_OPS_OIDC_SCOPE
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": _USER_AGENT,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=KNOWLEDGE_OPS_TIMEOUT) as client:
+                resp = await client.post(KNOWLEDGE_OPS_OIDC_TOKEN_URL, data=data, headers=headers)
+            if resp.status_code >= 400:
+                logger.error("knowledge-ops OIDC token mint HTTP %s", resp.status_code)
+                return None
+            response_body = resp.json()
+            token = response_body.get("access_token")
+            if not token:
+                logger.error("knowledge-ops OIDC token response missing access_token")
+                return None
+            try:
+                expires_in = float(response_body.get("expires_in"))
+            except (OverflowError, TypeError, ValueError):
+                expires_in = None
+            if expires_in is None or not math.isfinite(expires_in) or expires_in <= 0:
+                logger.warning(
+                    "knowledge-ops OIDC token response has invalid expires_in; token will not be cached"
+                )
+                _TOKEN_CACHE.update(token=None, exp=0.0)
+                return token
+            ttl = max(0.0, expires_in - _TOKEN_REFRESH_SKEW)
+            _TOKEN_CACHE["token"] = token
+            _TOKEN_CACHE["exp"] = time.monotonic() + ttl
+            return token
+        except Exception as exc:  # noqa: BLE001 - defensive boundary; never expose credentials
+            logger.error("knowledge-ops OIDC token mint failed: %s", type(exc).__name__)
             return None
-        response_body = resp.json()
-        token = response_body.get("access_token")
-        if not token:
-            logger.error("knowledge-ops OIDC token response missing access_token")
-            return None
-        expires_in = float(response_body.get("expires_in", 300) or 300)
-        ttl = max(0.0, expires_in - _TOKEN_REFRESH_SKEW)
-        _TOKEN_CACHE["token"] = token
-        _TOKEN_CACHE["exp"] = time.monotonic() + ttl
-        return token
-    except Exception:  # noqa: BLE001 - defensive boundary; never expose credentials
-        logger.error("knowledge-ops OIDC token mint failed")
-        return None
 
 
-async def _get_bearer(*, force_refresh: bool = False) -> tuple[Optional[str], bool]:
+async def _get_bearer(
+    *, route: str = "", force_refresh: bool = False
+) -> tuple[Optional[str], bool]:
     """Return ``(bearer, uses_oidc)`` while preserving the static-token fallback."""
     if _oidc_configured():
-        return await _get_oidc_token(force_refresh=force_refresh), True
+        token = await _get_oidc_token(force_refresh=force_refresh)
+        if token:
+            return token, True
+        if KNOWLEDGE_OPS_TOKEN:
+            logger.warning(
+                "knowledge-ops OIDC mint failed; falling back to static token route=%s", route
+            )
+            return KNOWLEDGE_OPS_TOKEN, False
+        return None, True
     if KNOWLEDGE_OPS_TOKEN:
         return KNOWLEDGE_OPS_TOKEN, False
     return None, False
@@ -134,7 +158,7 @@ async def _post(route: str, body: dict[str, Any]) -> dict[str, Any]:
     """One defensive POST to a Knowledge-Ops route. Returns a dict; never raises."""
     url = f"{KNOWLEDGE_OPS_URL.rstrip('/')}/{route}"
     try:
-        token, uses_oidc = await _get_bearer()
+        token, uses_oidc = await _get_bearer(route=route)
         if uses_oidc and not token:
             return {"error": "knowledge-ops could not obtain an OIDC credential"}
 
@@ -144,8 +168,8 @@ async def _post(route: str, body: dict[str, Any]) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=KNOWLEDGE_OPS_TIMEOUT) as client:
             resp = await client.post(url, headers=headers, json=body)
 
-            if resp.status_code == 401 and uses_oidc:
-                refreshed_token = await _get_oidc_token(force_refresh=True)
+            if resp.status_code in (401, 403) and uses_oidc:
+                refreshed_token, _ = await _get_bearer(route=route, force_refresh=True)
                 if refreshed_token:
                     headers["Authorization"] = f"Bearer {refreshed_token}"
                     resp = await client.post(url, headers=headers, json=body)
