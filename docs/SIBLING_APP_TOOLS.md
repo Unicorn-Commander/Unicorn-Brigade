@@ -13,12 +13,22 @@ an unavailable service is not hammered.
 | --- | --- | --- | --- |
 | Accounting-Ops | `ACCOUNTING_OPS_MCP_URL` (defaults to the public MCP URL) | `ACCOUNTING_OPS_MCP_TOKEN` | Streamable HTTP MCP |
 | Customer-Ops | `CUSTOMER_OPS_MCP_URL` (defaults to the public MCP URL) | `CUSTOMER_OPS_MCP_TOKEN` | Streamable HTTP MCP |
-| Knowledge-Ops | `KNOWLEDGE_OPS_URL` (defaults to `http://knowledge-ops:8765`) | `KNOWLEDGE_OPS_TOKEN` (required) | REST manifest |
+| Knowledge-Ops | `KNOWLEDGE_OPS_URL` (defaults to `http://knowledge-ops:8765`) | `KNOWLEDGE_OPS_TOKEN`, or the OIDC variables below for direct `knowledge_ops_*` tools | REST manifest |
 
-All three apps require their bearer token. Knowledge-Ops' internal REST routes answer
-401 "missing bearer token" without one (measured 2026-10-17), so its tools report
-`unavailable(no_token)` until `KNOWLEDGE_OPS_TOKEN` is set.
-Tokens are read from the environment and are never logged.
+Accounting-Ops and Customer-Ops require their configured static bearer tokens.
+Knowledge-Ops' internal REST routes answer 401 "missing bearer token" without one
+(measured 2026-10-17). The direct `knowledge_ops_*` tools prefer a cached Keycloak
+client-credentials bearer when all three variables below are set, otherwise they
+fall back to `KNOWLEDGE_OPS_TOKEN`, and otherwise send no bearer:
+
+- `KNOWLEDGE_OPS_OIDC_TOKEN_URL`
+- `KNOWLEDGE_OPS_OIDC_CLIENT_ID`
+- `KNOWLEDGE_OPS_OIDC_CLIENT_SECRET`
+
+Optional token request parameters are `KNOWLEDGE_OPS_OIDC_AUDIENCE` and
+`KNOWLEDGE_OPS_OIDC_SCOPE`. The separate manifest-backed `knowledge.*` tools still
+use `KNOWLEDGE_OPS_TOKEN`. Credentials are read from the environment and never
+logged.
 
 ## Safety and configuration
 
