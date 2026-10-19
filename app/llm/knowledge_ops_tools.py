@@ -17,12 +17,18 @@ org-memory, and Center Deep behind:
 These tools are thin, defensive HTTP clients: any missing config, HTTP error,
 timeout, or non-JSON body returns gracefully and NEVER raises into the tool loop.
 Registered only when ``KNOWLEDGE_OPS_URL`` is set (see tool_resolver).
+
+When all three ``KNOWLEDGE_OPS_OIDC_*`` credentials are configured, requests use
+an in-process Keycloak client-credentials bearer. Otherwise the legacy static
+``KNOWLEDGE_OPS_TOKEN`` bearer is used when present, and otherwise no bearer is
+sent.
 """
 
 import logging
 import os
 import re
-from typing import Any, Dict, Optional
+import time
+from typing import Any, Optional
 
 import httpx
 
@@ -32,10 +38,20 @@ logger = logging.getLogger(__name__)
 
 # In-cluster URL; on bigboy the Brigade runtime reaches the KB by DNS name.
 KNOWLEDGE_OPS_URL = os.getenv("KNOWLEDGE_OPS_URL", "http://knowledge-ops:8765")
-# Optional bearer (the internal route needs none; set if fronted by auth). Never logged.
+# Legacy optional static bearer. Never logged.
 KNOWLEDGE_OPS_TOKEN = os.getenv("KNOWLEDGE_OPS_TOKEN", "")
+# Keycloak client-credentials configuration. When all three required values are
+# set, this takes precedence over the legacy static bearer.
+KNOWLEDGE_OPS_OIDC_TOKEN_URL = os.getenv("KNOWLEDGE_OPS_OIDC_TOKEN_URL", "")
+KNOWLEDGE_OPS_OIDC_CLIENT_ID = os.getenv("KNOWLEDGE_OPS_OIDC_CLIENT_ID", "")
+KNOWLEDGE_OPS_OIDC_CLIENT_SECRET = os.getenv("KNOWLEDGE_OPS_OIDC_CLIENT_SECRET", "")
+KNOWLEDGE_OPS_OIDC_AUDIENCE = os.getenv("KNOWLEDGE_OPS_OIDC_AUDIENCE", "")
+KNOWLEDGE_OPS_OIDC_SCOPE = os.getenv("KNOWLEDGE_OPS_OIDC_SCOPE", "")
 KNOWLEDGE_OPS_TIMEOUT = float(os.getenv("KNOWLEDGE_OPS_TIMEOUT", "30.0"))
 _DEFAULT_K = 5
+_USER_AGENT = "unicorn-brigade-ko-client/1.0"
+_TOKEN_CACHE: dict[str, Any] = {"token": None, "exp": 0.0}
+_TOKEN_REFRESH_SKEW = 30.0
 # Defaults for agent-authored docs. Scope is Knowledge-Ops' free-form RLS filter
 # ("global" = fleet-wide readable); owner is a denormalized attribution label.
 _WRITE_SCOPE = os.getenv("KNOWLEDGE_OPS_WRITE_SCOPE", "global")
@@ -43,15 +59,99 @@ _WRITE_OWNER = os.getenv("KNOWLEDGE_OPS_WRITE_OWNER", "brigade-agent")
 _WRITE_CATEGORY = os.getenv("KNOWLEDGE_OPS_WRITE_CATEGORY", "learnings")
 
 
-async def _post(route: str, body: Dict[str, Any]) -> Dict[str, Any]:
-    """One defensive POST to a Knowledge-Ops route. Returns a dict; never raises."""
-    headers = {"Content-Type": "application/json"}
-    if KNOWLEDGE_OPS_TOKEN:
-        headers["Authorization"] = f"Bearer {KNOWLEDGE_OPS_TOKEN}"
-    url = f"{KNOWLEDGE_OPS_URL.rstrip('/')}/{route}"
+def _oidc_configured() -> bool:
+    """Return whether the complete client-credentials configuration is present."""
+    return bool(
+        KNOWLEDGE_OPS_OIDC_TOKEN_URL
+        and KNOWLEDGE_OPS_OIDC_CLIENT_ID
+        and KNOWLEDGE_OPS_OIDC_CLIENT_SECRET
+    )
+
+
+async def _get_oidc_token(*, force_refresh: bool = False) -> Optional[str]:
+    """Mint or return the cached Knowledge-Ops client-credentials bearer."""
+    if not _oidc_configured():
+        return None
+
+    if force_refresh:
+        _TOKEN_CACHE.update(token=None, exp=0.0)
+
+    now = time.monotonic()
+    cached = _TOKEN_CACHE.get("token")
+    if cached and now < float(_TOKEN_CACHE.get("exp", 0.0)):
+        return cached
+
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": KNOWLEDGE_OPS_OIDC_CLIENT_ID,
+        "client_secret": KNOWLEDGE_OPS_OIDC_CLIENT_SECRET,
+    }
+    if KNOWLEDGE_OPS_OIDC_AUDIENCE:
+        data["audience"] = KNOWLEDGE_OPS_OIDC_AUDIENCE
+    if KNOWLEDGE_OPS_OIDC_SCOPE:
+        data["scope"] = KNOWLEDGE_OPS_OIDC_SCOPE
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": _USER_AGENT,
+    }
     try:
         async with httpx.AsyncClient(timeout=KNOWLEDGE_OPS_TIMEOUT) as client:
+            resp = await client.post(KNOWLEDGE_OPS_OIDC_TOKEN_URL, data=data, headers=headers)
+        if resp.status_code >= 400:
+            logger.error("knowledge-ops OIDC token mint HTTP %s", resp.status_code)
+            return None
+        response_body = resp.json()
+        token = response_body.get("access_token")
+        if not token:
+            logger.error("knowledge-ops OIDC token response missing access_token")
+            return None
+        expires_in = float(response_body.get("expires_in", 300) or 300)
+        ttl = max(0.0, expires_in - _TOKEN_REFRESH_SKEW)
+        _TOKEN_CACHE["token"] = token
+        _TOKEN_CACHE["exp"] = time.monotonic() + ttl
+        return token
+    except Exception:  # noqa: BLE001 - defensive boundary; never expose credentials
+        logger.error("knowledge-ops OIDC token mint failed")
+        return None
+
+
+async def _get_bearer(*, force_refresh: bool = False) -> tuple[Optional[str], bool]:
+    """Return ``(bearer, uses_oidc)`` while preserving the static-token fallback."""
+    if _oidc_configured():
+        return await _get_oidc_token(force_refresh=force_refresh), True
+    if KNOWLEDGE_OPS_TOKEN:
+        return KNOWLEDGE_OPS_TOKEN, False
+    return None, False
+
+
+def _credential_rejection(route: str, status_code: int) -> dict[str, Any]:
+    """Return a safe auth error and log only the route, never the response body."""
+    logger.warning("knowledge-ops credential rejected route=%s", route)
+    return {"error": f"knowledge-ops rejected the credential ({status_code})"}
+
+
+async def _post(route: str, body: dict[str, Any]) -> dict[str, Any]:
+    """One defensive POST to a Knowledge-Ops route. Returns a dict; never raises."""
+    url = f"{KNOWLEDGE_OPS_URL.rstrip('/')}/{route}"
+    try:
+        token, uses_oidc = await _get_bearer()
+        if uses_oidc and not token:
+            return {"error": "knowledge-ops could not obtain an OIDC credential"}
+
+        headers = {"Content-Type": "application/json", "User-Agent": _USER_AGENT}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        async with httpx.AsyncClient(timeout=KNOWLEDGE_OPS_TIMEOUT) as client:
             resp = await client.post(url, headers=headers, json=body)
+
+            if resp.status_code == 401 and uses_oidc:
+                refreshed_token = await _get_oidc_token(force_refresh=True)
+                if refreshed_token:
+                    headers["Authorization"] = f"Bearer {refreshed_token}"
+                    resp = await client.post(url, headers=headers, json=body)
+
+        if resp.status_code in (401, 403):
+            return _credential_rejection(route, resp.status_code)
         if resp.status_code >= 400:
             logger.warning("knowledge-ops %s HTTP %s", route, resp.status_code)
             return {"error": f"knowledge-ops {route} HTTP {resp.status_code}: {resp.text[:200]}"}
@@ -72,11 +172,11 @@ def _slug(s: str) -> str:
     return s[:80] or "note"
 
 
-async def _ground_handler(query: str, k: int = _DEFAULT_K, **_) -> Dict[str, Any]:
+async def _ground_handler(query: str, k: int = _DEFAULT_K, **_) -> dict[str, Any]:
     return await _post("kb.ground", {"query": query, "k": k})
 
 
-async def _search_handler(query: str, k: int = _DEFAULT_K, **_) -> Dict[str, Any]:
+async def _search_handler(query: str, k: int = _DEFAULT_K, **_) -> dict[str, Any]:
     return await _post("kb.search", {"query": query, "k": k})
 
 
@@ -86,7 +186,7 @@ async def _save_handler(
     category: Optional[str] = None,
     scope: Optional[str] = None,
     **_,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create/update a wiki doc in Knowledge-Ops. Idempotent on (category,title)."""
     if not title or not title.strip():
         return {"error": "a non-empty 'title' is required"}
@@ -165,7 +265,7 @@ KNOWLEDGE_OPS_SAVE_TOOL = ToolDefinition(
 )
 
 
-KNOWLEDGE_OPS_TOOLS: Dict[str, ToolDefinition] = {
+KNOWLEDGE_OPS_TOOLS: dict[str, ToolDefinition] = {
     "knowledge_ops_ground": KNOWLEDGE_OPS_GROUND_TOOL,
     "knowledge_ops_search": KNOWLEDGE_OPS_SEARCH_TOOL,
     "knowledge_ops_save": KNOWLEDGE_OPS_SAVE_TOOL,
