@@ -51,10 +51,20 @@ KNOWLEDGE_OPS_OIDC_CLIENT_SECRET = os.getenv("KNOWLEDGE_OPS_OIDC_CLIENT_SECRET",
 KNOWLEDGE_OPS_OIDC_AUDIENCE = os.getenv("KNOWLEDGE_OPS_OIDC_AUDIENCE", "")
 KNOWLEDGE_OPS_OIDC_SCOPE = os.getenv("KNOWLEDGE_OPS_OIDC_SCOPE", "")
 KNOWLEDGE_OPS_TIMEOUT = float(os.getenv("KNOWLEDGE_OPS_TIMEOUT", "30.0"))
+KNOWLEDGE_OPS_OIDC_NEGATIVE_CACHE_TTL = float(
+    os.getenv("KNOWLEDGE_OPS_OIDC_NEGATIVE_CACHE_TTL", "60.0")
+)
 _DEFAULT_K = 5
 _USER_AGENT = "unicorn-brigade-ko-client/1.0"
 _TOKEN_CACHE: dict[str, Any] = {"token": None, "exp": 0.0}
 _TOKEN_CACHE_LOCK = asyncio.Lock()
+_TOKEN_MINT_TASK: Optional[asyncio.Task[Optional[str]]] = None
+_OIDC_STATE: dict[str, Any] = {
+    "negative_until": 0.0,
+    "warning_until": 0.0,
+    "oidc_ok": True,
+    "oidc_last_error": "",
+}
 _TOKEN_REFRESH_SKEW = 30.0
 # Defaults for agent-authored docs. Scope is Knowledge-Ops' free-form RLS filter
 # ("global" = fleet-wide readable); owner is a denormalized attribution label.
@@ -72,61 +82,149 @@ def _oidc_configured() -> bool:
     )
 
 
-async def _get_oidc_token(*, force_refresh: bool = False) -> Optional[str]:
+def _clear_token_mint_task(task: asyncio.Task[Optional[str]]) -> None:
+    """Drop a completed single-flight mint task if it is still current."""
+    global _TOKEN_MINT_TASK
+    if _TOKEN_MINT_TASK is task:
+        _TOKEN_MINT_TASK = None
+
+
+async def _record_oidc_failure(error: str, *, route: str) -> None:
+    """Remember a safe mint failure and emit at most one warning per window."""
+    now = time.monotonic()
+    ttl = max(0.0, KNOWLEDGE_OPS_OIDC_NEGATIVE_CACHE_TTL)
+    async with _TOKEN_CACHE_LOCK:
+        should_warn = now >= float(_OIDC_STATE.get("warning_until", 0.0))
+        _TOKEN_CACHE.update(token=None, exp=0.0)
+        _OIDC_STATE.update(
+            negative_until=now + ttl,
+            warning_until=now + ttl,
+            oidc_ok=False,
+            oidc_last_error=error,
+        )
+
+    # The error is deliberately constrained to status/type text assembled by
+    # this module; response bodies and credential values never reach the log.
+    logger.error("knowledge-ops OIDC token mint failed: %s", error)
+    if should_warn:
+        fallback = "; falling back to static token" if KNOWLEDGE_OPS_TOKEN else ""
+        route_detail = f" route={route}" if route else ""
+        logger.warning(
+            "knowledge-ops OIDC mint failed%s%s: %s", fallback, route_detail, error
+        )
+
+
+async def _record_oidc_success(token: str, expires_in: Optional[float]) -> str:
+    """Update the token and clear any prior failure state."""
+    async with _TOKEN_CACHE_LOCK:
+        _OIDC_STATE.update(
+            negative_until=0.0,
+            warning_until=0.0,
+            oidc_ok=True,
+            oidc_last_error="",
+        )
+        if expires_in is None or not math.isfinite(expires_in) or expires_in <= 0:
+            logger.warning(
+                "knowledge-ops OIDC token response has invalid expires_in; token will not be cached"
+            )
+            _TOKEN_CACHE.update(token=None, exp=0.0)
+            return token
+        ttl = max(0.0, expires_in - _TOKEN_REFRESH_SKEW)
+        _TOKEN_CACHE["token"] = token
+        _TOKEN_CACHE["exp"] = time.monotonic() + ttl
+        return token
+
+
+async def _mint_oidc_token(*, route: str) -> Optional[str]:
+    """Mint a token without holding the token-cache lock across HTTP."""
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": KNOWLEDGE_OPS_OIDC_CLIENT_ID,
+        "client_secret": KNOWLEDGE_OPS_OIDC_CLIENT_SECRET,
+    }
+    if KNOWLEDGE_OPS_OIDC_AUDIENCE:
+        data["audience"] = KNOWLEDGE_OPS_OIDC_AUDIENCE
+    if KNOWLEDGE_OPS_OIDC_SCOPE:
+        data["scope"] = KNOWLEDGE_OPS_OIDC_SCOPE
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": _USER_AGENT,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=KNOWLEDGE_OPS_TIMEOUT) as client:
+            resp = await client.post(KNOWLEDGE_OPS_OIDC_TOKEN_URL, data=data, headers=headers)
+        if resp.status_code >= 400:
+            await _record_oidc_failure(
+                f"OIDC token endpoint returned HTTP {resp.status_code}", route=route
+            )
+            return None
+        try:
+            response_body = resp.json()
+        except Exception as exc:  # noqa: BLE001 - defensive boundary
+            await _record_oidc_failure(
+                f"OIDC token response was not valid JSON ({type(exc).__name__})", route=route
+            )
+            return None
+        token = response_body.get("access_token")
+        if not token:
+            await _record_oidc_failure("OIDC token response missing access_token", route=route)
+            return None
+        try:
+            expires_in = float(response_body.get("expires_in"))
+        except (OverflowError, TypeError, ValueError):
+            expires_in = None
+        return await _record_oidc_success(token, expires_in)
+    except Exception as exc:  # noqa: BLE001 - defensive boundary; never expose credentials
+        await _record_oidc_failure(
+            f"OIDC token mint failed ({type(exc).__name__})", route=route
+        )
+        return None
+
+
+async def _get_oidc_token(
+    *, force_refresh: bool = False, route: str = ""
+) -> Optional[str]:
     """Mint or return the cached Knowledge-Ops client-credentials bearer."""
+    global _TOKEN_MINT_TASK
     if not _oidc_configured():
         return None
 
     async with _TOKEN_CACHE_LOCK:
-        if force_refresh:
-            _TOKEN_CACHE.update(token=None, exp=0.0)
-
         now = time.monotonic()
         cached = _TOKEN_CACHE.get("token")
-        if cached and now < float(_TOKEN_CACHE.get("exp", 0.0)):
+        if not force_refresh and cached and now < float(_TOKEN_CACHE.get("exp", 0.0)):
             return cached
-
-        data = {
-            "grant_type": "client_credentials",
-            "client_id": KNOWLEDGE_OPS_OIDC_CLIENT_ID,
-            "client_secret": KNOWLEDGE_OPS_OIDC_CLIENT_SECRET,
-        }
-        if KNOWLEDGE_OPS_OIDC_AUDIENCE:
-            data["audience"] = KNOWLEDGE_OPS_OIDC_AUDIENCE
-        if KNOWLEDGE_OPS_OIDC_SCOPE:
-            data["scope"] = KNOWLEDGE_OPS_OIDC_SCOPE
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": _USER_AGENT,
-        }
-        try:
-            async with httpx.AsyncClient(timeout=KNOWLEDGE_OPS_TIMEOUT) as client:
-                resp = await client.post(KNOWLEDGE_OPS_OIDC_TOKEN_URL, data=data, headers=headers)
-            if resp.status_code >= 400:
-                logger.error("knowledge-ops OIDC token mint HTTP %s", resp.status_code)
-                return None
-            response_body = resp.json()
-            token = response_body.get("access_token")
-            if not token:
-                logger.error("knowledge-ops OIDC token response missing access_token")
-                return None
-            try:
-                expires_in = float(response_body.get("expires_in"))
-            except (OverflowError, TypeError, ValueError):
-                expires_in = None
-            if expires_in is None or not math.isfinite(expires_in) or expires_in <= 0:
-                logger.warning(
-                    "knowledge-ops OIDC token response has invalid expires_in; token will not be cached"
-                )
-                _TOKEN_CACHE.update(token=None, exp=0.0)
-                return token
-            ttl = max(0.0, expires_in - _TOKEN_REFRESH_SKEW)
-            _TOKEN_CACHE["token"] = token
-            _TOKEN_CACHE["exp"] = time.monotonic() + ttl
-            return token
-        except Exception as exc:  # noqa: BLE001 - defensive boundary; never expose credentials
-            logger.error("knowledge-ops OIDC token mint failed: %s", type(exc).__name__)
+        if not force_refresh and now < float(_OIDC_STATE.get("negative_until", 0.0)):
             return None
+
+        task = _TOKEN_MINT_TASK
+        if task is None:
+            # A force refresh deliberately leaves a still-valid old token in
+            # place until the new mint completes, so ordinary reads can keep
+            # using it while the refresh HTTP request is slow.
+            task = asyncio.create_task(_mint_oidc_token(route=route))
+            _TOKEN_MINT_TASK = task
+            task.add_done_callback(_clear_token_mint_task)
+
+    # The lock is intentionally not held while waiting for the IdP. Shielding
+    # keeps one cancelled caller from cancelling the shared single-flight mint.
+    return await asyncio.shield(task)
+
+
+def _oidc_health_detail() -> dict[str, Any]:
+    """Return safe OIDC health fields for configured-client tool results."""
+    if not _oidc_configured():
+        return {}
+    return {
+        "oidc_ok": bool(_OIDC_STATE.get("oidc_ok", True)),
+        "oidc_last_error": str(_OIDC_STATE.get("oidc_last_error", "")),
+    }
+
+
+def _with_oidc_health(result: dict[str, Any]) -> dict[str, Any]:
+    """Add auth health without changing the legacy non-OIDC result shape."""
+    health = _oidc_health_detail()
+    return {**result, **health} if health else result
 
 
 async def _get_bearer(
@@ -134,13 +232,10 @@ async def _get_bearer(
 ) -> tuple[Optional[str], bool]:
     """Return ``(bearer, uses_oidc)`` while preserving the static-token fallback."""
     if _oidc_configured():
-        token = await _get_oidc_token(force_refresh=force_refresh)
+        token = await _get_oidc_token(force_refresh=force_refresh, route=route)
         if token:
             return token, True
         if KNOWLEDGE_OPS_TOKEN:
-            logger.warning(
-                "knowledge-ops OIDC mint failed; falling back to static token route=%s", route
-            )
             return KNOWLEDGE_OPS_TOKEN, False
         return None, True
     if KNOWLEDGE_OPS_TOKEN:
@@ -160,7 +255,9 @@ async def _post(route: str, body: dict[str, Any]) -> dict[str, Any]:
     try:
         token, uses_oidc = await _get_bearer(route=route)
         if uses_oidc and not token:
-            return {"error": "knowledge-ops could not obtain an OIDC credential"}
+            return _with_oidc_health(
+                {"error": "knowledge-ops could not obtain an OIDC credential"}
+            )
 
         headers = {"Content-Type": "application/json", "User-Agent": _USER_AGENT}
         if token:
@@ -175,19 +272,23 @@ async def _post(route: str, body: dict[str, Any]) -> dict[str, Any]:
                     resp = await client.post(url, headers=headers, json=body)
 
         if resp.status_code in (401, 403):
-            return _credential_rejection(route, resp.status_code)
+            return _with_oidc_health(_credential_rejection(route, resp.status_code))
         if resp.status_code >= 400:
             logger.warning("knowledge-ops %s HTTP %s", route, resp.status_code)
-            return {"error": f"knowledge-ops {route} HTTP {resp.status_code}: {resp.text[:200]}"}
+            return _with_oidc_health(
+                {"error": f"knowledge-ops {route} HTTP {resp.status_code}: {resp.text[:200]}"}
+            )
         try:
-            return resp.json()
+            return _with_oidc_health(resp.json())
         except Exception:  # noqa: BLE001 - unexpected non-JSON 2xx
-            return {"error": "knowledge-ops returned a non-JSON response"}
+            return _with_oidc_health({"error": "knowledge-ops returned a non-JSON response"})
     except httpx.TimeoutException:
-        return {"error": f"knowledge-ops {route} timed out after {KNOWLEDGE_OPS_TIMEOUT}s"}
+        return _with_oidc_health(
+            {"error": f"knowledge-ops {route} timed out after {KNOWLEDGE_OPS_TIMEOUT}s"}
+        )
     except Exception as exc:  # noqa: BLE001 - defensive boundary
         logger.error("knowledge-ops %s failed: %s", route, exc)
-        return {"error": f"knowledge-ops {route} failed: {exc}"}
+        return _with_oidc_health({"error": f"knowledge-ops {route} failed: {exc}"})
 
 
 def _slug(s: str) -> str:
