@@ -30,6 +30,7 @@ import logging
 import math
 import os
 import re
+import threading
 import time
 from typing import Any, Optional
 
@@ -89,7 +90,9 @@ def _clear_token_mint_task(task: asyncio.Task[Optional[str]]) -> None:
         _TOKEN_MINT_TASK = None
 
 
-async def _record_oidc_failure(error: str, *, route: str) -> None:
+async def _record_oidc_failure(
+    error: str, *, route: str, fallback_available: bool = False
+) -> None:
     """Remember a safe mint failure and emit at most one warning per window."""
     now = time.monotonic()
     ttl = max(0.0, KNOWLEDGE_OPS_OIDC_NEGATIVE_CACHE_TTL)
@@ -107,7 +110,7 @@ async def _record_oidc_failure(error: str, *, route: str) -> None:
     # this module; response bodies and credential values never reach the log.
     logger.error("knowledge-ops OIDC token mint failed: %s", error)
     if should_warn:
-        fallback = "; falling back to static token" if KNOWLEDGE_OPS_TOKEN else ""
+        fallback = "; falling back to static token" if fallback_available else ""
         route_detail = f" route={route}" if route else ""
         logger.warning(
             "knowledge-ops OIDC mint failed%s%s: %s", fallback, route_detail, error
@@ -135,7 +138,7 @@ async def _record_oidc_success(token: str, expires_in: Optional[float]) -> str:
         return token
 
 
-async def _mint_oidc_token(*, route: str) -> Optional[str]:
+async def _mint_oidc_token(*, route: str, fallback_available: bool = False) -> Optional[str]:
     """Mint a token without holding the token-cache lock across HTTP."""
     data = {
         "grant_type": "client_credentials",
@@ -155,19 +158,27 @@ async def _mint_oidc_token(*, route: str) -> Optional[str]:
             resp = await client.post(KNOWLEDGE_OPS_OIDC_TOKEN_URL, data=data, headers=headers)
         if resp.status_code >= 400:
             await _record_oidc_failure(
-                f"OIDC token endpoint returned HTTP {resp.status_code}", route=route
+                f"OIDC token endpoint returned HTTP {resp.status_code}",
+                route=route,
+                fallback_available=fallback_available,
             )
             return None
         try:
             response_body = resp.json()
         except Exception as exc:  # noqa: BLE001 - defensive boundary
             await _record_oidc_failure(
-                f"OIDC token response was not valid JSON ({type(exc).__name__})", route=route
+                f"OIDC token response was not valid JSON ({type(exc).__name__})",
+                route=route,
+                fallback_available=fallback_available,
             )
             return None
         token = response_body.get("access_token")
         if not token:
-            await _record_oidc_failure("OIDC token response missing access_token", route=route)
+            await _record_oidc_failure(
+                "OIDC token response missing access_token",
+                route=route,
+                fallback_available=fallback_available,
+            )
             return None
         try:
             expires_in = float(response_body.get("expires_in"))
@@ -176,13 +187,15 @@ async def _mint_oidc_token(*, route: str) -> Optional[str]:
         return await _record_oidc_success(token, expires_in)
     except Exception as exc:  # noqa: BLE001 - defensive boundary; never expose credentials
         await _record_oidc_failure(
-            f"OIDC token mint failed ({type(exc).__name__})", route=route
+            f"OIDC token mint failed ({type(exc).__name__})",
+            route=route,
+            fallback_available=fallback_available,
         )
         return None
 
 
 async def _get_oidc_token(
-    *, force_refresh: bool = False, route: str = ""
+    *, force_refresh: bool = False, route: str = "", fallback_available: bool = False
 ) -> Optional[str]:
     """Mint or return the cached Knowledge-Ops client-credentials bearer."""
     global _TOKEN_MINT_TASK
@@ -202,7 +215,9 @@ async def _get_oidc_token(
             # A force refresh deliberately leaves a still-valid old token in
             # place until the new mint completes, so ordinary reads can keep
             # using it while the refresh HTTP request is slow.
-            task = asyncio.create_task(_mint_oidc_token(route=route))
+            task = asyncio.create_task(
+                _mint_oidc_token(route=route, fallback_available=fallback_available)
+            )
             _TOKEN_MINT_TASK = task
             task.add_done_callback(_clear_token_mint_task)
 
@@ -228,19 +243,85 @@ def _with_oidc_health(result: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _get_bearer(
-    *, route: str = "", force_refresh: bool = False
+    *, route: str = "", force_refresh: bool = False, static_token: Optional[str] = None
 ) -> tuple[Optional[str], bool]:
     """Return ``(bearer, uses_oidc)`` while preserving the static-token fallback."""
+    fallback_token = KNOWLEDGE_OPS_TOKEN if static_token is None else static_token
     if _oidc_configured():
-        token = await _get_oidc_token(force_refresh=force_refresh, route=route)
+        token = await _get_oidc_token(
+            force_refresh=force_refresh,
+            route=route,
+            fallback_available=bool(fallback_token),
+        )
         if token:
             return token, True
-        if KNOWLEDGE_OPS_TOKEN:
-            return KNOWLEDGE_OPS_TOKEN, False
+        if fallback_token:
+            return fallback_token, False
         return None, True
-    if KNOWLEDGE_OPS_TOKEN:
-        return KNOWLEDGE_OPS_TOKEN, False
+    if fallback_token:
+        return fallback_token, False
     return None, False
+
+
+def knowledge_ops_oidc_configured() -> bool:
+    """Expose the configured-client check to sibling transports."""
+    return _oidc_configured()
+
+
+async def get_knowledge_ops_bearer(
+    *, route: str = "", force_refresh: bool = False, static_token: Optional[str] = None
+) -> tuple[Optional[str], bool]:
+    """Return the shared Knowledge-Ops bearer for direct and sibling calls."""
+    return await _get_bearer(
+        route=route,
+        force_refresh=force_refresh,
+        static_token=static_token,
+    )
+
+
+def get_knowledge_ops_bearer_sync(
+    *, route: str = "", force_refresh: bool = False, static_token: Optional[str] = None
+) -> tuple[Optional[str], bool]:
+    """Bridge the shared async provider for synchronous manifest discovery."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(
+            get_knowledge_ops_bearer(
+                route=route,
+                force_refresh=force_refresh,
+                static_token=static_token,
+            )
+        )
+
+    result: list[tuple[Optional[str], bool]] = []
+    errors: list[BaseException] = []
+
+    def run_provider() -> None:
+        try:
+            result.append(
+                asyncio.run(
+                    get_knowledge_ops_bearer(
+                        route=route,
+                        force_refresh=force_refresh,
+                        static_token=static_token,
+                    )
+                )
+            )
+        except BaseException as exc:  # noqa: BLE001 - propagate provider boundary errors
+            errors.append(exc)
+
+    thread = threading.Thread(target=run_provider, daemon=True)
+    thread.start()
+    thread.join()
+    if errors:
+        raise errors[0]
+    return result[0]
+
+
+def add_knowledge_ops_oidc_health(result: dict[str, Any]) -> dict[str, Any]:
+    """Add shared OIDC health fields while preserving static-token result shapes."""
+    return _with_oidc_health(result)
 
 
 def _credential_rejection(route: str, status_code: int) -> dict[str, Any]:
