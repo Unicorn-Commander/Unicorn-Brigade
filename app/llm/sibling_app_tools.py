@@ -20,6 +20,7 @@ from typing import Any
 
 import httpx
 
+from app.llm import knowledge_ops_tools as knowledge_auth
 from app.llm.ops_center_client import ToolDefinition, ToolParameter
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class _SiblingToolSpec:
 
 @dataclass(frozen=True)
 class _SchemaCacheEntry:
-    fingerprint: tuple[str, bool]
+    fingerprint: tuple[str, bool, bool]
     specs: dict[str, _SiblingToolSpec]
     expires_at: float
     failure_reason: str | None = None
@@ -228,6 +229,14 @@ def _app_token(app: SiblingAppConfig) -> str:
     return os.getenv(app.token_env, "").strip() if app.token_env else ""
 
 
+def _is_knowledge_app(app: SiblingAppConfig) -> bool:
+    return app.namespace == "knowledge"
+
+
+def _knowledge_oidc_configured(app: SiblingAppConfig) -> bool:
+    return _is_knowledge_app(app) and knowledge_auth.knowledge_ops_oidc_configured()
+
+
 def _request_timeout(app: SiblingAppConfig) -> float:
     configured_hard_limit = os.getenv(
         "SIBLING_APP_HARD_TIMEOUT_SECONDS", str(_HARD_TIMEOUT_SECONDS)
@@ -239,11 +248,15 @@ def _request_timeout(app: SiblingAppConfig) -> float:
     return min(app.timeout, hard_limit)
 
 
-def _headers(app: SiblingAppConfig, *, streamable: bool = False) -> dict[str, str]:
+def _headers(
+    app: SiblingAppConfig,
+    *,
+    token: str = "",
+    streamable: bool = False,
+) -> dict[str, str]:
     headers = {"Content-Type": "application/json"}
     if streamable:
         headers["Accept"] = "application/json, text/event-stream"
-    token = _app_token(app)
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
@@ -410,7 +423,7 @@ def _fetch_schema(app: SiblingAppConfig, url: str, headers: dict[str, str]) -> d
 
 def _schema_failure(
     app: SiblingAppConfig,
-    fingerprint: tuple[str, bool],
+    fingerprint: tuple[str, bool, bool],
     reason: str,
     detail: str,
 ) -> _SchemaCacheEntry:
@@ -428,7 +441,8 @@ def _schema_failure(
 def _load_schema(app: SiblingAppConfig) -> _SchemaCacheEntry:
     url = _app_url(app)
     token = _app_token(app)
-    fingerprint = (url, bool(token))
+    oidc_configured = _knowledge_oidc_configured(app)
+    fingerprint = (url, bool(token), oidc_configured)
     now = time.monotonic()
     cached = _SCHEMA_CACHE.get(app.name)
     if cached and cached.fingerprint == fingerprint and cached.expires_at > now:
@@ -438,11 +452,28 @@ def _load_schema(app: SiblingAppConfig) -> _SchemaCacheEntry:
         return _schema_failure(app, fingerprint, "unreachable", "disabled")
     if not url:
         return _schema_failure(app, fingerprint, "unreachable", "no URL configured")
-    if app.token_required and not token:
+    if app.token_required and not token and not oidc_configured:
         return _schema_failure(app, fingerprint, "no_token", "token not configured")
 
     try:
-        specs = _fetch_schema(app, url, _headers(app, streamable=app.transport == "mcp"))
+        schema_token = token
+        if oidc_configured:
+            schema_token, _ = knowledge_auth.get_knowledge_ops_bearer_sync(
+                route=f"{app.namespace}.manifest",
+                static_token=token,
+            )
+            if app.token_required and not schema_token:
+                return _schema_failure(
+                    app,
+                    fingerprint,
+                    "no_token",
+                    "Knowledge-Ops OIDC credential unavailable",
+                )
+        specs = _fetch_schema(
+            app,
+            url,
+            _headers(app, token=schema_token, streamable=app.transport == "mcp"),
+        )
     except httpx.TimeoutException:
         return _schema_failure(app, fingerprint, "unreachable", "request timed out")
     except (httpx.HTTPError, OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
@@ -577,19 +608,39 @@ def _mcp_call_result(app: SiblingAppConfig, tool: str, parsed: Mapping[str, Any]
     return _content_result(result)
 
 
+def _with_knowledge_oidc_health(app: SiblingAppConfig, result: object) -> object:
+    if _is_knowledge_app(app) and isinstance(result, dict):
+        return knowledge_auth.add_knowledge_ops_oidc_health(result)
+    return result
+
+
 async def _invoke(app: SiblingAppConfig, spec: _SiblingToolSpec, arguments: dict[str, Any]) -> object:
     """Call a sibling tool and always return a model-visible result object."""
     tool = spec.canonical_name
     url = _app_url(app)
-    token = _app_token(app)
     if not url:
         return _error_result(app, tool, "no URL configured")
-    if app.token_required and not token:
-        return _error_result(app, tool, "token not configured")
     if not sibling_app_tools_enabled():
         return _error_result(app, tool, "sibling app tools disabled")
 
     try:
+        if _is_knowledge_app(app):
+            static_token = _app_token(app)
+            token, uses_oidc = await knowledge_auth.get_knowledge_ops_bearer(
+                route=tool,
+                static_token=static_token,
+            )
+            if uses_oidc and not token:
+                return _with_knowledge_oidc_health(
+                    app,
+                    _error_result(app, tool, "knowledge-ops could not obtain an OIDC credential"),
+                )
+        else:
+            token = _app_token(app)
+            uses_oidc = False
+        if app.token_required and not token:
+            return _error_result(app, tool, "token not configured")
+
         timeout = _request_timeout(app)
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(timeout),
@@ -604,13 +655,27 @@ async def _invoke(app: SiblingAppConfig, spec: _SiblingToolSpec, arguments: dict
                 }
                 response = await client.post(
                     url,
-                    headers=_headers(app, streamable=True),
+                    headers=_headers(app, token=token, streamable=True),
                     json=payload,
                 )
+                if response.status_code in (401, 403) and uses_oidc:
+                    refreshed_token, _ = await knowledge_auth.get_knowledge_ops_bearer(
+                        route=tool,
+                        force_refresh=True,
+                        static_token=static_token,
+                    )
+                    if refreshed_token:
+                        response = await client.post(
+                            url,
+                            headers=_headers(app, token=refreshed_token, streamable=True),
+                            json=payload,
+                        )
                 if response.status_code >= 400:
-                    return _error_result(app, tool, f"HTTP {response.status_code}")
+                    return _with_knowledge_oidc_health(
+                        app, _error_result(app, tool, f"HTTP {response.status_code}")
+                    )
                 parsed = _parse_streamable_response(response.text)
-                return _mcp_call_result(app, tool, parsed)
+                return _with_knowledge_oidc_health(app, _mcp_call_result(app, tool, parsed))
 
             if not spec.path:
                 return _error_result(app, tool, "manifest did not provide a REST path")
@@ -621,16 +686,27 @@ async def _invoke(app: SiblingAppConfig, spec: _SiblingToolSpec, arguments: dict
                 return _error_result(app, tool, "manifest REST path must be relative")
             endpoint = f"{url.rstrip('/')}/{spec.path.lstrip('/')}"
             method = spec.method or "POST"
-            request_kwargs: dict[str, Any] = {"headers": _headers(app)}
+            request_kwargs: dict[str, Any] = {"headers": _headers(app, token=token)}
             if method in {"GET", "HEAD"}:
                 request_kwargs["params"] = arguments
             else:
                 request_kwargs["json"] = arguments
             response = await client.request(method, endpoint, **request_kwargs)
+            if response.status_code in (401, 403) and uses_oidc:
+                refreshed_token, _ = await knowledge_auth.get_knowledge_ops_bearer(
+                    route=tool,
+                    force_refresh=True,
+                    static_token=static_token,
+                )
+                if refreshed_token:
+                    request_kwargs["headers"] = _headers(app, token=refreshed_token)
+                    response = await client.request(method, endpoint, **request_kwargs)
             if response.status_code >= 400:
-                return _error_result(app, tool, f"HTTP {response.status_code}")
+                return _with_knowledge_oidc_health(
+                    app, _error_result(app, tool, f"HTTP {response.status_code}")
+                )
             try:
-                return response.json()
+                return _with_knowledge_oidc_health(app, response.json())
             except (TypeError, ValueError):
                 return response.text
     except httpx.TimeoutException:

@@ -26,6 +26,13 @@ def reset_knowledge_state(monkeypatch):
     monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_AUDIENCE", "")
     monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_SCOPE", "")
     knowledge_tools._TOKEN_CACHE.update(token=None, exp=0.0)
+    knowledge_tools._OIDC_STATE.update(
+        negative_until=0.0,
+        warning_until=0.0,
+        oidc_ok=True,
+        oidc_last_error="",
+    )
+    monkeypatch.setattr(knowledge_tools, "_TOKEN_MINT_TASK", None)
     yield
     knowledge_tools._TOKEN_CACHE.update(token=None, exp=0.0)
 
@@ -53,8 +60,8 @@ async def test_oidc_token_is_minted_once_and_reused(monkeypatch):
         first = await knowledge_tools._search_handler("one")
         second = await knowledge_tools._search_handler("two")
 
-    assert first == {"matches": ["one"]}
-    assert second == {"matches": ["two"]}
+    assert first == {"matches": ["one"], "oidc_ok": True, "oidc_last_error": ""}
+    assert second == {"matches": ["two"], "oidc_ok": True, "oidc_last_error": ""}
     assert token_route.call_count == 1
     assert parse_qs(token_route.calls[0].request.content.decode()) == {
         "grant_type": ["client_credentials"],
@@ -93,8 +100,16 @@ async def test_invalid_oidc_expiry_is_not_cached_and_logs_once_per_mint(
         )
 
         with caplog.at_level(logging.WARNING, logger=knowledge_tools.logger.name):
-            assert await knowledge_tools._search_handler(f"{case}-one") == {"ok": 1}
-            assert await knowledge_tools._search_handler(f"{case}-two") == {"ok": 2}
+            assert await knowledge_tools._search_handler(f"{case}-one") == {
+                "ok": 1,
+                "oidc_ok": True,
+                "oidc_last_error": "",
+            }
+            assert await knowledge_tools._search_handler(f"{case}-two") == {
+                "ok": 2,
+                "oidc_ok": True,
+                "oidc_last_error": "",
+            }
 
     assert token_route.call_count == 2
     assert [call.request.headers["authorization"] for call in knowledge_route.calls] == [
@@ -157,9 +172,17 @@ async def test_oidc_token_refreshes_after_the_early_expiry_window(monkeypatch):
             side_effect=[httpx.Response(200, json={"ok": 1}), httpx.Response(200, json={"ok": 2})]
         )
 
-        assert await knowledge_tools._search_handler("first") == {"ok": 1}
+        assert await knowledge_tools._search_handler("first") == {
+            "ok": 1,
+            "oidc_ok": True,
+            "oidc_last_error": "",
+        }
         clock["now"] = 131.0
-        assert await knowledge_tools._search_handler("second") == {"ok": 2}
+        assert await knowledge_tools._search_handler("second") == {
+            "ok": 2,
+            "oidc_ok": True,
+            "oidc_last_error": "",
+        }
 
     assert token_route.call_count == 2
     assert [call.request.headers["authorization"] for call in knowledge_route.calls] == [
@@ -192,7 +215,11 @@ async def test_oidc_401_or_403_refreshes_once_then_returns_clean_error(
         with caplog.at_level(logging.WARNING, logger=knowledge_tools.logger.name):
             result = await knowledge_tools._search_handler("protected")
 
-    assert result == {"error": f"knowledge-ops rejected the credential ({rejection_status})"}
+    assert result == {
+        "error": f"knowledge-ops rejected the credential ({rejection_status})",
+        "oidc_ok": True,
+        "oidc_last_error": "",
+    }
     assert token_route.call_count == 2
     assert knowledge_route.call_count == 2
     assert [call.request.headers["authorization"] for call in knowledge_route.calls] == [
@@ -216,7 +243,11 @@ async def test_oidc_mint_exception_logs_type_without_client_secret(caplog, monke
         with caplog.at_level(logging.ERROR, logger=knowledge_tools.logger.name):
             result = await knowledge_tools._search_handler("mint-failure")
 
-    assert result == {"error": "knowledge-ops could not obtain an OIDC credential"}
+    assert result == {
+        "error": "knowledge-ops could not obtain an OIDC credential",
+        "oidc_ok": False,
+        "oidc_last_error": "OIDC token mint failed (RuntimeError)",
+    }
     assert "RuntimeError" in caplog.text
     assert client_secret not in caplog.text
 
@@ -236,7 +267,11 @@ async def test_oidc_mint_failure_falls_back_to_static_token_once_with_route_warn
         with caplog.at_level(logging.WARNING, logger=knowledge_tools.logger.name):
             result = await knowledge_tools._search_handler("fallback")
 
-    assert result == {"matches": ["fallback"]}
+    assert result == {
+        "matches": ["fallback"],
+        "oidc_ok": False,
+        "oidc_last_error": "OIDC token endpoint returned HTTP 503",
+    }
     assert token_route.call_count == 1
     assert knowledge_route.calls[0].request.headers["authorization"] == "Bearer static-token"
     fallback_warnings = [

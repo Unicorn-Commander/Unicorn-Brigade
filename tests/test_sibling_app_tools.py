@@ -9,12 +9,14 @@ import httpx
 import pytest
 import respx
 
+import app.llm.knowledge_ops_tools as knowledge_tools
 import app.llm.sibling_app_tools as sibling_tools
 import app.llm.tool_resolver as resolver
 from app.llm.sibling_app_tools import configured_sibling_tool_names
 
 ACCOUNTING_URL = "https://accounting.test/mcp"
 KNOWLEDGE_URL = "http://knowledge.test"
+TOKEN_URL = "https://auth.test/realms/uchub/protocol/openid-connect/token"
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +36,20 @@ def reset_sibling_state(monkeypatch):
     monkeypatch.setenv("KNOWLEDGE_OPS_URL", KNOWLEDGE_URL)
     # Knowledge-Ops answers 401 "missing bearer token" without one (measured 2026-10-17).
     monkeypatch.setenv("KNOWLEDGE_OPS_TOKEN", "knowledge-test-token")
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_TOKEN", "knowledge-test-token")
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_TOKEN_URL", "")
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_CLIENT_ID", "")
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_CLIENT_SECRET", "")
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_AUDIENCE", "")
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_SCOPE", "")
+    knowledge_tools._TOKEN_CACHE.update(token=None, exp=0.0)
+    knowledge_tools._OIDC_STATE.update(
+        negative_until=0.0,
+        warning_until=0.0,
+        oidc_ok=True,
+        oidc_last_error="",
+    )
+    monkeypatch.setattr(knowledge_tools, "_TOKEN_MINT_TASK", None)
     # A developer shell may carry real sibling credentials; tests never use them.
     monkeypatch.delenv("CUSTOMER_OPS_MCP_TOKEN", raising=False)
     monkeypatch.delenv("CUSTOMER_OPS_MCP_URL", raising=False)
@@ -84,6 +100,12 @@ def _knowledge_tool(
         },
         "rest": {"method": "POST", "path": path or f"/kb.{name}"},
     }
+
+
+def _configure_knowledge_oidc(monkeypatch):
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_TOKEN_URL", TOKEN_URL)
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_CLIENT_ID", "brigade-ko-test")
+    monkeypatch.setattr(knowledge_tools, "KNOWLEDGE_OPS_OIDC_CLIENT_SECRET", "test-secret")
 
 
 @pytest.mark.asyncio
@@ -206,6 +228,93 @@ async def test_rest_manifest_calls_declared_route_with_json_body():
     assert result == {"matches": ["doc-1"]}
     assert manifest_route.called
     assert json.loads(call_route.calls[0].request.content) == {"query": "router", "limit": 2}
+
+
+@pytest.mark.asyncio
+async def test_knowledge_manifest_call_uses_shared_oidc_bearer(monkeypatch):
+    _configure_knowledge_oidc(monkeypatch)
+    monkeypatch.setenv("KNOWLEDGE_OPS_TOKEN", "")
+    manifest = _knowledge_manifest(_knowledge_tool("search", path="/kb.search"))
+
+    with respx.mock(assert_all_called=True) as router:
+        token_route = router.post(TOKEN_URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={"access_token": "oidc-sibling-token", "expires_in": 300},
+            )
+        )
+        manifest_route = router.get(f"{KNOWLEDGE_URL}/.well-known/mcps.json").mock(
+            return_value=httpx.Response(200, json=manifest)
+        )
+        call_route = router.post(f"{KNOWLEDGE_URL}/kb.search").mock(
+            return_value=httpx.Response(200, json={"matches": ["oidc"]})
+        )
+
+        [tool] = resolver.get_tools_for_agent({"id": "librarian", "tools": ["knowledge.search"]})
+        result = await tool.handler(query="router")
+
+    assert result == {"matches": ["oidc"], "oidc_ok": True, "oidc_last_error": ""}
+    assert token_route.call_count == 1
+    assert manifest_route.calls[0].request.headers["authorization"] == "Bearer oidc-sibling-token"
+    assert call_route.calls[0].request.headers["authorization"] == "Bearer oidc-sibling-token"
+
+
+@pytest.mark.asyncio
+async def test_knowledge_manifest_call_falls_back_to_static_without_oidc(monkeypatch):
+    monkeypatch.setenv("KNOWLEDGE_OPS_TOKEN", "static-sibling-token")
+    manifest = _knowledge_manifest(_knowledge_tool("search", path="/kb.search"))
+
+    with respx.mock(assert_all_called=True) as router:
+        manifest_route = router.get(f"{KNOWLEDGE_URL}/.well-known/mcps.json").mock(
+            return_value=httpx.Response(200, json=manifest)
+        )
+        call_route = router.post(f"{KNOWLEDGE_URL}/kb.search").mock(
+            return_value=httpx.Response(200, json={"matches": ["static"]})
+        )
+
+        [tool] = resolver.get_tools_for_agent({"id": "librarian", "tools": ["knowledge.search"]})
+        result = await tool.handler(query="router")
+
+    assert result == {"matches": ["static"]}
+    assert manifest_route.calls[0].request.headers["authorization"] == "Bearer static-sibling-token"
+    assert call_route.calls[0].request.headers["authorization"] == "Bearer static-sibling-token"
+
+
+@pytest.mark.asyncio
+async def test_knowledge_oidc_mint_failure_is_negative_cached_for_sibling_calls(
+    monkeypatch,
+):
+    _configure_knowledge_oidc(monkeypatch)
+    monkeypatch.setenv("KNOWLEDGE_OPS_TOKEN", "static-sibling-token")
+    manifest = _knowledge_manifest(_knowledge_tool("search", path="/kb.search"))
+
+    with respx.mock(assert_all_called=True) as router:
+        token_route = router.post(TOKEN_URL).mock(return_value=httpx.Response(503))
+        router.get(f"{KNOWLEDGE_URL}/.well-known/mcps.json").mock(
+            return_value=httpx.Response(200, json=manifest)
+        )
+        call_route = router.post(f"{KNOWLEDGE_URL}/kb.search").mock(
+            side_effect=[
+                httpx.Response(200, json={"matches": ["first"]}),
+                httpx.Response(200, json={"matches": ["second"]}),
+            ]
+        )
+
+        [tool] = resolver.get_tools_for_agent({"id": "librarian", "tools": ["knowledge.search"]})
+        first = await tool.handler(query="first")
+        second = await tool.handler(query="second")
+
+    expected_health = {
+        "oidc_ok": False,
+        "oidc_last_error": "OIDC token endpoint returned HTTP 503",
+    }
+    assert first == {"matches": ["first"], **expected_health}
+    assert second == {"matches": ["second"], **expected_health}
+    assert token_route.call_count == 1
+    assert [call.request.headers["authorization"] for call in call_route.calls] == [
+        "Bearer static-sibling-token",
+        "Bearer static-sibling-token",
+    ]
 
 
 @pytest.mark.asyncio
