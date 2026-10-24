@@ -1,1067 +1,826 @@
 <div align="center">
 
-<img src="frontend/public/The_General_Logo.png" width="180"/>
+<img src="frontend/public/The_General_Logo.png" width="160" alt="The General, Unicorn Brigade's unicorn mascot">
 
 # Unicorn Brigade
 
-### **The AI Agent Factory**
+**Build agents, give them tools, and coordinate their work from one command center.**
 
-*Build. Deploy. Orchestrate. Dominate.*
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-8b5cf6)](LICENSE)
+[![UI version](https://img.shields.io/badge/UI-v1.16.0-8b5cf6)](frontend/package.json)
+[![Python / FastAPI](https://img.shields.io/badge/Python-FastAPI-009688)](requirements-prod.txt)
+[![React](https://img.shields.io/badge/React-18.3-61dafb)](frontend/package.json)
+[![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-336791)](docker-compose.yml)
+[![Self-hosted](https://img.shields.io/badge/deployment-self--hosted-22c55e)](#quick-start)
+[![MCP](https://img.shields.io/badge/agents-MCP-f59e0b)](#built-for-agents)
 
-[![Python](https://img.shields.io/badge/Python-3.12-blue?style=for-the-badge&logo=python)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-teal?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)](https://react.dev)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?style=for-the-badge&logo=postgresql)](https://postgresql.org)
-
-[![A2A Protocol](https://img.shields.io/badge/A2A-Protocol-green?style=for-the-badge)](https://github.com/a2aproject/A2A)
-[![MCP](https://img.shields.io/badge/MCP-Anthropic-orange?style=for-the-badge)](https://modelcontextprotocol.io)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-purple?style=for-the-badge)](LICENSE)
-
-**[Quick Start](#-quick-start)** |
-**[How It Works](#-how-it-works)** |
-**[Protocols](#-protocol-innovation)** |
-**[API Docs](#-api-reference)** |
-**[Roadmap](docs/2026-ROADMAP.md)**
-
----
-
-**Production Status: 94/100** 🚀
-
-**17 Production Agents** | **23 Working Tools** | **11 MCP Servers** | **25 Workflow Templates** | **4 Protocols** | **Voice Agents** | **Self-Correction**
+[Quick start](#quick-start) · [Features](#feature-tour) · [Agents](#built-for-agents) · [Architecture](#architecture) · [Suite](#part-of-unicorn-commander)
 
 </div>
 
----
+<p align="center">
+  <img src="docs/screenshots/dashboard.webp" width="1100" alt="Unicorn Brigade dashboard with agent status, domains, quick actions and The General">
+  <br>
+  <em>Dashboard — agent status, domains and quick actions.</em>
+</p>
 
-## ⚡ What is Unicorn Brigade?
+## What is Unicorn-Brigade?
 
-Unicorn Brigade is a production-ready orchestration platform for real-time, protocol-first multi-agent coordination. It solves three critical problems in AI agent systems: **observability** (see what agents are doing), **interoperability** (agents talk across platforms), and **cost** (route work to efficient models).
+Unicorn Brigade is a self-hosted workspace for building, running and coordinating AI
+agents. It gives developers and operators an agent library, tool assignments, chat,
+workflows and a live view of delegated work. Agents execute tasks; people configure
+their access, review results and guide retries. As the agent layer of Unicorn Commander,
+Brigade can use shared identity and call other suite apps through authenticated APIs.
 
-### 🎯 The Core Concept
+## Highlights
 
-Think of it as **Mission Control for AI Agents**:
+- **Give each agent a job.** Configure its persona, model, tools and access policy,
+  or use Gunny's conversational builder to draft a new agent.
+- **Watch work happen.** Follow missions, agent delegation and tool activity through
+  streamed events and an interactive graph.
+- **Connect useful tools.** Assign search, document, browser and business tools to
+  agents; manage external MCP servers from the same interface.
+- **Reuse workflows.** Combine an orchestrator, domain leads and workers with
+  configurable models; Ralph adds retries and mid-run guidance.
+- **Ground conversations in memory.** Connect Graphiti and FalkorDB to retain
+  extracted facts and relationships across conversations.
+- **Bring your own client.** Discover agents through A2A-style routes, use the
+  OpenAI-compatible chat adapter, or connect to the suite MCP gateway.
+- **Own the deployment.** Run the API and UI yourself, with API keys, optional
+  Keycloak SSO and caller-aware tool permissions.
 
-- **The General** 🎖️ - Your AI orchestrator that commands agent operations in real-time
-- **Domain Experts** - 17 specialized agents organized into military-style teams
-- **3-Tier Hierarchy** - Orchestrator (Opus 4.5) → Team Leads (gpt-oss-120b) → Workers (Granite 3.3 2B) for massive cost reduction
-- **Ralph Loops** - Self-correcting workflows that retry on failure with mid-execution guidance
-- **Protocol-First** - Native A2A, MCP, UCP, and Agent Trace support
-- **Real-Time Coordination** - SSE streaming shows you exactly what every agent is doing, live
+## Feature tour
 
-### 🔥 This Isn't a Framework. It's a Platform.
+### An agent library you can shape
 
-**Frameworks require you to write code.** Unicorn Brigade gives you:
-- ✅ **Pre-built agents** that work today (email, search, code execution, browser automation)
-- ✅ **The General** orchestrates multi-agent operations automatically
-- ✅ **11 real, npx-runnable MCP servers** (credential-gated; tools discovered at runtime)
-- ✅ **Voice agents** with LiveKit WebRTC + self-hosted STT/TTS
-- ✅ **3D visualization** (Three.js) shows your agent swarm in action
-- ✅ **Conversation memory** (Graphiti + FalkorDB temporal knowledge graph) that agents actually remember
-- ✅ **Code attribution** (Agent Trace) for compliance and auditing
+<p align="center">
+  <img src="docs/screenshots/library.webp" width="1100" alt="The agent library">
+</p>
 
-### 🦄 Unicorn Commander: The Complete Platform
+Browse agents by domain, inspect their profiles, and choose their models and tools.
+Gunny helps draft agent configurations through chat. Agent definitions and conversation
+history live in PostgreSQL, with JSON import and export for moving definitions.
 
-**Unicorn Brigade** (this repo) + **Ops-Center** (companion system) = **Unicorn Commander**
+<details>
+<summary><strong>Meet the default seed roster</strong></summary>
 
-| Component | Responsibility |
-|-----------|----------------|
-| **Unicorn Brigade** | Agent orchestration, protocols, workflow execution, real-time coordination |
-| **Ops-Center** | LLM routing, model selection, guardrails, cost optimization, usage analytics |
+The default seed file contains **17 agent definitions**. Seeding happens when the agent
+table is empty; an existing deployment can have a different roster. These are starting
+personas whose useful behavior depends on the configured models, tools and services.
 
-**How They Work Together**:
+| Agent | Starting specialty |
+|---|---|
+| The General | Planning and agent orchestration |
+| Gunny | Conversational agent building |
+| Sgt. Cipher | Cybersecurity research |
+| Cpt. Fullstack | Software engineering |
+| Maj. DevOps | Infrastructure and operations |
+| Col. Finance | Financial analysis |
+| Lt. TaxStrat | Tax strategy |
+| Judge Advocate | Legal research and analysis |
+| Doc MedResearch | Medical literature research |
+| Detective Holmes | Investigation and open-source research |
+| Prof. DataSci | Data science |
+| Support Specialist | Customer support |
+| Code Reviewer | Code review |
+| SQL Analyst | Database questions and text-to-SQL |
+| Sgt. Scribe | Meeting notes and documentation |
+| Maj. LeadGen | Lead enrichment and scoring |
+| Lt. DocAnalyst | Document analysis |
 
-1. **Unicorn Brigade** receives commands ("Research AI market, write report, email team")
-2. **The General** plans the workflow and assigns agents
-3. **Ops-Center** routes LLM calls to optimal models (Claude Opus for strategy, gpt-oss-120b for workers)
-4. **Guardrails** (on Ops-Center) scan inputs/outputs for safety, PII, prompt injection
-5. **Agents** execute with tools, stream results via SSE
-6. **Ops-Center** tracks costs, latency, and model performance
+Each definition can carry its own system prompt, model, temperature, token limit,
+tools, capabilities, reporting line and access policy. A persona is not a professional
+qualification or a guarantee of correct advice.
 
-**Result**: Production-grade AI infrastructure with built-in safety, observability, and cost control.
+Sources: [seed roster](app/data/seed_agents.json), [seed loader](app/db/init_db.py),
+[agent API](app/api/agent_routes.py), [builder API](app/api/builder_routes.py).
 
----
+</details>
 
-## 📸 Screenshots
+### The General's orchestration view
 
-<div align="center">
+<p align="center">
+  <img src="docs/screenshots/orchestration.webp" width="1100" alt="Orchestration command view with mission cards, domain filters and the agent graph area">
+</p>
 
-### Dashboard - Command Center
-<img src=".github/images/dashboard.png" width="800" alt="Unicorn Brigade Dashboard"/>
+The General accepts natural-language commands. `POST /api/v1/orchestration/command`
+asks a model and, when the meta-agent is available, can create an agent from the
+reply. Task assignment and mission execution go through tools, missions, and
+workflows. The orchestration view subscribes to Server-Sent Events for mission
+progress, tool calls and agent activity, with a Three.js graph for exploring
+connections. A browser EventSource cannot set API-key headers, so the UI first
+calls `POST /api/v1/orchestration/events/ticket`.
 
-*Real-time agent status, active missions, and system metrics*
+<details>
+<summary><strong>Workflows, model selection and Ralph retries</strong></summary>
 
-### Orchestration - The General in Action
-<img src=".github/images/orchestration.png" width="800" alt="Real-time Orchestration"/>
+The hierarchy separates orchestration, domain leads and workers. Configure models at
+each level through presets or explicit overrides, so a workflow can use different
+models for planning and execution. Cost estimates depend on the selected models
+and providers.
 
-*3D visualization of multi-agent coordination with SSE streaming*
+The enabled catalog has **26 templates**. Additional professional templates
+remain in the source tree but are not imported. The enabled set covers:
 
-### Tool Library - 23 Working Tools
-<img src=".github/images/tool-library.png" width="800" alt="Tool Library"/>
+| Area | Examples |
+|---|---|
+| Research | Competitive intelligence, literature review, news briefings |
+| Engineering | Code review, technical documentation, API integration |
+| Operations | Incident response, help-desk triage, support resolution |
+| Content | Research and writing, localization, content distribution |
+| Business | Sales pipelines, RFP responses, meeting intelligence |
+| Analysis | Data reports, due diligence, risk assessment |
+| Specialist review | Contract analysis, compliance audits, legal and medical document review |
 
-*Production-ready tools with enterprise integrations*
+Inspect required inputs and model choices before starting a template. The templates
+include human-review checkpoint definitions and the engine exposes checkpoint hooks,
+but the HTTP execution route does not currently install a blocking approval callback.
+Treat outputs and external actions as requiring your own review process.
 
-</div>
+**Ralph** wraps workflow steps in an iterative execution loop. It records failures,
+retries with error context, accepts guidance during a run and exposes progress and
+results. Execution snapshots and guidance are persisted to PostgreSQL; the engine
+also retains local state files. Recovery of a saved run does not imply that every
+interrupted external action can safely be repeated.
 
----
+For example, a research workflow can gather sources, draft a report and pass the result
+back for review. Sending that report requires an assigned email tool and configured
+provider credentials.
 
-## 🎬 How It Works
+Continue with the [workflow templates](app/workflows/templates.py),
+[model configuration guide](docs/MODEL_FLEXIBILITY_ARCHITECTURE.md),
+[workflow walkthroughs](docs/PHASE1_WORKFLOWS_IMPLEMENTATION.md) and
+[Ralph guide](docs/RALPH_SELF_CORRECTION.md). Executable request schemas are in
+[hierarchical routes](app/api/hierarchical_routes.py) and
+[Ralph routes](app/api/ralph_routes.py).
 
-### The General: Your AI Orchestrator
+</details>
 
-**The General** is the central intelligence that coordinates all agent operations. It:
+### Tools that turn a conversation into work
 
-1. **Receives Natural Language Commands**
-   ```
-   "Research AI market trends, write a report, and email it to the team"
-   ```
+<p align="center">
+  <img src="docs/screenshots/tools.webp" width="1100" alt="Tool library with searchable cards for web search, HTTP requests, calculation, time, JSON, shell and memory">
+</p>
 
-2. **Plans Multi-Agent Workflows**
-   - Breaks down complex tasks into agent-specific subtasks
-   - Assigns agents based on domain expertise and availability
-   - Manages dependencies and parallel execution
+Browse tool definitions and assign the capabilities an agent needs.
+The library spans research, files, documents, notifications and code execution;
+provider-backed tools need their own credentials and runtime dependencies.
 
-3. **Orchestrates in Real-Time**
-   - Streams live updates via Server-Sent Events (SSE)
-   - Shows you tool calls, results, errors as they happen
-   - Visualized in 3D with react-force-graph
+<details>
+<summary><strong>Built-in tool reference</strong></summary>
 
-4. **Self-Corrects with Ralph Loops**
-   - Detects failures automatically
-   - Retries with improved context
-   - Allows mid-execution human guidance without restart
+The executable [tool resolver](app/llm/tool_resolver.py) is authoritative.
+The [permission catalog](docs/TOOL_CATALOGUE.md) explains tool privilege levels;
+check the resolver when a catalog entry and executable name differ.
 
-### Hierarchical Multi-Agent Architecture
+| Tool | What the handler provides |
+|---|---|
+| `web_search` | Search through Serper, SearXNG, or Bright Data |
+| `http_request` | HTTP requests with URL validation and bounded timeouts |
+| `calculator` | Arithmetic through a restricted expression parser |
+| `datetime` | Current date and time in a chosen timezone |
+| `json` | JSON parsing, formatting and manipulation |
+| `memory` | Process-local key-value scratch storage |
+| `shell` | Commands through the Docker sandbox executor |
+| `email` | Send through the selected provider. Read, list, and search work with Microsoft 365 and Google; Resend and SendGrid are send-only |
+| `file` | File operations with path checks |
+| `code` | Python execution with restricted builtins in the API process |
+| `text` | Text transformations and pattern operations |
+| `image` | Image generation through the OpenAI image API |
+| `database` | Process-local key-value tables |
+| `notify` | Slack or Discord webhooks, or log notifications |
+| `qrcode` | A URL for an external QR-image service |
+| `agentic_rag` | Retrieval and answer generation through the graph/RAG integration |
+| `browser` | Browser tasks through browser-use, when installed |
+| `code_sandbox`, `sandbox_session` | In-process Python with restricted builtins, and process-local session state |
+| `screenshot` | Page captures through Playwright |
+| `pdf_extract` | PDF text extraction |
+| `doc_generate` | Template-based Markdown or HTML documents |
+| `data_analyze` | Summary statistics and analysis of CSV or JSON data |
+| `url_preview` | Page metadata and an optional Playwright screenshot |
+| `kg_query`, `knowledge_store`, `knowledge_query` | Configured FalkorDB graph operations |
+| `slack` | Slack operations with the configured token |
+| `csv`, `rss`, `translate`, `weather`, `schedule`, `company` | CSV and RSS helpers, LibreTranslate, Open-Meteo forecasts, date arithmetic, and a Clearbit logo URL. Company name search does not call an external company API |
+| `delegate_to_agent` | Ask another Brigade agent to perform a task |
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    THE GENERAL                          │
-│              (GPT-5.2 / Claude Opus)                    │
-│         "Analyze market, write report, email team"      │
-└────────────────┬────────────────────────────────────────┘
-                 │ Plans workflow
-                 │ Delegates to domain experts
-                 ▼
-    ┌────────────┴────────────┬────────────────────┐
-    │                         │                    │
-    ▼                         ▼                    ▼
-┌───────────────┐      ┌───────────────┐   ┌───────────────┐
-│ TEAM LEAD     │      │ TEAM LEAD     │   │ TEAM LEAD     │
-│ Research      │      │ Content       │   │ Operations    │
-│ (gpt-oss-120b)│      │ (gpt-oss-120b)│   │ (gpt-oss-120b)│
-└──────┬────────┘      └──────┬────────┘   └──────┬────────┘
-       │                      │                    │
-       │ Delegates tactical   │                    │
-       │ work to workers      │                    │
-       ▼                      ▼                    ▼
- ┌───────────┐         ┌───────────┐        ┌───────────┐
- │ Worker    │         │ Worker    │        │ Worker    │
- │ Web       │         │ Doc Gen   │        │ Email     │
- │ Search    │         │ (Granite  │        │ Send      │
- │ (Granite) │         │  3.3 2B)  │        │ (Granite) │
- └───────────┘         └───────────┘        └───────────┘
+The `memory` and `database` tools are temporary stores. Persistent conversation memory
+is a separate Graphiti integration. Likewise, `code` and `code_sandbox` are not Docker
+isolation boundaries; the `shell` handler explicitly uses the Docker sandbox.
+See [Security](#security) before assigning execution tools.
 
- **Cost Optimization**: 90% of work done by ultra-low cost API models
- **Speed**: Parallel execution across worker pool
- **Intelligence**: Strategic decisions handled by Claude Opus 4.5
-```
+Email integration includes Microsoft 365 and Google Workspace adapters, with Resend
+and SendGrid configuration also present. Browser automation needs browser-use or
+Playwright plus an installed browser. The base API image does not include those
+browser packages or a Docker daemon for nested shell execution.
 
-### Example: Market Research & Email Workflow
+Sources: [core handlers](app/llm/builtin_tools.py),
+[extended handlers](app/llm/extended_tools.py),
+[advanced handlers](app/llm/advanced_tools.py).
 
-```bash
-# You send to The General:
-POST /api/v1/orchestration/command
-{"command": "Research AI agent market 2026 and email findings to aaron@example.com"}
+</details>
 
-# The General orchestrates:
-1. Research Team Lead assigns Web Search Worker
-   → Searches Google via Serper API
-   → Returns: Market size $7.63B → $50B by 2030
+<details>
+<summary><strong>Persistent memory, voice and code attribution</strong></summary>
 
-2. Research Team Lead assigns Analysis Worker
-   → Synthesizes findings into key insights
-   → Returns: 3 key trends, 5 major players
+**Memory.** The application initializes Graphiti over FalkorDB. Conversation ingestion
+extracts facts into a graph; retrieval brings relevant facts back into agent context.
+Configure the graph connection, extraction model and embedding endpoint together.
+The old `MEMORY_PROVIDER` setting does not switch the current application back to mem0.
+Qdrant remains in the base Compose stack, but is not the active conversation-memory
+backend.
 
-3. Content Team Lead assigns Report Writer
-   → Generates professional report in markdown
-   → Returns: 500-word executive summary
+Memory groups include user, agent and, where supplied, case context. Inspect the
+[memory implementation](app/memory/graphiti_manager.py) and
+[memory inspector routes](app/api/memory_inspector_routes.py) for grouping and retrieval.
 
-4. Operations Team Lead assigns Email Worker
-   → Sends via MS365 Graph API with OAuth2
-   → Returns: Message ID, delivery confirmation
+**Voice.** LiveKit room APIs, participant tokens and frontend call controls provide
+the voice interface. The optional deployment needs a LiveKit server and a separate
+voice worker. The bundled worker accepts speech-to-text providers `deepgram`,
+`whisper`, and `assemblyai`, and text-to-speech providers `elevenlabs`, `openai`,
+and `cartesia`. Its `whisper` path calls the OpenAI `whisper-1` API. Additional
+self-hosted provider implementations include MLX Whisper, faster-whisper,
+whisper.cpp, Kokoro, Chatterbox, Marvis, CosyVoice and custom TTS.
 
-# Real-time SSE stream shows every step:
-data: {"type": "agent_started", "agent": "research-web-search", "task": "..."}
-data: {"type": "tool_call", "tool": "web_search", "query": "AI agent market 2026"}
-data: {"type": "tool_result", "result": {"organic": [...], "market_size": "..."}}
-data: {"type": "agent_completed", "agent": "research-web-search", "output": "..."}
-...
-```
+Those implementations are not all selectable through the bundled worker:
+its provider enums differ from the self-hosted settings defaults. Match the worker,
+provider dependencies and hardware before enabling voice. Some providers offer voice
+samples or cloning; availability depends on the adapter you deploy.
 
----
+See [voice deployment](docker-compose.livekit.yml),
+[worker](scripts/voice_agent_worker.py), [provider implementations](app/voice/providers/)
+and [voice settings API](app/api/voice_settings_routes.py).
 
-## 🔗 Protocol Innovation
+**Agent Trace.** Code-attribution records associate generated code with an agent,
+model, prompt, file, line range and `code_hash` (the first 16 hex characters of a
+SHA-256 of the whitespace-normalized code). Query recent records or one agent's
+records, and export JSON or CSV. A PDF report request returns 501. This is useful
+audit evidence; it does not establish regulatory compliance or prove that every
+generated artifact was captured.
 
-Unicorn Brigade implements **4 cutting-edge protocols** for agent interoperability:
+See the [Agent Trace guide](docs/AGENT_TRACE.md),
+[API reference](docs/API_TRACE_QUICK_REFERENCE.md) and
+[trace implementation](app/observability/agent_trace.py).
 
-### 1️⃣ A2A (Agent-to-Agent Protocol)
+</details>
 
-**Purpose**: Cross-platform agent federation and discovery
+### MCP servers and tools
 
-**What it does**:
-- Agents publish **Agent Cards** (JSON-LD) describing capabilities
-- External agents can discover and invoke your agents
-- Your agents can invoke agents on other platforms
-- Standardized task format: `{task, context, tools, constraints}`
+<p align="center">
+  <img src="docs/screenshots/mcp-servers.webp" width="1100" alt="MCP server management showing server status and available tool details">
+</p>
 
-**Example**:
-```bash
-# Discover agents with "financial_analysis" capability
-GET /api/v1/a2a/discover?capability=financial_analysis
+Start and stop external MCP servers, inspect their status, and discover their tools.
+Brigade includes **11 server presets**; advertised capabilities are descriptions,
+while connected servers supply their actual tool lists at runtime.
 
-# Invoke an agent from another platform
-POST /api/v1/a2a/agents/col-finance/invoke
+<details>
+<summary><strong>External MCP server presets</strong></summary>
+
+| Preset | Configuration or runtime needed | Intended use |
+|---|---|---|
+| GitHub | `GITHUB_TOKEN` | Repositories, issues and pull requests |
+| Filesystem | `WORKSPACE_PATH` | Scoped file access |
+| PostgreSQL | `DATABASE_URL` | Read-only queries and schema inspection |
+| Playwright | Browser runtime | Browser navigation and interaction |
+| Slack | `SLACK_BOT_TOKEN`, `SLACK_TEAM_ID` | Channels, messages and reactions |
+| Memory | Writable storage | Knowledge-graph entities and observations |
+| Brave Search | `BRAVE_API_KEY` | Web search |
+| Google Drive | `GDRIVE_CREDENTIALS_PATH` | File search and resources |
+| Puppeteer | Browser runtime | Browser control and screenshots |
+| Stripe | `STRIPE_API_KEY` | Payment and billing operations |
+| Notion | `NOTION_API_KEY` | Pages, databases and search |
+
+These are configurations in [the registry](app/mcp/registry.py), not services started
+by the base Compose file. The presets launch through `npx`, which must be installed
+in the backend's execution environment; the current base API Dockerfile does not
+install it. Package availability, credentials and browser dependencies must be checked
+when provisioning each server.
+
+The bundled MCP client implements STDIO subprocess and HTTP connections. The
+[registry API](app/api/mcp_registry_routes.py) supports registering additional
+servers and controlling their lifecycle. Its administration paths require an admin
+credential.
+
+</details>
+
+## Built for agents
+
+Brigade exposes agent chat, an internal tool API and a federation gateway.
+Choose the surface that matches the client you are connecting.
+
+### Connect an MCP client to the suite gateway
+
+`POST /mcp` accepts MCP JSON-RPC over HTTP and returns JSON responses.
+It supports initialization, tool discovery and tool calls. Authenticate with
+`X-API-Key: <brigade-api-key>`, or with `Authorization: Bearer <brigade-api-key>`
+when that key contains fewer than two dots. A bearer value with two or more dots
+is accepted only as a Keycloak JWT.
+
+For an MCP client that accepts HTTP server entries:
+
+~~~json
 {
-  "task": "Calculate CAGR from $7.63B to $10.91B over 2 years",
-  "tools": ["calculator"],
-  "context": {"source": "Deloitte report"}
-}
-
-# Response includes full execution trace
-{
-  "status": "success",
-  "result": {"output": "CAGR is 19.6% annually", "confidence": 0.95},
-  "tool_calls": [{"tool": "calculator", "result": 19.58}],
-  "tokens_used": 342,
-  "duration_seconds": 1.2
-}
-```
-
-**Why it matters**: Your agents become **API endpoints** that other AI systems can use. Build once, integrate everywhere.
-
-### 2️⃣ MCP (Model Context Protocol)
-
-**Purpose**: Standardized tool interface for LLMs
-
-**What it does**:
-- Tools register with schema (name, parameters, description)
-- LLMs discover tools dynamically
-- Function calling standardized across OpenAI, Anthropic, local models
-- Resource reading (files, databases, APIs) with URI schemes
-
-**Implementation**:
-- ✅ **11 real, npx-runnable MCP servers** (declared capabilities; tools discovered at runtime)
-- ✅ **Subprocess lifecycle management** (start/stop/restart)
-- ✅ **JSON-RPC tool invocation** via STDIO transport
-- ✅ **HTTP/SSE transport** for remote servers
-- ✅ **Resource URI schemes**: `file://`, `http://`, `db://`, `mcp://`
-
-**Example**:
-```bash
-# List all available MCP tools
-GET /api/v1/mcp/tools
-# Returns Brigade's registered tools; MCP-server tool lists are discovered at runtime.
-
-# Invoke tool directly
-POST /api/v1/mcp/tools/stripe_create_payment_intent/invoke
-{
-  "arguments": {
-    "amount": 9900,
-    "currency": "usd",
-    "customer_id": "cus_123"
+  "mcpServers": {
+    "unicorn-brigade": {
+      "type": "http",
+      "url": "https://<brigade-host>/mcp",
+      "headers": {
+        "Authorization": "Bearer <brigade-api-key>"
+      }
+    }
   }
 }
-
-# Read MCP resource
-GET /api/v1/mcp/resources/file:///workspace/config.json
-```
-
-**Why it matters**: Tools built once work with **any LLM** (OpenAI, Anthropic, Gemini, local). No vendor lock-in.
-
-### 3️⃣ UCP (Universal Commerce Protocol)
-
-**Purpose**: Micropayment layer for agent-to-agent commerce
-
-**What it does**:
-- Creates **commerce sessions** for paid agent interactions
-- Tracks token usage and charges per call
-- Credit-based system with refunds
-- Enables agent marketplace economics
-
-**Example**:
-```bash
-# Create commerce session for paid agent
-POST /api/v1/ucp/sessions
-{
-  "agent_id": "premium-analyst",
-  "price_per_call": 0.50
-}
-
-# Check balance before call
-GET /api/v1/ucp/balance
-# Returns: {"credits": 10.50, "currency": "USD"}
-
-# Call is charged automatically
-POST /api/v1/a2a/agents/premium-analyst/invoke
-{...}
-
-# Session tracks usage
-GET /api/v1/ucp/sessions/{session_id}
-# Returns: {"calls": 3, "total_cost": 1.50, "remaining_credits": 9.00}
-```
-
-**Why it matters**: Enables **agent marketplaces** where agents can charge for premium capabilities.
-
-### 4️⃣ Agent Trace (Code Attribution)
-
-**Purpose**: Track which AI generated which code for compliance
-
-**What it does**:
-- Records every code generation with metadata:
-  - Agent ID, model, user prompt, code hash (SHA-256)
-  - File location, line numbers, timestamp
-  - Token usage, generation duration
-- Generates compliance reports (JSON/CSV)
-- Enables code auditing and debugging
-
-**Example**:
-```bash
-# Get recent code generations
-GET /api/v1/trace/recent?limit=50
-
-# Get all code by specific agent
-GET /api/v1/trace/files/sgt-coder
-
-# Generate compliance report
-GET /api/v1/trace/report?format=csv&start_date=2026-01-01
-
-# Example trace entry:
-{
-  "id": "trace_123",
-  "agent_id": "sgt-coder",
-  "model": "openai/gpt-5.2",
-  "file_path": "/app/api/agents.py",
-  "lines": "45-78",
-  "code_hash": "a3d5f...",
-  "user_prompt": "Add agent CRUD endpoints",
-  "language": "python",
-  "framework": "fastapi",
-  "tokens_used": 1234,
-  "created_at": "2026-01-31T12:34:56Z"
-}
-```
-
-**Why it matters**: **Compliance-ready** for regulated industries. Know exactly which AI wrote which code, when, and why.
-
----
-
-## 🛠️ 23 Production-Ready Tools
-
-Tools are what make agents useful. Unicorn Brigade comes with 23 **working, tested tools**:
-
-<details>
-<summary><b>Built-in Tools (7)</b> - Core capabilities</summary>
-
-| Tool | Description | Provider |
-|------|-------------|----------|
-| **web_search** | Google SERP results with snippets | Serper.dev API |
-| **http_request** | Make HTTP requests to any API | httpx library |
-| **calculator** | Safe mathematical expressions | Python eval (sandboxed) |
-| **datetime** | Time manipulation, timezone conversion | Python datetime |
-| **json** | Parse, validate, transform JSON | Python json |
-| **memory** | Store/retrieve conversation context | Qdrant + mem0 (default) or Graphiti + FalkorDB (temporal graph) |
-| **shell** | Execute shell commands safely | Docker sandbox |
-
-</details>
-
-<details>
-<summary><b>Extended Tools (9)</b> - Business operations</summary>
-
-| Tool | Description | Provider |
-|------|-------------|----------|
-| **email** | Send emails with OAuth2 authentication | MS365 Graph + Google Workspace |
-| **file** | Read/write files with path validation | Local filesystem (sandboxed) |
-| **code** | Execute Python code with libs | Docker + E2B hybrid sandbox |
-| **text** | Extract, summarize, transform text | Python NLP libraries |
-| **image** | Generate AI images | DALL-E / Stable Diffusion |
-| **database** | Query SQL databases | PostgreSQL / MySQL |
-| **notify** | Send notifications to channels | Slack, Discord, webhooks |
-| **qrcode** | Generate QR codes | Python qrcode library |
-| **agentic_rag** | RAG with document Q&A | Qdrant + LlamaIndex |
-
-</details>
-
-<details>
-<summary><b>Advanced Tools (7)</b> - Cutting-edge capabilities</summary>
-
-| Tool | Description | Provider |
-|------|-------------|----------|
-| **browser** | AI-driven browser automation | Playwright + browser-use (GPT-5.2) |
-| **code_sandbox** | Isolated code execution | Docker primary + E2B fallback |
-| **screenshot** | Capture webpage screenshots | Playwright |
-| **pdf_extract** | Extract text from PDFs | PyPDF2 |
-| **doc_generate** | Generate Word documents | python-docx |
-| **data_analyze** | Data analysis pipelines | Pandas + NumPy |
-| **url_preview** | Fetch page metadata | BeautifulSoup |
-| **knowledge_graph** | Store facts in AI-native graph | FalkorDB |
-
-</details>
-
-**Example Tool Execution Flow**:
-```
-1. Agent receives: "Search for Tesla stock price and save to memory"
-2. LLM decides to use: web_search tool
-3. Tool executes: Serper API → {"price": "$234.56", "change": "+2.3%"}
-4. LLM decides to use: memory tool
-5. Tool executes: Qdrant stores → {"success": true, "memory_id": "mem_789"}
-6. Agent returns: "Tesla is trading at $234.56, up 2.3% today. I've saved this to memory."
-```
-
----
-
-## 🔌 MCP Servers
-
-Brigade ships a registry of **11 real, npx-runnable MCP servers**
-(`app/mcp/registry.py`). Each is a genuinely-published package, credential-gated,
-with its actual tool list discovered at runtime when the server starts:
-
-| Server | Package / Config | Notes |
-| ------ | ---------------- | ----- |
-| GitHub | `GITHUB_TOKEN` | repos, issues, PRs, code search |
-| Filesystem | `WORKSPACE_PATH` | read/write/list/search files |
-| PostgreSQL | `DATABASE_URL` | query, list/describe tables |
-| Playwright | built-in | browser navigate/click/fill/snapshot |
-| Slack | `SLACK_BOT_TOKEN` | history, search, reactions |
-| Memory | built-in | store/retrieve/list/delete |
-| Brave Search | `BRAVE_API_KEY` | web + local search |
-| Google Drive | `GOOGLE_APPLICATION_CREDENTIALS` | search/get/download files |
-| Puppeteer | built-in | navigate, screenshot, click, fill |
-| Stripe | `@stripe/mcp` | payments API tools |
-| Notion | `@notionhq/notion-mcp-server` | Notion workspace tools |
-
-> Add new servers only with verified-published packages. Register more via the
-> MCP registry API (`POST /api/v1/mcp/registry/servers`).
-
-See [docs/one-key-mcp.md](docs/one-key-mcp.md) to expose these over MCP to
-external clients with a single key.
-
----
-
-## 🔒 Security Model
-
-**Defense-in-Depth Approach**: Multiple layers protect against tool misuse, prompt injection, and data exposure.
-
-### Tool Isolation
-
-- **Per-Agent Allowlists** - Agents only access explicitly assigned tools (Finance agent can't access filesystem)
-- **Role-Based Access Control (RBAC)** - Admin, Operator, and Viewer roles with different permissions
-- **API Key Authentication** - All API requests require valid authentication tokens
-
-### Sandbox Boundaries
-
-- **Code Execution** - Docker containers + E2B cloud sandbox for Python/JavaScript/TypeScript
-  - Network isolation (no outbound internet unless explicitly allowed)
-  - Resource limits (CPU, memory, disk)
-  - Timeout enforcement
-- **Shell Commands** - Execute in isolated Docker containers, not on host system
-- **File Operations** - Path traversal validation on all file reads/writes
-
-### MCP Server Security
-
-MCP servers present unique attack surfaces (chaining risks, privilege escalation):
-
-- **Server-Specific Authentication** - Each MCP server requires separate tokens
-- **Network Isolation** - MCP servers run in separate containers
-- **Tool Chaining Restrictions** - No automatic elevation (e.g., Git MCP can't invoke Filesystem MCP)
-- **Audit Logging** - All MCP tool calls logged with agent ID, timestamp, arguments
-
-### Input Validation & Guardrails
-
-- **Prompt Injection Defense** - Input sanitization on user prompts
-- **PII Detection** - Presidio scans for personally identifiable information
-- **Content Safety** - Llama Guard 3 checks for harmful outputs
-- **Agent Trace Auditing** - All AI-generated code tracked with SHA-256 hashes for compliance
-
-### Roadmap (Q1 2026)
-
-- [ ] NeMo Guardrails integration (policy-driven safety)
-- [ ] LLM Guard deployment (comprehensive input/output scanning)
-- [ ] Rate limiting per agent/user
-- [ ] CSRF protection for web endpoints
-
-**Note**: Security is an ongoing priority. Report vulnerabilities to security@unicorncommander.ai
-
----
-
-## 🎖️ 17 Production Agents (Military Organization)
-
-Agents are organized by **domain expertise** for efficient coordination:
-
-| Domain | Agent | Role | Capabilities |
-|--------|-------|------|--------------|
-| **Command** | The General | Orchestrator | Multi-agent coordination, planning, delegation |
-| **Command** | Gunny | Agent Builder | Conversational agent creation, configuration |
-| **Operations** | Col. Pipeline | Workflow Manager | ETL, data pipelines, job orchestration |
-| **Operations** | Sgt. Major Executor | Task Runner | Direct task execution, monitoring |
-| **Operations** | Cpl. Monitor | System Observer | Health checks, metrics, alerts |
-| **Research** | Dr. Analyst | Data Scientist | Statistical analysis, ML workflows |
-| **Research** | Lt. Webster | Web Researcher | SERP queries, source validation |
-| **Research** | Cpl. Librarian | Document Manager | RAG, indexing, retrieval |
-| **Engineering** | Sgt. Coder | Code Generator | Full-stack development, refactoring |
-| **Engineering** | Cpl. Debugger | Bug Hunter | Error analysis, debugging, fixes |
-| **Engineering** | Pvt. Tester | QA Engineer | Test generation, validation |
-| **Security** | Capt. Fortress | Security Analyst | Vulnerability scanning, compliance |
-| **Security** | Sgt. Audit | Auditor | Log analysis, policy enforcement |
-| **Finance** | Col. Finance | Financial Analyst | Financial modeling, forecasting |
-| **Finance** | Lt. Budget | Budget Planner | Cost analysis, optimization |
-| **Medical** | Dr. Vitals | Medical Analyst | Clinical documentation, diagnosis support |
-| **Medical** | Nurse Navigator | Care Coordinator | Patient routing, appointment scheduling |
-
-**Key Features**:
-- ✅ Each agent has **different LLM model** (GPT-5.2, Claude Sonnet, local models)
-- ✅ Each agent has **specialized tools** (Finance gets calculator, Research gets web_search)
-- ✅ Each agent has **domain knowledge** baked into system prompts
-- ✅ Stored in **PostgreSQL** with full CRUD, conversation history, tool assignments
-
----
-
-## 🎭 25 Hierarchical Workflow Templates
-
-**3-Tier Cost-Optimized Architecture**:
-
-```
-Tier 1: Orchestrator (Claude Opus 4.5) - $15/1M tokens
-├─ Plans workflow strategy
-├─ Handles complex reasoning
-└─ Final quality control
-
-Tier 2: Team Leads (gpt-oss-120b) - $0.039-0.19/1M tokens
-├─ Domain expertise (Finance, Research, etc.)
-├─ Tactical decisions
-└─ Worker coordination
-
-Tier 3: Workers (Granite 3.3 2B / Qwen3 VL 30B) - $0.02-0.6/1M tokens
-├─ Single-purpose tasks
-├─ Tool execution
-└─ Data processing
-```
-
-**Result**: Designed to route 80% of tasks to ultra-low cost models (10-100× cheaper depending on provider). Model costs vary by provider and date. See [OpenRouter pricing](https://openrouter.ai/models) for current rates.
-
-**Core Workflows (6)**:
-1. Investment Due Diligence - Market analysis, financial modeling, risk assessment
-2. Autonomous Sales Pipeline - Lead scoring, outreach, follow-up automation
-3. Incident Response - Alert triage, log analysis, remediation
-4. Content Production - Research, writing, editing, publishing
-5. Legal Case Analysis - Document review, precedent research, brief generation
-6. Medical Documentation Review - Chart review, diagnosis validation, coding
-
-**Phase 1 Workflows (2)**:
-7. Help Desk Triage - Ticket classification, priority assignment, routing
-8. RFP Response Generation - Requirements analysis, proposal writing, budget estimation
-
-**Professional Workflows (11)**:
-9-19. Competitive Intelligence, Code Review, Data Reports, Compliance Audit, Meeting Intelligence, Contract Analysis, Literature Review, API Integration, Multi-Channel Content Distribution
-
-**Domain Coverage**: Research, Finance, Content, Sales, DevOps, Legal, Medical, Investigation
-
----
-
-## 🎙️ Voice Agents (Production-Ready WebRTC)
-
-**Full Voice Stack** with LiveKit + self-hosted STT/TTS:
-
-### Speech-to-Text (5 options)
-- **mlx-whisper** - Apple Silicon Metal acceleration, unified memory
-- **faster-whisper** - CUDA GPUs, CTranslate2, INT8 quantization, 5-10x faster
-- **whisper.cpp** - CoreML / Apple Neural Engine, optimized for M-series
-- **Deepgram API** - Cloud fallback, 150ms latency
-- **AssemblyAI** - Cloud fallback, high accuracy
-
-### Text-to-Speech (5 options)
-- **Kokoro-82M** - CPU-friendly, 11 voices, Apache 2.0 license
-- **Chatterbox** - Voice cloning from 5-10s samples, emotion control
-- **Marvis** - Apple Silicon MLX native, low latency
-- **CosyVoice2** - 150ms latency, multi-language, SOTA quality
-- **Custom** - Load your own ONNX/PyTorch TTS models
-
-### Voice Features
-- ✅ **LiveKit WebRTC** - Sub-500ms end-to-end latency
-- ✅ **Runtime configuration** - Switch providers without restart
-- ✅ **Voice cloning** - Clone voices from short samples
-- ✅ **Frontend components** - VoiceCallModal, VoiceCallButton ready to use
-- ✅ **Multi-agent support** - Different voices per agent
-
-**Example**:
-```bash
-# Create voice room
-POST /api/v1/voice/rooms
-{"agent_id": "the-general", "room_name": "Strategy Session"}
-
-# Join room from frontend
-const token = await fetch(`/api/v1/voice/rooms/${roomId}/token`)
-// WebRTC connection auto-configured with LiveKit SDK
-
-# Agent speaks with Kokoro TTS + listens with Whisper STT
-# Full duplex conversation with tool execution
-```
-
----
-
-## 🔄 Ralph Self-Correction Loops
-
-**Ralph** is the self-correcting workflow engine inspired by **open-ralph-wiggum**:
-
-### How It Works
-
-1. **Task Breakdown** - Workflow split into checkpointed subtasks
-2. **Execution** - Each subtask executes with full error logging
-3. **Failure Detection** - Automatic detection of errors, timeouts, rate limits
-4. **Self-Correction** - LLM analyzes error and generates fix strategy
-5. **Retry** - Task retried with improved context (up to 5 iterations)
-6. **Human-in-the-Loop** - Mid-execution guidance injection without restart
-
-### Example Ralph Loop
-
-```bash
-# Start workflow
-POST /api/v1/ralph/execute
-{
-  "workflow": "data_pipeline",
-  "steps": [
-    {"task": "fetch_api_data", "endpoint": "https://api.example.com/data"},
-    {"task": "transform_data", "format": "parquet"},
-    {"task": "upload_to_s3", "bucket": "company-data"}
-  ]
-}
-
-# Iteration 1: API call fails (rate limit)
-data: {"type": "error", "step": 1, "error": "429 Too Many Requests"}
-data: {"type": "self_correct", "strategy": "Add exponential backoff + retry"}
-
-# Iteration 2: Success with backoff
-data: {"type": "success", "step": 1, "data": {...}}
-
-# Iteration 2: Transform fails (missing column)
-data: {"type": "error", "step": 2, "error": "KeyError: 'user_id'"}
-data: {"type": "paused", "message": "Need guidance: Which field should be user_id?"}
-
-# Human provides guidance
-POST /api/v1/ralph/executions/{id}/guidance
-{"guidance": "Use 'customer_id' field as user_id"}
-
-# Iteration 3: Success with guidance
-data: {"type": "success", "step": 2, "output": "data.parquet"}
-data: {"type": "success", "step": 3, "s3_uri": "s3://company-data/..."}
-data: {"type": "workflow_complete", "iterations": 3, "success": true}
-```
-
-**Key Features**:
-- ✅ **Automatic retry** with improved context
-- ✅ **Error analysis** by LLM (GPT-5.2 analyzes failure)
-- ✅ **Mid-execution guidance** without full restart
-- ✅ **State persistence** (`.ralph/` directory stores checkpoints)
-- ✅ **Iteration history** for debugging
-
----
-
-## 🧠 Memory System (Graphiti + FalkorDB Temporal Knowledge Graph)
-
-**Memory Architecture Options**:
-- **mem0** (default) - Lightweight vector memory with Qdrant backend
-- **Graphiti + FalkorDB** (advanced) - Temporal knowledge graph with entity relationships
-
-The advanced tier replaces basic vector memory with a **temporal knowledge
-graph** built on [Graphiti](https://github.com/getzep/graphiti) over a
-**FalkorDB** graph backend (`app/memory/graphiti_manager.py`).
-
-### What Makes It Special
-
-**Traditional Memory (mem0)**:
-- Vector embeddings only
-- No time awareness
-- No relationships
-- Query: "What did user say about X?"
-
-**Graphiti Memory**:
-- Vector embeddings + **knowledge graph**
-- **Temporal awareness** ("What did user prefer last month vs today?")
-- **Entity relationships** ("User's favorite tool connects to their primary use case")
-- **Automatic fact extraction** from conversations
-- Query: "How has user's workflow evolved over time?"
-
-### Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│        Graphiti Temporal Memory                 │
-├─────────────────────────────────────────────────┤
-│                                                 │
-│  ┌──────────────┐        ┌──────────────┐      │
-│  │  Embeddings  │◄──────►│  Knowledge   │      │
-│  │  (bge-m3 via │        │    Graph     │      │
-│  │   gateway)   │        │  (FalkorDB)  │      │
-│  └──────────────┘        └──────────────┘      │
-│         │                       │               │
-│         │  Hybrid Retrieval     │               │
-│         └───────────┬───────────┘               │
-│                     │                           │
-│              ┌──────▼──────┐                    │
-│              │  Facts      │                    │
-│              │  Entities   │                    │
-│              │  Relations  │                    │
-│              │  Timeline   │                    │
-│              └─────────────┘                    │
-│                                                 │
-└─────────────────────────────────────────────────┘
-```
-
-### Example
-
-```bash
-# Conversation 1 (January):
-User: "I prefer using PostgreSQL for all my projects"
-Assistant: "Noted. I'll remember your PostgreSQL preference."
-# Graphiti stores:
-# - Entity: "User"
-# - Fact: "prefers PostgreSQL"
-# - Timestamp: 2026-01-15
-# - Relationship: User -[PREFERS]-> PostgreSQL
-
-# Conversation 2 (February):
-User: "Actually, I'm migrating everything to MongoDB"
-Assistant: "I see you've changed from PostgreSQL to MongoDB."
-# Graphiti stores:
-# - Fact: "now prefers MongoDB" (2026-02-01)
-# - Temporal edge: PostgreSQL preference ENDED at 2026-02-01
-# - Relationship: User -[PREFERS]-> MongoDB (active)
-# - Relationship: User -[USED_TO_PREFER]-> PostgreSQL (historical)
-
-# Later query:
-"What database does user prefer?"
-# Returns: MongoDB (with context: "Changed from PostgreSQL on 2026-02-01")
-
-# Historical query:
-"What did user prefer in January?"
-# Returns: PostgreSQL (temporal query to 2026-01-15)
-```
-
-**Why It Matters**: Agents remember **what, when, and why** - not just embeddings.
-
----
-
-## 🏗️ Architecture
-
-```
-                Unicorn Brigade Platform
-    ┌──────────────────────────────────────────────────────┐
-    │                   THE GENERAL                         │
-    │           (Real-Time Orchestrator)                    │
-    │    ┌──────────────┐          ┌──────────────┐        │
-    │    │   React UI   │◄────────►│   FastAPI    │        │
-    │    │  + Three.js  │  SSE/HTTP│   Backend    │        │
-    │    │  + @xyflow   │          │              │        │
-    │    └──────────────┘          └──────┬───────┘        │
-    │                                     │                │
-    │         ┌───────────────────────────┼────────┐       │
-    │         │                           │        │       │
-    │   ┌─────▼─────┐  ┌─────────┐  ┌───▼────┐  ┌▼────┐  │
-    │   │    A2A    │  │   MCP   │  │  UCP   │  │Trace│  │
-    │   │ Protocol  │  │Protocol │  │Protocol│  │  🔍 │  │
-    │   └───────────┘  └─────────┘  └────────┘  └─────┘  │
-    │                                                      │
-    │   ┌──────────────────────────────────────────────┐  │
-    │   │         Agent Coordination Layer             │  │
-    │   │  ┌────────┐ ┌────────┐ ┌────────┐           │  │
-    │   │  │  17    │ │  11    │ │  Ralph │           │  │
-    │   │  │ Agents │ │  MCP   │ │  Loop  │           │  │
-    │   │  │        │ │Servers │ │ Engine │           │  │
-    │   │  └────────┘ └────────┘ └────────┘           │  │
-    │   └──────────────────────────────────────────────┘  │
-    │                                                      │
-    │   ┌──────────────────────────────────────────────┐  │
-    │   │              LLM Layer                        │  │
-    │   │  ┌────────┐ ┌─────────┐ ┌─────────┐          │  │
-    │   │  │ Claude │ │gpt-oss  │ │ Granite │          │  │
-    │   │  │Opus 4.5│ │  120b   │ │ 3.3 2B  │          │  │
-    │   │  └────────┘ └─────────┘ └─────────┘          │  │
-    │   └──────────────────────────────────────────────┘  │
-    │                                                      │
-    │   ┌───────┐  ┌───────┐  ┌────────┐  ┌────────┐    │
-    │   │Postgre│  │Qdrant │  │Graphiti│  │FalkorDB│    │
-    │   │  SQL  │  │Vector │  │Memory  │  │ Graph  │    │
-    │   └───────┘  └───────┘  └────────┘  └────────┘    │
-    │                                                      │
-    │   ┌─────────┐  ┌─────────┐  ┌─────────┐            │
-    │   │Langfuse │  │LiveKit  │  │  Ralph  │            │
-    │   │ Trace   │  │  Voice  │  │  State  │            │
-    │   └─────────┘  └─────────┘  └─────────┘            │
-    └──────────────────────────────────────────────────────┘
-```
-
-### Tech Stack
-
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| **Orchestration** | The General (GPT-5.2) + SSE | Real-time multi-agent coordination |
-| **Frontend** | React 18, Vite 6, Tailwind 4, Three.js | 3D visualization, responsive UI |
-| **Backend** | FastAPI 0.115, Python 3.12 | Async API, protocol servers |
-| **Agents** | PostgreSQL 16 | Agent configs, conversation history |
-| **Memory** | Graphiti + FalkorDB (advanced) or mem0 + Qdrant (default) | Temporal knowledge graph |
-| **Knowledge** | FalkorDB | AI-native graph for entities/relations |
-| **LLM Routing** | Ops-Center | Multi-provider routing (OpenRouter, Anthropic) |
-| **Observability** | Langfuse (self-hosted) | Tracing, cost tracking, evaluation |
-| **Voice** | LiveKit + self-hosted STT/TTS | WebRTC, Whisper, Kokoro |
-| **Workflows** | Ralph Engine | Self-correcting execution loops |
-| **Protocols** | A2A + MCP + UCP + Agent Trace | Interoperability standards |
-| **Containerization** | Docker + Docker Compose | Development + deployment |
-
----
-
-## 🎯 Quick Start
-
-### Prerequisites
-
-- **Python 3.12+**
-- **PostgreSQL 16+**
-- **Node.js 18+**
-- **Qdrant** (vector database)
-- **Redis** (optional, for caching)
-
-### Installation
-
-```bash
-# 1. Clone repository
-git clone https://git.unicorncommander.ai/UnicornCommander/Unicorn-Brigade.git
-cd Unicorn-Brigade
-
-# 2. Python environment
-python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# 3. Configure environment
+~~~
+
+The gateway lists tools from **registered federated apps**, filtered by the caller's
+tier and key permissions. Its tool count depends on those registrations; a fresh
+standalone instance has no federated app tools until an administrator registers them.
+It does not automatically export the internal tool catalog.
+
+Calls are forwarded with a signed, short-lived token carrying the caller's identity.
+Federation needs an RSA signing-key configuration and cooperating upstream apps.
+See the [gateway](app/federation/mcp_gateway.py),
+[registration API](app/federation/registration_routes.py) and
+[key-management guide](docs/federation-key-rotation.md).
+
+### Use Brigade's internal tool catalog
+
+The internal catalog has **70 unconditional tool entries** in the source, including
+proxied integrations. Optional environment-gated integrations can add entries.
+Registration describes available handlers; execution still requires the relevant
+service, credentials and dependencies.
+
+Useful entry points include `web_search`, `calculator`, `doc_generate`,
+`data_analyze`, `delegate_to_agent`, `list_my_tasks`, `get_project`,
+`canvas_create` and `search_knowledge`.
+
+| Endpoint | Authentication and purpose |
+|---|---|
+| `GET /api/v1/mcp/info` | Authenticated server info and current tool count |
+| `GET /api/v1/mcp/tools/list` | Authenticated tool catalog |
+| `GET /api/v1/mcp/tools/openai` | Authenticated function-calling schemas |
+| `GET /api/v1/mcp/tools/anthropic` | Authenticated tool-use schemas |
+| `POST /api/v1/mcp/tools/call` | Admin-only direct tool execution |
+| `GET /api/v1/mcp/resources/list` | Authenticated resource catalog |
+| `POST /api/v1/mcp/request` | Admin-only legacy method/params dispatcher |
+| `GET /api/v1/mcp/config` | Authenticated legacy client-configuration helper |
+
+~~~bash
+curl --fail-with-body http://localhost:8100/api/v1/mcp/tools/list \
+  -H 'X-API-Key: <brigade-admin-key>'
+
+curl --fail-with-body http://localhost:8100/api/v1/mcp/tools/call \
+  -H 'X-API-Key: <brigade-admin-key>' \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"calculator","arguments":{"expression":"12 * 7"}}'
+~~~
+
+The legacy `/api/v1/mcp/request` endpoint dispatches method/params requests without
+the full JSON-RPC handshake at `/mcp`. Its resource manager has file and HTTP(S)
+backends; other URI schemes need a registered backend. The existing
+[One-Key MCP guide](docs/one-key-mcp.md)
+covers that legacy surface; its public-discovery descriptions predate the current
+authentication requirements. Follow the table above and [current routes](app/api/mcp_routes.py).
+
+### Agent chat and delegation hooks
+
+| Surface | What you can do |
+|---|---|
+| `GET /api/v1/a2a/agents` | List agent cards. This handler has no credential dependency |
+| `GET /api/v1/a2a/agents/{agent_id}/card` | Read one agent card. This handler has no credential dependency |
+| `POST /api/v1/a2a/discover` | Filter by capability, domain, query, or tags. This handler has no credential dependency |
+| `POST /api/v1/a2a/agents/{agent_id}/invoke` | Invoke an agent with an operator credential |
+| `POST /api/v1/agents/{agent_id}/chat` | Chat with an agent and run its assigned tools |
+| `GET /api/v1/openai/v1/models` | Discover accessible agents as model IDs |
+| `POST /api/v1/openai/v1/chat/completions` | Use an OpenAI-compatible client, including streaming |
+| `GET /api/v1/orchestration/events` | Subscribe to authenticated mission and tool events |
+
+The [OpenAI-compatible adapter](docs/openai-compat.md) applies the selected agent's
+persona and server-side tool loop. It also supports client-supplied tools and per-call
+model overrides. The [A2A implementation](app/api/a2a_routes.py) defines Brigade's
+discovery and invocation schema.
+
+For suite consumers that forward a human end user, [caller authorization](docs/CALLER_AUTHORIZATION.md)
+covers per-agent access policies and per-caller tool privilege checks. Stable room
+context is injected by the server for room canvas and knowledge tools.
+
+## Quick start
+
+**Local evaluation with Docker Compose.** You need Docker with Compose, available local
+ports, and model credentials to run agent chat. Keycloak and Ops-Center are optional
+for this path: it uses the application's development authentication mode.
+
+The checked-in frontend container serves static files and assumes an external API
+proxy. The override below gives it an explicit local API URL, enables development
+auth, and binds the stack to loopback. Use a Compose release that supports
+`!override` when merging port lists.
+
+### Prepare your configuration
+
+From a checkout of this repository:
+
+~~~bash
 cp .env.example .env
-# Edit .env with your API keys (see Configuration section)
+~~~
 
-# 4. Initialize database
-python -c "from app.db.database import init_db; import asyncio; asyncio.run(init_db())"
+Edit `.env` before starting:
 
-# 5. Start backend
-uvicorn app.main:app --host 0.0.0.0 --port 8100 --reload
-```
+- Replace `POSTGRES_PASSWORD` and `REDIS_PASSWORD` with distinct URL-safe passwords.
+- Replace `BRIGADE_ADMIN_KEY` with a private value.
+- Supply `OPENAI_API_KEY` for direct OpenAI model calls, or configure
+  `UC_GATEWAY_URL` and `UC_GATEWAY_KEY` for your own compatible gateway.
+  Remove example provider credentials you are not using.
+- Review the example's deployment-specific service addresses. Persistent graph memory,
+  voice, browser tools and external integrations need additional setup described below.
 
-### Frontend
+The base stack is sufficient for the UI, PostgreSQL-backed agent definitions and chat
+with a configured model. It does not provision a model server or the graph-memory,
+voice and external MCP runtimes.
 
-```bash
+### Start the local stack
+
+~~~bash
+docker compose -f docker-compose.yml -f - up -d --build <<'YAML'
+services:
+  brigade-api:
+    environment:
+      ENVIRONMENT: development
+      AUTH_BYPASS: "true"
+      BRIGADE_USE_KEYCLOAK: "false"
+      LANGFUSE_ENABLED: "false"
+      CORS_ORIGINS: http://localhost:3000,http://localhost:5173
+    ports: !override
+      - "127.0.0.1:8100:8100"
+  brigade-frontend:
+    build:
+      args:
+        VITE_API_URL: http://localhost:8100/api/v1
+        VITE_DEV_MODE: "true"
+    ports: !override
+      - "127.0.0.1:3000:80"
+  brigade-postgres:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+  brigade-redis:
+    ports: !override
+      - "127.0.0.1:6379:6379"
+  brigade-qdrant:
+    ports: !override
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+YAML
+~~~
+
+The API creates tables, applies additive migrations and seeds the default roster on
+startup. Wait for startup to finish, then check readiness and agent discovery:
+
+~~~bash
+docker compose logs --tail=100 brigade-api
+curl --fail http://localhost:8100/readyz
+curl --fail http://localhost:8100/api/v1/agents
+~~~
+
+Open the [dashboard](http://localhost:3000/dashboard).
+Interactive [API documentation](http://localhost:8100/docs) is enabled in development.
+
+Choose an agent in the library and set its model to one served by your configured
+provider. Seeded agents keep the model id from the seed file. `OPENAI_MODEL` does
+not rewrite existing agent definitions. The OpenAI-compatible routes always
+require an API key; development auth bypass does not apply to them. For an API
+smoke test with your own OpenAI model ID:
+
+~~~bash
+curl --fail-with-body http://localhost:8100/api/v1/openai/v1/chat/completions \
+  -H 'X-API-Key: <brigade-admin-key>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "the-general",
+    "model_override": "<openai-model-id>",
+    "messages": [{"role": "user", "content": "Reply with a short greeting."}]
+  }'
+~~~
+
+Development authentication bypasses login. Keep this setup local. For shared hosting,
+disable bypass, rebuild the UI without development mode, provide an API reverse proxy,
+and configure API-key access or [Keycloak SSO](docs/self-host-sso.md).
+
+### Stop and troubleshoot
+
+~~~bash
+docker compose ps
+docker compose logs --tail=100 brigade-api
+docker compose down
+~~~
+
+`down` retains the named data volumes. Reuse the override block when rebuilding or
+recreating the local stack; plain `docker compose up` restores the base production
+settings. The API's `/livez` checks process liveness, while `/readyz` checks application
+readiness. A loaded frontend alone does not establish that the API or models work.
+
+If the UI loads but data is missing, check API readiness and the frontend build
+arguments. If chat fails, confirm the agent's model ID and provider route.
+Missing graph memory or voice is expected until those services are configured.
+
+## Run from source
+
+Use Python 3.11, the version in the [API image](Dockerfile) and [CI guide](docs/CI.md),
+and Node 20, the version in [the frontend image](frontend/Dockerfile). From the
+repository root, create `.env` as above and start the datastore services:
+
+~~~bash
+docker compose up -d brigade-postgres brigade-redis brigade-qdrant
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-prod.txt
+~~~
+
+For a backend running on the host, edit `.env` so `DATABASE_URL` uses your local
+PostgreSQL connection in this form:
+
+~~~dotenv
+DATABASE_URL=postgresql+asyncpg://<database-user>:<database-password>@localhost:5432/<database-name>
+~~~
+
+Also point `POSTGRES_HOST` and `REDIS_HOST` at `localhost` and `QDRANT_URL` at
+`http://localhost:6333`. Set `ENVIRONMENT=development` and `AUTH_BYPASS=true` for local
+evaluation, and `LANGFUSE_ENABLED=false` unless you configured Langfuse.
+Pass `--env-file` so settings are loaded before application modules import:
+
+~~~bash
+python -m uvicorn app.main:app --env-file .env --reload --host 127.0.0.1 --port 8100
+~~~
+
+In another terminal:
+
+~~~bash
 cd frontend
-npm install
-npm run dev
-```
+npm ci
+VITE_DEV_MODE=true npm run dev -- --host 127.0.0.1
+~~~
 
-Open **http://localhost:5173**
+Open [the development UI](http://localhost:5173/dashboard).
+Vite proxies `/api` requests to the local backend.
+`requirements-prod.txt` is the core dependency set used by CI and Docker;
+[requirements.txt](requirements.txt) additionally includes development, browser and
+voice packages. Graphiti is layered separately in the [API Dockerfile](Dockerfile);
+install and configure optional dependencies for the features you need.
 
-### Docker Compose (Recommended)
+## Configuration
 
-```bash
-# Start full stack
-docker-compose up -d
+[.env.example](.env.example) is the variable inventory. It contains example credentials
+and deployment-specific defaults, so review it before use. Keep real credentials in
+your local environment or secret manager.
 
-# With all advanced features
-docker-compose -f docker-compose.yml \
-  -f docker-compose.langfuse.yml \
-  -f docker-compose.falkordb.yml \
-  -f docker-compose.livekit.yml up -d
-```
+| Variable | Meaning |
+|---|---|
+| `ENVIRONMENT` | Runtime environment and production safety checks |
+| `BRIGADE_ADMIN_KEY` | Bootstrap API credential with administrator access |
+| `AUTH_BYPASS` | Development-only authentication bypass |
+| `CORS_ORIGINS` | Allowed browser origins |
+| `BRIGADE_USE_KEYCLOAK` | Enable OIDC bearer validation and SSO |
+| `OIDC_ISSUER`, `KEYCLOAK_CLIENT_ID` | Identity-provider realm and client |
+| `KEYCLOAK_CLIENT_SECRET` | Confidential-client credential for browser login |
+| `BRIGADE_CALLBACK_URL`, `BRIGADE_FRONTEND_URL` | Browser-login callback and frontend destination |
+| `BRIGADE_ALLOWED_EMAILS` | Optional identity allowlist |
+| `DATABASE_URL` | Runtime PostgreSQL connection; documented in the example's role-split notes |
+| `MIGRATION_DATABASE_URL` | Owner connection for migrations and role provisioning |
+| `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | PostgreSQL service settings used by Compose |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Redis connection settings |
+| `QDRANT_URL` | Address of the base-stack Qdrant service; monitoring reads it |
+| `QDRANT_COLLECTION` | Name present in `.env.example`; application code does not read it |
+| `OPENAI_API_KEY` | Credential for direct OpenAI-model and image calls |
+| `UC_GATEWAY_URL`, `UC_GATEWAY_KEY` | Compatible model-gateway endpoint and credential |
+| `UC_GATEWAY_PER_ORG_KEYS_ENABLED`, `UC_GATEWAY_ORG_KEYS_JSON` | Optional per-organization gateway-key mapping |
+| `FALKORDB_HOST`, `FALKORDB_PORT`, `FALKORDB_PASSWORD`, `FALKORDB_DATABASE` | Graphiti graph connection |
+| `MEMORY_LLM_BASE_URL`, `MEMORY_LLM_MODEL` | Model endpoint and model for memory extraction |
+| `MEMORY_EMBED_BASE_URL`, `MEMORY_EMBED_MODEL`, `MEMORY_EMBED_DIMS` | Memory embedding endpoint, model and dimensions |
+| `LANGFUSE_ENABLED`, `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | Optional LLM tracing |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Voice-room connection and signing credentials |
+| `VOICE_STT_PROVIDER`, `VOICE_TTS_PROVIDER` | Speech provider selections; match the worker implementation |
+| `EMAIL_PROVIDER` | Email adapter selection |
+| `MS365_CLIENT_ID`, `MS365_TENANT_ID`, `MS365_CLIENT_SECRET`, `MS365_USER_EMAIL` | Microsoft email credentials and sending identity |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_USER_EMAIL` | Google email authorization and identity |
+| `BROWSER_USE_ENABLED` | Optional browser automation setting |
+| `CODE_SANDBOX_ENABLED` | Enable the restricted Python execution handler |
+| `SANDBOX_NETWORK_ENABLED`, `SANDBOX_MAX_MEMORY`, `SANDBOX_MAX_CPU` | Docker sandbox resource and network policy |
+| `KNOWLEDGE_OPS_URL`, `KNOWLEDGE_OPS_TOKEN` | Direct Knowledge-Ops endpoint and fallback credential |
+| `KNOWLEDGE_OPS_OIDC_TOKEN_URL`, `KNOWLEDGE_OPS_OIDC_CLIENT_ID`, `KNOWLEDGE_OPS_OIDC_CLIENT_SECRET` | Preferred client-credentials authentication for direct knowledge tools |
+| `LOG_LEVEL` | Application log verbosity |
 
----
+Additional flags live in [runtime configuration](app/config/features.py).
+The model router supports direct OpenAI calls, explicit OpenRouter model routes,
+local model endpoints and the configured UC gateway/Ops-Center path. Anthropic
+model names use the gateway route when configured. See the
+[router implementation](app/llm/ops_center_client.py) for model-prefix selection;
+an API key alone does not change an agent's stored model.
 
-## ⚙️ Configuration
+`BRIGADE_FEDERATION_ONLY` leaves the federation surface mounted and skips the
+internal routers and their startup initialization. `BRIGADE_INTERNAL_AGENTS_ENABLED`
+controls whether startup seeds internal agents; it defaults to on unless
+federation-only mode is set. For shared deployments, the database role split
+matters: the base
+Compose file uses a database owner connection, which bypasses row-level security.
+Override the runtime DSN and supply a separate migration DSN before relying on tenant
+isolation.
 
-```bash
-# .env file
+<details>
+<summary><strong>Optional services and deployment notes</strong></summary>
 
-# Authentication
-BRIGADE_ADMIN_KEY=your-64-char-hex  # Generate: openssl rand -hex 32
-ENVIRONMENT=development  # development | production
+| Capability | Existing configuration | Additional setup |
+|---|---|---|
+| Persistent graph memory | [FalkorDB Compose](docker-compose.falkordb.yml) | Extraction and embedding endpoints reachable from the API |
+| Voice rooms and worker | [LiveKit Compose](docker-compose.livekit.yml) | LiveKit config, credentials and compatible worker providers |
+| LLM tracing | [Langfuse Compose](docker-compose.langfuse.yml) | Service keys, backing services and API-reachable host URL |
+| Metrics dashboards | [Observability Compose](docker-compose.observability.yml) | Prometheus/Grafana configuration and access controls |
+| Visual flow integration | [Langflow Compose](docker-compose.langflow.yml) | Langflow service, database and API configuration |
+| Browser and sandbox services | [MCP Compose](docker-compose.mcp.yml) | Runtime-specific browser/sandbox wiring |
+| Optional content scanning | [Guardrails Compose](docker-compose.guardrails.yml) | Explicit service deployment and application integration |
 
-# Database
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5434/unicorn_brigade
+These files are starting configurations, not a single combined turnkey stack.
+In the FalkorDB overlay, the API port must be corrected to `6379` for container-to-container
+traffic; `6380` is the published host port. Set the memory-model URLs explicitly.
+The current Graphiti client uses a fixed placeholder credential for its model clients,
+so authenticated memory endpoints need a compatible access arrangement.
 
-# LLM Provider
-OPS_CENTER_URL=https://unicorncommander.ai
-OPENROUTER_API_KEY=sk-or-v1-000000000000000000000000000000000000
-ANTHROPIC_API_KEY=sk-ant-...
-UC_GATEWAY_URL=https://llm.unicorncommander.ai/v1
-UC_GATEWAY_KEY=sk-shared-placeholder
-UC_GATEWAY_PER_ORG_KEYS_ENABLED=false
-UC_GATEWAY_ORG_KEYS_JSON='{"org-uuid":{"api_key":"sk-org-placeholder","key_alias":"org-alias","max_budget":50}}'
+The LiveKit overlay declares an external network; provision or adapt that network and
+its mounted server configuration before use. The example's self-hosted voice provider
+defaults are not accepted by the bundled cloud-provider worker.
 
-# Tools
-SERPER_API_KEY=...  # Web search
+The MCP registry's Node runtime, browser executables and Docker sandbox access are
+separate requirements. Do not assume a Compose service grants another service access
+to its binaries or Docker daemon.
 
-# Email
-MS365_CLIENT_ID=...
-MS365_CLIENT_SECRET=...
-MS365_USER_EMAIL=your@email.com
+For remote execution, consult [the existing guide](docs/REMOTE_EXECUTION.md).
+Use your own hosts and credentials when adapting deployment examples in older docs.
 
-# Memory
-ZEP_API_KEY=...  # From zep.cloud
+</details>
 
-# Voice
-VOICE_STT_PROVIDER=mlx-whisper
-VOICE_TTS_PROVIDER=kokoro
+## Architecture
 
-# Observability
-LANGFUSE_ENABLED=true
-LANGFUSE_HOST=http://localhost:3001
-```
+~~~mermaid
+flowchart TD
+    Human["Human operator"] --> UI["React / Vite interface"]
+    UI -->|"HTTP + streamed events"| API["FastAPI"]
+    Client["Agent client"] -->|"Chat / A2A / tool API"| API
+    Client -->|"MCP JSON-RPC"| Gateway["Federation gateway"]
+    API --> Auth["API keys / optional Keycloak"]
+    Gateway --> Auth
+    API --> Agents["Agent profiles + tool execution"]
+    API --> Workflows["Hierarchical workflows + Ralph"]
+    Agents --> Models["Model router"]
+    Workflows --> Models
+    Models --> Providers["Configured providers / Ops-Center gateway"]
+    API --> DB[("PostgreSQL")]
+    Workflows --> DB
+    Agents --> Memory["Graphiti memory"]
+    Memory --> Graph[("FalkorDB")]
+    Memory --> Embed["Extraction + embedding endpoints"]
+    Agents --> Tools["Built-in tools / external MCP servers"]
+    Gateway --> Apps["Registered suite apps"]
+    Agents --> Trace["Agent Trace / optional Langfuse"]
+    UI --> Voice["Optional LiveKit rooms"]
+    Voice --> Worker["Voice worker + STT/TTS"]
+~~~
 
----
+- **Interface:** React 18.3, Vite 5 and Tailwind 3.4, with Three.js/react-force-graph
+  for agent visualization and React Flow for workflow views. The frontend image
+  builds on Node 20.
+- **API:** FastAPI 0.115.0 on Python 3.11, with routes for agents, tools,
+  conversations, workflows and integration adapters; an event bus streams
+  orchestration activity.
+- **Execution:** Per-agent model/tool configuration, a model router, hierarchical
+  workflow engine, Ralph retry engine and scheduled-run service.
+- **State:** PostgreSQL 16 stores application records and execution snapshots.
+  Graphiti/FalkorDB handles configured conversation memory. The base Compose stack
+  also provisions Redis 7.4 and Qdrant 1.12.0.
+- **Agent interfaces:** A2A-style discovery, the OpenAI-compatible adapter, internal
+  tool dispatch and a separate federation MCP gateway.
+- **Optional services:** External MCP servers, LiveKit, Langflow, Langfuse and
+  observability services require their own deployment and credentials.
 
-## 📚 API Reference
+<details>
+<summary><strong>Source map and API reference</strong></summary>
 
-See full API docs at **http://localhost:8100/docs** (Swagger UI)
+| Component | Source or reference |
+|---|---|
+| Startup, middleware and mounted routes | [app/main.py](app/main.py) |
+| Agent records, chat and tool assignments | [app/api/agent_routes.py](app/api/agent_routes.py) |
+| Model routing | [app/llm/ops_center_client.py](app/llm/ops_center_client.py) |
+| Mission events and SSE | [app/orchestration/](app/orchestration/) |
+| Workflow templates, engine and retries | [app/workflows/](app/workflows/) |
+| Scheduled execution | [app/services/scheduler.py](app/services/scheduler.py) |
+| Tenant-aware persistence and migrations | [app/db/](app/db/) |
+| Federation and delegated credentials | [app/federation/](app/federation/) |
+| Memory | [app/memory/](app/memory/) |
+| Trace and metrics | [app/observability/](app/observability/) |
 
-**Key Endpoints**:
+Common HTTP operations, in addition to the agent endpoints above:
 
-```bash
-# The General
-POST /api/v1/orchestration/command
-GET  /api/v1/orchestration/events  # SSE stream
+| Method and route | Purpose |
+|---|---|
+| `POST /api/v1/orchestration/command` | Send a command to The General |
+| `GET /api/v1/orchestration/state` | Read visible missions and current activity |
+| `POST /api/v1/hierarchical/execute` | Execute a configured workflow template |
+| `POST /api/v1/ralph/execute` | Start a retry-enabled workflow |
+| `POST /api/v1/ralph/executions/{execution_id}/guidance` | Supply additional execution context |
+| `POST /api/v1/voice/rooms` | Create a configured voice room |
+| `GET /api/v1/voice/rooms/{room_id}/token` | Obtain a participant token |
+| `GET /api/v1/trace/recent` | Query recorded code attributions |
+| `GET /api/v1/trace/agents/{agent_id}` | Query attributions recorded for one agent |
+| `POST /api/v1/trace/report` | Export JSON or CSV attribution reports. PDF returns 501 |
 
-# Agents
-POST /api/v1/agents/{id}/chat
-GET  /api/v1/agents
+Use the development server's [Swagger UI](http://localhost:8100/docs) for current
+request and response schemas. Interactive docs are hidden by default in production;
+the code supports an explicit `EXPOSE_API_DOCS` override.
 
-# Protocols
-POST /api/v1/a2a/agents/{id}/invoke
-GET  /api/v1/a2a/discover
-POST /api/v1/mcp/tools/{name}/invoke
-POST /api/v1/ucp/sessions
+The repository also retains [UCP commerce/session models](app/protocols/ucp.py).
+They are not mounted as the `/api/v1/ucp/*` endpoints previously advertised in this
+README. Current billing and usage integration lives in
+[app/integrations/](app/integrations/) and [billing routes](app/api/billing_routes.py).
 
-# Workflows
-POST /api/v1/hierarchical/execute
-POST /api/v1/ralph/execute
-POST /api/v1/ralph/executions/{id}/guidance
+</details>
 
-# Voice
-POST /api/v1/voice/rooms
-GET  /api/v1/voice/rooms/{id}/token
+## Part of Unicorn Commander
 
-# Agent Trace
-GET  /api/v1/trace/recent
-GET  /api/v1/trace/report?format=csv
-```
+| App | What it does |
+|---|---|
+| Ops-Center | Model routing and subscription lookup used by this API. No public repository under that name was listed |
+| **Unicorn-Brigade** | **This repository: agents, tools, memory, orchestration** |
+| [Unicorn Stable](https://github.com/Unicorn-Commander/Unicorn-Stable) | Humans and agents in the same room |
+| [Accounting-Ops](https://github.com/Unicorn-Commander/Accounting-Ops) | Agent-native double-entry books |
+| [Contact-Ops](https://github.com/Unicorn-Commander/Contact-Ops) | The shared contact and identity layer |
+| [Customer-Ops](https://github.com/Unicorn-Commander/Customer-Ops) | Customer relationships and pipeline |
+| [Email-Ops](https://github.com/Unicorn-Commander/Email-Ops) | Agent-governed email with a human approval inbox |
+| [Project-Ops](https://github.com/Unicorn-Commander/Project-Ops) | Projects, tasks, and billing fields |
+| [Meeting-Ops](https://github.com/Unicorn-Commander/Meeting-Ops) | Record, transcribe, and search meetings |
+| Knowledge-Ops | Document search and grounding. No public repository under that name was listed |
 
----
+Brigade connects to Ops-Center for model routing and billing, shares Keycloak identity
+when configured, exposes Project-Ops tools, uses Stable room canvas/knowledge APIs, and
+can discover selected Accounting-Ops, Customer-Ops and Knowledge-Ops tools through its
+[sibling-app adapters](docs/SIBLING_APP_TOOLS.md).
 
-## 📊 Comparison
+## Development
 
-| Feature | Unicorn Brigade | LangChain | CrewAI | AutoGen |
-|---------|----------------|-----------|--------|---------|
-| **The General** (AI Orchestrator) | ✅ Built-in | ❌ | ❌ | ❌ |
-| **Pre-built Agents** | ✅ 17 production-ready | ❌ | ❌ | ❌ |
-| **Real-Time Coordination** | ✅ SSE streaming | ❌ | ❌ | ❌ |
-| **3D Visualization** | ✅ Three.js | ❌ | ❌ | ❌ |
-| **A2A Protocol** | ✅ Full support | ❌ | ❌ | ❌ |
-| **MCP Protocol** | ✅ 11 servers | ⚠️ Partial | ❌ | ❌ |
-| **UCP Protocol** | ✅ Commerce layer | ❌ | ❌ | ❌ |
-| **Agent Trace** | ✅ Code attribution | ❌ | ❌ | ❌ |
-| **Ralph Loops** | ✅ Self-correction | ❌ | ❌ | ❌ |
-| **Temporal Memory** | ✅ Graphiti + FalkorDB | ⚠️ Basic | ⚠️ Basic | ⚠️ Basic |
-| **Voice Agents** | ✅ LiveKit + self-hosted | ❌ | ❌ | ❌ |
-| **Hierarchical Workflows** | ✅ 3-tier cost-optimized | ❌ | ⚠️ Basic | ⚠️ Basic |
-| **Per-Agent Models** | ✅ Different LLM per agent | ⚠️ Global only | ⚠️ Global only | ⚠️ Global only |
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the setup above.
+After installing the core dependencies, install the test and lint tools:
 
----
-
-## 🗺️ Roadmap
-
-See [docs/2026-ROADMAP.md](docs/2026-ROADMAP.md) for detailed roadmap.
-
-### ✅ What's Operational Today (February 2026)
-
-Test these features right now:
-
-| Feature | Status | Try It |
-|---------|--------|--------|
-| **A2A Agent Discovery** | ✅ Live | `GET /api/v1/a2a/discover` |
-| **A2A Agent Invocation** | ✅ Live | `POST /api/v1/a2a/agents/{id}/invoke` |
-| **MCP Tool Registry** | ✅ Live | `GET /api/v1/mcp/tools` |
-| **MCP Tool Execution** | ✅ Live | `POST /api/v1/mcp/tools/call` |
-| **Ralph Self-Correction** | ✅ Live | `POST /api/v1/ralph/execute` |
-| **Voice Calls (STT→LLM→TTS)** | ✅ Live | `POST /api/v1/voice/rooms` |
-| **Agent Trace Export** | ✅ Live | `GET /api/v1/trace/report?format=csv` |
-| **SSE Event Streaming** | ✅ Live | `GET /api/v1/orchestration/events` |
-| **Hierarchical Workflows** | ✅ Live | `POST /api/v1/hierarchical/execute` |
-| **The General Commands** | ✅ Live | `POST /api/v1/orchestration/command` |
-| **MCP Servers** | ✅ Live | 11 real npx-runnable servers in the registry |
-| **Guardrails** | 🚧 Q1 2026 | On Ops-Center (NeMo + LLM Guard) |
-
-### ✅ Completed (January 2026)
-- The General real-time orchestration
-- 4 protocols (A2A, MCP, UCP, Agent Trace)
-- 11 real npx-runnable MCP servers
-- Ralph self-correction loops
-- Graphiti + FalkorDB temporal memory
-- LiveKit voice agents
-- 3-tier hierarchical workflows
-- Visual workflow builder
-
-### ⏳ Q1 2026
-- [ ] NeMo Guardrails (prompt injection, PII detection)
-- [ ] Security hardening (rate limiting, CSRF)
-- [ ] Test coverage >60%
-- [ ] Performance optimization
-
-### ⏳ Q2 2026
-- [ ] LiteLLM gateway (model routing)
-- [ ] Kubernetes deployment
-- [ ] Auto-scaling
-- [ ] A2UI protocol (UI components in responses)
-
----
-
-## 🤝 Contributing
-
-```bash
-pip install -r requirements.txt
-ruff check .
+~~~bash
+python -m pip install pytest==8.3.3 pytest-asyncio==0.24.0 pytest-cov==5.0.0 \
+  respx==0.22.0 ruff==0.7.0 mypy==1.13.0
 python -m pytest
-```
+ruff check --select E9,F63,F7 app tests
+make lint
+~~~
 
-PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
+`pytest.ini` includes both `tests/` and `app/tests/`. Some suites need PostgreSQL or
+optional integrations; configure those services before running their tests.
+Wall-clock performance benchmarks are excluded from the default run. The full
+`make lint` target runs Ruff and mypy and may report the existing backlog; the smaller
+Ruff selection above matches the repository's syntax/error gate.
 
----
+~~~bash
+cd frontend
+npm ci
+npm run build
+~~~
 
-## 📄 License
+The frontend package defines development, build and preview commands; it has no
+dedicated test or lint script. The existing [CI guide](docs/CI.md) explains the check
+policy. Its deployment examples and the older contributor setup should be adapted
+to your environment; the current startup path is above.
 
-Apache License 2.0 - see [LICENSE](LICENSE)
+Project history is retained in the [changelog](CHANGELOG.md).
+The [roadmap](docs/2026-ROADMAP.md) records earlier plans, not a current delivery
+promise. For questions, use [the documentation directory](docs/),
+[Getting Started](docs/GETTING_STARTED.md),
+or [support@magicunicorn.tech](mailto:support@magicunicorn.tech).
 
----
+## Security
 
-## 💬 Support
+Report vulnerabilities privately through [SECURITY.md](SECURITY.md) or
+[security@unicorncommander.ai](mailto:security@unicorncommander.ai).
+Include the affected commit, reproduction steps and relevant redacted logs.
 
-- **Documentation**: [docs/](docs/) · [Getting Started](docs/GETTING_STARTED.md)
-- **Consumer / partner docs**: [One-Key MCP](docs/one-key-mcp.md) · [OpenAI-Compatible API](docs/openai-compat.md) · [Self-Host SSO](docs/self-host-sso.md)
-- **Security**: [SECURITY.md](SECURITY.md) · report privately to security@unicorncommander.ai
-- **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Roadmap**: [docs/2026-ROADMAP.md](docs/2026-ROADMAP.md)
-- **Issues**: [Forgejo Issues](https://git.unicorncommander.ai/UnicornCommander/Unicorn-Brigade/issues)
-- **Email**: support@magicunicorn.tech
+Authentication supports API keys and optional OIDC. Admin, Operator and Viewer roles,
+per-agent tool assignments and caller-level tool checks constrain protected paths.
+The application rejects production configurations that enable development auth bypass.
 
----
+Review the execution boundary of each tool: `shell` uses Docker, while the Python
+`code` and `code_sandbox` handlers execute inside the API process with restricted
+builtins. External MCP presets normally launch subprocesses; they are not inherently
+isolated containers. Direct admin MCP tool calls are not a human-approval queue.
 
-<div align="center">
+For shared deployments, verify database role separation and row-level-security
+enforcement, configured identity policies and upstream credentials. The current source
+includes rate limiting and request-size controls; older security and setup documents
+may describe earlier gaps. Optional guardrail configurations do not mean that every
+model or tool call is scanned.
 
-### Built by [Magic Unicorn Unconventional Technology & Stuff Inc](https://magicunicorn.tech)
+## Licence
 
-*"Where AI agents come to life"*
+Unicorn Brigade is licensed under [Apache-2.0](LICENSE).
+A project by Magic Unicorn Unconventional Technology & Stuff Inc.; copyright and
+licence terms are provided in the existing licence file.
 
-**Production Status: 94/100** 🚀
-
-**17 Agents** | **23 Tools** | **11 MCP Servers** | **4 Protocols** | **Voice** | **Self-Correction** | **Real-Time Orchestration**
-
-Last Updated: February 1, 2026
-
-</div>
+Built by [Magic Unicorn](https://magicunicorn.tech) · part of [Unicorn Commander](https://unicorncommander.ai)
