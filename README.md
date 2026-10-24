@@ -19,13 +19,10 @@
 </div>
 
 <p align="center">
-  <img src=".github/images/dashboard.png" width="1100" alt="Unicorn Brigade dashboard with agent status, domains, quick actions and The General">
+  <img src="docs/screenshots/dashboard.webp" width="1100" alt="Unicorn Brigade dashboard with agent status, domains, quick actions and The General">
   <br>
   <em>Dashboard — agent status, domains and quick actions.</em>
 </p>
-
-The existing dashboard, orchestration and tool-library screenshots illustrate earlier
-interface states; their displayed counts and status labels are example data.
 
 ## What is Unicorn-Brigade?
 
@@ -57,7 +54,7 @@ Brigade can use shared identity and call other suite apps through authenticated 
 ### An agent library you can shape
 
 <p align="center">
-  <img src="docs/screenshots/agents.webp" width="1100" alt="Agent library showing configurable agents, their specialties and available actions">
+  <img src="docs/screenshots/library.webp" width="1100" alt="The agent library">
 </p>
 
 Browse agents by domain, inspect their profiles, and choose their models and tools.
@@ -103,7 +100,7 @@ Sources: [seed roster](app/data/seed_agents.json), [seed loader](app/db/init_db.
 ### The General's orchestration view
 
 <p align="center">
-  <img src=".github/images/orchestration.png" width="1100" alt="Orchestration command view with mission cards, domain filters and the agent graph area">
+  <img src="docs/screenshots/orchestration.webp" width="1100" alt="Orchestration command view with mission cards, domain filters and the agent graph area">
 </p>
 
 The General accepts natural-language commands. `POST /api/v1/orchestration/command`
@@ -162,7 +159,7 @@ Continue with the [workflow templates](app/workflows/templates.py),
 ### Tools that turn a conversation into work
 
 <p align="center">
-  <img src=".github/images/tool-library.png" width="1100" alt="Tool library with searchable cards for web search, HTTP requests, calculation, time, JSON, shell and memory">
+  <img src="docs/screenshots/tools.webp" width="1100" alt="Tool library with searchable cards for web search, HTTP requests, calculation, time, JSON, shell and memory">
 </p>
 
 Browse tool definitions and assign the capabilities an agent needs.
@@ -749,13 +746,13 @@ README. Current billing and usage integration lives in
 |---|---|
 | Ops-Center | Model routing and subscription lookup used by this API. No public repository under that name was listed |
 | **Unicorn-Brigade** | **This repository: agents, tools, memory, orchestration** |
-| [Unicorn Stable](https://github.com/Unicorn-Commander/unicorn-stable-oss) | Humans and agents in the same room |
-| [Accounting-Ops](https://github.com/Unicorn-Commander/accounting-ops-oss) | Agent-native double-entry books |
-| [Contact-Ops](https://github.com/Unicorn-Commander/contact-ops-community) | The shared contact and identity layer |
-| [Customer-Ops](https://github.com/Unicorn-Commander/customer-ops-community) | Customer relationships and pipeline |
-| [Email-Ops](https://github.com/Unicorn-Commander/email-ops-community) | Agent-governed email with a human approval inbox |
-| [Project-Ops](https://github.com/Unicorn-Commander/project-ops-community) | Projects, tasks, and billing fields |
-| [Meeting-Ops](https://github.com/Unicorn-Commander/Meeting-Ops-OSS) | Record, transcribe, and search meetings |
+| [Unicorn Stable](https://github.com/Unicorn-Commander/Unicorn-Stable) | Humans and agents in the same room |
+| [Accounting-Ops](https://github.com/Unicorn-Commander/Accounting-Ops) | Agent-native double-entry books |
+| [Contact-Ops](https://github.com/Unicorn-Commander/Contact-Ops) | The shared contact and identity layer |
+| [Customer-Ops](https://github.com/Unicorn-Commander/Customer-Ops) | Customer relationships and pipeline |
+| [Email-Ops](https://github.com/Unicorn-Commander/Email-Ops) | Agent-governed email with a human approval inbox |
+| [Project-Ops](https://github.com/Unicorn-Commander/Project-Ops) | Projects, tasks, and billing fields |
+| [Meeting-Ops](https://github.com/Unicorn-Commander/Meeting-Ops) | Record, transcribe, and search meetings |
 | Knowledge-Ops | Document search and grounding. No public repository under that name was listed |
 
 Brigade connects to Ops-Center for model routing and billing, shares Keycloak identity
