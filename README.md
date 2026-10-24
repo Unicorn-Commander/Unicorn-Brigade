@@ -819,7 +819,7 @@ model or tool call is scanned.
 
 ## Licence
 
-Unicorn Brigade is licensed under [Apache-2.0](LICENSE).
+Unicorn Brigade is licensed under [Apache-2.0](LICENSE). Our names and logos are covered by [TRADEMARKS.md](TRADEMARKS.md).
 A project by Magic Unicorn Unconventional Technology & Stuff Inc.; copyright and
 licence terms are provided in the existing licence file.
 
