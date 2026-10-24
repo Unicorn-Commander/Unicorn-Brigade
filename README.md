@@ -79,7 +79,7 @@ personas whose useful behavior depends on the configured models, tools and servi
 | Cpt. Fullstack | Software engineering |
 | Maj. DevOps | Infrastructure and operations |
 | Col. Finance | Financial analysis |
-| Lt. TaxStrat | Tax research |
+| Lt. TaxStrat | Tax strategy |
 | Judge Advocate | Legal research and analysis |
 | Doc MedResearch | Medical literature research |
 | Detective Holmes | Investigation and open-source research |
@@ -106,9 +106,13 @@ Sources: [seed roster](app/data/seed_agents.json), [seed loader](app/db/init_db.
   <img src=".github/images/orchestration.png" width="1100" alt="Orchestration command view with mission cards, domain filters and the agent graph area">
 </p>
 
-The General accepts natural-language commands and delegates work to agents.
-The orchestration view subscribes to Server-Sent Events for mission progress,
-tool calls and agent activity, with a Three.js graph for exploring connections.
+The General accepts natural-language commands. `POST /api/v1/orchestration/command`
+asks a model and, when the meta-agent is available, can create an agent from the
+reply. Task assignment and mission execution go through tools, missions, and
+workflows. The orchestration view subscribes to Server-Sent Events for mission
+progress, tool calls and agent activity, with a Three.js graph for exploring
+connections. A browser EventSource cannot set API-key headers, so the UI first
+calls `POST /api/v1/orchestration/events/ticket`.
 
 <details>
 <summary><strong>Workflows, model selection and Ralph retries</strong></summary>
@@ -118,7 +122,8 @@ each level through presets or explicit overrides, so a workflow can use differen
 models for planning and execution. Cost estimates depend on the selected models
 and providers.
 
-The enabled template catalog covers:
+The enabled catalog has **26 templates**. Additional professional templates
+remain in the source tree but are not imported. The enabled set covers:
 
 | Area | Examples |
 |---|---|
@@ -173,14 +178,14 @@ check the resolver when a catalog entry and executable name differ.
 
 | Tool | What the handler provides |
 |---|---|
-| `web_search` | Search-provider routing with Serper and other configured backends |
+| `web_search` | Search through Serper, SearXNG, or Bright Data |
 | `http_request` | HTTP requests with URL validation and bounded timeouts |
 | `calculator` | Arithmetic through a restricted expression parser |
-| `datetime` | Date, time and timezone operations |
+| `datetime` | Current date and time in a chosen timezone |
 | `json` | JSON parsing, formatting and manipulation |
 | `memory` | Process-local key-value scratch storage |
 | `shell` | Commands through the Docker sandbox executor |
-| `email` | Send, read and search operations through the selected email provider |
+| `email` | Send through the selected provider. Read, list, and search work with Microsoft 365 and Google; Resend and SendGrid are send-only |
 | `file` | File operations with path checks |
 | `code` | Python execution with restricted builtins in the API process |
 | `text` | Text transformations and pattern operations |
@@ -190,15 +195,15 @@ check the resolver when a catalog entry and executable name differ.
 | `qrcode` | A URL for an external QR-image service |
 | `agentic_rag` | Retrieval and answer generation through the graph/RAG integration |
 | `browser` | Browser tasks through browser-use, when installed |
-| `code_sandbox`, `sandbox_session` | Restricted Python execution and process-local session state |
+| `code_sandbox`, `sandbox_session` | In-process Python with restricted builtins, and process-local session state |
 | `screenshot` | Page captures through Playwright |
 | `pdf_extract` | PDF text extraction |
 | `doc_generate` | Template-based Markdown or HTML documents |
 | `data_analyze` | Summary statistics and analysis of CSV or JSON data |
-| `url_preview` | Page content and metadata retrieval |
+| `url_preview` | Page metadata and an optional Playwright screenshot |
 | `kg_query`, `knowledge_store`, `knowledge_query` | Configured FalkorDB graph operations |
 | `slack` | Slack operations with the configured token |
-| `csv`, `rss`, `translate`, `weather`, `schedule`, `company` | Data utilities and configured business-service calls |
+| `csv`, `rss`, `translate`, `weather`, `schedule`, `company` | CSV and RSS helpers, LibreTranslate, Open-Meteo forecasts, date arithmetic, and a Clearbit logo URL. Company name search does not call an external company API |
 | `delegate_to_agent` | Ask another Brigade agent to perform a task |
 
 The `memory` and `database` tools are temporary stores. Persistent conversation memory
@@ -233,9 +238,11 @@ Memory groups include user, agent and, where supplied, case context. Inspect the
 
 **Voice.** LiveKit room APIs, participant tokens and frontend call controls provide
 the voice interface. The optional deployment needs a LiveKit server and a separate
-voice worker. The worker selects cloud STT/TTS adapters; additional self-hosted
-provider implementations include MLX Whisper, faster-whisper, whisper.cpp, Kokoro,
-Chatterbox, Marvis, CosyVoice and custom TTS.
+voice worker. The bundled worker accepts speech-to-text providers `deepgram`,
+`whisper`, and `assemblyai`, and text-to-speech providers `elevenlabs`, `openai`,
+and `cartesia`. Its `whisper` path calls the OpenAI `whisper-1` API. Additional
+self-hosted provider implementations include MLX Whisper, faster-whisper,
+whisper.cpp, Kokoro, Chatterbox, Marvis, CosyVoice and custom TTS.
 
 Those implementations are not all selectable through the bundled worker:
 its provider enums differ from the self-hosted settings defaults. Match the worker,
@@ -247,9 +254,11 @@ See [voice deployment](docker-compose.livekit.yml),
 and [voice settings API](app/api/voice_settings_routes.py).
 
 **Agent Trace.** Code-attribution records associate generated code with an agent,
-model, prompt, file, line range and content hash. Query records and export reports as
-JSON or CSV through the trace API. This is useful audit evidence; it does not establish
-regulatory compliance or prove that every generated artifact was captured.
+model, prompt, file, line range and `code_hash` (the first 16 hex characters of a
+SHA-256 of the whitespace-normalized code). Query recent records or one agent's
+records, and export JSON or CSV. A PDF report request returns 501. This is useful
+audit evidence; it does not establish regulatory compliance or prove that every
+generated artifact was captured.
 
 See the [Agent Trace guide](docs/AGENT_TRACE.md),
 [API reference](docs/API_TRACE_QUICK_REFERENCE.md) and
@@ -274,7 +283,7 @@ while connected servers supply their actual tool lists at runtime.
 |---|---|---|
 | GitHub | `GITHUB_TOKEN` | Repositories, issues and pull requests |
 | Filesystem | `WORKSPACE_PATH` | Scoped file access |
-| PostgreSQL | `DATABASE_URL` | Database queries and schema inspection |
+| PostgreSQL | `DATABASE_URL` | Read-only queries and schema inspection |
 | Playwright | Browser runtime | Browser navigation and interaction |
 | Slack | `SLACK_BOT_TOKEN`, `SLACK_TEAM_ID` | Channels, messages and reactions |
 | Memory | Writable storage | Knowledge-graph entities and observations |
@@ -306,7 +315,9 @@ Choose the surface that matches the client you are connecting.
 
 `POST /mcp` accepts MCP JSON-RPC over HTTP and returns JSON responses.
 It supports initialization, tool discovery and tool calls. Authenticate with
-`Authorization: Bearer <brigade-api-key>` or `X-API-Key: <brigade-api-key>`.
+`X-API-Key: <brigade-api-key>`, or with `Authorization: Bearer <brigade-api-key>`
+when that key contains fewer than two dots. A bearer value with two or more dots
+is accepted only as a Keycloak JWT.
 
 For an MCP client that accepts HTTP server entries:
 
@@ -378,8 +389,9 @@ authentication requirements. Follow the table above and [current routes](app/api
 
 | Surface | What you can do |
 |---|---|
-| `GET /api/v1/a2a/agents` | Discover Brigade agent cards |
-| `POST /api/v1/a2a/discover` | Filter by capability, domain or query |
+| `GET /api/v1/a2a/agents` | List agent cards. This handler has no credential dependency |
+| `GET /api/v1/a2a/agents/{agent_id}/card` | Read one agent card. This handler has no credential dependency |
+| `POST /api/v1/a2a/discover` | Filter by capability, domain, query, or tags. This handler has no credential dependency |
 | `POST /api/v1/a2a/agents/{agent_id}/invoke` | Invoke an agent with an operator credential |
 | `POST /api/v1/agents/{agent_id}/chat` | Chat with an agent and run its assigned tools |
 | `GET /api/v1/openai/v1/models` | Discover accessible agents as model IDs |
@@ -408,9 +420,9 @@ auth, and binds the stack to loopback. Use a Compose release that supports
 
 ### Prepare your configuration
 
+From a checkout of this repository:
+
 ~~~bash
-git clone https://github.com/Unicorn-Commander/Unicorn-Brigade.git
-cd Unicorn-Brigade
 cp .env.example .env
 ~~~
 
@@ -475,11 +487,14 @@ Open the [dashboard](http://localhost:3000/dashboard).
 Interactive [API documentation](http://localhost:8100/docs) is enabled in development.
 
 Choose an agent in the library and set its model to one served by your configured
-provider. Seeded model names are examples; `OPENAI_MODEL` does not rewrite existing
-agent definitions. For an API smoke test with your own OpenAI model ID:
+provider. Seeded agents keep the model id from the seed file. `OPENAI_MODEL` does
+not rewrite existing agent definitions. The OpenAI-compatible routes always
+require an API key; development auth bypass does not apply to them. For an API
+smoke test with your own OpenAI model ID:
 
 ~~~bash
 curl --fail-with-body http://localhost:8100/api/v1/openai/v1/chat/completions \
+  -H 'X-API-Key: <brigade-admin-key>' \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "the-general",
@@ -511,9 +526,9 @@ Missing graph memory or voice is expected until those services are configured.
 
 ## Run from source
 
-Use the Python target in [pyproject.toml](pyproject.toml) and a Node runtime compatible
-with [the frontend build](frontend/Dockerfile). From the repository root, create `.env`
-as above and start the datastore services:
+Use Python 3.11, the version in the [API image](Dockerfile) and [CI guide](docs/CI.md),
+and Node 20, the version in [the frontend image](frontend/Dockerfile). From the
+repository root, create `.env` as above and start the datastore services:
 
 ~~~bash
 docker compose up -d brigade-postgres brigade-redis brigade-qdrant
@@ -574,7 +589,8 @@ your local environment or secret manager.
 | `MIGRATION_DATABASE_URL` | Owner connection for migrations and role provisioning |
 | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | PostgreSQL service settings used by Compose |
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Redis connection settings |
-| `QDRANT_URL`, `QDRANT_COLLECTION` | Legacy/vector-store configuration |
+| `QDRANT_URL` | Address of the base-stack Qdrant service; monitoring reads it |
+| `QDRANT_COLLECTION` | Name present in `.env.example`; application code does not read it |
 | `OPENAI_API_KEY` | Credential for direct OpenAI-model and image calls |
 | `UC_GATEWAY_URL`, `UC_GATEWAY_KEY` | Compatible model-gateway endpoint and credential |
 | `UC_GATEWAY_PER_ORG_KEYS_ENABLED`, `UC_GATEWAY_ORG_KEYS_JSON` | Optional per-organization gateway-key mapping |
@@ -601,8 +617,11 @@ model names use the gateway route when configured. See the
 [router implementation](app/llm/ops_center_client.py) for model-prefix selection;
 an API key alone does not change an agent's stored model.
 
-Federation-only mode restricts the mounted API surface and skips internal agent
-initialization. For shared deployments, the database role split matters: the base
+`BRIGADE_FEDERATION_ONLY` leaves the federation surface mounted and skips the
+internal routers and their startup initialization. `BRIGADE_INTERNAL_AGENTS_ENABLED`
+controls whether startup seeds internal agents; it defaults to on unless
+federation-only mode is set. For shared deployments, the database role split
+matters: the base
 Compose file uses a database owner connection, which bypasses row-level security.
 Override the runtime DSN and supply a separate migration DSN before relying on tenant
 isolation.
@@ -666,15 +685,17 @@ flowchart TD
     Voice --> Worker["Voice worker + STT/TTS"]
 ~~~
 
-- **Interface:** React, Vite and Tailwind, with Three.js/react-force-graph for agent
-  visualization and React Flow for workflow views.
-- **API:** FastAPI routes for agents, tools, conversations, workflows and integration
-  adapters; an event bus streams orchestration activity.
+- **Interface:** React 18.3, Vite 5 and Tailwind 3.4, with Three.js/react-force-graph
+  for agent visualization and React Flow for workflow views. The frontend image
+  builds on Node 20.
+- **API:** FastAPI 0.115.0 on Python 3.11, with routes for agents, tools,
+  conversations, workflows and integration adapters; an event bus streams
+  orchestration activity.
 - **Execution:** Per-agent model/tool configuration, a model router, hierarchical
   workflow engine, Ralph retry engine and scheduled-run service.
-- **State:** PostgreSQL stores application records and execution snapshots.
-  Graphiti/FalkorDB handles configured conversation memory; Redis and Qdrant are also
-  provisioned by the base Compose stack.
+- **State:** PostgreSQL 16 stores application records and execution snapshots.
+  Graphiti/FalkorDB handles configured conversation memory. The base Compose stack
+  also provisions Redis 7.4 and Qdrant 1.12.0.
 - **Agent interfaces:** A2A-style discovery, the OpenAI-compatible adapter, internal
   tool dispatch and a separate federation MCP gateway.
 - **Optional services:** External MCP servers, LiveKit, Langflow, Langfuse and
@@ -708,7 +729,8 @@ Common HTTP operations, in addition to the agent endpoints above:
 | `POST /api/v1/voice/rooms` | Create a configured voice room |
 | `GET /api/v1/voice/rooms/{room_id}/token` | Obtain a participant token |
 | `GET /api/v1/trace/recent` | Query recorded code attributions |
-| `POST /api/v1/trace/report` | Export attribution reports |
+| `GET /api/v1/trace/agents/{agent_id}` | Query attributions recorded for one agent |
+| `POST /api/v1/trace/report` | Export JSON or CSV attribution reports. PDF returns 501 |
 
 Use the development server's [Swagger UI](http://localhost:8100/docs) for current
 request and response schemas. Interactive docs are hidden by default in production;
@@ -725,22 +747,16 @@ README. Current billing and usage integration lives in
 
 | App | What it does |
 |---|---|
-| [Ops-Center](https://github.com/Unicorn-Commander/Ops-Center) | The control plane: tenants, billing, federation, API keys, model routing |
-| **[Unicorn-Brigade](https://github.com/Unicorn-Commander/Unicorn-Brigade)** | **The agent layer: agents, tools, memory, orchestration** |
-| [Unicorn-Stable](https://github.com/Unicorn-Commander/Unicorn-Stable) | Humans and agents in the same room: chat, voice, video |
-| [Accounting-Ops](https://github.com/Unicorn-Commander/Accounting-Ops) | Agent-native accounting and books |
-| [Contact-Ops](https://github.com/Unicorn-Commander/Contact-Ops) | The shared contact and identity graph |
-| [Customer-Ops](https://github.com/Unicorn-Commander/Customer-Ops) | Customers, pipeline, quotes and outreach |
-| [Email-Ops](https://github.com/Unicorn-Commander/Email-Ops) | Agent-drafted email with a human approval inbox |
-| [Project-Ops](https://github.com/Unicorn-Commander/Project-Ops) | Projects, tasks, time and invoices |
-| [Meeting-Ops](https://github.com/Unicorn-Commander/Meeting-Ops) | Recordings, transcripts, summaries and action items |
-| [Knowledge-Ops](https://github.com/Unicorn-Commander/Knowledge-Ops) | The wiki and memory your agents ground on |
-| [Security-Ops](https://github.com/Unicorn-Commander/Security-Ops) | Authorized security scanning with engagement and attestation gates |
-| [Tax-Planning-Ops](https://github.com/Unicorn-Commander/Tax-Planning-Ops) | Tax plans, scenarios and statutory deadlines |
-| [Brand-Ops](https://github.com/Unicorn-Commander/Brand-Ops) | Brand kits, marks, voices and rules |
-| [Podcast-Ops](https://github.com/Unicorn-Commander/Podcast-Ops) | Episodes, audio QA and publishing |
-| [UUDA](https://github.com/Unicorn-Commander/UUDA) | The device agent for your fleet |
-| [fleet-map](https://github.com/Unicorn-Commander/fleet-map) | Fleet inventory and topology map |
+| Ops-Center | Model routing and subscription lookup used by this API. No public repository under that name was listed |
+| **Unicorn-Brigade** | **This repository: agents, tools, memory, orchestration** |
+| [Unicorn Stable](https://github.com/Unicorn-Commander/unicorn-stable-oss) | Humans and agents in the same room |
+| [Accounting-Ops](https://github.com/Unicorn-Commander/accounting-ops-oss) | Agent-native double-entry books |
+| [Contact-Ops](https://github.com/Unicorn-Commander/contact-ops-community) | The shared contact and identity layer |
+| [Customer-Ops](https://github.com/Unicorn-Commander/customer-ops-community) | Customer relationships and pipeline |
+| [Email-Ops](https://github.com/Unicorn-Commander/email-ops-community) | Agent-governed email with a human approval inbox |
+| [Project-Ops](https://github.com/Unicorn-Commander/project-ops-community) | Projects, tasks, and billing fields |
+| [Meeting-Ops](https://github.com/Unicorn-Commander/Meeting-Ops-OSS) | Record, transcribe, and search meetings |
+| Knowledge-Ops | Document search and grounding. No public repository under that name was listed |
 
 Brigade connects to Ops-Center for model routing and billing, shares Keycloak identity
 when configured, exposes Project-Ops tools, uses Stable room canvas/knowledge APIs, and
@@ -775,12 +791,12 @@ npm run build
 The frontend package defines development, build and preview commands; it has no
 dedicated test or lint script. The existing [CI guide](docs/CI.md) explains the check
 policy. Its deployment examples and the older contributor setup should be adapted
-to your environment; the public clone URL and current startup path are above.
+to your environment; the current startup path is above.
 
 Project history is retained in the [changelog](CHANGELOG.md).
 The [roadmap](docs/2026-ROADMAP.md) records earlier plans, not a current delivery
-promise. For questions, use [GitHub issues](https://github.com/Unicorn-Commander/Unicorn-Brigade/issues),
-[the documentation directory](docs/), [Getting Started](docs/GETTING_STARTED.md),
+promise. For questions, use [the documentation directory](docs/),
+[Getting Started](docs/GETTING_STARTED.md),
 or [support@magicunicorn.tech](mailto:support@magicunicorn.tech).
 
 ## Security
