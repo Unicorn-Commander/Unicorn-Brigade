@@ -3,15 +3,22 @@ API Key management routes.
 Generates, lists, and revokes API keys for agents.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Optional, List, Annotated
-from sqlalchemy.ext.asyncio import AsyncSession
 import logging
+from typing import Annotated, Optional
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.middleware import (
+    AuthUser,
+    enforce_key_scope_ceiling,
+    require_admin,
+    require_api_key,
+    require_operator,
+)
 from app.db.database import get_session
 from app.db.repositories import AgentRepository, ApiKeyRepository
-from app.auth.middleware import require_api_key, require_operator, require_admin, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -21,7 +28,7 @@ router = APIRouter()
 
 class GenerateKeyRequest(BaseModel):
     name: str
-    permissions: Optional[List[str]] = ["chat", "read"]
+    permissions: Optional[list[str]] = ["chat", "read"]
     rateLimit: Optional[int] = 100
     expiresInDays: Optional[int] = 90
 
@@ -38,6 +45,9 @@ async def generate_api_key(
     """Generate a new API key for an agent."""
     if user and not user.can_access_agent(agent_id):
         raise HTTPException(status_code=403, detail="Access to agent denied")
+    # 42d214cc: a caller grants only scopes at or below its own role, before
+    # anything touches the database. Unknown scopes are refused.
+    request.permissions = enforce_key_scope_ceiling(user, request.permissions)
     agent_repo = AgentRepository(session)
     agent = await agent_repo.get(agent_id)
     if not agent:

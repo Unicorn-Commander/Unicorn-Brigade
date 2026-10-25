@@ -6,7 +6,6 @@ Defines user roles and path-based access rules.
 
 import re
 from enum import Enum
-from typing import Set
 
 
 class UserRole(str, Enum):
@@ -18,7 +17,7 @@ class UserRole(str, Enum):
 
 
 # Paths that require admin role
-ADMIN_ONLY_PATHS: Set[str] = {
+ADMIN_ONLY_PATHS: set[str] = {
     # MCP Registry - Server management (RCE risk)
     "/api/v1/mcp/registry/servers",  # POST (register)
     "/api/v1/mcp/registry/servers/",  # DELETE, start, stop, restart
@@ -38,7 +37,7 @@ ADMIN_ONLY_PATHS: Set[str] = {
 }
 
 # Paths that allow more permissive verbs but still need authentication
-PROTECTED_PATHS: Set[str] = {
+PROTECTED_PATHS: set[str] = {
     # Agent chat - requires at least viewer role
     "/api/v1/agents/",  # GET (list/detail) - viewer+
                          # POST (chat) - operator+
@@ -66,7 +65,7 @@ PROTECTED_PATHS: Set[str] = {
 }
 
 # Paths that are always public (no auth required)
-PUBLIC_PATHS: Set[str] = {
+PUBLIC_PATHS: set[str] = {
     "/",
     "/ping",
     "/docs",
@@ -327,6 +326,59 @@ def permissions_for_role(role) -> list:
     return ["read"]
 
 
+# ---------------------------------------------------------------------------
+# Key-scope ceiling (P-00092, Project-Ops 42d214cc)
+# ---------------------------------------------------------------------------
+# A caller may grant a new API key only scopes at or below its OWN role. A key's
+# role is derived from its scopes (role_from_permissions), so before this ceiling
+# the scopes were stored exactly as sent and any operator-level credential could
+# mint itself an "admin" key.
+#
+#   operator -> read, chat, write, invoke, modify, autonomy:report
+#   admin    -> every known scope (adds "admin")
+#   viewer   -> read (viewers cannot reach the mint endpoints today; this keeps
+#               the check fail-closed if that ever changes)
+#
+# "invoke" and "modify" are the agent-key dialog's names ("invoke" is also A2A's);
+# they raise no role. Unknown scopes are refused, so a typo or a scope nobody has
+# classified yet can never slip past the ceiling. The service-delegated path
+# (/api/v1/admin/user-keys, BRIGADE_SERVICE_KEY) is trusted and does not use this.
+OPERATOR_GRANTABLE_SCOPES = frozenset(
+    {"read", "chat", "write", "invoke", "modify", AUTONOMY_REPORT_PERMISSION}
+)
+ADMIN_ONLY_SCOPES = frozenset({"admin"})
+KNOWN_KEY_SCOPES = OPERATOR_GRANTABLE_SCOPES | ADMIN_ONLY_SCOPES
+
+
+def normalize_key_scopes(permissions) -> list:
+    """Lower-case, strip and de-duplicate requested scopes, keeping their order."""
+    out = []
+    for p in permissions or []:
+        s = str(p).strip().lower()
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
+def grantable_scopes(role) -> frozenset:
+    """The scopes a caller with ``role`` may put on a NEW key."""
+    role_val = role.value if hasattr(role, "value") else str(role or "").lower()
+    if role_val == UserRole.ADMIN.value:
+        return KNOWN_KEY_SCOPES
+    if role_val == UserRole.OPERATOR.value:
+        return OPERATOR_GRANTABLE_SCOPES
+    return frozenset({"read"})
+
+
+def check_key_scope_grant(caller_role, permissions):
+    """``(unknown, above_ceiling)`` for a requested scope list. Both empty = allowed."""
+    requested = normalize_key_scopes(permissions)
+    allowed = grantable_scopes(caller_role)
+    unknown = [p for p in requested if p not in KNOWN_KEY_SCOPES]
+    above = [p for p in requested if p in KNOWN_KEY_SCOPES and p not in allowed]
+    return unknown, above
+
+
 def role_from_permissions(permissions, base_role=None) -> UserRole:
     """Canonical coarse-role derivation from a credential's scopes.
 
@@ -406,13 +458,13 @@ def derive_user_tier(user_email: str, user_role) -> str:
     if role_val == UserRole.ADMIN.value:
         return "admin"
     email_lc = (user_email or "").lower()
-    allowed = set(
+    allowed = {
         e.strip().lower() for e in os.getenv(
             "LOCAL_GPU_ALLOWED_USERS",
             "aaron@magicunicorn.tech,shafenkhan@users.noreply.github.com",
         ).split(",")
         if e.strip()
-    )
+    }
     if email_lc and email_lc in allowed:
         return "gpu-enabled"
     return "cloud-only"
@@ -493,8 +545,8 @@ def evaluate_agent_access(
     # apps this agent is offered through. User passes if they're a member of
     # at least one. user.apps is sourced from the DB on each chat call.
     allowed_apps = access_policy.get("apps") or []
-    user_apps = set(str(a).lower() for a in (attrs.get("apps") or []))
-    if user_apps and user_apps.intersection(set(str(a).lower() for a in allowed_apps)):
+    user_apps = {str(a).lower() for a in (attrs.get("apps") or [])}
+    if user_apps and user_apps.intersection({str(a).lower() for a in allowed_apps}):
         return True, "app-membership"
 
     return False, "no-match"

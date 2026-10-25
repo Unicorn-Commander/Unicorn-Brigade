@@ -8,24 +8,24 @@ Provides endpoints for:
 - User API key management
 """
 
+import logging
 import os
 import re
 import time
-import logging
 from collections import defaultdict
 from datetime import datetime
-from typing import Optional, List, Annotated
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Request, status
+import bcrypt as _bcrypt
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_session
-from app.db.repositories import UserRepository, UserApiKeyRepository
-from app.db.models import User
 from app.auth.keycloak import keycloak_enabled
-from app.auth.middleware import get_current_user, AuthUser
-from app.auth.roles import UserRole
+from app.auth.middleware import AuthUser, enforce_key_scope_ceiling, get_current_user
+from app.db.database import get_session
+from app.db.models import User
+from app.db.repositories import UserApiKeyRepository, UserRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -55,6 +55,7 @@ async def _resolve_db_user_id(session: AsyncSession, current_user: AuthUser) -> 
     500 as an invalid UUID / FK violation.
     """
     from uuid import UUID as _UUID
+
     from sqlalchemy import select
 
     candidate = str(current_user.id or "")
@@ -88,7 +89,8 @@ def _no_db_user_error() -> HTTPException:
 
 # ---- Password Hashing with bcrypt directly ----
 # NOTE: Using bcrypt directly instead of passlib due to passlib+bcrypt>=4.1 incompatibility
-import bcrypt as _bcrypt
+# (the import itself is at the top of the module).
+
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt"""
@@ -206,7 +208,7 @@ class UserUpdateRequest(BaseModel):
 class CreateApiKeyRequest(BaseModel):
     """Create API key request"""
     name: str
-    permissions: Optional[List[str]] = ["chat", "read"]
+    permissions: Optional[list[str]] = ["chat", "read"]
     rateLimit: Optional[int] = 100
     expiresInDays: Optional[int] = 90
 
@@ -545,6 +547,9 @@ async def create_user_api_key(
             detail="Authentication required",
         )
 
+    # 42d214cc: a user grants their own key only scopes at or below their role.
+    body.permissions = enforce_key_scope_ceiling(current_user, body.permissions)
+
     db_user_id = await _resolve_db_user_id(session, current_user)
     if not db_user_id:
         raise _no_db_user_error()
@@ -618,7 +623,7 @@ async def revoke_user_api_key(
 
 # ---- Helper Functions ----
 
-def _get_permissions_for_role(role: str) -> List[str]:
+def _get_permissions_for_role(role: str) -> list[str]:
     """Get default permissions based on user role.
 
     BR-2.6: single source of truth — see app.auth.roles.permissions_for_role.

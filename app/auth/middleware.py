@@ -10,40 +10,45 @@ Provides FastAPI dependencies for route protection:
 Both auth sources return a unified ``AuthUser`` object.
 """
 
-import os
 import hashlib
 import hmac
 import logging
-from typing import Optional, Annotated
+import os
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, Query, Request, status
-from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_session, _clear_org_context
-from app.db.models import ApiKey, UserApiKey, User, Organization
-from app.auth.roles import (
-    AUTONOMY_REPORT_PERMISSION,
-    UserRole,
-    has_autonomy_report_scope,
-    is_admin_path,
-    is_autonomy_report_request,
-    is_public_path,
-    is_reporter_only_credential,
-    get_minimum_role_for_method,
-    map_keycloak_roles,
-    role_from_permissions,
-    mfa_satisfied,
-)
 from app.auth.keycloak import (
     KeycloakValidationError,
     keycloak_enabled,
+)
+from app.auth.keycloak import (
     validate_token as kc_validate_token,
 )
+from app.auth.roles import (
+    AUTONOMY_REPORT_PERMISSION,
+    KNOWN_KEY_SCOPES,
+    UserRole,
+    check_key_scope_grant,
+    get_minimum_role_for_method,
+    grantable_scopes,
+    has_autonomy_report_scope,
+    is_autonomy_report_request,
+    is_public_path,
+    is_reporter_only_credential,
+    map_keycloak_roles,
+    mfa_satisfied,
+    normalize_key_scopes,
+    role_from_permissions,
+)
+from app.db.database import _clear_org_context, get_session
+from app.db.models import ApiKey, Organization, User, UserApiKey
 
 logger = logging.getLogger(__name__)
 
@@ -327,9 +332,11 @@ async def resolve_canonical_user_id(session, kc_sub, email, derived_apps, realm_
     cannot resolve (no keycloak_id match AND no email) — the caller then keeps
     the sub, a degraded but honest fallback.
     """
-    from app.db.models import User as _User
-    from sqlalchemy import select as _select
     from datetime import datetime as _dt
+
+    from sqlalchemy import select as _select
+
+    from app.db.models import User as _User
 
     new_role = realm_role.value if hasattr(realm_role, "value") else str(realm_role)
     email_norm = email.lower() if email else None
@@ -725,7 +732,7 @@ async def _bind_org_context(
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Malformed X-Org-Id (expected a UUID)",
-                )
+                ) from None
             org_role = await get_membership_role(session, str(local_user.id), requested_org_id)
             if org_role is None:
                 await session.rollback()
@@ -910,6 +917,36 @@ def require_admin(
             detail="Admin access required",
         )
     return user
+
+
+def enforce_key_scope_ceiling(user: Optional["AuthUser"], permissions) -> list:
+    """Refuse a new API key whose scopes exceed the caller's own role (42d214cc).
+
+    Returns the normalized scope list to store. 422 for an unknown scope, 403 for
+    a scope above the caller's role, and 403 when there is no caller at all
+    (fail closed; dev bypass always supplies an admin caller).
+    """
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="A signed-in caller is required to create a key.")
+    unknown, above = check_key_scope_grant(user.role, permissions)
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Unknown permission{'s' if len(unknown) > 1 else ''}: {', '.join(unknown)}. "
+                f"Brigade keys accept: {', '.join(sorted(KNOWN_KEY_SCOPES))}."
+            ),
+        )
+    if above:
+        role_val = user.role.value if hasattr(user.role, "value") else str(user.role)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"You can grant only permissions at or below your own role ({role_val}): "
+                f"{', '.join(sorted(grantable_scopes(user.role)))}. Not allowed: {', '.join(above)}."
+            ),
+        )
+    return normalize_key_scopes(permissions)
 
 
 def require_operator(
