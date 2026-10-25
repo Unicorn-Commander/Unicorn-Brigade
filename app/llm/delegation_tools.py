@@ -24,6 +24,38 @@ _CURRENT_CASE_ID: ContextVar[Optional[str]] = ContextVar("_CURRENT_CASE_ID", def
 # without threading the id through every call.
 _CURRENT_AGENT_ID: ContextVar[Optional[str]] = ContextVar("_CURRENT_AGENT_ID", default=None)
 _CURRENT_AGENT_NAME: ContextVar[Optional[str]] = ContextVar("_CURRENT_AGENT_NAME", default=None)
+# The credential of the request that is running this agent. The chat route
+# stashes it so a delegation runs AS THE CALLER (same identity, org and role)
+# instead of as the master-admin key, which always binds the shared default org
+# and so could not reach an agent in another org (Project-Ops 2e350195). It is
+# kept in-process for the life of the request and never logged.
+_CALLER_AUTH: ContextVar[Optional[dict[str, str]]] = ContextVar("_CALLER_AUTH", default=None)
+SESSION_COOKIE = "brigade_session"  # app.auth.middleware.OIDC_SESSION_COOKIE
+
+
+def forwardable_auth(headers: Any, cookies: Any = None) -> Optional[dict[str, str]]:
+    """The caller's own credential, as headers to replay on a delegated call.
+
+    Only what Brigade authenticates with: a Bearer token, the X-API-Key header,
+    and the OIDC session cookie. X-Org-Id comes along so the same active org is
+    selected. Returns None when the request carried no credential.
+    """
+
+    def _get(name: str) -> str:
+        return (headers.get(name) or headers.get(name.lower()) or "") if headers else ""
+
+    out: dict[str, str] = {}
+    if auth := _get("Authorization"):
+        out["Authorization"] = auth
+    if key := _get("X-API-Key"):
+        out["X-API-Key"] = key
+    if session := ((cookies or {}).get(SESSION_COOKIE) or ""):
+        out["Cookie"] = f"{SESSION_COOKIE}={session}"
+    if not out:
+        return None
+    if org := _get("X-Org-Id"):
+        out["X-Org-Id"] = org
+    return out
 
 # Kept below the context vars on purpose (import order predates the lint gate).
 from app.llm.ops_center_client import ToolDefinition, ToolParameter  # noqa: E402
@@ -104,10 +136,16 @@ async def delegate_to_agent_handler(
 
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:
-            headers = {
-                "Content-Type": "application/json",
-                "X-API-Key": BRIGADE_API_KEY,
-            }
+            headers = {"Content-Type": "application/json"}
+            caller_auth = _CALLER_AUTH.get()
+            if caller_auth:
+                # Run the delegated agent AS THE CALLER, so the target is looked up
+                # in the caller's org and acts with the caller's role (2e350195).
+                headers.update(caller_auth)
+            else:
+                # No caller credential (scheduler and other internal paths): the
+                # master-admin key, as before.
+                headers["X-API-Key"] = BRIGADE_API_KEY
             if caller_user_id:
                 # Explicit header in addition to body user_id so the chat
                 # endpoint has an unambiguous "this call was delegated on

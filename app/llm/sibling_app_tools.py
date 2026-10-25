@@ -138,6 +138,8 @@ def _load_aliases(namespace: str, raw_aliases: object) -> dict[str, str]:
 # and the bundled list keeps updating with the image instead of being frozen by
 # a bind-mounted copy.
 SIBLING_APPS_EXTRA_ENV = "BRIGADE_SIBLING_APPS_EXTRA"
+# (name, source file) of each app added by the deployment config, for the startup log.
+DEPLOYMENT_APPS: list[tuple[str, str]] = []
 
 
 def _read_config_list(path: Path, *, extra: bool) -> list[Any]:
@@ -161,6 +163,7 @@ def _read_config_list(path: Path, *, extra: bool) -> list[Any]:
 def _config_items() -> list[Any]:
     """The bundled sibling-app entries, plus any deployment extras."""
     items = list(_read_config_list(CONFIG_PATH, extra=False))
+    DEPLOYMENT_APPS.clear()
     extra_paths = [p.strip() for p in os.getenv(SIBLING_APPS_EXTRA_ENV, "").split(os.pathsep) if p.strip()]
     for extra_path in extra_paths:
         for entry in _read_config_list(Path(extra_path), extra=True):
@@ -175,6 +178,7 @@ def _config_items() -> list[Any]:
                 logger.warning("deployment sibling-app config replaces bundled app %s", items[i].get("name"))
                 del items[i]
             items.append(entry)
+            DEPLOYMENT_APPS.append((str(entry.get("name")), extra_path))
             logger.info("deployment sibling-app config adds %s from %s", entry.get("name"), extra_path)
     return items
 

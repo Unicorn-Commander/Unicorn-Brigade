@@ -250,6 +250,10 @@ async def openai_chat_completions(
         )
 
     try:
+        # 2e350195: delegations from this chat run AS THIS CALLER (see agent_routes).
+        from app.llm.delegation_tools import _CALLER_AUTH, forwardable_auth
+
+        _CALLER_AUTH.set(forwardable_auth({"Authorization": authorization or "", "X-API-Key": x_api_key or ""}))
         brigade_resp = await chat_with_agent(
             agent_id=agent_id,
             request=brigade_req,

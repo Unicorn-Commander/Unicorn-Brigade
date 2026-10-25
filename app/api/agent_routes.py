@@ -12,7 +12,7 @@ import re as _re
 from contextlib import asynccontextmanager
 from typing import Annotated, Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1405,9 +1405,20 @@ async def chat_with_agent(
     user: Annotated[AuthUser, Depends(require_operator)] = None,
     _rl: Annotated[None, rate_limit("agent_chat", 60, 60)] = None,
     _size: Annotated[None, max_body_size(100 * 1024)] = None,
+    http_request: Request = None,
 ):
     """Chat with a specific agent. Supports function calling when agent has tools."""
     _ensure_agent_access(user, agent_id)
+    # 2e350195: a delegation from this chat must run AS THIS CALLER (identity,
+    # org, role), so keep the request's own credential for the delegate tool. A
+    # direct in-process caller (openai_compat) sets _CALLER_AUTH itself first.
+    from app.llm.delegation_tools import _CALLER_AUTH, forwardable_auth
+
+    caller_auth = (
+        forwardable_auth(http_request.headers, http_request.cookies)
+        if http_request is not None
+        else _CALLER_AUTH.get()
+    )
 
     # Phase 7: fetch billing state once per request, 402 out-of-credits non-admins,
     # and carry the paid signal into per-agent RBAC.
@@ -1527,6 +1538,7 @@ async def chat_with_agent(
             user_email=user_email_for_metering,
             org_id=getattr(user, "org_id", None),
             tool_guard=tool_guard,
+            caller_auth=caller_auth,
         )
         # Prime through the initial envelope before sending StreamingResponse
         # headers. If the first upstream response exhausts its one bounded
@@ -1588,6 +1600,7 @@ async def chat_with_agent(
         # tool loop can emit a source->target edge for the live org chart.
         _CURRENT_AGENT_ID.set(agent["id"])
         _CURRENT_AGENT_NAME.set(agent_name)
+        _CALLER_AUTH.set(caller_auth)
         # Stamp correlation ids onto every log record for this request.
         from app.observability import agent_id_ctx, mission_id_ctx
 
@@ -1925,9 +1938,10 @@ async def _stream_chat(
     user_email: Optional[str] = None,
     org_id: Optional[str] = None,
     tool_guard=None,  # BR-6.4 per-caller tool privilege guard (None = ungated)
+    caller_auth: Optional[dict] = None,
 ):
     """SSE streaming chat generator with function calling support."""
-    from app.llm.delegation_tools import _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME
+    from app.llm.delegation_tools import _CALLER_AUTH, _CURRENT_AGENT_ID, _CURRENT_AGENT_NAME
 
     _agent_tok = _agentname_tok = None
     upstream_started = False
@@ -1956,6 +1970,7 @@ async def _stream_chat(
         # runs in, so a delegate_to_agent call below can read these.
         _agent_tok = _CURRENT_AGENT_ID.set(agent["id"])
         _agentname_tok = _CURRENT_AGENT_NAME.set(agent_name)
+        _CALLER_AUTH.set(caller_auth)
 
         tool_calls_log = []
 

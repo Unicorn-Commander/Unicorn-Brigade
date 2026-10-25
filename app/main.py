@@ -259,6 +259,16 @@ async def lifespan(app: FastAPI):
         # apikey_routes and conversation_routes use Depends(get_session) directly
         logger.info("All route modules initialized")
 
+        # Sibling apps load at import time, before logging is configured, so
+        # report them here (including any from BRIGADE_SIBLING_APPS_EXTRA).
+        from app.llm.sibling_app_tools import DEPLOYMENT_APPS, SIBLING_APPS
+
+        logger.info(
+            "Sibling apps: %s; from the deployment config: %s",
+            ", ".join(a.name for a in SIBLING_APPS) or "none",
+            ", ".join(f"{name} ({src})" for name, src in DEPLOYMENT_APPS) or "none",
+        )
+
         # Initialize Brigade scheduler (cron-style scheduled agent runs).
         # Reads scheduled_runs rows from DB and (re)registers APScheduler jobs.
         try:
