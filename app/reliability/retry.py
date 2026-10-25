@@ -16,12 +16,25 @@ import asyncio
 import logging
 import os
 import random
+import socket
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional, TypeVar
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+# Some transports preserve only the resolver's text when wrapping gaierror.
+_DNS_ERROR_MESSAGES = (
+    "name or service not known",
+    "nodename nor servname provided",
+    "temporary failure in name resolution",
+    "getaddrinfo failed",
+    "no address associated with hostname",
+    "name resolution failed",
+    "could not resolve host",
+    "failed to resolve",
+)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -76,7 +89,7 @@ class RetryConfig:
     jitter: float = 0.5           # +/- fraction of the computed delay
 
     @classmethod
-    def from_env(cls, prefix: str = "LLM_RETRY") -> "RetryConfig":
+    def from_env(cls, prefix: str = "LLM_RETRY") -> RetryConfig:
         return cls(
             max_attempts=max(1, _env_int(f"{prefix}_MAX_ATTEMPTS", 3)),
             base_delay=_env_float(f"{prefix}_BASE_DELAY", 0.5),
@@ -94,14 +107,35 @@ def is_transient_http_status(status_code: int) -> bool:
 def default_is_transient(exc: BaseException) -> bool:
     """Decide whether ``exc`` is worth retrying.
 
-    Retryable: connection errors, timeouts, HTTP 5xx, HTTP 429.
-    Not retryable: HTTP 4xx (except 429) and anything else (programming
-    errors, ``ModelUnavailableError``, etc.) — those propagate immediately.
+    Retryable: non-DNS connection errors, timeouts, HTTP 5xx, HTTP 429.
+    Not retryable: DNS/configuration errors, HTTP 4xx (except 429) and anything
+    else (programming errors, ``ModelUnavailableError``, etc.). This predicate
+    also decides which failures count toward opening an LLM circuit breaker.
     """
     try:
         import httpx
     except Exception:  # pragma: no cover - httpx always present in this app
         httpx = None  # type: ignore
+
+    # httpx/httpcore wrap socket failures. Inspect both exception links, with
+    # cycle protection, before the broad OSError/ConnectError checks below.
+    pending = [exc]
+    seen: set[int] = set()
+    while pending:
+        error = pending.pop()
+        if id(error) in seen:
+            continue
+        seen.add(id(error))
+        if isinstance(error, socket.gaierror):
+            return False
+        if httpx is not None and isinstance(error, httpx.InvalidURL | httpx.UnsupportedProtocol):
+            return False
+        if isinstance(error, OSError) or (
+            httpx is not None and isinstance(error, httpx.ConnectError)
+        ):
+            if any(message in str(error).lower() for message in _DNS_ERROR_MESSAGES):
+                return False
+        pending.extend(link for link in (error.__cause__, error.__context__) if link is not None)
 
     if httpx is not None:
         # Explicit HTTP status errors: retry only 5xx / 429.
@@ -113,20 +147,18 @@ def default_is_transient(exc: BaseException) -> bool:
         # Network / protocol level failures are transient.
         if isinstance(
             exc,
-            (
-                httpx.TimeoutException,
-                httpx.ConnectError,
-                httpx.ReadError,
-                httpx.WriteError,
-                httpx.RemoteProtocolError,
-                httpx.PoolTimeout,
-                httpx.NetworkError,
-            ),
+            httpx.TimeoutException
+            | httpx.ConnectError
+            | httpx.ReadError
+            | httpx.WriteError
+            | httpx.RemoteProtocolError
+            | httpx.PoolTimeout
+            | httpx.NetworkError,
         ):
             return True
 
     # asyncio timeouts and low-level socket/connection errors.
-    if isinstance(exc, (asyncio.TimeoutError, ConnectionError, OSError)):
+    if isinstance(exc, TimeoutError | ConnectionError | OSError):
         return True
     return False
 

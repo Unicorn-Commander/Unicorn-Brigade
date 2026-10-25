@@ -305,8 +305,8 @@ def _is_dashscope_model(model: str) -> bool:
         or m.startswith("qwen-long")
     )
 
-# Local LLM URL (llama.cpp / Ollama on the Docker network)
-LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "http://unicorn-llama-cpp:8080")
+# Explicit local override (llama.cpp / Ollama); otherwise use the UC gateway.
+LOCAL_LLM_URL = os.getenv("LOCAL_LLM_URL", "")
 
 # Direct LLM endpoint override: when set, bypass Ops-Center and hit this
 # OpenAI-compatible endpoint directly (e.g. llama.cpp router on host).
@@ -387,8 +387,12 @@ def _resolve_model_route(
 ) -> tuple[str, str, str]:
     """Resolve a model without performing I/O."""
     if model.startswith("local/"):
-        local_model = model[6:]  # Remove 'local/' prefix
-        return local_llm_url, local_model, "local"
+        if local_llm_url:
+            return local_llm_url, model[len("local/"):], "local"
+        if UC_GATEWAY_URL:
+            # Like uc/ ids, local/ ids retain their gateway catalog prefix.
+            return UC_GATEWAY_URL, model, "gateway"
+        raise ConfigError("local/ models require UC_GATEWAY_URL or LOCAL_LLM_URL")
     if model.startswith("midboy1/"):
         midboy1_model = model[len("midboy1/"):]
         return MIDBOY1_LLM_URL, midboy1_model, "local"
@@ -497,16 +501,13 @@ class OpsCenterLLMClient:
 
         # BR-4: bounded retry (transient failures) + circuit breaker (fail fast
         # when the backend is unhealthy) around the non-streaming completion
-        # calls. Only transient failures count toward opening the breaker, so
-        # deterministic client 4xx errors never trip it.
+        # calls. Each route/base URL has its own breaker; models using the same
+        # backend share its health state. Configuration/DNS errors never count.
+        self._llm_breakers: dict[tuple[str, str], CircuitBreaker] = {}
         if _RELIABILITY_AVAILABLE:
             self._retry_config = RetryConfig.from_env()
-            self._llm_breaker = CircuitBreaker.from_env(
-                name="ops-center-llm", is_failure=default_is_transient
-            )
         else:  # pragma: no cover - reliability layer should always import
             self._retry_config = None
-            self._llm_breaker = None
 
         logger.info(f"OpsCenterLLMClient initialized: {self.ops_center_url}")
         logger.info(f"Local LLM URL: {self.local_llm_url}")
@@ -516,7 +517,7 @@ class OpsCenterLLMClient:
         Determine where to route a model request.
 
         Returns (url, model_name, route_type) tuple where route_type is one of:
-          "local"       — local llama.cpp / Ollama (models prefixed 'local/')
+          "local"       — explicit local llama.cpp / Ollama override
           "openai"      — OpenAI API (when a real OPENAI_API_KEY is set)
           "dashscope"   — Alibaba DashScope compatible-mode (DASHSCOPE_API_KEY)
           "gateway"     — UC LiteLLM gateway (has Anthropic/OpenAI/DashScope keys)
@@ -939,12 +940,12 @@ class OpsCenterLLMClient:
         await self.client.aclose()
 
     # ── BR-4 resilience wrappers ──────────────────────────────
-    async def _resilient_llm_call(self, fn: Callable, *args, **kwargs):
-        """Run an LLM HTTP call through the circuit breaker + bounded retry.
+    async def _resilient_llm_call(self, model: str, fn: Callable, *args, **kwargs):
+        """Run an LLM HTTP call through its route's breaker + bounded retry.
 
         - Transient failures (connection errors, timeouts, HTTP 5xx, 429) are
           retried with exponential backoff + jitter, capped by ``RetryConfig``.
-        - Deterministic client errors (HTTP 4xx except 429) and
+        - Configuration/DNS errors, deterministic HTTP 4xx except 429, and
           ``ModelUnavailableError`` propagate immediately — no retry — so the
           existing 4xx/422 tool-format fallback in ``execute_tool_loop`` still
           fires unchanged.
@@ -954,8 +955,23 @@ class OpsCenterLLMClient:
 
         If the reliability layer is unavailable the call is made directly.
         """
-        if self._llm_breaker is None:  # pragma: no cover - reliability always present
+        if self._retry_config is None:  # pragma: no cover - reliability always present
             return await fn(*args, **kwargs)
+
+        # Resolve aliases before selecting a breaker, using the same routing
+        # policy as the request. Do not key on model: one endpoint is one
+        # failure domain, even when callers select different models on it.
+        if model in ("default", "auto"):
+            model = DEFAULT_MODEL
+        target_url, _, route_type = self._resolve_local_model(model)
+        breaker_key = (route_type, target_url.rstrip("/"))
+        breaker = self._llm_breakers.get(breaker_key)
+        if breaker is None:
+            breaker = CircuitBreaker.from_env(
+                name=f"ops-center-llm:{route_type}:{_target_host(target_url)}",
+                is_failure=default_is_transient,
+            )
+            self._llm_breakers[breaker_key] = breaker
 
         async def _attempt():
             return await fn(*args, **kwargs)
@@ -967,22 +983,33 @@ class OpsCenterLLMClient:
                 is_transient=default_is_transient,
             )
 
-        return await self._llm_breaker.call(_retried)
+        return await breaker.call(_retried)
 
-    async def chat_completion(self, *args, **kwargs) -> dict[str, Any]:
+    async def chat_completion(
+        self, messages: list[dict[str, str]], model: str = "default", *args, **kwargs
+    ) -> dict[str, Any]:
         """Resilient chat completion (retry + circuit breaker).
 
         Same signature as ``_chat_completion_once``.
         """
-        return await self._resilient_llm_call(self._chat_completion_once, *args, **kwargs)
+        return await self._resilient_llm_call(
+            model, self._chat_completion_once, messages, model, *args, **kwargs
+        )
 
-    async def chat_completion_with_tools(self, *args, **kwargs) -> dict[str, Any]:
+    async def chat_completion_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[ToolDefinition],
+        model: str = "default",
+        *args,
+        **kwargs,
+    ) -> dict[str, Any]:
         """Resilient tool-enabled chat completion (retry + circuit breaker).
 
         Same signature as ``_chat_completion_with_tools_once``.
         """
         return await self._resilient_llm_call(
-            self._chat_completion_with_tools_once, *args, **kwargs
+            model, self._chat_completion_with_tools_once, messages, tools, model, *args, **kwargs
         )
 
     async def _chat_completion_with_tools_once(
