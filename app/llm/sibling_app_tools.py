@@ -130,19 +130,58 @@ def _load_aliases(namespace: str, raw_aliases: object) -> dict[str, str]:
     return aliases
 
 
-def _load_configs() -> tuple[SiblingAppConfig, ...]:
+# A deployment can add sibling apps of its own without replacing the bundled
+# file: BRIGADE_SIBLING_APPS_EXTRA names one or more JSON files (os.pathsep-
+# separated) in the same list format. Their entries are merged after the bundled
+# ones, and an entry whose name or namespace matches a bundled app replaces it.
+# This keeps deployment-private apps (and their URLs) out of the repository,
+# and the bundled list keeps updating with the image instead of being frozen by
+# a bind-mounted copy.
+SIBLING_APPS_EXTRA_ENV = "BRIGADE_SIBLING_APPS_EXTRA"
+
+
+def _read_config_list(path: Path, *, extra: bool) -> list[Any]:
     try:
-        raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("sibling-app config unavailable: %s", type(exc).__name__)
-        return ()
-
+        if extra:
+            # Configured but unreadable: say so loudly, keep the bundled apps.
+            logger.error("deployment sibling-app config %s unavailable: %s", path, type(exc).__name__)
+        else:
+            logger.warning("sibling-app config unavailable: %s", type(exc).__name__)
+        return []
     if not isinstance(raw, list):
-        logger.warning("sibling-app config must be a list")
-        return ()
+        logger.error("sibling-app config %s must be a list", path) if extra else logger.warning(
+            "sibling-app config must be a list"
+        )
+        return []
+    return raw
 
+
+def _config_items() -> list[Any]:
+    """The bundled sibling-app entries, plus any deployment extras."""
+    items = list(_read_config_list(CONFIG_PATH, extra=False))
+    extra_paths = [p.strip() for p in os.getenv(SIBLING_APPS_EXTRA_ENV, "").split(os.pathsep) if p.strip()]
+    for extra_path in extra_paths:
+        for entry in _read_config_list(Path(extra_path), extra=True):
+            if not isinstance(entry, Mapping):
+                continue
+            keys = {str(entry.get("name") or ""), str(entry.get("namespace") or "")} - {""}
+            replaced = [
+                i for i, item in enumerate(items)
+                if isinstance(item, Mapping) and keys & {str(item.get("name") or ""), str(item.get("namespace") or "")}
+            ]
+            for i in reversed(replaced):
+                logger.warning("deployment sibling-app config replaces bundled app %s", items[i].get("name"))
+                del items[i]
+            items.append(entry)
+            logger.info("deployment sibling-app config adds %s from %s", entry.get("name"), extra_path)
+    return items
+
+
+def _load_configs() -> tuple[SiblingAppConfig, ...]:
     configs: list[SiblingAppConfig] = []
-    for item in raw:
+    for item in _config_items():
         if not isinstance(item, Mapping):
             continue
         try:
