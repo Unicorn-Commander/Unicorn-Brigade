@@ -1,91 +1,93 @@
 """Agent module"""
 
-from app.agents.base import BaseAgent
-from app.agents.research import ResearchAgent
-from app.agents.code import CodeAgent
+from app.agents.agentic_rag import AgenticRAG, RAGContext, RAGResponse, get_agentic_rag
 from app.agents.analysis import AnalysisAgent
-from app.agents.text_to_sql import TextToSQLAgent, get_text_to_sql_agent
-from app.agents.agentic_rag import AgenticRAG, get_agentic_rag, RAGContext, RAGResponse
-from app.agents.deep_research import DeepResearchAgent, DEEP_RESEARCH_TOOL, deep_research_handler
-from app.agents.customer_support import (
-    CustomerSupportAgent,
-    SupportTicket,
-    TicketStatus,
-    TicketPriority,
-    SupportChannel,
-    SupportMessage,
-    FAQEntry,
-)
+from app.agents.base import BaseAgent
+from app.agents.code import CodeAgent
 from app.agents.code_reviewer import (
     CodeReviewer,
-    create_code_reviewer,
-    ReviewResult,
-    ReviewComment,
-    ReviewCategory,
-    ReviewSeverity,
     FileChange,
+    ReviewCategory,
+    ReviewComment,
+    ReviewResult,
+    ReviewSeverity,
+    create_code_reviewer,
 )
+from app.agents.content_generator import (
+    CONTENT_TEMPLATES,
+    CalendarEntry,
+    ContentGeneratorAgent,
+    ContentResult,
+    ContentTone,
+    ContentType,
+    OutputFormat,
+    SEOMetadata,
+    create_content_generator,
+)
+from app.agents.customer_support import (
+    CustomerSupportAgent,
+    FAQEntry,
+    SupportChannel,
+    SupportMessage,
+    SupportTicket,
+    TicketPriority,
+    TicketStatus,
+)
+from app.agents.deep_research import DEEP_RESEARCH_TOOL, DeepResearchAgent, deep_research_handler
 from app.agents.document_processor import (
+    CONTRACT_TEMPLATE,
+    INVOICE_TEMPLATE,
+    RECEIPT_TEMPLATE,
+    TEMPLATES,
     DocumentProcessor,
     DocumentType,
     ExtractionResult,
-    INVOICE_TEMPLATE,
-    CONTRACT_TEMPLATE,
-    RECEIPT_TEMPLATE,
-    TEMPLATES,
     process_document,
 )
-from app.agents.sales_outreach import (
-    SalesOutreachOrchestrator,
-    LeadEnrichmentAgent,
-    PersonalizationAgent,
-    SequenceAgent,
-    ResponseAgent,
-    Lead,
-    LeadStatus,
-    EmailSequence,
-    Campaign,
-    create_sales_orchestrator,
-)
-from app.agents.content_generator import (
-    ContentGeneratorAgent,
-    create_content_generator,
-    ContentType,
-    ContentTone,
-    OutputFormat,
-    ContentResult,
-    CalendarEntry,
-    SEOMetadata,
-    CONTENT_TEMPLATES,
-)
 from app.agents.financial_analysis import (
-    FinancialAnalysisAgent,
-    Transaction,
+    CURRENCY_RATES,
     Budget,
     BudgetAlert,
-    FinancialReport,
-    TransactionType,
     ExpenseCategory,
-    AlertSeverity as FinanceAlertSeverity,
+    FinancialAnalysisAgent,
+    FinancialReport,
     ReportPeriod,
-    CURRENCY_RATES,
+    Transaction,
+    TransactionType,
+)
+from app.agents.financial_analysis import (
+    AlertSeverity as FinanceAlertSeverity,
 )
 from app.agents.monitoring_agent import (
-    MonitoringAgent,
+    Alert,
     AlertSeverity,
     AlertStatus,
-    ServiceStatus,
-    IncidentStatus,
+    AnomalyDetector,
     CheckType,
+    Incident,
+    IncidentStatus,
+    LogAnalyzer,
     Metric,
     MetricThreshold,
-    Alert,
+    MonitoringAgent,
     ServiceCheck,
-    Incident,
+    ServiceStatus,
     WebhookConfig,
-    AnomalyDetector,
-    LogAnalyzer,
 )
+from app.agents.research import ResearchAgent
+from app.agents.sales_outreach import (
+    Campaign,
+    EmailSequence,
+    Lead,
+    LeadEnrichmentAgent,
+    LeadStatus,
+    PersonalizationAgent,
+    ResponseAgent,
+    SalesOutreachOrchestrator,
+    SequenceAgent,
+    create_sales_orchestrator,
+)
+from app.agents.text_to_sql import TextToSQLAgent, get_text_to_sql_agent
 
 __all__ = [
     "BaseAgent",
@@ -172,15 +174,19 @@ __all__ = [
     "LogAnalyzer",
 ]
 
-# Crisis Investigation Agents
-from app.agents.evidence_correlator import EvidenceCorrelatorAgent
-from app.agents.gap_analyzer import GapAnalyzerAgent
-from app.agents.timeline_builder import TimelineBuilderAgent
-from app.agents.crisis_registration import register_crisis_agents
+# Crisis Investigation Agents: private to Magic Unicorn's deployment and absent
+# from the public build (see app/private_features.py).
+from app.private_features import crisis_feature_present
 
-__all__ += [
-    "EvidenceCorrelatorAgent",
-    "GapAnalyzerAgent",
-    "TimelineBuilderAgent",
-    "register_crisis_agents",
-]
+if crisis_feature_present():
+    from app.agents.crisis_registration import register_crisis_agents
+    from app.agents.evidence_correlator import EvidenceCorrelatorAgent
+    from app.agents.gap_analyzer import GapAnalyzerAgent
+    from app.agents.timeline_builder import TimelineBuilderAgent
+
+    __all__ += [
+        "EvidenceCorrelatorAgent",
+        "GapAnalyzerAgent",
+        "TimelineBuilderAgent",
+        "register_crisis_agents",
+    ]

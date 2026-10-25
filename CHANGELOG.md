@@ -447,8 +447,8 @@ leak to other Brigade consumers (LibreChat, OpenCode, Stable, etc.).
 - **All 13 legal agents now default to `anthropic/claude-sonnet-4.6`**
   (1M ctx, $3/M in $15/M out via OpenRouter) instead of the local
   Qwen3.6-35B fallback. Smoke comparison: cloud Claude pulls exact
-  case-record quotes (e.g., investigators' characterizations of Doe), names specific evidence, applies
-  the governing legal doctrines with sharper case-specific framing.
+  case-record quotes, names specific evidence, and applies doctrine
+  with sharper case-specific framing.
   Local Qwen remains a per-call override option.
 - **Orchestrator agents (majik, gflow, the-general, gunny) migrated
   from bare `Qwen3.6-35B-A3B-UD-Q4_K_XL` to `local/Qwen3.6-35B-A3B-UD-Q4_K_XL`**
@@ -553,7 +553,8 @@ own repo for cleaner companion-service deployment.
 - **devils-advocate** — Steel-mans every argument opposing counsel will
   raise, ranks by strength (1-10), drafts best response + flags residual
   risk for each. Internal-only output. Use before filing major papers
-  or going into settlement talks. Smoke-verified against the official-duties question for the Doe case.
+  or going into settlement talks. Smoke-verified against a real
+  case question.
 - **deposition-prep** — Witness-specific binders: profile, exhibits to
   mark in strategic order, chronological + topical question groups,
   anticipated objections + how to handle, impeachment material from
@@ -582,7 +583,7 @@ POINTS pattern from the drafter family.
 
 Drafter family, Crisis MCP tool wiring, and the brigade-pdf microservice
 make Brigade a full court-document production stack instead of just a
-Q&A surface for the CASE-ID case.
+Q&A surface for a single case.
 
 ### Added
 - **Crisis MCP tools wired into TOOL_REGISTRY** (`app/llm/crisis_mcp_tools.py`).
@@ -622,8 +623,7 @@ Q&A surface for the CASE-ID case.
 
 ### Smoke verification
 - `brief-drafter` produced a Statement of Facts citing real evidence
-  filenames inline (`rocky-doe-article.md`, `chronology.md`)
-  via the `search_evidence` MCP tool.
+  filenames inline via the `search_evidence` MCP tool.
 - `demand-letter-drafter` end-to-end through Crisis Ops: drafted, rendered
   to a 30 KB PDF, downloaded via the proxy, opens in any PDF reader.
 

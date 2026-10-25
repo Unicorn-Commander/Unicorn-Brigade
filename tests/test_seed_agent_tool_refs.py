@@ -18,6 +18,10 @@ SEED_FILES = (
 @pytest.mark.parametrize("seed_path", SEED_FILES, ids=lambda path: path.name)
 def test_seed_agent_tools_resolve_in_tool_registry(seed_path):
     """A new default-seed reference must fail CI instead of disappearing at run time."""
+    if not seed_path.exists():
+        # The production core seed is private to Magic Unicorn's deployment and is
+        # absent from the public build (app/private_features.py).
+        pytest.skip(f"{seed_path} is not part of this build")
     agents = json.loads(seed_path.read_text())
     references = {str(tool_name) for agent in agents for tool_name in (agent.get("tools") or [])}
 

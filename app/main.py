@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import __version__  # BR-0.10: single source of truth for the app version
-from app.agents.crisis_registration import register_crisis_agents
 from app.api import router
 from app.api.a2a_routes import init_a2a_routes
 from app.api.a2a_routes import router as a2a_router
@@ -29,8 +28,6 @@ from app.api.calendar_routes import router as calendar_router
 from app.api.content_routes import init_content_routes
 from app.api.content_routes import router as content_router
 from app.api.conversation_routes import router as conversation_router
-from app.api.crisis_routes import init_crisis_routes
-from app.api.crisis_routes import router as crisis_router
 from app.api.document_routes import router as document_router
 from app.api.finance_routes import init_finance_routes
 from app.api.finance_routes import router as finance_router
@@ -92,6 +89,7 @@ from app.observability import configure_logging, request_id_middleware
 from app.observability import flush as langfuse_flush
 from app.observability import shutdown as langfuse_shutdown
 from app.observability.metrics import metrics_endpoint, metrics_middleware
+from app.private_features import crisis_feature_present
 from app.security.bootstrap import assert_auth_bypass_safe, is_production_env
 
 # ── BR-6 security hardening ────────────────────────────────────────────────
@@ -105,6 +103,14 @@ from app.services.scheduler import get_scheduler, init_scheduler
 # Stores and route modules
 from app.stores.model_catalog import ModelCatalog
 from app.workflows.benchmark import init_benchmark_engine
+
+# Crisis investigation feature: private to Magic Unicorn's deployment and absent
+# from the public build (see app/private_features.py).
+CRISIS_FEATURE = crisis_feature_present()
+if CRISIS_FEATURE:
+    from app.agents.crisis_registration import register_crisis_agents
+    from app.api.crisis_routes import init_crisis_routes
+    from app.api.crisis_routes import router as crisis_router
 
 # ───────────────────────────────────────────────────────────────────────────
 
@@ -242,10 +248,13 @@ async def lifespan(app: FastAPI):
         init_benchmark_engine(llm_client, judge_model="openai/gpt-4o-mini")
         logger.info("Benchmark engine initialized for A/B testing")
 
-        # Initialize Crisis Investigation agents and routes
-        register_crisis_agents(workflow_manager, memory_manager=memory_manager, llm_client=llm_client)
-        init_crisis_routes(llm_client=llm_client, memory_manager=memory_manager)
-        logger.info("Crisis investigation agents initialized (evidence_correlator, gap_analyzer, timeline_builder)")
+        # Initialize Crisis Investigation agents and routes (private feature)
+        if CRISIS_FEATURE:
+            register_crisis_agents(workflow_manager, memory_manager=memory_manager, llm_client=llm_client)
+            init_crisis_routes(llm_client=llm_client, memory_manager=memory_manager)
+            logger.info("Crisis investigation agents initialized (evidence_correlator, gap_analyzer, timeline_builder)")
+        else:
+            logger.info("Crisis investigation feature not installed (public build)")
 
         # apikey_routes and conversation_routes use Depends(get_session) directly
         logger.info("All route modules initialized")
@@ -444,7 +453,8 @@ if not FEDERATION_ONLY:
     app.include_router(speaker_router, prefix="/api/v1", tags=["speakers"])
     app.include_router(llm_models_router, prefix="/api/v1", tags=["llm-models"])
     app.include_router(ralph_router, tags=["ralph"])
-    app.include_router(crisis_router, prefix="/api/v1", tags=["crisis"])
+    if CRISIS_FEATURE:
+        app.include_router(crisis_router, prefix="/api/v1", tags=["crisis"])
     app.include_router(scheduled_run_router, prefix="/api/v1", tags=["scheduled-runs"])
     # P-00092 autonomy catalogue: Brigade's scheduled runs + outside loops that
     # register and report through /api/v1/autonomy.

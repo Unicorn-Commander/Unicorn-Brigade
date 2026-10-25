@@ -200,6 +200,10 @@ def test_livekit_allows_real_creds_in_prod(monkeypatch):
 
 # ───────────────── static: no hardcoded secret literals remain ────────────────
 def test_crisis_litellm_key_default_removed():
+    if not (pathlib.Path(__file__).resolve().parents[1] / "app/api/crisis_routes.py").exists():
+        # The crisis feature is private to Magic Unicorn's deployment and absent
+        # from the public build (app/private_features.py), so there is nothing to audit.
+        pytest.skip("crisis feature not installed in this build")
     src = _read("app/api/crisis_routes.py")
     assert "REMOVED" not in src
     assert 'os.getenv("LITELLM_API_KEY", "")' in src

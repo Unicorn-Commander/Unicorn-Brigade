@@ -69,11 +69,15 @@ def _all_source_registry_names() -> set[str]:
         ):
             names.update(key.value for key in node.value.keys if isinstance(key, ast.Constant))
 
-    # The crisis module appends generate_pdf after its initial literal map.
-    names.update(_dict_keys(ROOT / "app/llm/crisis_mcp_tools.py", "CRISIS_MCP_TOOLS"))
-    names.add("generate_pdf")
+    # The crisis module appends generate_pdf after its initial literal map. It is a
+    # private feature, so the public build has no crisis file (app/private_features.py).
+    crisis = ROOT / "app/llm/crisis_mcp_tools.py"
+    if crisis.exists():
+        names.update(_dict_keys(crisis, "CRISIS_MCP_TOOLS"))
+        names.add("generate_pdf")
     for filename, variable in OPTIONAL_MAPS.items():
-        names.update(_dict_keys(ROOT / "app/llm" / filename, variable))
+        if (ROOT / "app/llm" / filename).exists():
+            names.update(_dict_keys(ROOT / "app/llm" / filename, variable))
     names.update(
         {
             "ha_list_entities",

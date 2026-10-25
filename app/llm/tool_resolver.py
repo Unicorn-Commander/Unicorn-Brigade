@@ -41,7 +41,6 @@ from app.llm.business_tools import (
     WEATHER_TOOL,
 )
 from app.llm.centerdeep_mcp_tools import CENTERDEEP_MCP_TOOLS
-from app.llm.crisis_mcp_tools import CRISIS_MCP_TOOLS
 from app.llm.delegation_tools import (
     DELEGATE_TO_AGENT_TOOL,
 )
@@ -74,6 +73,7 @@ from app.llm.slack_tools import (
 )
 from app.llm.stable_canvas_tools import STABLE_CANVAS_TOOLS
 from app.llm.stable_knowledge_tools import STABLE_KNOWLEDGE_TOOLS
+from app.private_features import crisis_feature_present
 
 logger = logging.getLogger(__name__)
 
@@ -143,8 +143,12 @@ TOOL_REGISTRY: dict[str, ToolDefinition] = {
     "delegate_to_agent": DELEGATE_TO_AGENT_TOOL,
 }
 
-# Crisis-case MCP tools (proxied to crisis-mcp service via JSON-RPC)
-TOOL_REGISTRY.update(CRISIS_MCP_TOOLS)
+# Crisis-case MCP tools (proxied to crisis-mcp service via JSON-RPC): a private
+# feature, absent from the public build (see app/private_features.py).
+if crisis_feature_present():
+    from app.llm.crisis_mcp_tools import CRISIS_MCP_TOOLS
+
+    TOOL_REGISTRY.update(CRISIS_MCP_TOOLS)
 
 # Project-Ops MCP tools (proxied to Project-Ops MCP via JSON-RPC over Streamable HTTP)
 TOOL_REGISTRY.update(PROJECT_OPS_MCP_TOOLS)
