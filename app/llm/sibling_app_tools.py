@@ -20,6 +20,7 @@ from typing import Any
 
 import httpx
 
+from app.auth.tool_scope import parse_orgs
 from app.llm import knowledge_ops_tools as knowledge_auth
 from app.llm.ops_center_client import ToolDefinition, ToolParameter
 
@@ -47,6 +48,7 @@ class SiblingAppConfig:
     tools: frozenset[str] = field(default_factory=frozenset)
     allow_writes: frozenset[str] = field(default_factory=frozenset)
     aliases: dict[str, str] = field(default_factory=dict)
+    orgs: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -223,6 +225,7 @@ def _load_configs() -> tuple[SiblingAppConfig, ...]:
                 tools=configured_tools,
                 allow_writes=allow_writes,
                 aliases=aliases,
+                orgs=parse_orgs(item.get("orgs"), source=f"sibling-app:{name}"),
             )
         )
     return tuple(configs)

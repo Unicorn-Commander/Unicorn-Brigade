@@ -413,6 +413,9 @@ class MLXLLMClient:
             announced_tool_without_calling,
         )
 
+        org_scope = getattr(tool_guard, "org_scope", None)
+        if org_scope is not None:
+            tools = [tool for tool in tools if org_scope.allows(tool.name)]
         tool_registry = {tool.name: tool for tool in tools}
         current_messages = list(messages)
         iteration = 0

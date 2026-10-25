@@ -835,9 +835,8 @@ def test_model_serializers():
 
 def _autonomy_migration():
     versions = [m[0] for m in MIGRATIONS]
-    assert versions[-1] == "20261024_01_autonomy_catalogue"
     assert versions.count("20261024_01_autonomy_catalogue") == 1
-    return MIGRATIONS[-1][2]
+    return next(sql for version, _, sql in MIGRATIONS if version == "20261024_01_autonomy_catalogue")
 
 
 def test_migration_is_idempotent_and_turns_rls_on_both_tables():

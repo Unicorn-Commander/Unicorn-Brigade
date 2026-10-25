@@ -44,13 +44,15 @@ Caller-privilege resolution (first match wins):
         anonymous floor: basic util/read tools only).
 
 ``BRIGADE_TOOL_PERMISSION_ENFORCEMENT`` = enforce (default) | log | off.
-``log`` evaluates + audits but allows — the staged-rollout dry run.
+``log`` evaluates + audits but allows — the staged-rollout dry run. Organization
+availability is always enforced, including log/off and privileged service keys.
 
-Internal engine callers (scheduler, workflow engine, A2A federation,
+Internal engine callers (scheduler, workflow engine,
 agentic_rag) call ``execute_tool_loop`` WITHOUT a guard and are intentionally
 unchanged — they are service-originated by definition. Enforcement rides only
 the consumer-facing chat entry points, which construct a guard via
-``build_tool_guard``.
+``build_tool_guard``. A2A and direct MCP routes apply the same org availability
+check without changing their existing privilege rules.
 
 Denials audit two ways: a structured JSON event on the ``brigade.authz`` logger
 (both layers) and, for agent-level denials, a row in ``rbac_denials`` via the
@@ -66,6 +68,7 @@ from datetime import UTC, datetime
 from typing import Any, Optional
 
 from app.auth.roles import UserRole
+from app.auth.tool_scope import ToolOrgScope, load_tool_org_scope
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +99,7 @@ def _int_env(name: str, default: int) -> int:
 
 
 def enforcement_mode() -> str:
-    """enforce (default) | log (evaluate+audit but allow) | off (no guard)."""
+    """enforce (default) | log (audit privileges) | off (org-only guard)."""
     mode = (
         (os.getenv("BRIGADE_TOOL_PERMISSION_ENFORCEMENT", "enforce") or "enforce").strip().lower()
     )
@@ -525,6 +528,7 @@ class ToolPermissionGuard:
     transport: str = ""
     mode: str = "enforce"
     fail_closed: bool = field(default_factory=tool_catalog_fail_closed)
+    org_scope: ToolOrgScope = field(default_factory=ToolOrgScope)
     _missing_catalogue_logged: set[str] = field(default_factory=set, init=False, repr=False)
 
     def required_level(self, tool_name: str) -> int:
@@ -534,6 +538,10 @@ class ToolPermissionGuard:
             return unknown_tool_permission_level()
 
     def check(self, tool_name: str) -> Optional[str]:
+        if denial := self.org_scope.check(tool_name):
+            return denial
+        if self.mode == "off":
+            return None
         if tool_name not in self.levels:
             if self.fail_closed:
                 self._audit_catalogue_missing(tool_name)
@@ -631,14 +639,12 @@ async def build_tool_guard(
     auth_user: Any,
     end_user: Optional[EndUser],
     service_caller: bool,
-) -> Optional[ToolPermissionGuard]:
-    """Construct the per-run guard, or None when enforcement is off (None ==
-    exactly today's behavior; callsites pass it straight through)."""
+) -> ToolPermissionGuard:
+    """Construct the per-run guard. Org isolation also applies in off/log mode."""
     mode = enforcement_mode()
-    if mode == "off":
-        return None
+    org_scope = await load_tool_org_scope(session, getattr(auth_user, "org_id", None))
     level, basis = resolve_caller_tool_level(end_user, service_caller)
-    levels = await load_tool_permission_levels(session)
+    levels = await load_tool_permission_levels(session) if mode != "off" else {}
     return ToolPermissionGuard(
         caller_level=level,
         caller_basis=basis,
@@ -651,4 +657,5 @@ async def build_tool_guard(
         ),
         mode=mode,
         fail_closed=tool_catalog_fail_closed(),
+        org_scope=org_scope,
     )

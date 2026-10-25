@@ -1269,6 +1269,12 @@ MIGRATIONS = [
             """,
         ],
     ),
+    (
+        "20261025_01_tool_org_scope",
+        "Optional organization allowlists for tool catalog entries",
+        # NULL leaves existing tools global. No backfill or default org is inferred.
+        "ALTER TABLE tool_catalog ADD COLUMN IF NOT EXISTS orgs json",
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.

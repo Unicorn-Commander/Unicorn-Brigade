@@ -12,22 +12,22 @@ Endpoints:
 - POST /mcp/request - Handle raw MCP protocol requests
 """
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Dict, List, Any, Optional, Annotated
-from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import os
+from typing import Annotated, Any
 
-from app.auth.middleware import require_admin, require_api_key, AuthUser
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.middleware import AuthUser, require_admin, require_api_key
+from app.auth.tool_scope import load_tool_org_scope
+from app.db.database import get_session
+from app.integrations.metering import meter_usage
+from app.llm.tool_resolver import TOOL_REGISTRY
+from app.protocols.mcp import mcp_server
 
 _PUBLIC_BASE_URL = os.environ.get("BRIGADE_URL") or os.environ.get("BRIGADE_PUBLIC_URL") or "http://localhost:8100"
-
-from app.db.database import get_session
-from app.protocols.mcp import mcp_server, MCPTool, MCPToolParameter
-from app.llm.tool_resolver import TOOL_REGISTRY, get_tool_by_name
-from app.llm.ops_center_client import ToolDefinition
-from app.integrations.metering import meter_usage
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -74,13 +74,13 @@ def _ensure_tools_registered():
 class MCPToolCallRequest(BaseModel):
     """Request to invoke an MCP tool."""
     name: str
-    arguments: Dict[str, Any] = {}
+    arguments: dict[str, Any] = {}
 
 
 class MCPProtocolRequest(BaseModel):
     """Raw MCP protocol request."""
     method: str
-    params: Dict[str, Any] = {}
+    params: dict[str, Any] = {}
 
 
 # ---- Endpoints ----
@@ -88,6 +88,7 @@ class MCPProtocolRequest(BaseModel):
 @router.get("/mcp/info")
 async def get_mcp_info(
     _auth: Annotated[AuthUser, Depends(require_api_key)],
+    session: AsyncSession = Depends(get_session),
 ):
     """Get MCP server info and capabilities (AUTH REQUIRED — internal catalog).
 
@@ -97,6 +98,7 @@ async def get_mcp_info(
     parameter schemas, so on an internet-reachable prod they require a key.
     """
     _ensure_tools_registered()
+    scope = await load_tool_org_scope(session, _auth.org_id)
 
     return {
         "name": "Unicorn Brigade",
@@ -108,7 +110,7 @@ async def get_mcp_info(
             "resources": True,
             "prompts": False,
         },
-        "toolCount": len(mcp_server.tools),
+        "toolCount": sum(scope.allows(name) for name in mcp_server.tools),
         "resourceCount": len(mcp_server.resources),
     }
 
@@ -116,12 +118,16 @@ async def get_mcp_info(
 @router.get("/mcp/tools/list")
 async def list_mcp_tools(
     _auth: Annotated[AuthUser, Depends(require_api_key)],
+    session: AsyncSession = Depends(get_session),
 ):
     """List all available MCP tools (AUTH REQUIRED — leaks tool inventory + schemas)."""
     _ensure_tools_registered()
+    scope = await load_tool_org_scope(session, _auth.org_id)
 
     tools = []
     for tool in mcp_server.tools.values():
+        if not scope.allows(tool.name):
+            continue
         tools.append({
             "name": tool.name,
             "description": tool.description,
@@ -145,26 +151,32 @@ async def list_mcp_tools(
 @router.get("/mcp/tools/openai")
 async def list_mcp_tools_openai_format(
     _auth: Annotated[AuthUser, Depends(require_api_key)],
+    session: AsyncSession = Depends(get_session),
 ):
     """List tools in OpenAI function calling format (AUTH REQUIRED)."""
     _ensure_tools_registered()
+    scope = await load_tool_org_scope(session, _auth.org_id)
+    tools = [t for t in mcp_server.get_openai_tools() if scope.allows(t["function"]["name"])]
 
     return {
-        "tools": mcp_server.get_openai_tools(),
-        "count": len(mcp_server.tools),
+        "tools": tools,
+        "count": len(tools),
     }
 
 
 @router.get("/mcp/tools/anthropic")
 async def list_mcp_tools_anthropic_format(
     _auth: Annotated[AuthUser, Depends(require_api_key)],
+    session: AsyncSession = Depends(get_session),
 ):
     """List tools in Anthropic tool use format (AUTH REQUIRED)."""
     _ensure_tools_registered()
+    scope = await load_tool_org_scope(session, _auth.org_id)
+    tools = [t for t in mcp_server.get_tools_list() if scope.allows(t["name"])]
 
     return {
-        "tools": mcp_server.get_tools_list(),
-        "count": len(mcp_server.tools),
+        "tools": tools,
+        "count": len(tools),
     }
 
 
@@ -172,9 +184,13 @@ async def list_mcp_tools_anthropic_format(
 async def call_mcp_tool(
     request: MCPToolCallRequest,
     admin: Annotated[AuthUser, Depends(require_admin)],
+    session: AsyncSession = Depends(get_session),
 ):
     """Invoke an MCP tool by name with arguments (ADMIN ONLY - RCE risk via shell/filesystem tools)."""
     _ensure_tools_registered()
+    scope = await load_tool_org_scope(session, admin.org_id)
+    if denial := scope.check(request.name):
+        return {"tool": request.name, "result": None, "success": False, "error": denial}
 
     if request.name not in mcp_server.tools:
         raise HTTPException(status_code=404, detail=f"Tool not found: {request.name}")
@@ -230,6 +246,7 @@ async def list_mcp_resources(
 async def handle_mcp_request(
     request: MCPProtocolRequest,
     admin: Annotated[AuthUser, Depends(require_admin)],
+    session: AsyncSession = Depends(get_session),
 ):
     """
     Handle a raw MCP protocol request (ADMIN ONLY - dispatches tools/call, RCE risk).
@@ -240,6 +257,13 @@ async def handle_mcp_request(
     _ensure_tools_registered()
 
     logger.info(f"MCP protocol request: {request.method}")
+
+    if request.method in {"tools/list", "tools/call"}:
+        scope = await load_tool_org_scope(session, admin.org_id)
+        if request.method == "tools/list":
+            return {"tools": [t for t in mcp_server.get_tools_list() if scope.allows(t["name"])]}
+        if denial := scope.check(request.params.get("name", "")):
+            return {"content": [{"type": "text", "text": denial}], "isError": True}
 
     response = await mcp_server.handle_mcp_request({
         "method": request.method,
@@ -254,6 +278,7 @@ async def handle_mcp_request(
 @router.get("/mcp/config")
 async def get_mcp_config(
     _auth: Annotated[AuthUser, Depends(require_api_key)],
+    session: AsyncSession = Depends(get_session),
 ):
     """
     Get MCP server configuration for Claude Desktop (AUTH REQUIRED — lists availableTools).
@@ -261,6 +286,7 @@ async def get_mcp_config(
     Returns the configuration needed to add Brigade as an MCP server in Claude Desktop.
     """
     _ensure_tools_registered()
+    scope = await load_tool_org_scope(session, _auth.org_id)
 
     return {
         "instruction": "Add this configuration to your Claude Desktop settings",
@@ -277,5 +303,5 @@ async def get_mcp_config(
                 }
             }
         },
-        "availableTools": [t.name for t in mcp_server.tools.values()],
+        "availableTools": [name for name in mcp_server.tools if scope.allows(name)],
     }

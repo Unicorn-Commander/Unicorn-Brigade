@@ -10,6 +10,7 @@ import logging
 import os
 from typing import Any
 
+from app.auth.tool_scope import ToolOrgScope
 from app.llm.advanced_tools import (
     BROWSER_TOOL,
     CODE_SANDBOX_TOOL,
@@ -296,12 +297,15 @@ def _log_unavailable_once(agent_slug: str, app: str, reason: str) -> None:
     _UNAVAILABLE_LOGGED_AGENTS.add(key)
 
 
-def get_tools_for_agent(agent: dict[str, Any]) -> list[ToolDefinition]:
+def get_tools_for_agent(
+    agent: dict[str, Any], *, org_scope: ToolOrgScope | None = None,
+) -> list[ToolDefinition]:
     """
     Resolve an agent's tool names to executable ToolDefinition objects.
 
     Args:
         agent: Agent dict with optional "tools" field (list of tool name strings)
+        org_scope: Request availability snapshot, checked before schema discovery.
 
     Returns:
         List of ToolDefinition objects the agent can use
@@ -317,6 +321,8 @@ def get_tools_for_agent(agent: dict[str, Any]) -> list[ToolDefinition]:
     tools = []
     slug = _agent_slug(agent)
     for name in tool_names:
+        if org_scope is not None and not org_scope.allows(name):
+            continue
         tool_def = TOOL_REGISTRY.get(name)
         if tool_def:
             tools.append(tool_def)

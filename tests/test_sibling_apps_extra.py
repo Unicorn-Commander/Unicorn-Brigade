@@ -12,6 +12,8 @@ import json
 import logging
 import os
 
+import pytest
+
 import app.llm.sibling_app_tools as sat
 
 EXTRA = {
@@ -75,3 +77,27 @@ def test_a_missing_extra_file_is_loud_but_keeps_the_bundled_apps(monkeypatch, tm
         names = _names(sat._load_configs())
     assert names == [b["name"] for b in json.loads(sat.CONFIG_PATH.read_text())]
     assert "unavailable" in caplog.text
+
+
+@pytest.mark.parametrize("orgs, expected", [
+    (None, None),
+    ([], ()),
+    (["majiks", "00000000-0000-0000-0000-000000000001"],
+     ("majiks", "00000000-0000-0000-0000-000000000001")),
+])
+@pytest.mark.parametrize("extra", [False, True])
+def test_orgs_parse_in_bundled_and_extra_configs(monkeypatch, tmp_path, orgs, expected, extra):
+    config = tmp_path / "apps.json"
+    config.write_text(json.dumps([dict(EXTRA, orgs=orgs)]))
+    if extra:
+        monkeypatch.setenv(sat.SIBLING_APPS_EXTRA_ENV, str(config))
+    else:
+        monkeypatch.delenv(sat.SIBLING_APPS_EXTRA_ENV, raising=False)
+        monkeypatch.setattr(sat, "CONFIG_PATH", config)
+    app = next(c for c in sat._load_configs() if c.name == EXTRA["name"])
+    assert app.orgs == expected
+
+
+def test_omitted_orgs_keep_existing_sibling_configs_global(monkeypatch):
+    monkeypatch.setattr(sat, "_config_items", lambda: [EXTRA])
+    assert sat._load_configs()[0].orgs is None

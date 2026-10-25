@@ -312,10 +312,11 @@ def test_guard_log_mode_audits_but_allows():
 
 
 @pytest.mark.asyncio
-async def test_build_tool_guard_off_mode_returns_none(monkeypatch):
+async def test_build_tool_guard_off_mode_keeps_only_org_enforcement(monkeypatch):
     monkeypatch.setenv("BRIGADE_TOOL_PERMISSION_ENFORCEMENT", "off")
     guard = await build_tool_guard(None, {"id": "a"}, _human(), None, False)
-    assert guard is None
+    assert guard.mode == "off"
+    assert guard.check("uncatalogued-global-tool") is None
     monkeypatch.setenv("BRIGADE_TOOL_PERMISSION_ENFORCEMENT", "enforce")
     guard = await build_tool_guard(None, {"id": "a"}, _human(), None, False)
     assert guard is not None and guard.mode == "enforce"
@@ -510,4 +511,5 @@ async def test_authorize_caller_no_policy_passthrough_for_service_flow(monkeypat
     assert (guard.caller_level, guard.caller_basis) == (5, "service")
     # Full privilege: even a level-5 tool passes for the service flow.
     guard.levels = {"delegate_to_agent": 5}
-    assert guard.check("delegate_to_agent") is None
+    # Scope lookup failed with the unavailable DB, so it cannot grant access.
+    assert "not available in this organization" in guard.check("delegate_to_agent")

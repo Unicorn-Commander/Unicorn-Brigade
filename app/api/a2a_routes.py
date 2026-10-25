@@ -24,7 +24,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.middleware import AuthUser, require_operator
+from app.auth.middleware import AuthUser, get_current_user_optional, require_operator
+from app.auth.tool_scope import ToolOrgScope, load_tool_org_scope
 
 _PUBLIC_BASE_URL = (
     os.environ.get("BRIGADE_URL") or os.environ.get("BRIGADE_PUBLIC_URL") or "http://localhost:8100"
@@ -77,7 +78,9 @@ def init_a2a_routes(client: OpsCenterLLMClient):
     llm_client = client
 
 
-def _agent_to_card(agent: dict[str, Any], base_url: str = None) -> AgentCard:
+def _agent_to_card(
+    agent: dict[str, Any], base_url: str = None, *, org_scope: ToolOrgScope | None = None,
+) -> AgentCard:
     if base_url is None:
         base_url = _PUBLIC_BASE_URL
     """Convert a DB agent to an A2A AgentCard."""
@@ -96,6 +99,8 @@ def _agent_to_card(agent: dict[str, Any], base_url: str = None) -> AgentCard:
 
     # Add tool-based capabilities
     for tool_name in agent.get("tools", []):
+        if org_scope is not None and not org_scope.allows(tool_name):
+            continue
         capabilities.append(
             AgentCapability(
                 name=f"tool:{tool_name}",
@@ -201,6 +206,7 @@ async def list_a2a_agents(
     domain: Optional[str] = None,
     status: Optional[str] = "active",
     session: AsyncSession = Depends(get_session),
+    user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """List all agents as A2A agent cards."""
     repo = AgentRepository(session)
@@ -212,7 +218,8 @@ async def list_a2a_agents(
     if status:
         agents = [a for a in agents if a.get("status") == status]
 
-    cards = [_agent_to_card(a) for a in agents]
+    scope = await load_tool_org_scope(session, getattr(user, "org_id", None))
+    cards = [_agent_to_card(a, org_scope=scope) for a in agents]
 
     return {
         "agents": [card.model_dump() for card in cards],
@@ -225,6 +232,7 @@ async def list_a2a_agents(
 async def get_agent_card(
     agent_id: str,
     session: AsyncSession = Depends(get_session),
+    user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """Get the A2A agent card for a specific agent."""
     repo = AgentRepository(session)
@@ -232,7 +240,8 @@ async def get_agent_card(
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
 
-    card = _agent_to_card(agent)
+    scope = await load_tool_org_scope(session, getattr(user, "org_id", None))
+    card = _agent_to_card(agent, org_scope=scope)
     return card.model_dump()
 
 
@@ -312,8 +321,9 @@ async def invoke_agent(
     temperature = agent.get("temperature", 0.7)
     max_tokens = agent.get("maxTokens", 2000)
 
-    # Get agent tools
-    agent_tools = get_tools_for_agent(agent)
+    # A2A requests use their bound caller org just like native chat.
+    org_scope = await load_tool_org_scope(session, getattr(user, "org_id", None))
+    agent_tools = get_tools_for_agent(agent, org_scope=org_scope)
 
     try:
         tool_calls_log = []
@@ -340,6 +350,7 @@ async def invoke_agent(
             response = await llm_client.execute_tool_loop(
                 messages=messages,
                 tools=agent_tools,
+                tool_guard=org_scope,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -429,6 +440,7 @@ async def invoke_agent(
 async def discover_agents(
     query: A2ADiscoverQuery,
     session: AsyncSession = Depends(get_session),
+    user: Annotated[Optional[AuthUser], Depends(get_current_user_optional)] = None,
 ):
     """
     Discover agents by capability, domain, or search query.
@@ -437,6 +449,7 @@ async def discover_agents(
     """
     repo = AgentRepository(session)
     all_agents = await repo.list_all()
+    scope = await load_tool_org_scope(session, getattr(user, "org_id", None))
 
     # Filter agents
     matching = []
@@ -444,7 +457,7 @@ async def discover_agents(
         if agent.get("status") != "active":
             continue
 
-        card = _agent_to_card(agent)
+        card = _agent_to_card(agent, org_scope=scope)
 
         # Query filter
         if query.query and not card.matches_query(query.query):

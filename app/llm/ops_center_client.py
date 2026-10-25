@@ -1241,6 +1241,11 @@ class OpsCenterLLMClient:
         Returns:
             Final response from LLM
         """
+        # Hide out-of-org definitions even when a caller supplied tools directly.
+        org_scope = getattr(tool_guard, "org_scope", None)
+        if org_scope is not None:
+            tools = [tool for tool in tools if org_scope.allows(tool.name)]
+
         # Build tool registry for execution
         tool_registry = {tool.name: tool for tool in tools}
 

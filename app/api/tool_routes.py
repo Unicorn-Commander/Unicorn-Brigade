@@ -3,21 +3,37 @@ Tool listing and metadata routes.
 Exposes the built-in tools in a format the frontend expects.
 """
 
-from fastapi import APIRouter, Depends
-from typing import List, Annotated
 import logging
+from typing import Annotated
 
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.middleware import AuthUser, require_api_key
+from app.auth.tool_scope import load_tool_org_scope
+from app.db.database import get_session
+from app.llm.advanced_tools import (
+    BROWSER_TOOL,
+    CODE_SANDBOX_TOOL,
+    DATA_ANALYZE_TOOL,
+    DOC_GENERATE_TOOL,
+    KG_QUERY_TOOL,
+    PDF_EXTRACT_TOOL,
+    SCREENSHOT_TOOL,
+    URL_PREVIEW_TOOL,
+)
 from app.llm.builtin_tools import get_default_tools, get_safe_tools
 from app.llm.extended_tools import (
-    EMAIL_TOOL, FILE_TOOL, CODE_TOOL, TEXT_TOOL, IMAGE_TOOL,
-    DATABASE_TOOL, NOTIFY_TOOL, QRCODE_TOOL, AGENTIC_RAG_TOOL
+    AGENTIC_RAG_TOOL,
+    CODE_TOOL,
+    DATABASE_TOOL,
+    EMAIL_TOOL,
+    FILE_TOOL,
+    IMAGE_TOOL,
+    NOTIFY_TOOL,
+    QRCODE_TOOL,
+    TEXT_TOOL,
 )
-from app.llm.advanced_tools import (
-    BROWSER_TOOL, CODE_SANDBOX_TOOL, SCREENSHOT_TOOL,
-    PDF_EXTRACT_TOOL, DOC_GENERATE_TOOL, DATA_ANALYZE_TOOL,
-    URL_PREVIEW_TOOL, KG_QUERY_TOOL
-)
-from app.auth.middleware import require_api_key, AuthUser
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -219,6 +235,7 @@ def _format_tool(tool) -> dict:
 @router.get("/tools")
 async def list_tools(
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
+    session: AsyncSession = Depends(get_session),
 ):
     """List all available tools (builtin + extended + advanced)."""
     # Combine all tool types
@@ -231,7 +248,8 @@ async def list_tools(
         PDF_EXTRACT_TOOL, DOC_GENERATE_TOOL, DATA_ANALYZE_TOOL,
         URL_PREVIEW_TOOL, KG_QUERY_TOOL,
     ]
-    result = [_format_tool(t) for t in all_tools]
+    scope = await load_tool_org_scope(session, getattr(user, "org_id", None))
+    result = [_format_tool(t) for t in all_tools if scope.allows(t.name)]
     return {"tools": result, "count": len(result)}
 
 
@@ -239,8 +257,10 @@ async def list_tools(
 async def list_available_tools(
     permission_level: str = "public",
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
+    session: AsyncSession = Depends(get_session),
 ):
     """List tools filtered by permission level."""
     tools = get_safe_tools() if permission_level in ("public", "authenticated") else get_default_tools()
-    result = [_format_tool(t) for t in tools]
+    scope = await load_tool_org_scope(session, getattr(user, "org_id", None))
+    result = [_format_tool(t) for t in tools if scope.allows(t.name)]
     return {"tools": result, "count": len(result), "permission_level": permission_level}

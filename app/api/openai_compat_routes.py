@@ -84,10 +84,10 @@ def _server_tool_names():
     except Exception:
         return set()
 
-def _agent_server_tools_for(agent: dict[str, Any]):
+def _agent_server_tools_for(agent: dict[str, Any], *, org_scope=None):
     """The subset of server tools THIS agent has configured to use."""
     from app.llm.tool_resolver import get_tools_for_agent
-    return get_tools_for_agent(agent) or []
+    return get_tools_for_agent(agent, org_scope=org_scope) or []
 
 
 @router.get("/models")
@@ -187,7 +187,8 @@ async def openai_chat_completions(
         from app.db.repositories import AgentRepository as _AR
         _repo = _AR(session)
         _agent = await _repo.get(request.model)
-        if _agent and _agent_server_tools_for(_agent):
+        # Choose by configuration; schema discovery must wait for org filtering.
+        if _agent and _agent.get("tools"):
             return await _dual_layer_chat(
                 request=request,
                 session=session,
@@ -390,10 +391,10 @@ async def _passthrough_chat(
         raise HTTPException(status_code=403, detail=f"Agent '{agent_id}' is restricted")
 
     # --- BR-6.4: per-CALLER authorization (end-user policy). Passthrough mode
-    # executes no server tools (client owns execution), so only the agent-level
-    # user_policy applies here; the guard is unused. ---
+    # executes no server tools (client owns execution). Keep scoped server names
+    # out of client-supplied definitions too. ---
     from app.api.agent_routes import _authorize_caller
-    await _authorize_caller(
+    _end_user, _service_caller, _tool_guard = await _authorize_caller(
         session, auth_user, agent, request.user,
         request_path=f"POST /api/v1/openai/v1/chat/completions [{agent_id}] (passthrough)",
     )
@@ -477,7 +478,10 @@ async def _passthrough_chat(
         "messages": llm_messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "tools": request.tools,
+        "tools": [
+            tool for tool in request.tools or []
+            if _tool_guard.org_scope.allows((tool.get("function") or {}).get("name", ""))
+        ],
     }
     if request.tool_choice is not None:
         payload["tool_choice"] = request.tool_choice
@@ -786,10 +790,13 @@ async def _dual_layer_chat(
     )
 
     # --- Merged tool list ---
-    server_tools = _agent_server_tools_for(agent)
+    server_tools = _agent_server_tools_for(agent, org_scope=_tool_guard.org_scope)
     server_tools_openai = [t.to_openai_format() for t in server_tools]
     server_tool_names = {t.name for t in server_tools}
-    client_tools = list(request.tools or [])
+    client_tools = [
+        tool for tool in request.tools or []
+        if _tool_guard.org_scope.allows((tool.get("function") or {}).get("name", ""))
+    ]
     client_tool_names = set()
     for t in client_tools:
         fn = (t or {}).get("function") or {}
@@ -904,12 +911,16 @@ async def _dual_layer_chat(
         for tc in tool_calls:
             fn = (tc.get("function") or {})
             name = fn.get("name")
-            if name in server_tool_names:
+            if name in server_tool_names or not _tool_guard.org_scope.allows(name):
                 server_calls.append(tc)
             else:
                 client_calls.append(tc)
 
-        if client_calls:
+        org_denied = any(
+            not _tool_guard.org_scope.allows((tc.get("function") or {}).get("name"))
+            for tc in server_calls
+        )
+        if client_calls and not org_denied:
             # Return to client for execution. Do NOT execute server calls first
             # in this turn — that would desynchronize the LLM's tool-call plan.
             # Instead pass through what the LLM emitted so the client resends with
@@ -933,13 +944,15 @@ async def _dual_layer_chat(
                 return _dual_to_sse(raw)
             return raw
 
-        # Only server calls — execute locally and loop
+        # Server calls, or a mixed batch containing an org refusal. Never hand
+        # an org-denied call to the client for execution. Defer client tools in
+        # that batch with a tool result so the model can retry them separately.
         llm_messages.append({
             "role": "assistant",
             "content": msg.get("content") or "",
             "tool_calls": tool_calls,
         })
-        for tc in server_calls:
+        for tc in tool_calls:
             call_id = tc.get("id") or _uuid.uuid4().hex
             fn = tc.get("function") or {}
             name = fn.get("name")
@@ -948,15 +961,24 @@ async def _dual_layer_chat(
                 args = _json.loads(args_raw) if isinstance(args_raw, str) else args_raw
             except Exception:
                 args = {}
-            tool = get_tool_by_name(name)
             tool_content = ""
             # BR-6.4: per-caller tool permission — refuse THIS call with a
             # model-visible error; the loop continues (same contract as
             # execute_tool_loop's guard).
-            _denial = _tool_guard.check(name) if _tool_guard is not None else None
+            _denial = (
+                _tool_guard.check(name)
+                if name in server_tool_names or not _tool_guard.org_scope.allows(name)
+                else None
+            )
+            tool = get_tool_by_name(name) if not _denial and name in server_tool_names else None
             try:
                 if _denial:
                     tool_content = _json.dumps({"error": _denial})
+                elif name not in server_tool_names:
+                    tool_content = _json.dumps({"error": (
+                        f"Client tool {name} was not executed. Retry it separately "
+                        "from the unavailable organization tools."
+                    )})
                 elif tool and tool.handler:
                     call_args = dict(args) if isinstance(args, dict) else {}
                     if getattr(tool, "needs_caller_context", False):
@@ -1138,7 +1160,7 @@ async def _enhanced_stream_chat(
     # loop: stream tokens, accumulate tool_calls, when finish_reason=tool_calls
     # execute server-side, append role=tool results, restart upstream stream.
     from app.llm.tool_resolver import get_tools_for_agent as _get_tools_for_agent
-    _agent_tools = _get_tools_for_agent(agent) or []
+    _agent_tools = _get_tools_for_agent(agent, org_scope=_tool_guard.org_scope) or []
     _agent_tool_defs = [t.to_openai_format() for t in _agent_tools]
     _agent_tools_by_name = {t.name: t for t in _agent_tools}
 

@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.deep_research import DeepResearchAgent
 from app.auth.middleware import AuthUser, require_admin, require_api_key, require_operator
 from app.auth.roles import UserRole
+from app.auth.tool_scope import ToolOrgScope, load_tool_org_scope
 from app.db.database import get_session, streaming_org_context
 from app.db.repositories import AgentRepository, ToolExecutionRepository
 from app.integrations.lago import (
@@ -741,19 +742,20 @@ class DeepResearchResponse(BaseModel):
 # ---- Agent CRUD (DB-backed) ----
 
 
-async def _load_tool_catalog(session: AsyncSession) -> dict[str, dict[str, Any]]:
-    """name -> {costTier, permissionLevel, provider, external, displayName}.
+async def _load_tool_catalog(session: AsyncSession) -> dict[str, dict[str, Any]] | None:
+    """name -> cost/permission metadata and optional orgs.
 
-    Best-effort: if the catalog table is absent/empty (fresh DB pre-migration) we
-    return {} and callers fall back to neutral defaults, so the roster never 500s
-    on a missing catalog.
+    Best-effort: if the catalog table is unavailable (fresh DB pre-migration) we
+    return None so callers can distinguish failure from an empty catalog. The
+    roster still loads, but tool availability fails closed without scope data.
     """
     from sqlalchemy import text
 
     try:
         rows = await session.execute(
             text(
-                "SELECT name, display_name, cost_tier, permission_level, provider, external "
+                "SELECT name, display_name, cost_tier, permission_level, provider, external, "
+                "to_jsonb(tool_catalog)->'orgs' AS orgs "
                 "FROM tool_catalog"
             )
         )
@@ -765,12 +767,13 @@ async def _load_tool_catalog(session: AsyncSession) -> dict[str, dict[str, Any]]
                 "permissionLevel": r[3],
                 "provider": r[4],
                 "external": r[5],
+                "orgs": r[6],
             }
             for r in rows
         }
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"tool_catalog unavailable, serving roster without tool metadata: {exc}")
-        return {}
+        return None
 
 
 def _enrich_agent_tools(agent: dict[str, Any], catalog: dict[str, dict[str, Any]]) -> None:
@@ -811,6 +814,14 @@ def _enrich_agent_tools(agent: dict[str, Any], catalog: dict[str, dict[str, Any]
     }
 
 
+def _filter_agent_tools(agent: dict[str, Any], scope: ToolOrgScope) -> None:
+    """Filter the response copy; never persist a caller's view of shared tools."""
+    agent["tools"] = [name for name in agent.get("tools") or [] if scope.allows(name)]
+    agent["agentTools"] = [
+        tool for tool in agent.get("agentTools") or [] if scope.allows(tool["toolId"])
+    ]
+
+
 @router.get("/tool-catalog")
 async def get_tool_catalog(
     session: AsyncSession = Depends(get_session),
@@ -818,7 +829,14 @@ async def get_tool_catalog(
 ):
     """The tool cost/permission catalog (for UI legends + admin review)."""
     catalog = await _load_tool_catalog(session)
-    return {"tools": sorted(catalog.values(), key=lambda x: x["name"])}
+    scope = await load_tool_org_scope(
+        session, getattr(user, "org_id", None),
+        catalog_rows=[(name, meta["orgs"]) for name, meta in catalog.items()] if catalog is not None else None,
+    )
+    return {"tools": sorted(
+        (tool for name, tool in (catalog or {}).items() if scope.allows(name)),
+        key=lambda x: x["name"],
+    )}
 
 
 @router.get("/agents")
@@ -852,10 +870,15 @@ async def list_agents(
         ]
 
     catalog = await _load_tool_catalog(session)
+    scope = await load_tool_org_scope(
+        session, getattr(user, "org_id", None),
+        catalog_rows=[(name, meta["orgs"]) for name, meta in catalog.items()] if catalog is not None else None,
+    )
     for agent in agents:
         agent.setdefault("_count", {"messages": 0, "tasks": 0, "apiKeys": 0})
         agent.setdefault("agentTools", [])
-        _enrich_agent_tools(agent, catalog)
+        _filter_agent_tools(agent, scope)
+        _enrich_agent_tools(agent, catalog or {})
     return {"agents": agents}
 
 
@@ -1029,6 +1052,8 @@ async def get_agent(
     agent.setdefault("_count", {"messages": 0, "tasks": 0, "apiKeys": 0})
     agent.setdefault("agentTools", [])
     agent.setdefault("apiKeys", [])
+    scope = await load_tool_org_scope(session, getattr(user, "org_id", None))
+    _filter_agent_tools(agent, scope)
     return agent
 
 
@@ -1520,7 +1545,7 @@ async def chat_with_agent(
     max_tokens = request.maxTokens or agent.get("maxTokens", 2000)
 
     # Resolve agent tools
-    agent_tools = get_tools_for_agent(agent)
+    agent_tools = get_tools_for_agent(agent, org_scope=tool_guard.org_scope)
 
     # User email for Phase 7 Lago metering; safe for admin/anonymous (empty string)
     user_email_for_metering = (getattr(user, "email", "") or "").lower()
@@ -2256,6 +2281,8 @@ async def get_agent_tools(
     agent = await repo.get(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+    scope = await load_tool_org_scope(session, getattr(user, "org_id", None))
+    _filter_agent_tools(agent, scope)
     return {"tools": agent.get("agentTools", []), "toolNames": agent.get("tools", [])}
 
 
@@ -2492,7 +2519,7 @@ async def chat_with_agent_local(
     messages.append({"role": "user", "content": request.message})
 
     # Get agent tools
-    agent_tools = get_tools_for_agent(agent)
+    agent_tools = get_tools_for_agent(agent, org_scope=tool_guard.org_scope)
 
     try:
         # Initialize MLX client

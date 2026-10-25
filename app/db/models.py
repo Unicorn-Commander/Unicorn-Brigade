@@ -178,6 +178,8 @@ class ToolCatalog(Base):
     permission_level = Column(Integer, nullable=False, server_default="1", default=1)
     provider = Column(String(50))
     external = Column(Boolean, nullable=False, server_default="false", default=False)
+    # NULL = global; [] = no orgs. Entries may be organization UUIDs or slugs.
+    orgs = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -190,6 +192,7 @@ class ToolCatalog(Base):
             "permissionLevel": self.permission_level,
             "provider": self.provider,
             "external": self.external,
+            "orgs": self.orgs,
         }
 
 
