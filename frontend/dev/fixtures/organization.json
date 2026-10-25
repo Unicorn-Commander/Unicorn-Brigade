@@ -78,7 +78,7 @@
       {
         "id": "0ea826b0-266b-4732-a8f5-f29baf58d64a",
         "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
-        "email": "tester@northbridgetax.example",
+        "email": "tester@northbridge-tax.example",
         "role": "member",
         "status": "pending",
         "invitedBy": "dev-user-001",

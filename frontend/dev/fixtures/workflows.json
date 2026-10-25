@@ -1623,7 +1623,7 @@
       "startedAt": "$now-1d2h",
       "completedAt": "$now-1d1h48m",
       "inputs": {
-        "contract_pdf": "acme-client-msa-v2.pdf",
+        "contract_pdf": "ridgeline-outfitters-msa-v2.pdf",
         "counterparty": "Ridgeline Outfitters"
       },
       "outputs": {
