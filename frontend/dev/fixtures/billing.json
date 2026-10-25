@@ -1,0 +1,219 @@
+{
+  "usage_plan": {
+    "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+    "period": {
+      "tokens": 1284310,
+      "cost": 6.4215,
+      "events": 342,
+      "since": "$now-23d"
+    },
+    "cap": {
+      "monthly_token_cap": 5000000,
+      "monthly_cost_cap": 25,
+      "source": "config",
+      "hard_stop": true
+    },
+    "over_cap": false,
+    "over_cap_reason": null,
+    "recent": [
+      {
+        "id": "7c5deb05-c9fe-4425-ad29-2cd2ad4f1e73",
+        "created_at": "$now-5m",
+        "source": "workflow",
+        "event_type": "llm.completion",
+        "model": "uc/chat-local-p40",
+        "tokens": 7401,
+        "cost": 0.00148,
+        "agent_id": "support-agent"
+      },
+      {
+        "id": "558c0dda-a765-442f-a962-93e9de37c0b3",
+        "created_at": "$now-56m",
+        "source": "scheduled_run",
+        "event_type": "llm.completion",
+        "model": "claude-sonnet-4",
+        "tokens": 778,
+        "cost": 0.007,
+        "agent_id": "lt-docanalyst"
+      },
+      {
+        "id": "4bb5e989-52a9-421c-a782-e9e41948f235",
+        "created_at": "$now-79m",
+        "source": "agent_chat",
+        "event_type": "llm.completion",
+        "model": "qwen3.6-35b-a3b",
+        "tokens": 477,
+        "cost": 0.0001,
+        "agent_id": "doc-medresearch"
+      },
+      {
+        "id": "e4eaf622-afb7-4343-a658-119661eea504",
+        "created_at": "$now-129m",
+        "source": "agent_chat",
+        "event_type": "llm.completion",
+        "model": "openai/gpt-4o-mini",
+        "tokens": 1800,
+        "cost": 0.00108,
+        "agent_id": "maj-devops"
+      },
+      {
+        "id": "7df25067-d3f6-4361-a4b9-4b718dd659ed",
+        "created_at": "$now-166m",
+        "source": "agent_chat",
+        "event_type": "llm.completion",
+        "model": "anthropic/claude-opus-4-5",
+        "tokens": 9154,
+        "cost": 0.16477,
+        "agent_id": "maj-devops"
+      },
+      {
+        "id": "3b73c78b-7779-4711-a21e-1a70b1f53576",
+        "created_at": "$now-193m",
+        "source": "agent_chat",
+        "event_type": "llm.completion",
+        "model": "anthropic/claude-opus-4-5",
+        "tokens": 1463,
+        "cost": 0.02633,
+        "agent_id": "code-reviewer"
+      },
+      {
+        "id": "04430b15-ccea-4f66-ad65-25008db1d7a2",
+        "created_at": "$now-234m",
+        "source": "agent_chat",
+        "event_type": "llm.completion",
+        "model": "uc/chat-local-p40",
+        "tokens": 1953,
+        "cost": 0.00039,
+        "agent_id": "sgt-scribe"
+      },
+      {
+        "id": "b18fb052-7113-4976-aee8-9e77d5b7fefb",
+        "created_at": "$now-269m",
+        "source": "agent_chat",
+        "event_type": "tool.call",
+        "model": "qwen3.6-35b-a3b",
+        "tokens": 9162,
+        "cost": 0.00183,
+        "agent_id": "col-finance"
+      },
+      {
+        "id": "02d3d727-3332-46aa-a54b-50adcdeb39ec",
+        "created_at": "$now-309m",
+        "source": "workflow",
+        "event_type": "llm.completion",
+        "model": "uc/chat-local-p40",
+        "tokens": 8410,
+        "cost": 0.00168,
+        "agent_id": "support-agent"
+      },
+      {
+        "id": "a33c1b1c-2ae4-4fd8-a0c1-ca7fd4ffc290",
+        "created_at": "$now-337m",
+        "source": "scheduled_run",
+        "event_type": "llm.completion",
+        "model": "qwen3.6-35b-a3b",
+        "tokens": 4839,
+        "cost": 0.00097,
+        "agent_id": "code-reviewer"
+      },
+      {
+        "id": "b04de96b-7229-447c-a100-1982ab632cfe",
+        "created_at": "$now-378m",
+        "source": "agent_chat",
+        "event_type": "llm.completion",
+        "model": "claude-sonnet-4",
+        "tokens": 817,
+        "cost": 0.00735,
+        "agent_id": "gunny"
+      },
+      {
+        "id": "619617d1-ab45-4ecd-a979-f87fdd17e836",
+        "created_at": "$now-418m",
+        "source": "agent_chat",
+        "event_type": "llm.completion",
+        "model": "anthropic/claude-opus-4-5",
+        "tokens": 6214,
+        "cost": 0.11185,
+        "agent_id": "doc-medresearch"
+      },
+      {
+        "id": "526cdcbc-370e-460d-af35-9648706e6a1b",
+        "created_at": "$now-460m",
+        "source": "agent_chat",
+        "event_type": "llm.completion",
+        "model": "uc/chat-local-p40",
+        "tokens": 7617,
+        "cost": 0.00152,
+        "agent_id": "support-agent"
+      },
+      {
+        "id": "a3643296-b614-4882-aa45-1e0cefcca235",
+        "created_at": "$now-488m",
+        "source": "agent_chat",
+        "event_type": "tool.call",
+        "model": "qwen3.6-35b-a3b",
+        "tokens": 1916,
+        "cost": 0.00038,
+        "agent_id": "gunny"
+      }
+    ],
+    "billing": {
+      "paid": true,
+      "credits_remaining": 18.58,
+      "subscription_tier": "professional"
+    }
+  },
+  "usage_noplan": {
+    "org_id": "b2d9e3f1-0c4a-4f7e-8b6d-1e2f3a4b5c6d",
+    "period": {
+      "tokens": 0,
+      "cost": 0,
+      "events": 0,
+      "since": null
+    },
+    "cap": {
+      "monthly_token_cap": null,
+      "monthly_cost_cap": null,
+      "source": "default",
+      "hard_stop": false
+    },
+    "over_cap": false,
+    "over_cap_reason": null,
+    "recent": [],
+    "billing": {
+      "paid": false,
+      "credits_remaining": 0,
+      "subscription_tier": null
+    }
+  },
+  "upgrade_plan": {
+    "feature": null,
+    "currentTier": "professional",
+    "paid": true,
+    "creditsRemaining": 18.58,
+    "requiredTier": "professional",
+    "benefits": [
+      "Higher monthly usage limits",
+      "Priority model routing",
+      "Full agent + workflow access",
+      "Priority support"
+    ],
+    "upgradeUrl": "https://unicorncommander.ai/plans.html",
+    "opsCenterUrl": "https://ops.unicorncommander.ai"
+  },
+  "upgrade_noplan": {
+    "feature": null,
+    "currentTier": "trial",
+    "paid": false,
+    "creditsRemaining": 0,
+    "requiredTier": "professional",
+    "benefits": [
+      "Higher monthly usage limits",
+      "Priority model routing",
+      "Full agent + workflow access",
+      "Priority support"
+    ],
+    "upgradeUrl": "https://unicorncommander.ai/plans.html",
+    "opsCenterUrl": "https://ops.unicorncommander.ai"
+  }
+}

@@ -1,246 +1,162 @@
 import { useState } from 'react';
-import { X, Key, Shield, Zap, Clock } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { Key } from 'lucide-react';
 import { apiJson } from '../services/http';
-import Modal from './ui/Modal';
+import { humanize } from '../utils/errors';
+import { Button, Field, Input, Modal, Select } from './ui';
 
-const GenerateApiKeyModal = ({ agentId, onSuccess, onClose }) => {
-  const [form, setForm] = useState({
-    name: '',
-    permissions: ['read', 'invoke'],
-    rateLimit: 100,
-    expiresAt: null
-  });
-  const [loading, setLoading] = useState(false);
+const PERMISSIONS = [
+  { id: 'read', label: 'Read agent details', description: 'View configuration and status' },
+  { id: 'invoke', label: 'Invoke agent', description: 'Send messages and run tasks' },
+  { id: 'modify', label: 'Modify agent', description: 'Change configuration and settings' },
+];
+
+const EXPIRY = [
+  { value: '30', label: '30 days' },
+  { value: '90', label: '90 days' },
+  { value: '365', label: '1 year' },
+  { value: '', label: 'Never (not recommended)' },
+];
+
+/**
+ * GenerateApiKeyModal — mint a key for one agent. Validates inline, posts to
+ * /agents/:id/api-keys and hands the created key (with its one-time value)
+ * to onSuccess, where KeyRevealModal shows it.
+ */
+export default function GenerateApiKeyModal({ agentId, onSuccess, onClose }) {
+  const [form, setForm] = useState({ name: '', permissions: ['read', 'invoke'], rateLimit: 100, expiresInDays: '90' });
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const permissions = [
-    { id: 'read', label: 'Read agent details', description: 'View agent configuration and status' },
-    { id: 'invoke', label: 'Invoke agent', description: 'Send messages and execute agent tasks' },
-    { id: 'modify', label: 'Modify agent', description: 'Update agent configuration and settings' }
-  ];
-
-  const expirationOptions = [
-    { value: null, label: 'Never' },
-    { value: '30', label: '30 days' },
-    { value: '90', label: '90 days' },
-    { value: '365', label: '1 year' }
-  ];
-
-  const validate = () => {
-    const newErrors = {};
-
-    if (!form.name.trim()) {
-      newErrors.name = 'Key name is required';
-    }
-
-    if (form.permissions.length === 0) {
-      newErrors.permissions = 'At least one permission is required';
-    }
-
-    if (!form.rateLimit || form.rateLimit < 1) {
-      newErrors.rateLimit = 'Rate limit must be at least 1';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+  const set = (patch) => {
+    setForm((f) => ({ ...f, ...patch }));
+    setErrors((e) => ({ ...e, ...Object.fromEntries(Object.keys(patch).map((k) => [k, undefined])) }));
   };
 
-  const handleGenerate = async () => {
-    if (!validate()) {
-      return;
-    }
+  const validate = () => {
+    const next = {};
+    if (!form.name.trim()) next.name = 'Give the key a name so you can tell it apart later.';
+    if (!form.permissions.length) next.permissions = 'Pick at least one permission.';
+    if (!form.rateLimit || form.rateLimit < 1) next.rateLimit = 'At least 1 request per minute.';
+    setErrors(next);
+    return !Object.keys(next).length;
+  };
 
+  const submit = async (e) => {
+    e?.preventDefault();
+    if (!validate()) return;
     setLoading(true);
+    setSubmitError(null);
     try {
-      // Calculate expiration date if set
-      let expiresAt = null;
-      if (form.expiresAt) {
-        const days = parseInt(form.expiresAt);
-        expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + days);
-      }
-
-      // POST /agents/:agentId/api-keys
+      const days = form.expiresInDays ? parseInt(form.expiresInDays, 10) : null;
+      const expiresAt = days ? new Date(Date.now() + days * 86400000).toISOString() : null;
       const data = await apiJson(`/agents/${agentId}/api-keys`, {
         method: 'POST',
         body: JSON.stringify({
-          name: form.name,
+          name: form.name.trim(),
           permissions: form.permissions,
           rateLimit: form.rateLimit,
-          expiresAt: expiresAt
-        })
+          expiresAt,
+          expiresInDays: days,
+        }),
       });
-
-      onSuccess(data);
-    } catch (error) {
-      console.error('Failed to generate API key:', error);
-      toast.error('Failed to generate API key');
+      onSuccess?.(data);
+    } catch (err) {
+      setSubmitError(humanize(err, { what: 'generating the key' }));
     } finally {
       setLoading(false);
     }
   };
 
-  const togglePermission = (permId) => {
-    if (form.permissions.includes(permId)) {
-      setForm({ ...form, permissions: form.permissions.filter(p => p !== permId) });
-    } else {
-      setForm({ ...form, permissions: [...form.permissions, permId] });
-    }
-    // Clear permission errors when user changes selection
-    if (errors.permissions) {
-      setErrors({ ...errors, permissions: null });
-    }
-  };
+  const togglePermission = (id) =>
+    set({ permissions: form.permissions.includes(id) ? form.permissions.filter((p) => p !== id) : [...form.permissions, id] });
 
   return (
     <Modal
       isOpen
-      onClose={onClose}
-      ariaLabel="Generate New API Key"
-      showClose={false}
+      onClose={loading ? undefined : onClose}
       closeOnBackdrop={false}
-      panelClassName="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col focus:outline-none"
+      title="Generate an API key"
+      description="Credentials for an external system to call this agent. The full key is shown once, after it is created."
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+          <Button icon={Key} loading={loading} onClick={submit} disabled={!form.name.trim()}>
+            Generate key
+          </Button>
+        </>
+      }
     >
-        {/* Header */}
-        <div className="p-6 border-b border-slate-700 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-lg bg-gradient-to-r from-unicorn-500/20 to-cyan-500/20">
-              <Key className="w-5 h-5 text-unicorn-400" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold">Generate New API Key</h2>
-              <p className="text-sm text-slate-400">Create credentials for agent access</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close dialog"
-            className="p-2 rounded-lg hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+      <form onSubmit={submit} className="space-y-5">
+        <Field label="Key name" required error={errors.name} help="Where it will be used, e.g. “Stable bridge” or “Zapier”.">
+          <Input value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Production integration" autoFocus disabled={loading} />
+        </Field>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
-          {/* Key Name */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Key Name <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => {
-                setForm({ ...form, name: e.target.value });
-                if (errors.name) setErrors({ ...errors, name: null });
-              }}
-              className={`w-full px-3 py-2 bg-slate-800/50 border ${
-                errors.name ? 'border-red-500' : 'border-slate-700'
-              } rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent outline-none`}
-              placeholder="Production Key"
-            />
-            {errors.name && (
-              <p className="text-xs text-red-400 mt-1">{errors.name}</p>
-            )}
-          </div>
-
-          {/* Permissions */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-3 flex items-center space-x-2">
-              <Shield className="w-4 h-4" />
-              <span>Permissions <span className="text-red-400">*</span></span>
-            </label>
-            <div className="space-y-2">
-              {permissions.map(perm => (
-                <label
-                  key={perm.id}
-                  className="flex items-start space-x-3 p-3 rounded-lg bg-slate-800/30 hover:bg-slate-800/50 cursor-pointer transition-colors border border-slate-700/50"
-                >
+        <fieldset>
+          <legend className="mb-1.5 text-body-sm font-medium text-fg">
+            Permissions
+            <span aria-hidden="true" className="ml-0.5 text-danger">
+              *
+            </span>
+          </legend>
+          <ul className="space-y-2">
+            {PERMISSIONS.map((perm) => (
+              <li key={perm.id}>
+                <label className="flex min-h-touch cursor-pointer items-start gap-3 rounded-control border border-border bg-surface/60 p-3 transition-colors duration-fast hover:border-border-strong">
                   <input
                     type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
                     checked={form.permissions.includes(perm.id)}
                     onChange={() => togglePermission(perm.id)}
-                    className="mt-0.5 w-4 h-4 text-unicorn-500 focus:ring-unicorn-500 focus:ring-2 rounded"
+                    disabled={loading}
                   />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-slate-200">{perm.label}</div>
-                    <div className="text-xs text-slate-400">{perm.description}</div>
-                  </div>
+                  <span>
+                    <span className="block text-body font-medium text-fg">{perm.label}</span>
+                    <span className="block text-caption text-muted">{perm.description}</span>
+                  </span>
                 </label>
-              ))}
-            </div>
-            {errors.permissions && (
-              <p className="text-xs text-red-400 mt-1">{errors.permissions}</p>
-            )}
-          </div>
+              </li>
+            ))}
+          </ul>
+          {errors.permissions && (
+            <p role="alert" className="mt-1.5 text-caption text-danger">
+              {errors.permissions}
+            </p>
+          )}
+        </fieldset>
 
-          {/* Rate Limit */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center space-x-2">
-              <Zap className="w-4 h-4" />
-              <span>Rate Limit (requests/minute)</span>
-            </label>
-            <input
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Rate limit" help="Requests per minute" error={errors.rateLimit}>
+            <Input
               type="number"
+              min={1}
               value={form.rateLimit}
-              onChange={(e) => {
-                setForm({ ...form, rateLimit: parseInt(e.target.value) || 0 });
-                if (errors.rateLimit) setErrors({ ...errors, rateLimit: null });
-              }}
-              className={`w-full px-3 py-2 bg-slate-800/50 border ${
-                errors.rateLimit ? 'border-red-500' : 'border-slate-700'
-              } rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent outline-none`}
-              min="1"
+              onChange={(e) => set({ rateLimit: parseInt(e.target.value, 10) || 0 })}
+              disabled={loading}
             />
-            {errors.rateLimit && (
-              <p className="text-xs text-red-400 mt-1">{errors.rateLimit}</p>
-            )}
-          </div>
-
-          {/* Expiration */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center space-x-2">
-              <Clock className="w-4 h-4" />
-              <span>Expiration</span>
-            </label>
-            <select
-              aria-label="Key expiration"
-              value={form.expiresAt || ''}
-              onChange={(e) => setForm({ ...form, expiresAt: e.target.value || null })}
-              className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent outline-none"
-            >
-              {expirationOptions.map(option => (
-                <option key={option.value || 'never'} value={option.value || ''}>
-                  {option.label}
+          </Field>
+          <Field label="Expires" help="You can revoke it at any time.">
+            <Select value={form.expiresInDays} onChange={(e) => set({ expiresInDays: e.target.value })} disabled={loading}>
+              {EXPIRY.map((o) => (
+                <option key={o.value || 'never'} value={o.value}>
+                  {o.label}
                 </option>
               ))}
-            </select>
-            <p className="text-xs text-slate-400 mt-1">
-              Keys can be manually revoked at any time
-            </p>
-          </div>
+            </Select>
+          </Field>
         </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-slate-700 flex space-x-3">
-          <button
-            onClick={handleGenerate}
-            disabled={loading || !form.name.trim()}
-            className="flex-1 px-4 py-2 bg-gradient-to-r from-unicorn-500 to-cyan-500 text-white rounded-lg font-medium hover:shadow-lg hover:shadow-unicorn-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Generating...' : 'Generate Key'}
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg font-medium hover:bg-slate-700 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
+        {submitError && (
+          <p role="alert" className="text-body-sm text-danger">
+            {submitError}
+          </p>
+        )}
+        <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
+          Submit
+        </button>
+      </form>
     </Modal>
   );
-};
-
-export default GenerateApiKeyModal;
+}

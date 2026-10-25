@@ -1,5 +1,13 @@
+/**
+ * Navigation — the shell: a sidebar on desktop, a top bar + drawer on phones.
+ *
+ * Data-driven. NAV_SECTIONS below is THE list of pages; the command palette
+ * (every page reachable from ⌘K) and the breadcrumbs (route names) read the
+ * same array, so a page is added once. Tokens only; the active row is accent
+ * text plus a 2px accent bar, never a wash.
+ */
 import { useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
   Home,
   BookOpen,
@@ -21,530 +29,368 @@ import {
   CalendarClock,
   ChevronDown,
   Bot,
-  Menu,
-  X as CloseIcon,
+  Menu as MenuIcon,
   Sparkles,
   GraduationCap,
   AlertTriangle,
   Building2,
-  Wallet
+  Wallet,
+  Search,
 } from 'lucide-react';
-import { Tooltip } from 'react-tooltip';
+import { Button, Chip, IconButton, Kbd, Sheet, StatusDot, Tooltip } from './ui';
 import UserProfile from './auth/UserProfile';
 import OrgSwitcher from './org/OrgSwitcher';
 import { BrigadeLogo } from './UnicornBrigadeLogo';
 import { apiJson } from '../services/http';
 
 const HEALTH_POLL_MS = 30000;
+const COLLAPSE_KEY = 'nav-collapsed-sections';
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform || '');
+/** The modifier key as people see it on their keyboard. */
+export const MOD_KEY = IS_MAC ? '⌘' : 'Ctrl';
 
-const Navigation = () => {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [collapsedSections, setCollapsedSections] = useState(() => {
-    const saved = localStorage.getItem('nav-collapsed-sections');
-    return saved ? JSON.parse(saved) : {};
-  });
-  // 'online' | 'degraded' | 'offline' | 'checking' — drives the footer card.
-  const [platformStatus, setPlatformStatus] = useState('checking');
-  const [deployConfig, setDeployConfig] = useState(null);
-  const location = useLocation();
+/** Open the command palette from anywhere (the palette listens for this). */
+export function openCommandPalette(detail) {
+  window.dispatchEvent(new CustomEvent('brigade:command-palette', { detail }));
+}
+/** Re-open the getting-started tour (App listens for this). */
+export function openGettingStarted() {
+  window.dispatchEvent(new CustomEvent('brigade:getting-started'));
+}
 
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [location.pathname]);
+export const NAV_SECTIONS = [
+  {
+    id: 'main',
+    title: 'Main',
+    icon: Home,
+    items: [
+      { path: '/dashboard', label: 'Dashboard', icon: Home, hint: 'Overview, quick actions and recent activity', keywords: ['home', 'overview'] },
+      { path: '/chat', label: 'Chat', icon: MessageSquare, hint: 'Talk to any agent', keywords: ['conversation', 'talk', 'message'] },
+      { path: '/conversations', label: 'Conversations', icon: MessagesSquare, hint: 'Every conversation, searchable', keywords: ['history'] },
+    ],
+  },
+  {
+    id: 'command',
+    title: 'Command',
+    icon: Globe,
+    items: [
+      { path: '/command', label: 'Command Center', icon: Shield, hint: 'The General’s war room: the whole Brigade as a live org chart', keywords: ['war room', 'org chart', 'activity', 'missions', 'orchestration', 'briefing', 'live', '3d'] },
+      { path: '/workflows', label: 'Workflows', icon: GitBranch, hint: 'Run and watch hierarchical workflow templates', keywords: ['templates', 'pipeline'] },
+      { path: '/ralph-monitor', label: 'Self-Correction', icon: Zap, hint: 'Self-correcting workflow runs with automatic retry', keywords: ['ralph', 'retry'] },
+      { path: '/knowledge', label: 'Knowledge Graph', icon: Network, hint: 'Entities and relationships the agents know about', keywords: ['falkordb', 'graph', 'entities'] },
+    ],
+  },
+  {
+    id: 'agents',
+    title: 'Agents',
+    icon: Bot,
+    items: [
+      { path: '/library', label: 'Agent Library', icon: BookOpen, hint: 'Every agent: configure, edit, retire', keywords: ['roster', 'agents'] },
+      { path: '/builder-chat', label: 'Agent Builder', icon: Sparkles, hint: 'Build a new agent in conversation with Gunny', keywords: ['gunny', 'create agent', 'new agent'] },
+    ],
+  },
+  {
+    id: 'tools',
+    title: 'Tools',
+    icon: Wrench,
+    items: [
+      { path: '/tools', label: 'Tool Library', icon: Wrench, hint: 'Every capability an agent can be given', keywords: ['capabilities'] },
+      { path: '/mcp-servers', label: 'MCP Servers', icon: Server, hint: 'Start, stop and test MCP servers', keywords: ['mcp', 'servers'] },
+      { path: '/mcp-docs', label: 'MCP Docs', icon: FileText, hint: 'How Model Context Protocol integration works', keywords: ['mcp', 'documentation'] },
+      { path: '/langflow', label: 'Langflow Flows', icon: Workflow, hint: 'Visual flow builder', keywords: ['flows', 'visual'], when: (cfg) => Boolean(cfg?.langflow_enabled) },
+      { path: '/docs', label: 'API Docs', icon: Book, hint: 'The REST API, with live requests', keywords: ['api', 'reference', 'swagger'] },
+    ],
+  },
+  {
+    id: 'system',
+    title: 'System',
+    icon: Settings,
+    items: [
+      { path: '/code-attribution', label: 'Code Attribution', icon: FileCode, hint: 'Which agent wrote which lines', keywords: ['trace', 'lineage', 'audit'], sidebar: false },
+      { path: '/monitoring', label: 'Monitoring', icon: Activity, hint: 'Service health, resources and scheduled runs', keywords: ['health', 'status', 'metrics', 'uptime'] },
+      { path: '/scheduled-runs', label: 'Scheduled Runs', icon: CalendarClock, hint: 'Cron-based agent runs that survive restarts', keywords: ['cron', 'schedule', 'jobs'] },
+      { path: '/organization', label: 'Organization', icon: Building2, hint: 'Members, roles and invitations', keywords: ['team', 'members', 'invite', 'org'] },
+      { path: '/billing', label: 'Usage & Billing', icon: Wallet, hint: 'Usage, spend and plan', keywords: ['plan', 'credits', 'spend', 'usage'] },
+      { path: '/settings', label: 'Settings', icon: Settings, hint: 'Preferences, theme, API keys', keywords: ['preferences', 'theme', 'api keys'] },
+    ],
+  },
+];
 
-  useEffect(() => {
-    localStorage.setItem('nav-collapsed-sections', JSON.stringify(collapsedSections));
-  }, [collapsedSections]);
+/** Every sidebar page, flat, with its section name. */
+export const NAV_PAGES = NAV_SECTIONS.flatMap((s) => s.items.map((it) => ({ ...it, section: s.title })));
 
+/** The page record for a pathname (exact first, then the longest prefix). */
+export function pageFor(pathname) {
+  return (
+    NAV_PAGES.find((p) => p.path === pathname) ||
+    NAV_PAGES
+      .filter((p) => pathname.startsWith(`${p.path}/`))
+      .sort((a, b) => b.path.length - a.path.length)[0] ||
+    null
+  );
+}
+
+// 'checking' | 'online' | 'degraded' | 'offline' → the footer status row.
+const PLATFORM = {
+  checking: { dot: 'idle', label: 'Checking platform…' },
+  online: { dot: 'done', label: 'All systems operational' },
+  degraded: { dot: 'thinking', label: 'Degraded — open Monitoring' },
+  offline: { dot: 'error', label: 'API unreachable' },
+};
+
+function usePlatformStatus() {
+  const [status, setStatus] = useState('checking');
   useEffect(() => {
     let cancelled = false;
     const check = async () => {
       try {
         const health = await apiJson('/health', { redirectOn401: false });
         if (cancelled) return;
-        const status = (health?.status || '').toLowerCase();
-        setPlatformStatus(status === 'healthy' || status === 'operational' ? 'online' : 'degraded');
-      } catch {
-        if (!cancelled) setPlatformStatus('offline');
+        const s = String(health?.status || '').toLowerCase();
+        setStatus(s === 'healthy' || s === 'operational' || s === 'ok' ? 'online' : 'degraded');
+      } catch (err) {
+        if (cancelled) return;
+        // An HTTP answer (503 and a body) is the API saying it is degraded; no answer at all is offline.
+        setStatus(err?.status ? 'degraded' : 'offline');
       }
     };
     check();
-    const interval = setInterval(check, HEALTH_POLL_MS);
+    const t = setInterval(check, HEALTH_POLL_MS);
+    window.addEventListener('online', check);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearInterval(t);
+      window.removeEventListener('online', check);
     };
   }, []);
+  return status;
+}
 
+function useDeployConfig() {
+  const [cfg, setCfg] = useState(null);
   useEffect(() => {
     let cancelled = false;
     apiJson('/auth/config', { redirectOn401: false })
-      .then((cfg) => {
-        if (!cancelled) setDeployConfig(cfg);
-      })
+      .then((v) => !cancelled && setCfg(v))
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
+  return cfg;
+}
 
-  const toggleSection = (section) => {
-    setCollapsedSections((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  };
+function readCollapsed() {
+  try {
+    return JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '{}') || {};
+  } catch {
+    return {};
+  }
+}
 
-  const TOOLTIP_CONTENT = {
-    '/dashboard': 'View system overview, recent activity, and quick stats',
-    '/chat': 'Start a conversation with any agent',
-    '/conversations': 'Browse and manage all conversation history',
-    '/command': "The General's War Room — the whole Brigade as a clickable org chart",
-    '/orchestration': 'Real-time agent orchestration and command center',
-    '/workflows': 'Execute and monitor hierarchical workflow templates',
-    '/ralph-monitor': 'Self-correcting workflow executions with automatic retry',
-    '/knowledge': 'Explore the AI-native knowledge graph (FalkorDB)',
-    '/library': 'Manage and configure all production agents',
-    '/tools': 'Browse available tools and their capabilities',
-    '/mcp-servers': 'Manage MCP servers and test tool integrations',
-    '/mcp-docs': 'Learn about Model Context Protocol integration',
-    '/langflow': 'Visual workflow builder for complex automations',
-    '/docs': 'Explore API documentation and interactive testing',
-    '/code-attribution': 'Track AI-generated code attribution and lineage',
-    '/monitoring': 'System health, performance metrics, and logs',
-    '/scheduled-runs': 'Cron-based agent invocations that survive container restarts',
-    '/organization': 'Manage members, roles, and invitations for your organization',
-    '/billing': 'View your usage, spend, and plan',
-    '/settings': 'Configure platform settings and preferences',
-  };
+function ModK() {
+  return (
+    <span className="inline-flex items-center gap-0.5" aria-hidden="true">
+      <Kbd>{MOD_KEY}</Kbd>
+      <Kbd>K</Kbd>
+    </span>
+  );
+}
 
-  const navLinkClass = ({ isActive }) =>
-    `flex items-center space-x-3 px-4 py-3 min-h-[44px] rounded-lg transition-all duration-200 ${
-      isActive
-        ? 'bg-unicorn-500/20 text-unicorn-400 border-l-2 border-unicorn-500'
-        : 'text-muted hover:bg-elevated/50 hover:text-fg'
-    }`;
+function NavItem({ item, mobile }) {
+  const Icon = item.icon;
+  const link = (
+    <NavLink
+      to={item.path}
+      className={({ isActive }) =>
+        [
+          'relative flex items-center gap-3 rounded-control px-3 text-body-sm font-medium transition-colors duration-fast',
+          mobile ? 'min-h-touch' : 'min-h-10',
+          isActive ? 'bg-elevated/50 text-accent' : 'text-muted hover:bg-elevated/50 hover:text-fg',
+        ].join(' ')
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {isActive && <span aria-hidden="true" className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full bg-accent" />}
+          <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
+          <span className="truncate">{item.label}</span>
+        </>
+      )}
+    </NavLink>
+  );
+  if (mobile || !item.hint) return link;
+  return (
+    <Tooltip content={item.hint} side="right">
+      {link}
+    </Tooltip>
+  );
+}
 
-  const NavSection = ({ title, icon: Icon, isCollapsed, onToggle, children }) => (
-    <div className="mt-6">
+function NavSection({ section, items, collapsed, onToggle, mobile }) {
+  const Icon = section.icon;
+  const panelId = `nav-${section.id}${mobile ? '-m' : ''}`;
+  return (
+    <div className="mt-4 first:mt-0">
       <button
+        type="button"
+        aria-expanded={!collapsed}
+        aria-controls={panelId}
         onClick={onToggle}
-        className="flex items-center justify-between w-full px-4 py-2 text-xs font-semibold text-muted uppercase tracking-wider hover:text-fg transition-colors group"
+        className="flex h-8 w-full items-center justify-between rounded-control px-3 text-micro font-semibold uppercase tracking-wider text-muted transition-colors duration-fast hover:text-fg"
       >
-        <div className="flex items-center space-x-2">
-          {Icon && <Icon className="w-4 h-4" />}
-          <span>{title}</span>
-        </div>
-        <ChevronDown
-          className={`w-4 h-4 transition-transform duration-200 ${
-            isCollapsed ? '-rotate-90' : 'rotate-0'
-          }`}
-        />
+        <span className="flex items-center gap-2">
+          <Icon aria-hidden="true" className="h-3.5 w-3.5" />
+          {section.title}
+        </span>
+        <ChevronDown aria-hidden="true" className={`h-3.5 w-3.5 transition-transform duration-fast ${collapsed ? '-rotate-90' : ''}`} />
       </button>
-      <div
-        className={`overflow-hidden transition-all duration-200 ${
-          isCollapsed ? 'max-h-0' : 'max-h-[500px]'
-        }`}
-      >
-        <div className="mt-2 space-y-1">
-          {children}
-        </div>
-      </div>
+      <ul id={panelId} hidden={collapsed} className="mt-1 space-y-0.5">
+        {items.map((it) => (
+          <li key={it.path}>
+            <NavItem item={it} mobile={mobile} />
+          </li>
+        ))}
+      </ul>
     </div>
   );
+}
+
+function PlatformStatusRow({ status, mobile }) {
+  const m = PLATFORM[status] || PLATFORM.checking;
+  const row = (
+    <Link
+      to="/monitoring"
+      className={`flex items-center gap-2.5 rounded-control px-3 text-body-sm text-muted transition-colors duration-fast hover:bg-elevated/50 hover:text-fg ${
+        mobile ? 'min-h-touch' : 'min-h-10'
+      }`}
+    >
+      <span aria-hidden="true" className="flex">
+        <StatusDot status={m.dot} size="sm" />
+      </span>
+      <span className="truncate">{m.label}</span>
+    </Link>
+  );
+  return mobile ? row : <Tooltip content="Open Monitoring" side="right">{row}</Tooltip>;
+}
+
+function Wordmark({ size = 36 }) {
+  return (
+    <Link to="/dashboard" className="flex min-w-0 items-center gap-3 rounded-control">
+      <BrigadeLogo size={size} />
+      <span className="min-w-0">
+        <span className="block truncate text-lead font-bold leading-tight text-gradient">Unicorn Brigade</span>
+        <span className="block text-micro font-medium uppercase tracking-wider text-muted">AI Agent Factory</span>
+      </span>
+    </Link>
+  );
+}
+
+function DevBanner() {
+  if (!import.meta.env.DEV) return null;
+  return (
+    <Chip tone="warn" size="xs" icon={AlertTriangle} className="w-full justify-center">
+      Development mode · auth bypassed
+    </Chip>
+  );
+}
+
+function NavBody({ sections, collapsed, onToggle, status, mobile }) {
+  return (
+    <>
+      <nav aria-label="Primary">
+        {sections.map((s) => (
+          <NavSection
+            key={s.id}
+            section={s}
+            items={s.items}
+            collapsed={Boolean(collapsed[s.id])}
+            onToggle={() => onToggle(s.id)}
+            mobile={mobile}
+          />
+        ))}
+      </nav>
+      <div className="mt-3 space-y-2 border-t border-border pt-3">
+        <UserProfile />
+        <Button variant="outline" size={mobile ? 'lg' : 'sm'} icon={GraduationCap} className="w-full" onClick={openGettingStarted}>
+          Getting started
+        </Button>
+        <PlatformStatusRow status={status} mobile={mobile} />
+      </div>
+    </>
+  );
+}
+
+export default function Navigation() {
+  const location = useLocation();
+  const status = usePlatformStatus();
+  const cfg = useDeployConfig();
+  const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+
+  // The drawer closes on every route change.
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed));
+    } catch {
+      /* storage unavailable — the state still works for this session */
+    }
+  }, [collapsed]);
+
+  const toggle = (id) => setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+  // `sidebar: false` pages stay in the palette and breadcrumbs, out of the sidebar.
+  const sections = NAV_SECTIONS.map((s) => ({ ...s, items: s.items.filter((it) => (!it.when || it.when(cfg)) && it.sidebar !== false) }));
 
   return (
     <>
-      <button
-        onClick={() => setIsMobileMenuOpen((prev) => !prev)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-3 bg-elevated/90 backdrop-blur-xl border border-border/50 rounded-lg shadow-xl hover:bg-elevated/90 transition-colors"
-        aria-label="Toggle navigation menu"
-      >
-        {isMobileMenuOpen ? (
-          <CloseIcon className="w-6 h-6 text-fg" />
-        ) : (
-          <Menu className="w-6 h-6 text-fg" />
-        )}
-      </button>
+      {/* Phones: a 56px top bar with the drawer trigger, the wordmark and ⌘K. */}
+      <header className="fixed inset-x-0 top-0 z-nav flex h-14 items-center gap-1 border-b border-border bg-surface/90 px-2 backdrop-blur-xl lg:hidden">
+        <IconButton icon={MenuIcon} label="Open navigation" size="lg" onClick={() => setOpen(true)} aria-expanded={open} tooltip={false} />
+        <Link to="/dashboard" className="flex min-w-0 items-center gap-2 rounded-control px-1">
+          <BrigadeLogo size={28} />
+          <span className="truncate text-body font-bold text-gradient">Unicorn Brigade</span>
+        </Link>
+        <span className="flex-1" />
+        <IconButton icon={Search} label="Search and commands" size="lg" onClick={() => openCommandPalette()} tooltip={false} />
+      </header>
 
-      {isMobileMenuOpen && (
-        <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-30"
-          onClick={() => setIsMobileMenuOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-
-      <aside
-        className={`fixed left-0 top-0 h-screen w-64 bg-card/50 backdrop-blur-xl border-r border-border/50 transition-transform duration-300 ease-in-out z-40 ${
-          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0`}
-      >
-        <div className="flex flex-col h-full">
-        {/* Logo */}
-        <div className="p-6 border-b border-border/50">
-          <div className="flex items-center space-x-3">
-            <BrigadeLogo size={44} />
-            <div>
-              <h1 className="text-lg font-bold text-gradient">
-                Unicorn Brigade
-              </h1>
-              <p className="text-xs text-muted">Agent Infrastructure</p>
-            </div>
-          </div>
-          {import.meta.env.DEV && (
-            <div className="mt-4 flex items-center gap-2 bg-yellow-500/20 border border-yellow-500/50 rounded-lg px-3 py-2 text-xs text-yellow-200">
-              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-              <span>Development Mode: Authentication Bypassed</span>
-            </div>
-          )}
+      <Sheet isOpen={open} onClose={() => setOpen(false)} side="right" title="Menu">
+        <div className="space-y-3 pb-4">
+          <DevBanner />
+          <OrgSwitcher />
+          <NavBody sections={sections} collapsed={collapsed} onToggle={toggle} status={status} mobile />
         </div>
+      </Sheet>
 
-        {/* Active-organization switcher */}
-        <div className="px-4 pt-4">
+      {/* Desktop: the sidebar. */}
+      <aside className="fixed inset-y-0 left-0 z-nav hidden w-64 flex-col border-r border-border bg-surface/80 backdrop-blur-xl lg:flex">
+        <div className="space-y-3 px-4 pb-3 pt-5">
+          <Wordmark />
+          <DevBanner />
+        </div>
+        <div className="px-3 pb-2">
           <OrgSwitcher />
         </div>
-
-        {/* Navigation Items */}
-        <div className="flex-1 p-4 overflow-y-auto">
-          <NavSection
-            title="Main"
-            icon={Home}
-            isCollapsed={collapsedSections.main}
-            onToggle={() => toggleSection('main')}
-          >
-            <NavLink
-              to="/dashboard"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/dashboard']}
-              data-tooltip-place="right"
-            >
-              <Home className="w-4 h-4" />
-              <span className="text-sm font-medium">Dashboard</span>
-            </NavLink>
-            <NavLink
-              to="/chat"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/chat']}
-              data-tooltip-place="right"
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span className="text-sm font-medium">Chat</span>
-            </NavLink>
-            <NavLink
-              to="/conversations"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/conversations']}
-              data-tooltip-place="right"
-            >
-              <MessagesSquare className="w-4 h-4" />
-              <span className="text-sm font-medium">Conversations</span>
-            </NavLink>
-          </NavSection>
-
-          <NavSection
-            title="Command"
-            icon={Globe}
-            isCollapsed={collapsedSections.command}
-            onToggle={() => toggleSection('command')}
-          >
-            <NavLink
-              to="/command"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/command']}
-              data-tooltip-place="right"
-            >
-              <Shield className="w-4 h-4" />
-              <span className="text-sm font-medium">Command Center</span>
-            </NavLink>
-            <NavLink
-              to="/orchestration"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/orchestration']}
-              data-tooltip-place="right"
-            >
-              <Globe className="w-4 h-4" />
-              <span className="text-sm font-medium">Orchestration</span>
-            </NavLink>
-            <NavLink
-              to="/workflows"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/workflows']}
-              data-tooltip-place="right"
-            >
-              <GitBranch className="w-4 h-4" />
-              <span className="text-sm font-medium">Workflows</span>
-            </NavLink>
-            <NavLink
-              to="/ralph-monitor"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/ralph-monitor']}
-              data-tooltip-place="right"
-            >
-              <Zap className="w-4 h-4" />
-              <span className="text-sm font-medium">Self-Correction</span>
-            </NavLink>
-            <NavLink
-              to="/knowledge"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/knowledge']}
-              data-tooltip-place="right"
-            >
-              <Network className="w-4 h-4" />
-              <span className="text-sm font-medium">Knowledge Graph</span>
-            </NavLink>
-          </NavSection>
-
-          <NavSection
-            title="Agents"
-            icon={Bot}
-            isCollapsed={collapsedSections.agents}
-            onToggle={() => toggleSection('agents')}
-          >
-            <NavLink
-              to="/library"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/library']}
-              data-tooltip-place="right"
-            >
-              <BookOpen className="w-4 h-4" />
-              <span className="text-sm font-medium">Agent Library</span>
-            </NavLink>
-            <NavLink
-              to="/builder-chat"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content="Build new agents through conversation with Gunny"
-              data-tooltip-place="right"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span className="text-sm font-medium">Agent Builder</span>
-            </NavLink>
-          </NavSection>
-
-          <NavSection
-            title="Tools"
-            icon={Wrench}
-            isCollapsed={collapsedSections.tools}
-            onToggle={() => toggleSection('tools')}
-          >
-            <NavLink
-              to="/tools"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/tools']}
-              data-tooltip-place="right"
-            >
-              <Wrench className="w-4 h-4" />
-              <span className="text-sm font-medium">Tool Library</span>
-            </NavLink>
-            <NavLink
-              to="/mcp-servers"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/mcp-servers']}
-              data-tooltip-place="right"
-            >
-              <Server className="w-4 h-4" />
-              <span className="text-sm font-medium">MCP Servers</span>
-            </NavLink>
-            <NavLink
-              to="/mcp-docs"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/mcp-docs']}
-              data-tooltip-place="right"
-            >
-              <FileText className="w-4 h-4" />
-              <span className="text-sm font-medium">MCP Docs</span>
-            </NavLink>
-            {deployConfig?.langflow_enabled && (
-              <NavLink
-                to="/langflow"
-                className={navLinkClass}
-                data-tooltip-id="nav-tooltip"
-                data-tooltip-content={TOOLTIP_CONTENT['/langflow']}
-                data-tooltip-place="right"
-              >
-                <Workflow className="w-4 h-4" />
-                <span className="text-sm font-medium">Langflow Flows</span>
-              </NavLink>
-            )}
-            <NavLink
-              to="/docs"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/docs']}
-              data-tooltip-place="right"
-            >
-              <Book className="w-4 h-4" />
-              <span className="text-sm font-medium">API Docs</span>
-            </NavLink>
-          </NavSection>
-
-          <NavSection
-            title="System"
-            icon={Settings}
-            isCollapsed={collapsedSections.system}
-            onToggle={() => toggleSection('system')}
-          >
-            <NavLink
-              to="/code-attribution"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/code-attribution']}
-              data-tooltip-place="right"
-            >
-              <FileCode className="w-4 h-4" />
-              <span className="text-sm font-medium">Code Attribution</span>
-            </NavLink>
-            <NavLink
-              to="/monitoring"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/monitoring']}
-              data-tooltip-place="right"
-            >
-              <Activity className="w-4 h-4" />
-              <span className="text-sm font-medium">Monitoring</span>
-            </NavLink>
-            <NavLink
-              to="/scheduled-runs"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/scheduled-runs']}
-              data-tooltip-place="right"
-            >
-              <CalendarClock className="w-4 h-4" />
-              <span className="text-sm font-medium">Scheduled Runs</span>
-            </NavLink>
-            <NavLink
-              to="/organization"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/organization']}
-              data-tooltip-place="right"
-            >
-              <Building2 className="w-4 h-4" />
-              <span className="text-sm font-medium">Organization</span>
-            </NavLink>
-            <NavLink
-              to="/billing"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/billing']}
-              data-tooltip-place="right"
-            >
-              <Wallet className="w-4 h-4" />
-              <span className="text-sm font-medium">Usage &amp; Billing</span>
-            </NavLink>
-            <NavLink
-              to="/settings"
-              className={navLinkClass}
-              data-tooltip-id="nav-tooltip"
-              data-tooltip-content={TOOLTIP_CONTENT['/settings']}
-              data-tooltip-place="right"
-            >
-              <Settings className="w-4 h-4" />
-              <span className="text-sm font-medium">Settings</span>
-            </NavLink>
-          </NavSection>
-        </div>
-
-        {/* User Profile */}
-        <div className="p-4 border-t border-border/50">
-          <UserProfile />
-        </div>
-
-        <div className="px-4 pb-4">
+        <div className="px-3 pb-3">
           <button
-            onClick={() => {
-              localStorage.removeItem('wizard-completed');
-              window.location.reload();
-            }}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-muted hover:text-fg transition-colors rounded-lg hover:bg-elevated/50"
+            type="button"
+            onClick={() => openCommandPalette()}
+            aria-keyshortcuts="Meta+K Control+K"
+            className="flex h-9 w-full items-center gap-2 rounded-control border border-border bg-surface/60 px-3 text-body-sm text-muted transition-colors duration-fast hover:border-border-strong hover:text-fg"
           >
-            <GraduationCap className="w-4 h-4" />
-            <span>Getting Started Guide</span>
+            <Search aria-hidden="true" className="h-4 w-4 shrink-0" />
+            <span className="flex-1 text-left">Search or jump to…</span>
+            <ModK />
           </button>
         </div>
-
-        {/* Status — live, polled from /api/v1/health every 30s */}
-        <div className="px-4 pb-4">
-          {(() => {
-            const statusStyles = {
-              online: {
-                card: 'bg-emerald-500/10 border-emerald-500/30',
-                dot: 'bg-emerald-500 animate-pulse',
-                text: 'text-emerald-400',
-                label: 'Platform Online',
-                detail: 'All systems operational',
-              },
-              degraded: {
-                card: 'bg-amber-500/10 border-amber-500/30',
-                dot: 'bg-amber-500 animate-pulse',
-                text: 'text-amber-400',
-                label: 'Degraded',
-                detail: 'Some services unhealthy',
-              },
-              offline: {
-                card: 'bg-red-500/10 border-red-500/30',
-                dot: 'bg-red-500',
-                text: 'text-red-400',
-                label: 'API Unreachable',
-                detail: 'Backend is not responding',
-              },
-              checking: {
-                card: 'bg-slate-500/10 border-border/30',
-                dot: 'bg-slate-400 animate-pulse',
-                text: 'text-muted',
-                label: 'Checking…',
-                detail: 'Contacting platform',
-              },
-            };
-            const s = statusStyles[platformStatus] || statusStyles.checking;
-            return (
-              <div className={`card ${s.card}`}>
-                <div className="flex items-center space-x-3">
-                  <div className={`w-2 h-2 rounded-full ${s.dot}`}></div>
-                  <div>
-                    <p className={`text-sm font-medium ${s.text}`}>{s.label}</p>
-                    <p className="text-xs text-muted">{s.detail}</p>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-
-        <Tooltip
-          id="nav-tooltip"
-          place="right"
-          offset={10}
-          className="z-50 max-w-xs"
-          style={{
-            backgroundColor: 'rgba(30, 41, 59, 0.95)',
-            color: '#e2e8f0',
-            borderRadius: '0.5rem',
-            padding: '0.5rem 0.75rem',
-            fontSize: '0.875rem',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(100, 116, 139, 0.3)',
-          }}
-        />
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+          <NavBody sections={sections} collapsed={collapsed} onToggle={toggle} status={status} />
         </div>
       </aside>
     </>
   );
-};
-
-export default Navigation;
+}

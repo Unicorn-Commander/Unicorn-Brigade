@@ -1,715 +1,591 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Plus, Bot, ExternalLink, Eye, Edit, Trash2, Star, TrendingUp, MessageSquare, Shield, DollarSign, ArrowUpDown, Wrench, Zap, CheckCircle, AlertCircle, X, Scale, Stethoscope, Code2, Target, Award } from 'lucide-react';
-import { toast } from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
-import { apiJson } from '../services/http';
-import AgentCard from '../components/AgentCard';
-import AgentEditModal from '../components/AgentEditModal';
-import AgentDeleteConfirmModal from '../components/AgentDeleteConfirmModal';
-import { getToolIcon } from '../components/ToolCallCard';
-import Breadcrumbs from '../components/Breadcrumbs';
-import CardSkeleton from '../components/skeletons/CardSkeleton';
-import ListSkeleton from '../components/skeletons/ListSkeleton';
+/**
+ * Agent Library — every agent in the brigade, grouped by domain.
+ *
+ * Shape follows the Tool Library exemplar: one PageHeader, a toolbar Card,
+ * all four states where the content goes, keyboard-reachable cards, dialogs
+ * from components/ui. Counts in the header are the roster's own numbers.
+ */
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Award,
+  BookOpen,
+  Bot,
+  Briefcase,
+  ChevronDown,
+  Code2,
+  Cpu,
+  Database,
+  DollarSign,
+  Eye,
+  LayoutGrid,
+  Layers,
+  LifeBuoy,
+  List,
+  ListChecks,
+  Scale,
+  Search,
+  Sparkles,
+  Stethoscope,
+  Target,
+  X,
+} from "lucide-react";
+import { apiJson } from "../services/http";
+import { humanize } from "../utils/errors";
+import { prettyDomain } from "../utils/agentClass";
+import AgentCard, { agentToolNames } from "../components/AgentCard";
+import AgentEditModal from "../components/AgentEditModal";
+import AgentDeleteConfirmModal from "../components/AgentDeleteConfirmModal";
+import Breadcrumbs from "../components/Breadcrumbs";
+import {
+  Button,
+  Card,
+  Chip,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  Input,
+  LoadingState,
+  OfflineState,
+  Page,
+  PageHeader,
+  Select,
+} from "../components/ui";
 
-// Defensive: agents can arrive with non-array tools/capabilities (bad seed
-// data / JSON columns) — always hand callers a real array to slice/map.
-const agentToolList = (agent) => {
-  if (Array.isArray(agent?.tools)) return agent.tools;
-  if (Array.isArray(agent?.agentTools)) return agent.agentTools;
-  return [];
+const VIEW_KEY = "brigade.library.view";
+const GROUP_KEY = "brigade.library.group";
+const COLLAPSED_KEY = "brigade.library.collapsed";
+const readStored = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw == null ? fallback : JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
 };
-const agentCapabilityList = (agent) =>
-  Array.isArray(agent?.capabilities) ? agent.capabilities : [];
-
-// Domain → lucide mark + accent color (replaces the decorative emoji glyphs).
-const domainConfig = {
-  financial: { Icon: DollarSign, color: 'emerald' },
-  legal: { Icon: Scale, color: 'blue' },
-  medical: { Icon: Stethoscope, color: 'red' },
-  technology: { Icon: Code2, color: 'purple' },
-  investigation: { Icon: Search, color: 'amber' },
-  orchestration: { Icon: Target, color: 'cyan' },
-  meta: { Icon: Award, color: 'orange' },
-  intelligence: { Icon: Eye, color: 'indigo' }
+const store = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable — the choice just doesn't persist */
+  }
 };
 
-// Status Icons
-const statusConfig = {
-  active: { label: 'Active', icon: '✅', color: 'green' },
-  draft: { label: 'Draft', icon: '🟡', color: 'yellow' },
-  inactive: { label: 'Inactive', icon: '⚫', color: 'gray' },
-  archived: { label: 'Archived', icon: '📦', color: 'slate' },
-  busy: { label: 'Busy', icon: '⏳', color: 'orange' }
+const TYPES = [
+  { id: "", label: "All types" },
+  { id: "individual", label: "Individual" },
+  { id: "team_lead", label: "Team lead" },
+  { id: "orchestrator", label: "Orchestrator" },
+];
+const STATUSES = ["active", "draft", "inactive", "archived"];
+const DOMAIN_ICON = {
+  financial: DollarSign,
+  legal: Scale,
+  medical: Stethoscope,
+  technology: Code2,
+  engineering: Cpu,
+  investigation: Search,
+  orchestration: Target,
+  meta: Award,
+  intelligence: Eye,
+  data: Database,
+  support: LifeBuoy,
+  sales: Briefcase,
+  knowledge: BookOpen,
+  productivity: ListChecks,
 };
 
-const AgentLibrary = () => {
+const text = (v) => String(v || "").toLowerCase();
+
+export default function AgentLibrary() {
   const navigate = useNavigate();
   const [agents, setAgents] = useState([]);
-  const [filteredAgents, setFilteredAgents] = useState([]);
-  const [domains, setDomains] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterLoading, setFilterLoading] = useState(false);
-  const [editingAgent, setEditingAgent] = useState(null);
-  const [deletingAgent, setDeletingAgent] = useState(null);
+  const [error, setError] = useState(null);
+  const [offline, setOffline] = useState(
+    typeof navigator !== "undefined" && navigator.onLine === false,
+  );
 
-  // Filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDomain, setSelectedDomain] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('');
-  const [selectedType, setSelectedType] = useState('');
-  const [selectedTool, setSelectedTool] = useState('');
-  const [viewMode, setViewMode] = useState('grid'); // grid or list
-  const [sortBy, setSortBy] = useState('newest'); // newest, most-used, a-z
-
-  // Extract all unique tools from agents
-  const allTools = useMemo(() => {
-    const toolSet = new Set();
-    agents.forEach(agent => {
-      const tools = agentToolList(agent);
-      tools.forEach(tool => {
-        const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name);
-        if (toolName) toolSet.add(toolName);
-      });
+  const [query, setQuery] = useState("");
+  const [domain, setDomain] = useState("");
+  const [status, setStatus] = useState("");
+  const [type, setType] = useState("");
+  const [tool, setTool] = useState("");
+  const [sort, setSort] = useState("a-z");
+  const [view, setView] = useState(() =>
+    readStored(VIEW_KEY, "grid") === "list" ? "list" : "grid",
+  );
+  const [collapsed, setCollapsed] = useState(
+    () => new Set(readStored(COLLAPSED_KEY, [])),
+  );
+  // Flat grid by default: with most domains holding one or two agents, a group
+  // per domain spent a full row per card. "By domain" stays one click away.
+  const [grouped, setGrouped] = useState(() => readStored(GROUP_KEY, false) === true);
+  const toggleGrouped = () => {
+    setGrouped((g) => {
+      store(GROUP_KEY, !g);
+      return !g;
     });
-    return Array.from(toolSet).sort();
-  }, [agents]);
+  };
 
-  // Extract all unique capabilities
-  const allCapabilities = useMemo(() => {
-    const capSet = new Set();
-    agents.forEach(agent => {
-      agentCapabilityList(agent).forEach(cap => capSet.add(cap));
-    });
-    return Array.from(capSet).sort();
-  }, [agents]);
+  const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
 
-  useEffect(() => {
-    loadAgents();
-    loadDomains();
-  }, []);
-
-  useEffect(() => {
-    setFilterLoading(true);
-    const timer = setTimeout(() => {
-      applyFilters();
-      setFilterLoading(false);
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [agents, searchQuery, selectedDomain, selectedStatus, selectedType, selectedTool, sortBy]);
-
-  const loadAgents = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [data] = await Promise.all([
-        apiJson('/agents'),
-        new Promise(resolve => setTimeout(resolve, 300)),
-      ]);
-      setAgents(data.agents || []);
-    } catch (error) {
-      console.error('Failed to load agents:', error);
-      toast.error('Failed to load agents');
+      const data = await apiJson("/agents");
+      setAgents(Array.isArray(data) ? data : data?.agents || []);
+    } catch (err) {
+      setError(err);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      load();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, [load]);
+
+  const changeView = (next) => {
+    setView(next);
+    store(VIEW_KEY, next);
+  };
+  const toggleGroup = (name) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      store(COLLAPSED_KEY, [...next]);
+      return next;
+    });
   };
 
-  const loadDomains = async () => {
-    try {
-      const data = await apiJson('/agents/domains');
-      setDomains(data.domains || []);
-    } catch (error) {
-      console.error('Failed to load domains:', error);
-    }
-  };
+  // ── derived facets ───────────────────────────────────────────────────────
+  const domains = useMemo(() => {
+    const counts = new Map();
+    agents.forEach((a) =>
+      counts.set(
+        a.domain || "other",
+        (counts.get(a.domain || "other") || 0) + 1,
+      ),
+    );
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [agents]);
+  const tools = useMemo(
+    () => [...new Set(agents.flatMap(agentToolNames))].sort(),
+    [agents],
+  );
+  const hasUsage = useMemo(
+    () => agents.some((a) => Number(a?._count?.messages) > 0),
+    [agents],
+  );
 
-  const applyFilters = () => {
-    let filtered = [...agents];
-
-    // Search filter - now also searches capabilities and tools
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(agent => {
-        // Basic text search
-        if (agent.name?.toLowerCase().includes(query) ||
-            agent.displayName?.toLowerCase().includes(query) ||
-            agent.title?.toLowerCase().includes(query) ||
-            agent.bio?.toLowerCase().includes(query) ||
-            agent.domain?.toLowerCase().includes(query)) {
-          return true;
-        }
-        // Search in capabilities
-        if (agentCapabilityList(agent).some(cap => cap.toLowerCase().includes(query))) {
-          return true;
-        }
-        // Search in tools
-        const tools = agentToolList(agent);
-        if (tools.some(tool => {
-          const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name);
-          return toolName?.toLowerCase().includes(query);
-        })) {
-          return true;
-        }
-        return false;
-      });
-    }
-
-    // Domain filter
-    if (selectedDomain) {
-      filtered = filtered.filter(agent => agent.domain === selectedDomain);
-    }
-
-    // Status filter
-    if (selectedStatus) {
-      filtered = filtered.filter(agent => agent.status === selectedStatus);
-    }
-
-    // Type filter
-    if (selectedType) {
-      filtered = filtered.filter(agent => agent.type === selectedType);
-    }
-
-    // Tool filter
-    if (selectedTool) {
-      filtered = filtered.filter(agent => {
-        const tools = agentToolList(agent);
-        return tools.some(tool => {
-          const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name);
-          return toolName === selectedTool;
-        });
-      });
-    }
-
-    // Sort
-    filtered.sort((a, b) => {
-      if (sortBy === 'newest') {
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = agents.filter((a) => {
+      if (domain && (a.domain || "other") !== domain) return false;
+      if (status && a.status !== status) return false;
+      if (type && a.type !== type) return false;
+      if (tool && !agentToolNames(a).includes(tool)) return false;
+      if (!q) return true;
+      const caps = Array.isArray(a.capabilities) ? a.capabilities : [];
+      return (
+        text(a.name).includes(q) ||
+        text(a.displayName).includes(q) ||
+        text(a.title).includes(q) ||
+        text(a.rank).includes(q) ||
+        text(a.bio).includes(q) ||
+        text(a.domain).includes(q) ||
+        caps.some((c) => text(c).includes(q)) ||
+        agentToolNames(a).some((t) => text(t).includes(q))
+      );
+    });
+    const name = (a) => a.displayName || a.name || "";
+    list.sort((a, b) => {
+      if (sort === "newest")
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-      } else if (sortBy === 'most-used') {
-        return (b._count?.messages || 0) - (a._count?.messages || 0);
-      } else if (sortBy === 'a-z') {
-        return (a.displayName || a.name || '').localeCompare(b.displayName || b.name || '');
-      } else if (sortBy === 'most-tools') {
-        return agentToolList(b).length - agentToolList(a).length;
-      }
-      return 0;
+      if (sort === "most-tools")
+        return (
+          agentToolNames(b).length - agentToolNames(a).length ||
+          name(a).localeCompare(name(b))
+        );
+      if (sort === "most-used")
+        return (
+          (b._count?.messages || 0) - (a._count?.messages || 0) ||
+          name(a).localeCompare(name(b))
+        );
+      return name(a).localeCompare(name(b));
     });
+    return list;
+  }, [agents, query, domain, status, type, tool, sort]);
 
-    setFilteredAgents(filtered);
-  };
-
-  const getDomainConfig = (domain) => {
-    return domainConfig[domain] || { Icon: Bot, color: 'slate' };
-  };
-
-  const getStatusConfig = (status) => {
-    return statusConfig[status] || { label: status, icon: '⚪', color: 'gray' };
-  };
-
-  const groupByDomain = () => {
-    const grouped = {};
-    filteredAgents.forEach(agent => {
-      const domain = agent.domain || 'other';
-      if (!grouped[domain]) {
-        grouped[domain] = [];
-      }
-      grouped[domain].push(agent);
+  const groups = useMemo(() => {
+    const map = new Map();
+    filtered.forEach((a) => {
+      const key = a.domain || "other";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(a);
     });
-    return grouped;
+    return [...map.entries()].sort(
+      (a, b) =>
+        (a[0] === "other") - (b[0] === "other") || a[0].localeCompare(b[0]),
+    );
+  }, [filtered]);
+
+  const hasFilters = Boolean(query || domain || status || type || tool);
+  const clearFilters = () => {
+    setQuery("");
+    setDomain("");
+    setStatus("");
+    setType("");
+    setTool("");
   };
 
-  const groupedAgents = groupByDomain();
-
-  const handleAgentUpdated = (updatedAgent, meta = {}) => {
+  // ── optimistic edits (the dialogs call back twice: optimistic, then final) ──
+  const onSaved = (updated, meta = {}) => {
     const snapshot = agents;
-    setAgents((prev) => prev.map((agent) => (agent.id === updatedAgent.id ? updatedAgent : agent)));
-    if (!meta.optimistic) {
-      setEditingAgent(null);
-    }
-    return () => {
-      setAgents(snapshot);
-    };
+    setAgents((prev) =>
+      prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a)),
+    );
+    if (!meta.optimistic) setEditing(null);
+    return () => setAgents(snapshot);
   };
-
-  const handleAgentDeleted = (agentToDelete, meta = {}) => {
+  const onDeleted = (target, meta = {}) => {
     const snapshot = agents;
-    const deletedId = typeof agentToDelete === 'string' ? agentToDelete : agentToDelete?.id;
-    setAgents((prev) => prev.filter((agent) => agent.id !== deletedId));
-    if (!meta.optimistic) {
-      setDeletingAgent(null);
-    }
-    return () => {
-      setAgents(snapshot);
-    };
+    const id = typeof target === "string" ? target : target?.id;
+    setAgents((prev) => prev.filter((a) => a.id !== id));
+    if (!meta.optimistic) setDeleting(null);
+    return () => setAgents(snapshot);
   };
 
-  return (
-    <div className="min-h-screen p-4 md:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <Breadcrumbs />
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gradient">Agent Library</h1>
-            <p className="text-muted mt-1">
-              {filteredAgents.length} of {agents.length} agents
-            </p>
-          </div>
-
-          <button
-            onClick={() => navigate('/builder-chat')}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Build New Agent</span>
-          </button>
-        </div>
-
-        {/* Filters */}
-        <div className="card">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {/* Search */}
-            <div className="relative md:col-span-2">
-              <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-muted" />
-              <input
-                type="text"
-                placeholder="Search agents, tools, or capabilities..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-elevated/50 border border-border rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-fg placeholder-slate-500"
-              />
-            </div>
-
-            {/* Domain Filter */}
-            <select
-              aria-label="Filter by domain"
-              value={selectedDomain}
-              onChange={(e) => setSelectedDomain(e.target.value)}
-              className="px-4 py-2 bg-elevated/50 border border-border rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-fg"
-            >
-              <option value="">All Domains</option>
-              {domains.map(d => (
-                <option key={d.name} value={d.name}>
-                  {d.name} ({d.count})
-                </option>
-              ))}
-            </select>
-
-            {/* Tool Filter */}
-            <select
-              aria-label="Filter by tool"
-              value={selectedTool}
-              onChange={(e) => setSelectedTool(e.target.value)}
-              className="px-4 py-2 bg-elevated/50 border border-border rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-fg"
-            >
-              <option value="">All Tools</option>
-              {allTools.map(tool => (
-                <option key={tool} value={tool}>
-                  {tool}
-                </option>
-              ))}
-            </select>
-
-            {/* Status Filter */}
-            <select
-              aria-label="Filter by status"
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-4 py-2 bg-elevated/50 border border-border rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-fg"
-            >
-              <option value="">All Status</option>
-              <option value="active">Active</option>
-              <option value="draft">Draft</option>
-              <option value="inactive">Inactive</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
-
-          {/* Active filters display */}
-          {(selectedDomain || selectedStatus || selectedType || selectedTool || searchQuery) && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted">Active filters:</span>
-              {searchQuery && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
-                  Search: {searchQuery}
-                  <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" className="hover:text-fg">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              {selectedDomain && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs">
-                  Domain: {selectedDomain}
-                  <button onClick={() => setSelectedDomain('')} aria-label="Clear domain filter" className="hover:text-fg">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              {selectedTool && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-cyan-500/20 text-cyan-400 text-xs">
-                  Tool: {selectedTool}
-                  <button onClick={() => setSelectedTool('')} aria-label="Clear tool filter" className="hover:text-fg">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              {selectedStatus && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
-                  Status: {selectedStatus}
-                  <button onClick={() => setSelectedStatus('')} aria-label="Clear status filter" className="hover:text-fg">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              {selectedType && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/20 text-amber-400 text-xs">
-                  Type: {selectedType}
-                  <button onClick={() => setSelectedType('')} aria-label="Clear type filter" className="hover:text-fg">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setSelectedDomain('');
-                  setSelectedStatus('');
-                  setSelectedType('');
-                  setSelectedTool('');
-                }}
-                className="text-xs text-muted hover:text-fg underline"
-              >
-                Clear all
-              </button>
-            </div>
-          )}
-
-          <div className="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex items-center flex-wrap gap-2">
-              <Filter className="w-4 h-4 text-muted" />
-              <span className="text-sm text-muted">Type:</span>
-              <button
-                onClick={() => setSelectedType('')}
-                className={`px-3 py-1 rounded-lg text-sm transition-colors ${!selectedType ? 'bg-unicorn-500 text-white' : 'bg-elevated text-muted hover:bg-elevated'}`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setSelectedType('individual')}
-                className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedType === 'individual' ? 'bg-unicorn-500 text-white' : 'bg-elevated text-muted hover:bg-elevated'}`}
-              >
-                Individual
-              </button>
-              <button
-                onClick={() => setSelectedType('team_lead')}
-                className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedType === 'team_lead' ? 'bg-unicorn-500 text-white' : 'bg-elevated text-muted hover:bg-elevated'}`}
-              >
-                Team Lead
-              </button>
-              <button
-                onClick={() => setSelectedType('orchestrator')}
-                className={`px-3 py-1 rounded-lg text-sm transition-colors ${selectedType === 'orchestrator' ? 'bg-unicorn-500 text-white' : 'bg-elevated text-muted hover:bg-elevated'}`}
-              >
-                Orchestrator
-              </button>
-            </div>
-
-            <div className="flex items-center space-x-3">
-              {/* Sort Dropdown */}
-              <div className="flex items-center space-x-2">
-                <ArrowUpDown className="w-4 h-4 text-muted" />
-                <select
-                  aria-label="Sort agents"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  className="px-3 py-1 bg-elevated/50 border border-border rounded-lg text-sm focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-fg"
-                >
-                  <option value="newest">Newest First</option>
-                  <option value="most-used">Most Used</option>
-                  <option value="most-tools">Most Tools</option>
-                  <option value="a-z">A-Z</option>
-                </select>
-              </div>
-
-              {/* View Mode Toggle */}
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setViewMode('grid')}
-                  aria-label="Grid view"
-                  aria-pressed={viewMode === 'grid'}
-                  className={`p-2 rounded transition-colors ${viewMode === 'grid' ? 'bg-unicorn-500' : 'bg-elevated hover:bg-elevated'}`}
-                >
-                  <div className="w-4 h-4 grid grid-cols-2 gap-0.5">
-                    <div className="bg-white rounded-sm"></div>
-                    <div className="bg-white rounded-sm"></div>
-                    <div className="bg-white rounded-sm"></div>
-                    <div className="bg-white rounded-sm"></div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  aria-label="List view"
-                  aria-pressed={viewMode === 'list'}
-                  className={`p-2 rounded transition-colors ${viewMode === 'list' ? 'bg-unicorn-500' : 'bg-elevated hover:bg-elevated'}`}
-                >
-                  <div className="w-4 h-4 flex flex-col gap-1">
-                    <div className="h-0.5 bg-white rounded"></div>
-                    <div className="h-0.5 bg-white rounded"></div>
-                    <div className="h-0.5 bg-white rounded"></div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Loading State */}
-        {(loading || filterLoading) && (
-          viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <CardSkeleton count={6} />
-            </div>
-          ) : (
-            <ListSkeleton rows={6} />
-          )
-        )}
-
-        {/* Agents Grouped by Domain */}
-        {!loading && !filterLoading && Object.keys(groupedAgents).length === 0 && (
-          <div className="text-center py-12">
-            <Bot className="w-16 h-16 text-muted mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-muted mb-2">No agents found</h3>
-            <p className="text-muted mb-6">Start by building your first agent</p>
-            <button
-              onClick={() => navigate('/builder-chat')}
-              className="btn-primary flex items-center space-x-2 mx-auto"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Build Agent</span>
-            </button>
-          </div>
-        )}
-
-        {!loading && !filterLoading && Object.keys(groupedAgents).map(domain => {
-          const config = getDomainConfig(domain);
-          const DomainIcon = config.Icon;
-          const domainAgents = groupedAgents[domain];
-
+  // ── the four states ──────────────────────────────────────────────────────
+  let body;
+  if (offline && !agents.length) {
+    body = <OfflineState onRetry={load} />;
+  } else if (loading) {
+    body = (
+      <LoadingState
+        variant={view === "list" ? "list" : "cards"}
+        count={6}
+        label="Loading agents"
+      />
+    );
+  } else if (error) {
+    body = (
+      <ErrorState
+        title="Couldn’t load the roster"
+        detail={humanize(error, { what: "loading agents" })}
+        onRetry={load}
+      />
+    );
+  } else if (!agents.length) {
+    body = (
+      <EmptyState
+        icon={Bot}
+        title="No agents yet"
+        description="Build your first agent with Gunny: describe the job, pick its tools, and it joins the brigade here."
+        action={
+          <Button icon={Sparkles} onClick={() => navigate("/builder-chat")}>
+            Build an agent
+          </Button>
+        }
+      />
+    );
+  } else if (!filtered.length) {
+    body = (
+      <EmptyState
+        compact
+        icon={Search}
+        title="No agents match"
+        description="Try another word, or clear the filters."
+        action={
+          <Button variant="secondary" size="sm" icon={X} onClick={clearFilters}>
+            Clear filters
+          </Button>
+        }
+      />
+    );
+  } else {
+    const renderCard = (agent) => (
+      <li key={agent.id}>
+        <AgentCard
+          agent={agent}
+          variant={view}
+          onOpen={() => navigate(`/agent/${agent.id}`)}
+          onChat={() => navigate(`/chat?agent=${encodeURIComponent(agent.id)}`)}
+          onEdit={() => setEditing(agent)}
+          onDelete={() => setDeleting(agent)}
+        />
+      </li>
+    );
+    const listClass =
+      view === "grid" ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" : "space-y-2";
+    body = !grouped ? (
+      <ul className={listClass} aria-label="Agents">
+        {filtered.map(renderCard)}
+      </ul>
+    ) : (
+      <div className="space-y-6">
+        {groups.map(([name, list]) => {
+          const Icon = DOMAIN_ICON[name] || Bot;
+          const open = !collapsed.has(name);
+          const panelId = `domain-${name}`;
           return (
-            <div key={domain} className="space-y-4">
-              {/* Domain Header */}
-              <div className="flex items-center space-x-3">
-                <span className="p-2 rounded-lg bg-elevated/60 text-muted">
-                  <DomainIcon className="w-6 h-6" aria-hidden="true" />
+            <section key={name} aria-labelledby={`${panelId}-title`}>
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={panelId}
+                onClick={() => toggleGroup(name)}
+                className="mb-3 flex min-h-touch w-full items-center gap-3 rounded-control px-1 text-left transition-colors duration-fast hover:bg-elevated/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span
+                  aria-hidden="true"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-elevated text-muted"
+                >
+                  <Icon className="h-4 w-4" />
                 </span>
-                <div>
-                  <h2 className="text-xl font-bold capitalize">{domain}</h2>
-                  <p className="text-sm text-muted">{domainAgents.length} agents</p>
-                </div>
-              </div>
-
-              {/* Agents Grid/List */}
-              {viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {domainAgents.map(agent => (
-                    <div key={agent.id} className="relative group">
+                <span className="min-w-0 flex-1">
+                  <span
+                    id={`${panelId}-title`}
+                    className="block text-heading text-fg-strong"
+                  >
+                    {prettyDomain(name)}
+                  </span>
+                </span>
+                <Chip size="xs">
+                  {list.length} agent{list.length === 1 ? "" : "s"}
+                </Chip>
+                <ChevronDown
+                  aria-hidden="true"
+                  className={`h-4 w-4 text-muted transition-transform duration-base ${open ? "" : "-rotate-90"}`}
+                />
+              </button>
+              {open && (
+                <ul
+                  id={panelId}
+                  className={
+                    view === "grid"
+                      ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+                      : "space-y-2"
+                  }
+                  aria-label={`${prettyDomain(name)} agents`}
+                >
+                  {list.map((agent) => (
+                    <li key={agent.id}>
                       <AgentCard
                         agent={agent}
-                        onClick={() => navigate(`/agent/${agent.id}`)}
+                        variant={view}
+                        onOpen={() => navigate(`/agent/${agent.id}`)}
+                        onChat={() =>
+                          navigate(
+                            `/chat?agent=${encodeURIComponent(agent.id)}`,
+                          )
+                        }
+                        onEdit={() => setEditing(agent)}
+                        onDelete={() => setDeleting(agent)}
                       />
-                      <div className="mt-4 flex gap-2 pt-4 border-t border-border/50">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingAgent(agent);
-                          }}
-                          className="flex-1 px-4 py-2 bg-unicorn-600/20 text-unicorn-400 rounded-lg hover:bg-unicorn-600/30 transition-colors flex items-center justify-center space-x-2"
-                        >
-                          <Edit className="w-4 h-4" />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeletingAgent(agent);
-                          }}
-                          className="flex-1 px-4 py-2 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600/30 transition-colors flex items-center justify-center space-x-2"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          <span>Delete</span>
-                        </button>
-                      </div>
-                      {/* Quick Chat overlay button */}
-                      <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/chat?agent=${agent.id}`);
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-unicorn-600 hover:bg-unicorn-500 text-white text-sm font-medium shadow-lg transition-colors"
-                        >
-                          <MessageSquare className="w-4 h-4" />
-                          Chat Now
-                        </button>
-                      </div>
-                    </div>
+                    </li>
                   ))}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {domainAgents.map(agent => (
-                    <AgentListItem
-                      key={agent.id}
-                      agent={agent}
-                      navigate={navigate}
-                      onEdit={() => setEditingAgent(agent)}
-                      onDelete={() => setDeletingAgent(agent)}
-                    />
-                  ))}
-                </div>
+                </ul>
               )}
-            </div>
+            </section>
           );
         })}
       </div>
+    );
+  }
 
-      {editingAgent && (
-        <AgentEditModal
-          agent={editingAgent}
-          onClose={() => setEditingAgent(null)}
-          onSave={handleAgentUpdated}
-        />
-      )}
-
-      {deletingAgent && (
-        <AgentDeleteConfirmModal
-          agent={deletingAgent}
-          onClose={() => setDeletingAgent(null)}
-          onDelete={handleAgentDeleted}
-        />
-      )}
-    </div>
-  );
-};
-
-// Agent List Item Component
-const AgentListItem = ({ agent, navigate, onEdit, onDelete }) => {
-  const statusConfig = getStatusConfig(agent.status);
-  const tools = agentToolList(agent);
-  const toolCount = tools.length;
-
-  const handleChatClick = (e) => {
-    e.stopPropagation();
-    navigate(`/chat?agent=${agent.id}`);
-  };
+  const quiet = !loading && (error || !agents.length); // nothing to filter yet
+  const description =
+    loading || quiet
+      ? "Every agent in the brigade"
+      : hasFilters
+        ? `${filtered.length} of ${agents.length} agents match`
+        : `${agents.length} agent${agents.length === 1 ? "" : "s"} across ${domains.length} domain${domains.length === 1 ? "" : "s"}`;
 
   return (
-    <div
-      className="card group hover:shadow-lg hover:shadow-unicorn-500/10 transition-all cursor-pointer"
-      onClick={() => navigate(`/agent/${agent.id}`)}
-    >
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center space-x-4 flex-1 min-w-0">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-unicorn-500 to-cyan-500 flex items-center justify-center text-xl flex-shrink-0">
-            {agent.avatar || '🦄'}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold group-hover:text-unicorn-400 transition-colors truncate">
-              {agent.displayName || agent.name}
-            </h3>
-            <p className="text-sm text-muted truncate">
-              {agent.rank && `${agent.rank} • `}
-              {agent.title || agent.type}
-            </p>
-          </div>
-        </div>
+    <Page>
+      <PageHeader
+        breadcrumbs={<Breadcrumbs />}
+        eyebrow="Agents"
+        title="Agent Library"
+        description={description}
+        actions={
+          <Button icon={Sparkles} onClick={() => navigate("/builder-chat")}>
+            Build an agent
+          </Button>
+        }
+      />
 
-        {/* Tool badges */}
-        <div className="hidden md:flex items-center gap-2 flex-shrink-0">
-          {tools.slice(0, 3).map((tool, idx) => {
-            const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name);
-            const ToolIcon = getToolIcon(toolName);
-            return (
-              <div
-                key={idx}
-                className="flex items-center gap-1 px-2 py-1 rounded bg-elevated/50 border border-border/50"
-                title={toolName}
+      {!quiet && (
+        <Card padding="sm" className="mb-5">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto_auto]">
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+              />
+              <Input
+                type="search"
+                aria-label="Search agents"
+                placeholder="Search agents, tools, capabilities…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select
+              aria-label="Filter by domain"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              className="md:w-44"
+            >
+              <option value="">All domains</option>
+              {domains.map(([name, count]) => (
+                <option key={name} value={name}>
+                  {prettyDomain(name)} ({count})
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Filter by tool"
+              value={tool}
+              onChange={(e) => setTool(e.target.value)}
+              className="md:w-44"
+            >
+              <option value="">All tools</option>
+              {tools.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Filter by status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="md:w-36"
+            >
+              <option value="">Any status</option>
+              {STATUSES.map((s) => (
+                <option key={s} value={s} className="capitalize">
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div
+              className="flex flex-wrap items-center gap-1.5"
+              role="group"
+              aria-label="Filter by type"
+            >
+              {TYPES.map((t) => (
+                <Chip
+                  key={t.id || "all"}
+                  tone="accent"
+                  size="md"
+                  selected={type === t.id}
+                  onClick={() => setType(t.id)}
+                >
+                  {t.label}
+                </Chip>
+              ))}
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <Select
+                aria-label="Sort agents"
+                size="sm"
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                className="w-40"
               >
-                <ToolIcon className="w-3 h-3 text-cyan-400" />
-                <span className="text-xs text-muted hidden lg:inline">{toolName}</span>
+                <option value="a-z">Name A–Z</option>
+                <option value="newest">Newest first</option>
+                <option value="most-tools">Most tools</option>
+                {hasUsage && <option value="most-used">Most used</option>}
+              </Select>
+              <div
+                className="flex items-center gap-0.5 rounded-control border border-border bg-surface/70 p-0.5"
+                role="group"
+                aria-label="Layout"
+              >
+                <IconButton
+                  icon={LayoutGrid}
+                  label="Grid view"
+                  size="sm"
+                  variant={view === "grid" ? "secondary" : "ghost"}
+                  aria-pressed={view === "grid"}
+                  onClick={() => changeView("grid")}
+                />
+                <IconButton
+                  icon={List}
+                  label="List view"
+                  size="sm"
+                  variant={view === "list" ? "secondary" : "ghost"}
+                  aria-pressed={view === "list"}
+                  onClick={() => changeView("list")}
+                />
+                <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
+                <IconButton
+                  icon={Layers}
+                  label={grouped ? "Show one grid" : "Group by domain"}
+                  size="sm"
+                  variant={grouped ? "secondary" : "ghost"}
+                  aria-pressed={grouped}
+                  onClick={toggleGrouped}
+                />
               </div>
-            );
-          })}
-          {toolCount > 3 && (
-            <span className="px-2 py-1 rounded bg-elevated/50 text-xs text-muted">
-              +{toolCount - 3}
-            </span>
-          )}
-          {toolCount === 0 && (
-            <span className="text-xs text-muted">No tools</span>
-          )}
-        </div>
-
-        {/* Capability summary */}
-        <div className="hidden lg:flex items-center gap-2 text-xs text-muted flex-shrink-0">
-          <div className="flex items-center gap-1">
-            <Wrench className="w-3 h-3" />
-            <span>{toolCount}</span>
+            </div>
           </div>
-          {agent.status === 'active' && (
-            <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+
+          {hasFilters && !loading && (
+            <div className="mt-2 flex items-center gap-2 text-caption text-muted">
+              <span>
+                {filtered.length} match{filtered.length === 1 ? "" : "es"}
+              </span>
+              <Button variant="link" size="xs" onClick={clearFilters}>
+                Clear
+              </Button>
+            </div>
           )}
-        </div>
+        </Card>
+      )}
 
-        {/* Status badge */}
-        <span className={`px-3 py-1 rounded-full text-xs flex-shrink-0 ${
-          agent.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' :
-          agent.status === 'draft' ? 'bg-yellow-500/20 text-yellow-400' :
-          agent.status === 'inactive' ? 'bg-slate-500/20 text-muted' :
-          'bg-slate-500/20 text-muted'
-        }`}>
-          {statusConfig.label}
-        </span>
+      {body}
 
-        {/* Quick Chat button */}
-        <button
-          onClick={handleChatClick}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-unicorn-500/20 text-unicorn-400 hover:bg-unicorn-500/30 transition-colors text-sm flex-shrink-0"
-          title="Start chat"
-        >
-          <MessageSquare className="w-4 h-4" />
-          <span className="hidden sm:inline">Chat</span>
-        </button>
-
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-unicorn-600/20 text-unicorn-400 hover:bg-unicorn-600/30 transition-colors text-sm flex-shrink-0"
-          title="Edit agent"
-        >
-          <Edit className="w-4 h-4" />
-          <span className="hidden sm:inline">Edit</span>
-        </button>
-
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors text-sm flex-shrink-0"
-          title="Delete agent"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span className="hidden sm:inline">Delete</span>
-        </button>
-      </div>
-    </div>
+      {editing && (
+        <AgentEditModal
+          agent={editing}
+          onClose={() => setEditing(null)}
+          onSave={onSaved}
+        />
+      )}
+      {deleting && (
+        <AgentDeleteConfirmModal
+          agent={deleting}
+          onClose={() => setDeleting(null)}
+          onDelete={onDeleted}
+        />
+      )}
+    </Page>
   );
-};
-
-// Helper function
-function getStatusConfig(status) {
-  return statusConfig[status] || { label: status, icon: '⚪', color: 'gray' };
 }
-
-export default AgentLibrary;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, memo } from 'react';
-import { Send, Loader2, Wrench, Square } from 'lucide-react';
+import { Send, Wrench, Square } from 'lucide-react';
 import Markdown from './Markdown';
+import { IconButton, Spinner, Textarea } from '../ui';
 
 /**
  * One message bubble. Memoized on the message object so that streaming (which
@@ -12,17 +13,17 @@ const MessageBubble = memo(function MessageBubble({ m }) {
   return (
     <div className={isUser ? 'text-right' : 'text-left'}>
       <div
-        className={`inline-block max-w-[88%] break-words rounded-xl px-3 py-2 text-left text-sm ${
+        className={`inline-block max-w-[88%] break-words rounded-card px-3 py-2 text-left text-body-sm ${
           isUser
-            ? 'whitespace-pre-wrap bg-unicorn-500/20 text-fg'
+            ? 'whitespace-pre-wrap bg-accent/15 text-fg'
             : m.isError
-              ? 'bg-red-500/15 text-red-200'
+              ? 'border border-danger/30 bg-danger/10 text-danger'
               : 'bg-elevated/70 text-fg'
         }`}
       >
         {(m.toolCalls || []).map((tc, i) => (
-          <div key={i} className="mb-1 flex items-center gap-1 text-[11px] text-cyan-300/80">
-            <Wrench className="h-3 w-3" />
+          <div key={i} className="mb-1 flex items-center gap-1 text-micro text-live">
+            <Wrench aria-hidden="true" className="h-3 w-3" />
             {tc.name}
             {tc.result === undefined && tc.error === undefined ? '…' : ''}
           </div>
@@ -35,12 +36,16 @@ const MessageBubble = memo(function MessageBubble({ m }) {
 
 /**
  * Presentational chat surface — fills its container (no h-screen), so it works
- * inside a floating comms window or a full page. Driven entirely by props from
- * useAgentChat; holds only the draft input locally.
+ * inside a floating comms window, a phone sheet or a full page. Driven entirely
+ * by props from useAgentChat; holds only the draft input locally.
+ *
+ * Keys: Enter sends, Shift+Enter is a newline, Escape stops a running answer
+ * (and only then — otherwise it bubbles so the window can close).
  */
-export default function ChatPanel({ agent, messages, isThinking, currentTool, isStreaming, onSend, onAbort }) {
+export default function ChatPanel({ agent, messages, isThinking, currentTool, isStreaming, onSend, onAbort, autoFocus = false }) {
   const [input, setInput] = useState('');
   const scrollRef = useRef(null);
+  const name = agent?.displayName || agent?.name || 'this agent';
 
   // Stick to the bottom only when the user is already near it, and scroll the
   // panel itself (not the nearest page/canvas) so streaming never hijacks the
@@ -48,9 +53,7 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
-      el.scrollTop = el.scrollHeight;
-    }
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) el.scrollTop = el.scrollHeight;
   }, [messages, isThinking]);
 
   const submit = () => {
@@ -64,16 +67,14 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
     <div className="flex h-full flex-col">
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3" role="log" aria-live="polite" aria-atomic="false">
         {messages.length === 0 && (
-          <p className="mt-4 px-2 text-center text-xs text-muted">
-            {agent?.bio || `Start chatting with ${agent?.displayName || 'this agent'}.`}
-          </p>
+          <p className="mt-4 px-2 text-center text-caption text-muted">{agent?.bio || `Start chatting with ${name}.`}</p>
         )}
         {messages.map((m) => (
           <MessageBubble key={m.id} m={m} />
         ))}
         {isThinking && (
-          <div className="flex items-center gap-2 text-xs text-muted">
-            <Loader2 className="h-3 w-3 animate-spin" />
+          <div className="flex items-center gap-2 text-caption text-muted">
+            <Spinner className="h-3 w-3" label={currentTool ? `Running ${currentTool}` : 'Thinking'} />
             {currentTool ? `running ${currentTool}…` : 'thinking…'}
           </div>
         )}
@@ -81,7 +82,7 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
 
       <div className="border-t border-border p-2">
         <div className="flex items-end gap-2">
-          <textarea
+          <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -90,32 +91,20 @@ export default function ChatPanel({ agent, messages, isThinking, currentTool, is
                 submit();
               } else if (e.key === 'Escape' && isStreaming) {
                 e.preventDefault();
+                e.stopPropagation();
                 onAbort?.();
               }
             }}
             rows={1}
-            placeholder={`Message ${agent?.displayName || 'agent'}…`}
-            className="max-h-24 flex-1 resize-none rounded-lg bg-elevated/70 px-3 py-2 text-sm text-fg placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-unicorn-500/50"
+            autoFocus={autoFocus}
+            aria-label={`Message ${name}`}
+            placeholder={`Message ${name}…`}
+            className="max-h-24 resize-none"
           />
           {isStreaming ? (
-            <button
-              onClick={() => onAbort?.()}
-              className="rounded-lg bg-elevated p-2 text-fg hover:bg-elevated"
-              title="Stop generating (Esc)"
-              aria-label="Stop generating"
-            >
-              <Square className="h-4 w-4" fill="currentColor" />
-            </button>
+            <IconButton icon={Square} label="Stop generating (Esc)" variant="secondary" onClick={() => onAbort?.()} />
           ) : (
-            <button
-              onClick={submit}
-              disabled={!input.trim()}
-              className="rounded-lg bg-unicorn-500/80 p-2 text-white hover:bg-unicorn-500 disabled:opacity-40"
-              title="Send"
-              aria-label="Send message"
-            >
-              <Send className="h-4 w-4" />
-            </button>
+            <IconButton icon={Send} label="Send message" variant="primary" disabled={!input.trim()} onClick={submit} />
           )}
         </div>
       </div>

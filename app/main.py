@@ -18,6 +18,7 @@ from app.api.admin_keys_routes import router as admin_keys_router
 from app.api.agent_routes import init_agent_routes
 from app.api.agent_routes import router as agent_router
 from app.api.apikey_routes import router as apikey_router
+from app.api.autonomy_routes import router as autonomy_router
 from app.api.avatar_routes import router as avatar_router
 from app.api.benchmark_routes import router as benchmark_router
 from app.api.billing_routes import router as billing_router  # BR-3.7 usage/billing surface
@@ -445,6 +446,9 @@ if not FEDERATION_ONLY:
     app.include_router(ralph_router, tags=["ralph"])
     app.include_router(crisis_router, prefix="/api/v1", tags=["crisis"])
     app.include_router(scheduled_run_router, prefix="/api/v1", tags=["scheduled-runs"])
+    # P-00092 autonomy catalogue: Brigade's scheduled runs + outside loops that
+    # register and report through /api/v1/autonomy.
+    app.include_router(autonomy_router, prefix="/api/v1", tags=["autonomy"])
     # OIDC / Keycloak auth routes - mounted at /api/v1 (primary) AND /api (matches
     # the Keycloak-registered callback URL https://brigade.magicunicorn.dev/api/auth/oidc/callback)
     app.include_router(oidc_router, prefix="/api/v1", tags=["auth"])

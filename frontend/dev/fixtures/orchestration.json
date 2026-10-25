@@ -1,0 +1,306 @@
+{
+  "missions": [
+    {
+      "id": "mission-q4-dd",
+      "name": "Q4 diligence: Contoso Robotics",
+      "description": "Full diligence pass before the November decision.",
+      "status": "active",
+      "progress": 0.45,
+      "agents": [
+        "the-general",
+        "col-finance",
+        "lt-taxstrat",
+        "prof-datasci"
+      ],
+      "leadAgent": "the-general",
+      "createdAt": "$now-6m",
+      "updatedAt": "$now-1m",
+      "completedAt": null,
+      "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f"
+    },
+    {
+      "id": "mission-fleet-patrol",
+      "name": "Nightly fleet patrol",
+      "description": "Disk, zpool, certificates, container restarts across the fleet.",
+      "status": "failed",
+      "progress": 0.6,
+      "agents": [
+        "maj-devops",
+        "sgt-cipher"
+      ],
+      "leadAgent": "maj-devops",
+      "createdAt": "$now-14h",
+      "updatedAt": "$now-13h55m",
+      "completedAt": "$now-13h55m",
+      "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f"
+    },
+    {
+      "id": "mission-morning-brief",
+      "name": "Morning brief",
+      "description": "What needs Sam today.",
+      "status": "completed",
+      "progress": 1,
+      "agents": [
+        "sgt-scribe",
+        "the-general"
+      ],
+      "leadAgent": "sgt-scribe",
+      "createdAt": "$now-8h",
+      "updatedAt": "$now-7h58m",
+      "completedAt": "$now-7h58m",
+      "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f"
+    }
+  ],
+  "storylines": [
+    {
+      "id": "delegation-chain",
+      "steps": [
+        {
+          "at": 0,
+          "actor": "general",
+          "type": "agent_started",
+          "data": {
+            "task": "{{task}}"
+          },
+          "message": "The General started working"
+        },
+        {
+          "at": 600,
+          "actor": "general",
+          "type": "agent_thinking",
+          "data": {
+            "thought": "Which desk owns this? Delegating to the lead."
+          },
+          "message": "Breaking the task into subtasks"
+        },
+        {
+          "at": 1400,
+          "actor": "general",
+          "type": "agent_invocation",
+          "to": "lead",
+          "protocol": "internal",
+          "purpose": "{{task}}"
+        },
+        {
+          "at": 1500,
+          "actor": "lead",
+          "type": "agent_started",
+          "data": {
+            "task": "{{task}}"
+          }
+        },
+        {
+          "at": 2100,
+          "actor": "lead",
+          "type": "agent_thinking",
+          "data": {
+            "thought": "Need current data before answering."
+          }
+        },
+        {
+          "at": 2700,
+          "actor": "lead",
+          "type": "tool_call",
+          "tool": "web_search",
+          "arguments": {
+            "query": "{{task}}",
+            "max_results": 5
+          }
+        },
+        {
+          "at": 4000,
+          "actor": "lead",
+          "type": "tool_result",
+          "tool": "web_search",
+          "result": {
+            "count": 5
+          }
+        },
+        {
+          "at": 4600,
+          "actor": "lead",
+          "type": "agent_invocation",
+          "to": "specialist",
+          "protocol": "{{protocol}}",
+          "purpose": "Run the detailed analysis"
+        },
+        {
+          "at": 4700,
+          "actor": "specialist",
+          "type": "agent_started",
+          "data": {
+            "task": "Run the detailed analysis"
+          }
+        },
+        {
+          "at": 5300,
+          "actor": "specialist",
+          "type": "tool_call",
+          "tool": "{{specialistTool}}",
+          "arguments": {
+            "input": "{{task}}"
+          }
+        },
+        {
+          "at": 6600,
+          "actor": "specialist",
+          "type": "tool_result",
+          "tool": "{{specialistTool}}",
+          "result": {
+            "ok": true
+          }
+        },
+        {
+          "at": 7200,
+          "actor": "specialist",
+          "type": "agent_responding",
+          "data": {}
+        },
+        {
+          "at": 8200,
+          "actor": "specialist",
+          "type": "agent_completed",
+          "data": {
+            "result": "Analysis complete; 3 findings, 1 flagged."
+          }
+        },
+        {
+          "at": 8600,
+          "actor": "lead",
+          "type": "agent_responding",
+          "data": {}
+        },
+        {
+          "at": 9600,
+          "actor": "lead",
+          "type": "agent_completed",
+          "data": {
+            "result": "Synthesized the specialist report."
+          }
+        },
+        {
+          "at": 10000,
+          "actor": "general",
+          "type": "agent_responding",
+          "data": {}
+        },
+        {
+          "at": 11200,
+          "actor": "general",
+          "type": "agent_completed",
+          "data": {
+            "result": "Mission step complete."
+          }
+        }
+      ]
+    },
+    {
+      "id": "delegation-with-tool-error",
+      "steps": [
+        {
+          "at": 0,
+          "actor": "general",
+          "type": "agent_started",
+          "data": {
+            "task": "{{task}}"
+          }
+        },
+        {
+          "at": 700,
+          "actor": "general",
+          "type": "agent_invocation",
+          "to": "lead",
+          "protocol": "internal",
+          "purpose": "{{task}}"
+        },
+        {
+          "at": 800,
+          "actor": "lead",
+          "type": "agent_started",
+          "data": {
+            "task": "{{task}}"
+          }
+        },
+        {
+          "at": 1500,
+          "actor": "lead",
+          "type": "agent_invocation",
+          "to": "specialist",
+          "protocol": "a2a",
+          "purpose": "Pull the live numbers from the database"
+        },
+        {
+          "at": 1600,
+          "actor": "specialist",
+          "type": "agent_started",
+          "data": {
+            "task": "Pull the live numbers from the database"
+          }
+        },
+        {
+          "at": 2300,
+          "actor": "specialist",
+          "type": "tool_call",
+          "tool": "database",
+          "arguments": {
+            "query": "SELECT * FROM invoices WHERE age_days > 30"
+          }
+        },
+        {
+          "at": 4800,
+          "actor": "specialist",
+          "type": "agent_error",
+          "tool": "database",
+          "error": "Tool 'database' failed: connection refused to postgres:5432 (timed out after 10s). The specialist stopped; no data was returned.",
+          "message": "Tool 'database' failed: connection refused to postgres:5432"
+        },
+        {
+          "at": 5600,
+          "actor": "lead",
+          "type": "agent_responding",
+          "data": {}
+        },
+        {
+          "at": 6600,
+          "actor": "lead",
+          "type": "agent_completed",
+          "data": {
+            "result": "Reported the failure upward with the error text; no fabricated numbers."
+          }
+        },
+        {
+          "at": 7000,
+          "actor": "general",
+          "type": "agent_responding",
+          "data": {}
+        },
+        {
+          "at": 8000,
+          "actor": "general",
+          "type": "agent_completed",
+          "data": {
+            "result": "Escalated: database unreachable."
+          }
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    "Q3 cash runway with the measured power numbers",
+    "Rollback plan for the Email-Ops prod deploy",
+    "Doe filing deadline from service on the 14th",
+    "Footage index throughput on the second GPU alone",
+    "Which receivables are more than 30 days out",
+    "Certificate expiry across the fleet",
+    "Top three leads to call first this week",
+    "Northbridge Tax tester invite status"
+  ],
+  "specialistTools": [
+    "calculator",
+    "database",
+    "pdf_extract",
+    "kg_query",
+    "shell",
+    "http_request"
+  ]
+}

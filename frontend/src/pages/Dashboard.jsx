@@ -1,31 +1,21 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+/**
+ * Dashboard — home. Honest numbers from /stats, quick actions, The General's
+ * live status from the orchestration stream, agents per domain, and the last
+ * conversations. All four states, in the place the content goes.
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Bot,
   Sparkles,
   BookOpen,
-  Activity,
-  Shield,
-  Zap,
   MessageSquare,
   MessagesSquare,
-  Database,
-  Server,
-  ArrowRight,
-  CheckCircle,
-  AlertCircle,
-  Clock,
-  Play,
   RefreshCw,
   GitBranch,
-  Users,
-  Cpu,
-  MemoryStick,
-  HardDrive,
-  Wifi,
-  WifiOff,
-  ChevronRight,
-  Plus,
+  Wrench,
+  Shield,
+  ArrowRight,
   DollarSign,
   Scale,
   Stethoscope,
@@ -33,18 +23,34 @@ import {
   Search,
   Target,
   Award,
-  Eye
+  Eye,
 } from 'lucide-react';
-import { toast } from 'react-hot-toast';
-import notify from '../utils/notify';
 import { apiJson } from '../services/http';
-import { GeneralAvatar, GunnyAvatar } from '../components/UnicornBrigadeLogo';
-import CardSkeleton from '../components/skeletons/CardSkeleton';
-import StatsSkeleton from '../components/skeletons/StatsSkeleton';
+import { humanize } from '../utils/errors';
+import notify from '../utils/notify';
+import { roleLine } from '../utils/agentClass';
+import useOrchestrationStream from '../hooks/useOrchestrationStream';
+import AgentAvatar from '../components/AgentAvatar';
 import StatCard from '../components/ui/StatCard';
 import BarList from '../components/ui/BarList';
+import {
+  Button,
+  Card,
+  CardHeader,
+  Chip,
+  Page,
+  PageHeader,
+  SectionHeader,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  OfflineState,
+  StatusDot,
+  statusMeta,
+  Tooltip,
+} from '../components/ui';
 
-// Domain → lucide mark (replaces the decorative emoji icons).
+// Domain → lucide mark.
 const DOMAIN_ICONS = {
   financial: DollarSign,
   legal: Scale,
@@ -56,564 +62,380 @@ const DOMAIN_ICONS = {
   intelligence: Eye,
 };
 
-const Dashboard = () => {
-  const navigate = useNavigate();
-  const [stats, setStats] = useState({
-    totalAgents: 0,
-    activeAgents: 0,
-    domains: [],
-    recentActivity: []
-  });
-  const [loading, setLoading] = useState(true);
-  const [systemStatus, setSystemStatus] = useState('online');
-  const [recentConversations, setRecentConversations] = useState([]);
-  const [systemHealth, setSystemHealth] = useState({
-    api: 'checking',
-    database: 'checking',
-    llm: 'checking',
-    memory: 'checking'
-  });
-  const [usageStats, setUsageStats] = useState({
-    messagesTotal: 0,
-    conversationsTotal: 0
-  });
-  const [refreshing, setRefreshing] = useState(false);
+const QUICK_ACTIONS = [
+  { icon: MessageSquare, label: 'New chat', description: 'Start a conversation with an agent', path: '/chat' },
+  { icon: GitBranch, label: 'Workflows', description: 'Run a multi-agent workflow template', path: '/workflows' },
+  { icon: BookOpen, label: 'Browse agents', description: 'The whole roster, by domain', path: '/library' },
+  { icon: Sparkles, label: 'Build an agent', description: 'Design a new agent with Gunny', path: '/builder-chat' },
+];
 
-  useEffect(() => {
-    loadDashboardData();
-    checkSystemHealth();
+// /health → the header chip. An HTTP answer with a body is "degraded"; no answer is "unreachable".
+const HEALTH = {
+  checking: { tone: 'neutral', label: 'Checking…', pulse: false },
+  ok: { tone: 'ok', label: 'All systems operational', pulse: false },
+  degraded: { tone: 'warn', label: 'Degraded', pulse: true },
+  down: { tone: 'danger', label: 'API unreachable', pulse: false },
+};
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+const fmt = (n) => (typeof n === 'number' ? n.toLocaleString() : '—');
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const [agents, setAgents] = useState([]);
+  const [domains, setDomains] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [conversations, setConversations] = useState([]);
+  const [health, setHealth] = useState('checking');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  const { statuses, connected } = useOrchestrationStream();
+
+  const checkHealth = useCallback(async () => {
+    try {
+      const h = await apiJson('/health', { redirectOn401: false });
+      const s = String(h?.status || '').toLowerCase();
+      setHealth(s === 'healthy' || s === 'operational' || s === 'ok' ? 'ok' : 'degraded');
+    } catch (err) {
+      setHealth(err?.status ? 'degraded' : 'down');
+    }
   }, []);
 
-  const loadDashboardData = async () => {
-    setLoading(true);
-    try {
-      const minDelay = new Promise(resolve => setTimeout(resolve, 300));
-      const [agentsData, domainsData, statsData] = await Promise.all([
-        apiJson('/agents'),
-        apiJson('/agents/domains'),
-        apiJson('/stats'),
-        minDelay,
-      ]);
-
-      const agents = agentsData.agents || [];
-      const domains = domainsData.domains || [];
-
+  const load = useCallback(
+    async ({ quiet = false } = {}) => {
+      if (quiet) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
       try {
-        const conversationsData = await apiJson('/conversations', { params: { limit: 5 } });
-        setRecentConversations(conversationsData.conversations || []);
+        const [agentsRes, domainsRes, statsRes, convRes] = await Promise.allSettled([
+          apiJson('/agents'),
+          apiJson('/agents/domains'),
+          apiJson('/stats'),
+          apiJson('/conversations', { params: { limit: 5 } }),
+        ]);
+        if (agentsRes.status === 'rejected') throw agentsRes.reason;
+        setAgents(agentsRes.value?.agents || []);
+        setDomains(domainsRes.status === 'fulfilled' ? domainsRes.value?.domains || [] : []);
+        setStats(statsRes.status === 'fulfilled' ? statsRes.value : null);
+        setConversations(convRes.status === 'fulfilled' ? convRes.value?.conversations || [] : []);
       } catch (err) {
-        console.log('Conversations endpoint not available');
-        setRecentConversations([]);
+        setError(err);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
+      checkHealth();
+    },
+    [checkHealth]
+  );
 
-      setStats({
-        totalAgents: statsData.totalAgents ?? agents.length,
-        activeAgents: statsData.activeAgents ?? agents.filter(a => a.status === 'active').length,
-        domains: domains,
-        recentActivity: agents.slice(0, 5) // Last 5 agents as activity
-      });
+  useEffect(() => {
+    load();
+  }, [load]);
 
-      // Real usage counts from /stats — no client-side estimates.
-      setUsageStats({
-        messagesTotal: statsData.totalMessages ?? 0,
-        conversationsTotal: statsData.totalConversations ?? 0
-      });
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
-      toast.error('Failed to load dashboard data');
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      load({ quiet: true });
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [load]);
 
-  const checkSystemHealth = async () => {
-    // API health + overall system status straight from /health
-    try {
-      const health = await apiJson('/health');
-      const apiHealthy = health?.status === 'healthy';
-      setSystemHealth(prev => ({ ...prev, api: apiHealthy ? 'healthy' : 'error' }));
-      setSystemStatus(apiHealthy ? 'online' : 'degraded');
-    } catch {
-      setSystemHealth(prev => ({ ...prev, api: 'error' }));
-      setSystemStatus('degraded');
-    }
-
-    // Check database via stats endpoint
-    try {
-      await apiJson('/stats');
-      setSystemHealth(prev => ({ ...prev, database: 'healthy' }));
-    } catch {
-      setSystemHealth(prev => ({ ...prev, database: 'error' }));
-    }
-
-    // Check LLM providers via models endpoint
-    try {
-      const res = await apiJson('/chat/models');
-      if (res.models?.length > 0) {
-        setSystemHealth(prev => ({ ...prev, llm: 'healthy' }));
-      } else {
-        setSystemHealth(prev => ({ ...prev, llm: 'warning' }));
-      }
-    } catch {
-      setSystemHealth(prev => ({ ...prev, llm: 'error' }));
-    }
-
-    // Assume memory is healthy if API is up
-    setSystemHealth(prev => ({ ...prev, memory: prev.api === 'healthy' ? 'healthy' : 'error' }));
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await loadDashboardData();
-    await checkSystemHealth();
-    setRefreshing(false);
+  const refresh = async () => {
+    await load({ quiet: true });
     notify.success('Dashboard refreshed');
   };
 
-  const quickActions = [
-    {
-      icon: MessageSquare,
-      label: 'New Chat',
-      description: 'Start a conversation with an agent',
-      path: '/chat',
-      color: 'from-unicorn-500 to-unicorn-400',
-      primary: true
-    },
-    {
-      icon: GitBranch,
-      label: 'Workflows',
-      description: 'Run hierarchical agent workflows',
-      path: '/workflows',
-      color: 'from-blue-500 to-cyan-500'
-    },
-    {
-      icon: BookOpen,
-      label: 'Browse Agents',
-      description: `Explore ${stats.totalAgents} available agents`,
-      path: '/library',
-      color: 'from-emerald-500 to-teal-500'
-    },
-    {
-      icon: Sparkles,
-      label: 'Build Agent',
-      description: 'Chat with Gunny to create new agents',
-      path: '/builder-chat',
-      color: 'from-orange-500 to-red-500'
-    }
+  const general = useMemo(
+    () => agents.find((a) => a.id === 'the-general') || agents.find((a) => a.reportsTo == null && /general/i.test(a.displayName || a.name || '')) || null,
+    [agents]
+  );
+  const gunny = useMemo(() => agents.find((a) => a.id === 'gunny') || null, [agents]);
+  const generalLive = general ? statuses[general.id] : null;
+  const generalStatus = generalLive?.status || 'idle';
+  const generalMeta = statusMeta(generalStatus);
+  const agentById = useMemo(() => Object.fromEntries(agents.map((a) => [a.id, a])), [agents]);
+
+  const totalAgents = stats?.totalAgents ?? agents.length;
+  const activeAgents = stats?.activeAgents ?? agents.filter((a) => a.status === 'active').length;
+  const h = HEALTH[health] || HEALTH.checking;
+
+  const statCards = [
+    { icon: Bot, label: 'Agents', value: fmt(totalAgents), change: `${fmt(activeAgents)} active` },
+    { icon: MessagesSquare, label: 'Conversations', value: fmt(stats?.totalConversations), change: 'All time' },
+    { icon: MessageSquare, label: 'Messages', value: fmt(stats?.totalMessages), change: 'All time' },
+    { icon: Wrench, label: 'Tools registered', value: fmt(stats?.totalTools), change: stats?.totalModels != null ? `${fmt(stats.totalModels)} models available` : 'Models unknown' },
   ];
 
-  // No fabricated trend arrows — there is no real period-over-period delta
-  // source. System Status carries a real tone (ok/warn); the rest are neutral.
-  const healthyCount = Object.values(systemHealth).filter(s => s === 'healthy').length;
-  const systemMetrics = [
-    {
-      icon: Bot,
-      label: 'Total Agents',
-      value: stats.totalAgents,
-      change: `${stats.activeAgents} active`
-    },
-    {
-      icon: MessageSquare,
-      label: 'Total Messages',
-      value: usageStats.messagesTotal.toLocaleString(),
-      change: 'All time'
-    },
-    {
-      icon: MessagesSquare,
-      label: 'Conversations',
-      value: usageStats.conversationsTotal.toLocaleString(),
-      change: 'All time'
-    },
-    {
-      icon: Activity,
-      label: 'System Status',
-      value: systemStatus === 'online' ? 'Online' : 'Degraded',
-      change: `${healthyCount}/4 healthy`,
-      tone: systemStatus === 'online' ? 'ok' : 'warn'
-    }
-  ];
+  // ── the four states ──────────────────────────────────────────────────────
+  let body;
+  if (offline && !agents.length) {
+    body = <OfflineState onRetry={() => load()} />;
+  } else if (loading) {
+    body = (
+      <div className="space-y-6">
+        <LoadingState variant="stats" label="Loading dashboard" />
+        <section aria-label="Quick actions" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {QUICK_ACTIONS.map((a) => (
+            <QuickAction key={a.path} action={a} />
+          ))}
+        </section>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader title="Agents by domain" description="Click a domain to filter the library" />
+            <LoadingState variant="list" count={5} label="Loading domains" />
+          </Card>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader title="The General" description="Commanding" />
+              <LoadingState variant="text" count={3} label="Loading The General" />
+            </Card>
+            <Card>
+              <CardHeader title="Gunny" description="Agent builder" />
+              <LoadingState variant="text" count={2} label="Loading Gunny" />
+            </Card>
+          </div>
+        </div>
+        <Card>
+          <CardHeader title="Recent conversations" />
+          <LoadingState variant="list" count={3} label="Loading conversations" />
+        </Card>
+      </div>
+    );
+  } else if (error) {
+    body = <ErrorState title="Couldn’t load the dashboard" detail={humanize(error, { what: 'loading the dashboard' })} onRetry={() => load()} />;
+  } else if (!agents.length) {
+    body = (
+      <EmptyState
+        icon={Bot}
+        title="No agents yet"
+        description="Build your first agent with Gunny, or import one from the library. The dashboard fills in as your Brigade grows."
+        action={
+          <Button icon={Sparkles} onClick={() => navigate('/builder-chat')}>
+            Build an agent
+          </Button>
+        }
+        secondary={
+          <Button variant="ghost" icon={BookOpen} onClick={() => navigate('/library')}>
+            Browse the library
+          </Button>
+        }
+      />
+    );
+  } else {
+    body = (
+      <div className="space-y-6">
+        <section aria-label="Key numbers" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {statCards.map((m) => (
+            <StatCard key={m.label} icon={m.icon} label={m.label} value={m.value} change={m.change} />
+          ))}
+        </section>
+
+        <section aria-label="Quick actions" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {QUICK_ACTIONS.map((a) => (
+            <QuickAction key={a.path} action={a} />
+          ))}
+        </section>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader
+              title="Agents by domain"
+              description="Click a domain to filter the library"
+              actions={
+                <Button variant="link" size="xs" iconRight={ArrowRight} onClick={() => navigate('/library')}>
+                  All agents
+                </Button>
+              }
+            />
+            {domains.length ? (
+              <BarList
+                items={domains.map((d) => {
+                  const Icon = DOMAIN_ICONS[d.name] || Bot;
+                  return {
+                    key: d.name,
+                    label: d.name,
+                    value: d.count,
+                    icon: <Icon className="h-4 w-4" aria-hidden="true" />,
+                    onClick: () => navigate(`/library?domain=${encodeURIComponent(d.name)}`),
+                  };
+                })}
+                renderValue={(item) => `${item.value} agent${item.value === 1 ? '' : 's'}`}
+              />
+            ) : (
+              <EmptyState compact icon={Bot} title="No domains yet" description="Agents are grouped by domain once they have one." />
+            )}
+          </Card>
+
+          <div className="space-y-6">
+            <Card>
+              <div className="flex items-start gap-3">
+                {general ? (
+                  <span className="relative shrink-0">
+                    <AgentAvatar agent={general} size={56} rounded="rounded-card" status={generalStatus} />
+                    <span className="absolute -bottom-0.5 -right-0.5">
+                      <StatusDot status={generalStatus} size="md" ring />
+                    </span>
+                  </span>
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lead font-semibold text-fg-strong">{general?.displayName || 'The General'}</h3>
+                  <p className="text-body-sm text-muted">{general ? roleLine(general) : 'Commanding'}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <Chip tone={generalMeta.tone} size="xs" dot pulse={generalMeta.pulse}>
+                      {generalMeta.label}
+                    </Chip>
+                    {generalLive?.detail && (
+                      <span className="truncate text-caption text-muted">{generalLive.detail}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <p className="mt-3 text-body-sm text-muted">
+                {general?.bio || 'Orchestrator of orchestrators: breaks a task into subtasks, delegates to specialists and synthesizes the result.'}
+              </p>
+              <p className="mt-2 text-caption text-subtle">
+                {connected ? 'Live feed connected' : 'Live feed reconnecting — status updates when it returns'}
+              </p>
+              <Button className="mt-4 w-full" icon={Shield} onClick={() => navigate('/command')}>
+                Open Command Center
+              </Button>
+            </Card>
+
+            <Card>
+              <div className="flex items-start gap-3">
+                {gunny ? <AgentAvatar agent={gunny} size={56} rounded="rounded-card" status={statuses[gunny.id]?.status || 'idle'} /> : null}
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lead font-semibold text-fg-strong">{gunny?.displayName || 'Gunny'}</h3>
+                  <p className="text-body-sm text-muted">{gunny ? roleLine(gunny) : 'Agent builder'}</p>
+                </div>
+              </div>
+              <p className="mt-3 text-body-sm text-muted">Builds new agents in conversation: job, personality, tools, model, deploy.</p>
+              <Button variant="secondary" className="mt-4 w-full" icon={Sparkles} onClick={() => navigate('/builder-chat')}>
+                Build an agent with Gunny
+              </Button>
+            </Card>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader
+            title="Recent conversations"
+            description={conversations.length ? `The last ${conversations.length}` : undefined}
+            actions={
+              <Button variant="secondary" size="sm" icon={MessageSquare} onClick={() => navigate('/chat')}>
+                New chat
+              </Button>
+            }
+          />
+          {conversations.length ? (
+            <ul className="divide-y divide-border/60" aria-label="Recent conversations">
+              {conversations.map((c) => {
+                const agent = agentById[c.agent_id] || c.agent || null;
+                const name = agent?.displayName || agent?.name || 'Agent';
+                return (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/chat?conversation=${encodeURIComponent(c.id)}`)}
+                      className="flex min-h-touch w-full items-center gap-3 rounded-control px-2 py-2 text-left transition-colors duration-fast hover:bg-elevated/60"
+                    >
+                      <AgentAvatar agent={agent || { id: c.agent_id, name }} size={36} rounded="rounded-control" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-body font-medium text-fg">{c.title || 'Untitled conversation'}</span>
+                        <span className="block truncate text-caption text-muted">
+                          {name} · {fmt(c.message_count || 0)} message{c.message_count === 1 ? '' : 's'}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-caption text-subtle">{timeAgo(c.updated_at)}</span>
+                      <ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0 text-subtle" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <EmptyState
+              compact
+              icon={MessagesSquare}
+              title="No conversations yet"
+              description="Start one and it shows up here."
+              action={
+                <Button size="sm" icon={MessageSquare} onClick={() => navigate('/chat')}>
+                  Start a chat
+                </Button>
+              }
+            />
+          )}
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen p-4 md:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-gradient">
-              Unicorn Brigade
-            </h1>
-            <p className="text-muted mt-2 text-lg">Agent Infrastructure Platform</p>
-          </div>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="p-2 rounded-lg bg-elevated/50 border border-border/50 text-muted hover:text-fg hover:bg-elevated/50 transition-colors disabled:opacity-50"
-              aria-label="Refresh dashboard"
-              title="Refresh dashboard"
-            >
-              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
-            <div className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${
-              systemStatus === 'online'
-                ? 'bg-emerald-500/20 border border-emerald-500/30'
-                : 'bg-orange-500/20 border border-orange-500/30'
-            }`}>
-              <div className={`w-2 h-2 rounded-full animate-pulse ${
-                systemStatus === 'online' ? 'bg-emerald-500' : 'bg-orange-500'
-              }`}></div>
-              <span className={`text-sm font-medium ${
-                systemStatus === 'online' ? 'text-emerald-400' : 'text-orange-400'
-              }`}>
-                {systemStatus === 'online' ? 'All Systems Operational' : 'System Degraded'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* System Metrics */}
-        {loading ? (
-          <StatsSkeleton count={4} />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {systemMetrics.map((metric, idx) => (
-              <StatCard
-                key={idx}
-                icon={metric.icon}
-                label={metric.label}
-                value={metric.value}
-                change={metric.change}
-                tone={metric.tone}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Quick Actions */}
-        <div>
-          <h2 className="text-2xl font-bold text-fg mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {quickActions.map((action, idx) => (
-              <button
-                key={idx}
-                onClick={() => navigate(action.path)}
-                className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6 hover:border-unicorn-500/50 transition-all group text-left"
-              >
-                <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${action.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                  <action.icon className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-lg font-semibold text-fg mb-2 group-hover:text-unicorn-400 transition-colors">
-                  {action.label}
-                </h3>
-                <p className="text-sm text-muted">{action.description}</p>
-                <ArrowRight className="w-5 h-5 text-unicorn-400 mt-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Agent Domains */}
-          <div className="lg:col-span-2">
-            <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-              <h2 className="text-xl font-bold text-fg mb-4">Agent Domains</h2>
-              {loading ? (
-                <div className="space-y-4">
-                  <CardSkeleton count={3} />
-                </div>
-              ) : stats.domains.length > 0 ? (
-                <BarList
-                  items={stats.domains.map((domain) => {
-                    const Icon = DOMAIN_ICONS[domain.name] || Bot;
-                    return {
-                      key: domain.name,
-                      label: domain.name,
-                      value: domain.count,
-                      icon: <Icon className="w-4 h-4" />,
-                      onClick: () => navigate(`/library?domain=${encodeURIComponent(domain.name)}`),
-                    };
-                  })}
-                  renderValue={(item) => `${item.value} agents`}
-                />
-              ) : (
-                <p className="text-center text-muted py-8">No domains available</p>
-              )}
-            </div>
-          </div>
-
-          {/* Character Cards */}
-          <div className="space-y-6">
-            {/* The General Card */}
-            <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-              <div className="flex items-center space-x-3 mb-4">
-                <GeneralAvatar size={64} />
-                <div>
-                  <h3 className="font-bold text-fg">The General</h3>
-                  <p className="text-sm text-unicorn-400">Commanding</p>
-                </div>
-              </div>
-              <p className="text-sm text-muted mb-4">
-                Orchestrator of orchestrators. Managing agent workflows and coordinating the entire Unicorn Brigade.
-              </p>
-              <button
-                onClick={() => navigate('/orchestration')}
-                className="w-full px-4 py-2 bg-gradient-to-r from-unicorn-500 to-unicorn-400 text-white rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-colors flex items-center justify-center space-x-2"
-              >
-                <Shield className="w-4 h-4" />
-                <span>View Orchestration</span>
-              </button>
-            </div>
-
-            {/* Gunny Card */}
-            <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-              <div className="flex items-center space-x-3 mb-4">
-                <GunnyAvatar size={64} />
-                <div>
-                  <h3 className="font-bold text-fg">Gunny</h3>
-                  <p className="text-sm text-emerald-400">Ready</p>
-                </div>
-              </div>
-              <p className="text-sm text-muted mb-4">
-                Your Agent Builder. Ready to help you create and deploy new AI agents through conversation.
-              </p>
-              <button
-                onClick={() => navigate('/builder-chat')}
-                className="w-full px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-lg hover:from-amber-600 hover:to-orange-700 transition-colors flex items-center justify-center space-x-2"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span>Chat with Gunny</span>
-              </button>
-            </div>
-
-            {/* System Health */}
-            <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-fg">System Health</h3>
-                <button
-                  onClick={checkSystemHealth}
-                  className="p-1 rounded hover:bg-elevated/50 text-muted hover:text-fg transition-colors"
-                  aria-label="Refresh health status"
-                  title="Refresh health status"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Server className={`w-4 h-4 ${
-                      systemHealth.api === 'healthy' ? 'text-emerald-400' :
-                      systemHealth.api === 'checking' ? 'text-muted animate-pulse' :
-                      'text-red-400'
-                    }`} />
-                    <span className="text-sm text-muted">API Server</span>
-                  </div>
-                  <span className={`text-xs ${
-                    systemHealth.api === 'healthy' ? 'text-emerald-400' :
-                    systemHealth.api === 'checking' ? 'text-muted' :
-                    'text-red-400'
-                  }`}>
-                    {systemHealth.api === 'healthy' ? 'Healthy' :
-                     systemHealth.api === 'checking' ? 'Checking...' : 'Error'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Database className={`w-4 h-4 ${
-                      systemHealth.database === 'healthy' ? 'text-emerald-400' :
-                      systemHealth.database === 'checking' ? 'text-muted animate-pulse' :
-                      'text-red-400'
-                    }`} />
-                    <span className="text-sm text-muted">Database</span>
-                  </div>
-                  <span className={`text-xs ${
-                    systemHealth.database === 'healthy' ? 'text-emerald-400' :
-                    systemHealth.database === 'checking' ? 'text-muted' :
-                    'text-red-400'
-                  }`}>
-                    {systemHealth.database === 'healthy' ? 'Connected' :
-                     systemHealth.database === 'checking' ? 'Checking...' : 'Disconnected'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Cpu className={`w-4 h-4 ${
-                      systemHealth.llm === 'healthy' ? 'text-emerald-400' :
-                      systemHealth.llm === 'warning' ? 'text-amber-400' :
-                      systemHealth.llm === 'checking' ? 'text-muted animate-pulse' :
-                      'text-red-400'
-                    }`} />
-                    <span className="text-sm text-muted">LLM Providers</span>
-                  </div>
-                  <span className={`text-xs ${
-                    systemHealth.llm === 'healthy' ? 'text-emerald-400' :
-                    systemHealth.llm === 'warning' ? 'text-amber-400' :
-                    systemHealth.llm === 'checking' ? 'text-muted' :
-                    'text-red-400'
-                  }`}>
-                    {systemHealth.llm === 'healthy' ? 'Active' :
-                     systemHealth.llm === 'warning' ? 'Limited' :
-                     systemHealth.llm === 'checking' ? 'Checking...' : 'Unavailable'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <MemoryStick className={`w-4 h-4 ${
-                      systemHealth.memory === 'healthy' ? 'text-emerald-400' :
-                      systemHealth.memory === 'checking' ? 'text-muted animate-pulse' :
-                      'text-red-400'
-                    }`} />
-                    <span className="text-sm text-muted">Memory Store</span>
-                  </div>
-                  <span className={`text-xs ${
-                    systemHealth.memory === 'healthy' ? 'text-emerald-400' :
-                    systemHealth.memory === 'checking' ? 'text-muted' :
-                    'text-red-400'
-                  }`}>
-                    {systemHealth.memory === 'healthy' ? 'Ready' :
-                     systemHealth.memory === 'checking' ? 'Checking...' : 'Offline'}
-                  </span>
-                </div>
-                <button
-                  onClick={() => navigate('/monitoring')}
-                  className="w-full mt-3 px-4 py-2 bg-elevated text-muted rounded-lg hover:bg-elevated transition-colors text-sm flex items-center justify-center space-x-2"
-                >
-                  <Activity className="w-4 h-4" />
-                  <span>View Detailed Metrics</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Two-column bottom section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Recent Conversations */}
-          <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-fg">Recent Conversations</h2>
-              <button
-                onClick={() => navigate('/chat')}
-                className="flex items-center space-x-1 text-sm text-unicorn-400 hover:text-unicorn-300 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>New Chat</span>
-              </button>
-            </div>
-            {loading ? (
-              <div className="space-y-4">
-                <CardSkeleton count={2} />
-              </div>
-            ) : recentConversations.length > 0 ? (
-              <div className="space-y-3">
-                {recentConversations.map((conv, idx) => (
-                  <div
-                    key={conv.id || idx}
-                    className="flex items-center justify-between p-3 rounded-lg bg-elevated/50 hover:bg-elevated transition-colors cursor-pointer group"
-                    onClick={() => navigate(`/chat?conversation=${conv.id}`)}
-                  >
-                    <div className="flex items-center space-x-3 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-unicorn-500 to-unicorn-400 flex items-center justify-center text-xl flex-shrink-0">
-                        {conv.agent?.avatar || '🦄'}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-fg truncate">
-                          {conv.title || 'Untitled conversation'}
-                        </p>
-                        <p className="text-sm text-muted truncate">
-                          {conv.agent?.displayName || conv.agent?.name || 'Agent'} • {conv.message_count || 0} messages
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs text-muted">
-                        {conv.updated_at ? new Date(conv.updated_at).toLocaleDateString() : ''}
-                      </span>
-                      <ChevronRight className="w-4 h-4 text-muted group-hover:text-unicorn-400 transition-colors" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <MessageSquare className="w-12 h-12 text-muted mx-auto mb-3" />
-                <p className="text-muted mb-4">No conversations yet</p>
-                <button
-                  onClick={() => navigate('/chat')}
-                  className="px-4 py-2 bg-unicorn-600 hover:bg-unicorn-500 text-white rounded-lg transition-colors text-sm"
-                >
-                  Start a Chat
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Recent Agents */}
-          <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-fg">Recent Agents</h2>
-              <button
-                onClick={() => navigate('/library')}
-                className="flex items-center space-x-1 text-sm text-unicorn-400 hover:text-unicorn-300 transition-colors"
-              >
-                <span>View All</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-            {loading ? (
-              <div className="space-y-4">
-                <CardSkeleton count={2} />
-              </div>
-            ) : stats.recentActivity.length > 0 ? (
-              <div className="space-y-3">
-                {stats.recentActivity.map((agent, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-3 rounded-lg bg-elevated/50 hover:bg-elevated transition-colors cursor-pointer group"
-                    onClick={() => navigate(`/agent/${agent.id}`)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-unicorn-500 to-unicorn-400 flex items-center justify-center text-xl">
-                        {agent.avatar || '🦄'}
-                      </div>
-                      <div>
-                        <p className="font-medium text-fg">{agent.displayName || agent.name}</p>
-                        <p className="text-sm text-muted">
-                          {agent.domain} • {(agent.tools?.length || agent.agentTools?.length || 0)} tools
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs ${
-                        agent.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' :
-                        'bg-slate-500/20 text-muted'
-                      }`}>
-                        {agent.status}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/chat?agent=${agent.id}`);
-                        }}
-                        className="p-1.5 rounded bg-unicorn-500/20 text-unicorn-400 hover:bg-unicorn-500/30 opacity-0 group-hover:opacity-100 transition-all"
-                        aria-label="Chat with agent"
-                        title="Chat with agent"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-center text-muted py-8">No agents available</p>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    <Page width="wide">
+      <PageHeader
+        eyebrow="Home"
+        title="Dashboard"
+        description={
+          loading
+            ? 'Your Brigade at a glance'
+            : error
+              ? 'Your Brigade at a glance'
+              : `${fmt(totalAgents)} agent${totalAgents === 1 ? '' : 's'} · ${fmt(stats?.totalConversations ?? 0)} conversations · ${fmt(domains.length)} domain${domains.length === 1 ? '' : 's'}`
+        }
+        actions={
+          <>
+            <Tooltip content="Open Monitoring">
+              <Link to="/monitoring" className="rounded-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg">
+                <Chip tone={h.tone} dot pulse={h.pulse}>
+                  {h.label}
+                </Chip>
+              </Link>
+            </Tooltip>
+            <Button variant="secondary" icon={RefreshCw} loading={refreshing} onClick={refresh} disabled={loading}>
+              Refresh
+            </Button>
+          </>
+        }
+      />
+      {body}
+    </Page>
   );
-};
+}
 
-export default Dashboard;
+function QuickAction({ action }) {
+  const navigate = useNavigate();
+  const Icon = action.icon;
+  return (
+    <Card as="button" type="button" interactive className="group h-full w-full" onClick={() => navigate(action.path)}>
+      <span aria-hidden="true" className="mb-3 flex h-10 w-10 items-center justify-center rounded-control bg-accent/10 text-accent">
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="block text-body font-semibold text-fg-strong">{action.label}</span>
+      <span className="mt-0.5 block text-body-sm text-muted">{action.description}</span>
+    </Card>
+  );
+}

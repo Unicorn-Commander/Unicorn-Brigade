@@ -1,1250 +1,1074 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+/**
+ * Chat — talk to one agent and watch it work.
+ *
+ *   /chat                       first active agent
+ *   /chat?agent=<id>            deep link from the roster / org chart / dock
+ *   /chat?conversation=<id>     resume a saved conversation
+ *
+ * The header is the agent's portrait, name and role with a live StatusDot
+ * (thinking · running a tool · responding) fed by the stream; the model and
+ * tools are one click away; the agent switcher is a searchable picker. Replies
+ * stream token by token, tool calls appear as cards the moment the agent makes
+ * them, Escape stops a reply, a failed send is an inline error with "Try again".
+ * Every state of the page is designed: loading (skeleton), no agents, agents
+ * failed, offline, conversation missing.
+ *
+ * Capabilities kept from the old page: streaming, tool calls, model override
+ * (now a picker, honouring the Settings default), conversation persistence
+ * (create / save / resume), voice calls (LiveKit), the ?agent= deep link,
+ * abort. The duplicated send path is gone; one `send` does it all.
+ */
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Send,
+  ArrowDown,
   Bot,
-  Sparkles,
-  ChevronDown,
-  ChevronUp,
-  Copy,
   Check,
-  Loader2,
-  RotateCcw,
-  Trash2,
+  ChevronDown,
   Cpu,
-  Zap,
-  Plus,
+  MessageSquarePlus,
+  MoreHorizontal,
+  Search,
+  Send,
+  Sparkles,
+  Square,
   Wrench,
-  ChevronRight,
-  Phone,
-  AlertTriangle,
-  RefreshCw,
-  Info,
-  Settings,
-  X
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import { toast } from 'react-hot-toast';
-import notify from '../utils/notify';
-import ToolCallCard, { getToolIcon } from '../components/ToolCallCard';
+import { humanize } from '../utils/errors';
+import { getPreferences } from '../utils/preferences';
+import { prettyDomain, roleLine } from '../utils/agentClass';
+import api from '../services/api';
+import { apiJson } from '../services/http';
+import AgentAvatar from '../components/AgentAvatar';
+import ChatMessage, { shortModel } from '../components/ChatMessage';
+import { getToolIcon } from '../components/ToolCallCard';
 import VoiceCallButton from '../components/VoiceCallButton';
 import VoiceCallModal from '../components/VoiceCallModal';
-import ListSkeleton from '../components/skeletons/ListSkeleton';
-import { apiJson } from '../services/http';
-import api from '../services/api';
+import {
+  Button,
+  Chip,
+  EmptyState,
+  ErrorState,
+  Field,
+  IconButton,
+  Input,
+  Kbd,
+  Menu,
+  OfflineState,
+  Select,
+  Sheet,
+  StatusDot,
+  statusMeta,
+  Tooltip,
+} from '../components/ui';
 
-const AgentChat = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [agents, setAgents] = useState([]);
-  const [agentsLoading, setAgentsLoading] = useState(true);
-  const [selectedAgent, setSelectedAgent] = useState(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [isThinking, setIsThinking] = useState(false);
-  const [showAgentPicker, setShowAgentPicker] = useState(false);
-  const [copiedId, setCopiedId] = useState(null);
+const SUGGESTIONS = ['Tell me about yourself', 'What can you help with?', 'What are you working on right now?'];
+const MAX_COMPOSER_PX = 148; // ~6 lines of body text plus padding
 
-  // Conversation persistence state
-  const [conversationId, setConversationId] = useState(null);
-  const [conversationTitle, setConversationTitle] = useState(null);
-  const [loadingConversation, setLoadingConversation] = useState(false);
+const agentName = (a) => a?.displayName || a?.name || 'Agent';
 
-  // Voice call state
-  const [showVoiceModal, setShowVoiceModal] = useState(false);
-  const [isInVoiceCall, setIsInVoiceCall] = useState(false);
+/** The agent's tools as { name, label, provider, paid } however the roster states them. */
+function toolList(agent) {
+  if (!agent) return [];
+  const details = Array.isArray(agent.toolDetails) && agent.toolDetails.length ? agent.toolDetails : null;
+  const source = details || (Array.isArray(agent.tools) && agent.tools.length ? agent.tools : agent.agentTools) || [];
+  return source
+    .map((t) => {
+      if (typeof t === 'string') return { name: t, label: t, provider: null, paid: false };
+      const name = t?.name || t?.tool?.name || t?.toolId || '';
+      return { name, label: t?.displayName || t?.tool?.displayName || name, provider: t?.provider || t?.tool?.provider || null, paid: Boolean(t?.costTier && t.costTier !== 'free') };
+    })
+    .filter((t) => t.name);
+}
 
-  // UI state for new features
-  const [showToolsPanel, setShowToolsPanel] = useState(false);
-  const [isExecutingTool, setIsExecutingTool] = useState(false);
-  const [currentToolName, setCurrentToolName] = useState(null);
-  const [retryMessage, setRetryMessage] = useState(null);
-
-  const messagesEndRef = useRef(null);
-  const textareaRef = useRef(null);
-  const abortRef = useRef(null);
-
-  // Load agents on mount
-  useEffect(() => {
-    loadAgents();
-  }, []);
-
-  // Check for conversation URL param on mount and when agents load
-  useEffect(() => {
-    const convId = searchParams.get('conversation');
-    if (convId && agents.length > 0) {
-      loadConversation(convId);
-    }
-  }, [searchParams, agents]);
-
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
-    }
-  }, [input]);
-
-  const loadAgents = async () => {
-    try {
-      setAgentsLoading(true);
-      const data = await apiJson('/agents');
-      setAgents(data.agents || []);
-      // Pick the agent from ?agent=<id> if present, else the first active one —
-      // but only when not loading a specific conversation. (Fixes click-to-chat
-      // deep-links from Dashboard / AgentLibrary / the org chart, which pass
-      // ?agent= but were previously ignored.)
-      const convId = searchParams.get('conversation');
-      if (!convId) {
-        const agentId = searchParams.get('agent');
-        const requested = agentId && (data.agents || []).find(a => a.id === agentId);
-        const active = (data.agents || []).find(a => a.status === 'active');
-        const pick = requested || active;
-        if (pick && !selectedAgent) {
-          setSelectedAgent(pick);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load agents:', err);
-    } finally {
-      setAgentsLoading(false);
-    }
-  };
-
-  const loadConversation = async (convId) => {
-    setLoadingConversation(true);
-    try {
-      const data = await apiJson(`/conversations/${convId}`);
-
-      setConversationId(data.id);
-      setConversationTitle(data.title);
-
-      // Find and set the agent
-      if (data.agent_id) {
-        const agent = agents.find(a => a.id === data.agent_id);
-        if (agent) {
-          setSelectedAgent(agent);
-        }
-      }
-
-      // Populate messages
-      if (data.messages && data.messages.length > 0) {
-        const loadedMessages = data.messages.map((msg, index) => ({
-          id: msg.id || `loaded-${index}`,
-          role: msg.role,
-          content: msg.content,
-          model: msg.model,
-          tokens_used: msg.tokens_used,
-          tool_calls: msg.tool_calls,
-          tool_results: msg.tool_results,
-          timestamp: msg.created_at,
-          agent: msg.role === 'assistant' ? {
-            id: data.agent_id,
-            name: data.agent?.displayName || data.agent?.name || 'Agent',
-            avatar: data.agent?.avatar || '🦄',
-          } : undefined,
-          isStreaming: false
-        }));
-        setMessages(loadedMessages);
-      }
-
-      notify.success('Conversation loaded');
-    } catch (err) {
-      console.error('Failed to load conversation:', err);
-      toast.error('Failed to load conversation');
-      // Clear the URL param if conversation can't be loaded
-      setSearchParams({});
-    } finally {
-      setLoadingConversation(false);
-    }
-  };
-
-  const createConversation = async (agentId, model) => {
-    try {
-      // No hardcoded user_id: the backend infers it from the authenticated
-      // user (and defaults to "anonymous" otherwise).
-      const data = await apiJson('/conversations', {
-        method: 'POST',
-        body: JSON.stringify({
-          agent_id: agentId,
-          model: model
-        })
-      });
-      setConversationId(data.id);
-      // Update URL without full navigation
-      setSearchParams({ conversation: data.id });
-      return data.id;
-    } catch (err) {
-      console.error('Failed to create conversation:', err);
-      // Non-blocking - chat still works without persistence
-      return null;
-    }
-  };
-
-  const saveMessage = async (convId, role, content, model, tokensUsed) => {
-    if (!convId) return;
-    try {
-      await apiJson(`/conversations/${convId}/messages`, {
-        method: 'POST',
-        body: JSON.stringify({
-          role,
-          content,
-          model: model || undefined,
-          tokens_used: tokensUsed || undefined
-        })
-      });
-    } catch (err) {
-      console.error('Failed to save message:', err);
-      // Non-blocking - don't interrupt the chat flow
-    }
-  };
-
-  const startNewConversation = () => {
-    setMessages([]);
-    setConversationId(null);
-    setConversationTitle(null);
-    setSearchParams({});
-    notify.success('New conversation started');
-  };
-
-  const sendMessage = useCallback(async () => {
-    if (!input.trim() || !selectedAgent || isStreaming) return;
-
-    const userMsg = {
-      id: Date.now(),
-      role: 'user',
-      content: input.trim(),
-      timestamp: new Date().toISOString()
+/** A stored message's tool_calls + tool_results, merged back into live cards. */
+function storedToolCalls(msg) {
+  const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+  const results = Array.isArray(msg.tool_results) ? msg.tool_results : [];
+  const used = new Set();
+  return calls.map((c, i) => {
+    let r = results.find((x, j) => !used.has(j) && (c.id ? x.id === c.id : x.name === c.name));
+    if (!r && results[i] && !used.has(i)) r = results[i];
+    if (r) used.add(results.indexOf(r));
+    const errored = r && (r.error || r.success === false);
+    return {
+      id: c.id || `${msg.id}-${i}`,
+      name: c.name || c.function?.name || 'tool',
+      arguments: c.arguments || c.function?.arguments || {},
+      result: r ? r.result ?? r.output ?? r.content ?? null : null,
+      error: errored ? r.error || 'The tool reported a failure.' : undefined,
     };
+  });
+}
 
-    const history = messages.map(m => ({
-      role: m.role,
-      content: m.content
-    }));
+/** Attach a tool_result event to its call: by id first, then the first unfilled call with that name. */
+function attachResult(calls, ev) {
+  let matched = false;
+  return calls.map((tc) => {
+    if (matched) return tc;
+    const hit = ev.id ? tc.id === ev.id : tc.name === ev.name && tc.result === undefined && !tc.error;
+    if (!hit) return tc;
+    matched = true;
+    return { ...tc, result: ev.result ?? null, error: ev.error || (ev.success === false ? 'The tool reported a failure.' : undefined) };
+  });
+}
 
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setIsThinking(true);
-    setIsStreaming(true);
-    setIsExecutingTool(false);
-    setCurrentToolName(null);
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = (e) => setMatches(e.matches);
+    mq.addEventListener('change', on);
+    setMatches(mq.matches);
+    return () => mq.removeEventListener('change', on);
+  }, [query]);
+  return matches;
+}
 
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+// ── agent picker: search + listbox, portraits, full keyboard ─────────────────
+function AgentPicker({ agents, selected, onSelect, status, disabled, isPhone }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+  const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return agents;
+    return agents.filter(
+      (a) => agentName(a).toLowerCase().includes(q) || String(a.domain || '').toLowerCase().includes(q) || String(a.title || '').toLowerCase().includes(q)
+    );
+  }, [agents, query]);
+
+  const groups = useMemo(() => {
+    const m = new Map();
+    for (const a of filtered) {
+      const d = prettyDomain(a.domain);
+      if (!m.has(d)) m.set(d, []);
+      m.get(d).push(a);
     }
+    return [...m.entries()];
+  }, [filtered]);
 
-    // Create conversation on first message if none exists
-    let activeConvId = conversationId;
-    if (!activeConvId && messages.length === 0) {
-      activeConvId = await createConversation(selectedAgent.id, selectedAgent.model);
-    }
-
-    // Save user message
-    saveMessage(activeConvId, 'user', userMsg.content);
-
-    // Create placeholder for assistant message
-    const assistantId = Date.now() + 1;
-    const assistantMsg = {
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      toolCalls: [],
-      agent: {
-        id: selectedAgent.id,
-        name: selectedAgent.displayName || selectedAgent.name,
-        avatar: selectedAgent.avatar || '🦄',
-      },
-      model: selectedAgent.model || 'unknown',
-      timestamp: new Date().toISOString(),
-      usage: null,
-      isStreaming: true
+  useEffect(() => {
+    if (!open) return undefined;
+    setQuery('');
+    setActive(Math.max(0, agents.findIndex((a) => a.id === selected?.id)));
+    const raf = requestAnimationFrame(() => inputRef.current?.focus());
+    const onDoc = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
     };
+    document.addEventListener('mousedown', onDoc);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener('mousedown', onDoc);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
-    try {
-      const res = await api.streamAgentChat(selectedAgent.id, {
-        message: userMsg.content,
-        stream: true,
-        history,
-        model: selectedAgent.model,
-        temperature: selectedAgent.temperature
-      });
+  useEffect(() => {
+    if (open) setActive(0);
+  }, [query, open]);
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
+  useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [active, open]);
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = '';
-      let gotFirstToken = false;
-      let finalModel = selectedAgent.model;
-
-      // Add the empty assistant message
-      setMessages(prev => [...prev, assistantMsg]);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const payload = line.slice(6).trim();
-          if (payload === '[DONE]') continue;
-
-          try {
-            const event = JSON.parse(payload);
-
-            if (event.type === 'start') {
-              // Stream started
-              if (event.tools && event.tools.length > 0) {
-                // Agent has tools — keep thinking indicator while tools execute
-              } else {
-                setIsThinking(false);
-              }
-            } else if (event.type === 'tool_call') {
-              // Tool is being called - show it in the message
-              setIsThinking(false);
-              setIsExecutingTool(true);
-              setCurrentToolName(event.name);
-              setMessages(prev =>
-                prev.map(m =>
-                  m.id === assistantId
-                    ? {
-                        ...m,
-                        toolCalls: [
-                          ...(m.toolCalls || []),
-                          { name: event.name, arguments: event.arguments }
-                        ]
-                      }
-                    : m
-                )
-              );
-            } else if (event.type === 'tool_result') {
-              // Tool returned a result - update the matching tool call
-              setIsExecutingTool(false);
-              setCurrentToolName(null);
-              setMessages(prev =>
-                prev.map(m => {
-                  if (m.id !== assistantId) return m;
-                  const updatedCalls = (m.toolCalls || []).map(tc =>
-                    tc.name === event.name && tc.result === undefined
-                      ? { ...tc, result: event.result, error: event.error }
-                      : tc
-                  );
-                  return { ...m, toolCalls: updatedCalls };
-                })
-              );
-            } else if (event.type === 'token') {
-              if (!gotFirstToken) {
-                gotFirstToken = true;
-                setIsThinking(false);
-                setIsExecutingTool(false);
-              }
-              accumulated += event.content;
-              setMessages(prev =>
-                prev.map(m =>
-                  m.id === assistantId
-                    ? { ...m, content: accumulated }
-                    : m
-                )
-              );
-            } else if (event.type === 'complete') {
-              const finalContent = event.content || accumulated;
-              finalModel = event.model || selectedAgent.model;
-              setMessages(prev =>
-                prev.map(m =>
-                  m.id === assistantId
-                    ? {
-                        ...m,
-                        content: finalContent,
-                        model: finalModel,
-                        toolCalls: event.toolCalls || m.toolCalls || [],
-                        isStreaming: false
-                      }
-                    : m
-                )
-              );
-              // Save assistant message to conversation
-              saveMessage(activeConvId, 'assistant', finalContent, finalModel, event.usage?.total_tokens);
-            } else if (event.type === 'error') {
-              throw new Error(event.error);
-            }
-          } catch (parseErr) {
-            // Skip unparseable lines
-          }
-        }
-      }
-
-      // Finalize
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === assistantId ? { ...m, isStreaming: false } : m
-        )
-      );
-
-      // If stream ended without a complete event, save accumulated content
-      if (accumulated && !accumulated.includes('[DONE]')) {
-        // Check if complete event already saved by verifying the message
-        const msgs = messages;
-        const assistantInMsgs = msgs.find(m => m.id === assistantId);
-        if (!assistantInMsgs || assistantInMsgs.isStreaming) {
-          saveMessage(activeConvId, 'assistant', accumulated, finalModel);
-        }
-      }
-    } catch (err) {
-      console.error('Chat error:', err);
-      setIsThinking(false);
-      setIsExecutingTool(false);
-
-      // If we already added an empty assistant message, update it with error
-      setMessages(prev => {
-        const hasAssistant = prev.some(m => m.id === assistantId);
-        if (hasAssistant) {
-          return prev.map(m =>
-            m.id === assistantId
-              ? {
-                  ...m,
-                  content: `Sorry, I encountered an error: ${err.message}`,
-                  isError: true,
-                  isStreaming: false,
-                  errorDetails: err.message
-                }
-              : m
-          );
-        }
-        return [
-          ...prev,
-          {
-            ...assistantMsg,
-            content: `Sorry, I encountered an error: ${err.message}`,
-            isError: true,
-            isStreaming: false,
-            errorDetails: err.message
-          }
-        ];
-      });
-    } finally {
-      setIsStreaming(false);
-      setIsThinking(false);
-      setIsExecutingTool(false);
-    }
-  }, [input, selectedAgent, isStreaming, messages, conversationId]);
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+  const close = (restore = true) => {
+    setOpen(false);
+    if (restore) triggerRef.current?.focus();
+  };
+  const choose = (a) => {
+    onSelect(a);
+    close();
+  };
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => Math.min(filtered.length - 1, i + 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => Math.max(0, i - 1)); }
+    else if (e.key === 'Home') { e.preventDefault(); setActive(0); }
+    else if (e.key === 'End') { e.preventDefault(); setActive(Math.max(0, filtered.length - 1)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[active]) choose(filtered[active]); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+    else if (e.key === 'Tab' && !isPhone) { close(false); }
   };
 
-  const copyToClipboard = async (text, id) => {
-    await navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const clearChat = () => {
-    setMessages([]);
-    setConversationId(null);
-    setConversationTitle(null);
-    setSearchParams({});
-    notify.success('Chat cleared');
-  };
-
-  // Retry the last failed message
-  const retryLastMessage = useCallback(async (messageToRetry) => {
-    if (!messageToRetry || isStreaming) return;
-
-    // Find the user message before the failed message
-    const messageIndex = messages.findIndex(m => m.id === messageToRetry.id);
-    if (messageIndex <= 0) return;
-
-    const userMessage = messages[messageIndex - 1];
-    if (userMessage.role !== 'user') return;
-
-    // Remove the failed message
-    setMessages(prev => prev.filter(m => m.id !== messageToRetry.id));
-
-    // Resend the user message
-    setInput(userMessage.content);
-    // Use setTimeout to allow state to update before sending
-    setTimeout(() => {
-      setInput('');
-      // We need to manually trigger the send with the content
-      sendMessageWithContent(userMessage.content);
-    }, 0);
-  }, [messages, isStreaming]);
-
-  // Separate send function that takes content directly
-  const sendMessageWithContent = useCallback(async (content) => {
-    if (!content.trim() || !selectedAgent || isStreaming) return;
-
-    const userMsg = {
-      id: Date.now(),
-      role: 'user',
-      content: content.trim(),
-      timestamp: new Date().toISOString()
-    };
-
-    const history = messages.map(m => ({
-      role: m.role,
-      content: m.content
-    }));
-
-    setMessages(prev => [...prev, userMsg]);
-    setIsThinking(true);
-    setIsStreaming(true);
-    setIsExecutingTool(false);
-    setCurrentToolName(null);
-
-    // Create conversation on first message if none exists
-    let activeConvId = conversationId;
-    if (!activeConvId && messages.length === 0) {
-      activeConvId = await createConversation(selectedAgent.id, selectedAgent.model);
-    }
-
-    // Save user message
-    saveMessage(activeConvId, 'user', userMsg.content);
-
-    // Create placeholder for assistant message
-    const assistantId = Date.now() + 1;
-    const assistantMsg = {
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      toolCalls: [],
-      agent: {
-        id: selectedAgent.id,
-        name: selectedAgent.displayName || selectedAgent.name,
-        avatar: selectedAgent.avatar || '🦄',
-      },
-      model: selectedAgent.model || 'unknown',
-      timestamp: new Date().toISOString(),
-      usage: null,
-      isStreaming: true
-    };
-
-    try {
-      const res = await api.streamAgentChat(selectedAgent.id, {
-        message: userMsg.content,
-        stream: true,
-        history,
-        model: selectedAgent.model,
-        temperature: selectedAgent.temperature
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = '';
-      let gotFirstToken = false;
-      let finalModel = selectedAgent.model;
-
-      // Add the empty assistant message
-      setMessages(prev => [...prev, assistantMsg]);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const payload = line.slice(6).trim();
-          if (payload === '[DONE]') continue;
-
-          try {
-            const event = JSON.parse(payload);
-
-            if (event.type === 'start') {
-              if (event.tools && event.tools.length > 0) {
-                // Agent has tools - keep thinking indicator while tools execute
-              } else {
-                setIsThinking(false);
-              }
-            } else if (event.type === 'tool_call') {
-              setIsThinking(false);
-              setIsExecutingTool(true);
-              setCurrentToolName(event.name);
-              setMessages(prev =>
-                prev.map(m =>
-                  m.id === assistantId
-                    ? {
-                        ...m,
-                        toolCalls: [
-                          ...(m.toolCalls || []),
-                          { name: event.name, arguments: event.arguments }
-                        ]
-                      }
-                    : m
-                )
-              );
-            } else if (event.type === 'tool_result') {
-              setIsExecutingTool(false);
-              setCurrentToolName(null);
-              setMessages(prev =>
-                prev.map(m => {
-                  if (m.id !== assistantId) return m;
-                  const updatedCalls = (m.toolCalls || []).map(tc =>
-                    tc.name === event.name && tc.result === undefined
-                      ? { ...tc, result: event.result, error: event.error }
-                      : tc
-                  );
-                  return { ...m, toolCalls: updatedCalls };
-                })
-              );
-            } else if (event.type === 'token') {
-              if (!gotFirstToken) {
-                gotFirstToken = true;
-                setIsThinking(false);
-                setIsExecutingTool(false);
-              }
-              accumulated += event.content;
-              setMessages(prev =>
-                prev.map(m =>
-                  m.id === assistantId
-                    ? { ...m, content: accumulated }
-                    : m
-                )
-              );
-            } else if (event.type === 'complete') {
-              const finalContent = event.content || accumulated;
-              finalModel = event.model || selectedAgent.model;
-              setMessages(prev =>
-                prev.map(m =>
-                  m.id === assistantId
-                    ? {
-                        ...m,
-                        content: finalContent,
-                        model: finalModel,
-                        toolCalls: event.toolCalls || m.toolCalls || [],
-                        isStreaming: false
-                      }
-                    : m
-                )
-              );
-              saveMessage(activeConvId, 'assistant', finalContent, finalModel, event.usage?.total_tokens);
-            } else if (event.type === 'error') {
-              throw new Error(event.error);
-            }
-          } catch (parseErr) {
-            // Skip unparseable lines
-          }
-        }
-      }
-
-      // Finalize
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === assistantId ? { ...m, isStreaming: false } : m
-        )
-      );
-    } catch (err) {
-      console.error('Chat error:', err);
-      setIsThinking(false);
-      setIsExecutingTool(false);
-
-      setMessages(prev => {
-        const hasAssistant = prev.some(m => m.id === assistantId);
-        if (hasAssistant) {
-          return prev.map(m =>
-            m.id === assistantId
-              ? {
-                  ...m,
-                  content: `Sorry, I encountered an error: ${err.message}`,
-                  isError: true,
-                  isStreaming: false,
-                  errorDetails: err.message
-                }
-              : m
-          );
-        }
-        return [
-          ...prev,
-          {
-            ...assistantMsg,
-            content: `Sorry, I encountered an error: ${err.message}`,
-            isError: true,
-            isStreaming: false,
-            errorDetails: err.message
-          }
-        ];
-      });
-    } finally {
-      setIsStreaming(false);
-      setIsThinking(false);
-      setIsExecutingTool(false);
-    }
-  }, [selectedAgent, isStreaming, messages, conversationId]);
-
-  // Group agents by domain for picker
-  const agentsByDomain = agents.reduce((acc, agent) => {
-    const domain = agent.domain || 'other';
-    if (!acc[domain]) acc[domain] = [];
-    acc[domain].push(agent);
-    return acc;
-  }, {});
-
-  return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-bg via-surface to-bg">
-      {/* Header */}
-      <div className="flex-shrink-0 border-b border-border/50 backdrop-blur-xl bg-card/80 relative z-50">
-        <div className="flex items-center justify-between px-6 py-3">
-          {/* Left: Agent Selector + Conversation Title */}
-          <div className="flex items-center space-x-4">
-            {/* Agent Selector */}
-            <div className="relative">
-              <button
-                onClick={() => setShowAgentPicker(!showAgentPicker)}
-                className="flex items-center space-x-3 px-4 py-2 rounded-xl bg-elevated/60 border border-border/50 hover:border-unicorn-500/40 transition-all"
-                disabled={agentsLoading}
-              >
-                {agentsLoading ? (
-                  <div className="flex items-center space-x-2 text-sm text-muted">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Loading agents...</span>
-                  </div>
-                ) : selectedAgent ? (
-                  <>
-                    <span className="text-2xl">{selectedAgent.avatar || '🦄'}</span>
-                    <div className="text-left">
-                      <p className="text-sm font-semibold text-fg">
-                        {selectedAgent.displayName || selectedAgent.name}
-                      </p>
-                      <p className="text-xs text-muted">{selectedAgent.domain}</p>
-                    </div>
-                  </>
-                ) : (
-                  <span className="text-sm text-muted">Select Agent...</span>
-                )}
-                <ChevronDown className="w-4 h-4 text-muted" />
-              </button>
-
-              {/* Agent Picker Dropdown */}
-              <AnimatePresence>
-                {showAgentPicker && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute top-full left-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl bg-elevated border border-border/50 shadow-2xl shadow-black/50 z-50"
-                  >
-                    {agentsLoading ? (
-                      <div className="p-4">
-                        <ListSkeleton rows={4} />
-                      </div>
-                    ) : (
-                      Object.entries(agentsByDomain).map(([domain, domainAgents]) => (
-                        <div key={domain}>
-                          <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-widest text-muted uppercase">
-                            {domain}
-                          </p>
-                          {domainAgents.map((agent) => (
-                            <button
-                              key={agent.id}
-                              onClick={() => {
-                                setSelectedAgent(agent);
-                                setShowAgentPicker(false);
-                              }}
-                              className={`w-full flex items-center space-x-3 px-4 py-2.5 hover:bg-elevated/50 transition-colors ${
-                                selectedAgent?.id === agent.id ? 'bg-unicorn-500/10' : ''
-                              }`}
-                            >
-                              <span className="text-xl">{agent.avatar || '🦄'}</span>
-                              <div className="text-left flex-1 min-w-0">
-                                <p className="text-sm font-medium text-fg truncate">
-                                  {agent.displayName || agent.name}
-                                </p>
-                                <p className="text-xs text-muted truncate">{agent.title || agent.agentType}</p>
-                              </div>
-                              {selectedAgent?.id === agent.id && (
-                                <div className="w-2 h-2 rounded-full bg-unicorn-500"></div>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      ))
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Conversation Title (shown when resuming) */}
-            {conversationTitle && (
-              <div className="hidden md:block px-3 py-1.5 rounded-lg bg-elevated/40 border border-border/30">
-                <p className="text-xs text-muted truncate max-w-[200px]" title={conversationTitle}>
-                  {conversationTitle}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center space-x-2">
-            {selectedAgent && (
-              <>
-                <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-elevated/60 border border-border/40">
-                  <Cpu className="w-3 h-3 text-muted" />
-                  <span className="text-xs text-muted">
-                    {(selectedAgent.model || 'gpt-4o-mini').split('/').pop()}
-                  </span>
-                </div>
-                {/* Tools toggle button */}
-                {(selectedAgent.tools?.length > 0 || selectedAgent.agentTools?.length > 0) && (
-                  <button
-                    onClick={() => setShowToolsPanel(!showToolsPanel)}
-                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all ${
-                      showToolsPanel
-                        ? 'bg-unicorn-500/20 text-unicorn-400 border border-unicorn-500/40'
-                        : 'bg-elevated/60 text-muted border border-border/40 hover:text-fg hover:border-unicorn-500/40'
-                    }`}
-                    title="View available tools"
-                  >
-                    <Wrench className="w-3 h-3" />
-                    <span className="text-xs hidden sm:inline">
-                      {selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0} Tools
-                    </span>
-                  </button>
-                )}
-              </>
-            )}
-            <button
-              onClick={startNewConversation}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-muted hover:text-fg hover:bg-elevated/50 transition-all"
-              title="New Conversation"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="text-xs hidden sm:inline">New Chat</span>
-            </button>
-            <button
-              onClick={clearChat}
-              disabled={messages.length === 0}
-              className="p-2 rounded-lg text-muted hover:text-fg hover:bg-elevated/50 disabled:opacity-30 transition-all"
-              title="Clear chat"
-              aria-label="Clear chat"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-            {/* Voice Call Button */}
-            {selectedAgent && (
-              <VoiceCallButton
-                onClick={() => setShowVoiceModal(true)}
-                isConnecting={false}
-                isConnected={isInVoiceCall}
-                disabled={!selectedAgent || isStreaming}
-                size="md"
-              />
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Tools Panel - Collapsible */}
-      <AnimatePresence>
-        {showToolsPanel && selectedAgent && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden border-b border-border/50 bg-card/60"
-          >
-            <div className="px-6 py-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-2">
-                  <Wrench className="w-4 h-4 text-unicorn-400" />
-                  <span className="text-sm font-medium text-fg">Available Tools</span>
-                  <span className="px-2 py-0.5 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
-                    {selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0}
-                  </span>
-                </div>
-                <button
-                  onClick={() => setShowToolsPanel(false)}
-                  aria-label="Close tools panel"
-                  className="p-1 rounded hover:bg-elevated/50 text-muted hover:text-fg transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {(selectedAgent.tools || selectedAgent.agentTools || []).map((tool, idx) => {
-                  const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name || 'tool');
-                  const ToolIcon = getToolIcon(toolName);
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-elevated/60 border border-border/50"
-                    >
-                      <ToolIcon className="w-3.5 h-3.5 text-cyan-400" />
-                      <span className="text-xs text-muted">{toolName}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="mt-3 text-xs text-muted">
-                These tools will be automatically used when relevant to your questions.
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Close dropdown on outside click */}
-      {showAgentPicker && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setShowAgentPicker(false)}
-        />
-      )}
-
-      {/* Loading Conversation Overlay */}
-      {loadingConversation && (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 className="w-10 h-10 text-unicorn-400 animate-spin mx-auto mb-3" />
-            <p className="text-muted text-sm">Loading conversation...</p>
-          </div>
-        </div>
-      )}
-
-      {/* Messages */}
-      {!loadingConversation && (
-        <div className="flex-1 overflow-y-auto scrollbar-thin">
-          <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 flex items-center justify-center mb-6">
-                  {selectedAgent ? (
-                    <span className="text-4xl">{selectedAgent.avatar || '🦄'}</span>
-                  ) : (
-                    <Sparkles className="w-10 h-10 text-unicorn-400" />
-                  )}
-                </div>
-                <h2 className="text-2xl font-bold text-fg mb-2">
-                  {selectedAgent ? `Chat with ${selectedAgent.displayName || selectedAgent.name}` : 'Start a Conversation'}
-                </h2>
-                <p className="text-muted max-w-md mb-4">
-                  {selectedAgent
-                    ? selectedAgent.bio || selectedAgent.title || 'Ready to assist you with your questions.'
-                    : 'Select an agent from the dropdown and ask anything.'}
-                </p>
-
-                {/* Show agent tools summary */}
-                {selectedAgent && (selectedAgent.tools?.length > 0 || selectedAgent.agentTools?.length > 0) && (
-                  <div className="mb-6 px-4 py-3 rounded-xl bg-elevated/40 border border-border/30 max-w-md">
-                    <div className="flex items-center justify-center space-x-2 mb-2">
-                      <Wrench className="w-4 h-4 text-cyan-400" />
-                      <span className="text-sm font-medium text-muted">
-                        {selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0} Tools Available
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 justify-center">
-                      {(selectedAgent.tools || selectedAgent.agentTools || []).slice(0, 5).map((tool, idx) => {
-                        const toolName = typeof tool === 'string' ? tool : (tool.tool?.name || tool.name || 'tool');
-                        return (
-                          <span
-                            key={idx}
-                            className="px-2 py-0.5 rounded bg-elevated/50 text-xs text-muted"
-                          >
-                            {toolName}
-                          </span>
-                        );
-                      })}
-                      {(selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0) > 5 && (
-                        <span className="px-2 py-0.5 rounded bg-elevated/50 text-xs text-muted">
-                          +{(selectedAgent.tools?.length || selectedAgent.agentTools?.length || 0) - 5} more
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {selectedAgent && (
-                  <div className="flex flex-wrap gap-2 justify-center">
-                    {['Tell me about yourself', 'What can you help with?', 'Show me what you can do'].map(
-                      (prompt) => (
-                        <button
-                          key={prompt}
-                          onClick={() => {
-                            setInput(prompt);
-                            textareaRef.current?.focus();
-                          }}
-                          className="px-4 py-2 rounded-full bg-elevated/60 border border-border/50 text-sm text-muted hover:border-unicorn-500/40 hover:text-fg transition-all"
-                        >
-                          {prompt}
-                        </button>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <AnimatePresence initial={false}>
-                {messages.map((msg) => (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    {msg.role === 'user' ? (
-                      /* User message */
-                      <div className="max-w-[80%]">
-                        <div className="px-5 py-3 rounded-2xl rounded-br-md bg-unicorn-600/80 text-fg">
-                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                        </div>
-                      </div>
-                    ) : (
-                      /* Assistant message */
-                      <div className="max-w-[85%] group">
-                        <div className="flex items-start space-x-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-slate-700 to-slate-600 flex items-center justify-center text-lg">
-                            {msg.agent?.avatar || '🦄'}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            {/* Agent name */}
-                            <div className="flex items-center space-x-2 mb-1">
-                              <span className="text-xs font-semibold text-unicorn-400">
-                                {msg.agent?.name || 'Agent'}
-                              </span>
-                              {msg.model && (
-                                <span className="flex items-center space-x-1 px-1.5 py-0.5 rounded bg-elevated/60 text-[10px] text-muted">
-                                  <Zap className="w-2.5 h-2.5" />
-                                  <span>{msg.model.split('/').pop()}</span>
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Tool calls */}
-                            {msg.toolCalls && msg.toolCalls.length > 0 && (
-                              <div className="mb-2">
-                                {msg.toolCalls.map((tc, i) => (
-                                  <ToolCallCard key={`${msg.id}-tool-${i}`} toolCall={tc} />
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Message content */}
-                            <div
-                              className={`prose prose-invert prose-sm max-w-none ${
-                                msg.isError ? 'text-red-400' : 'text-fg'
-                              }`}
-                            >
-                              {msg.content ? (
-                                <ReactMarkdown
-                                  components={{
-                                    code({ node, inline, className, children, ...props }) {
-                                      if (inline) {
-                                        return (
-                                          <code className="px-1.5 py-0.5 rounded bg-elevated text-unicorn-300 text-xs" {...props}>
-                                            {children}
-                                          </code>
-                                        );
-                                      }
-                                      return (
-                                        <div className="relative my-3">
-                                          <pre className="rounded-lg bg-card/80 border border-border/50 p-4 overflow-x-auto text-xs">
-                                            <code className={className} {...props}>
-                                              {children}
-                                            </code>
-                                          </pre>
-                                        </div>
-                                      );
-                                    },
-                                    p({ children }) {
-                                      return <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>;
-                                    },
-                                    ul({ children }) {
-                                      return <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>;
-                                    },
-                                    ol({ children }) {
-                                      return <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>;
-                                    }
-                                  }}
-                                >
-                                  {msg.content}
-                                </ReactMarkdown>
-                              ) : msg.isStreaming ? (
-                                <span className="inline-block w-1.5 h-4 bg-unicorn-400 animate-pulse rounded-sm"></span>
-                              ) : null}
-                            </div>
-
-                            {/* Error message with retry */}
-                            {msg.isError && !msg.isStreaming && (
-                              <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                                <div className="flex items-start space-x-2">
-                                  <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-                                  <div className="flex-1">
-                                    <p className="text-xs text-red-400 font-medium mb-1">Something went wrong</p>
-                                    <p className="text-xs text-red-300/70">{msg.errorDetails || 'An error occurred while processing your request.'}</p>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() => retryLastMessage(msg)}
-                                  disabled={isStreaming}
-                                  className="mt-2 flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-medium transition-colors disabled:opacity-50"
-                                >
-                                  <RefreshCw className="w-3 h-3" />
-                                  <span>Retry</span>
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Copy button - always visible for non-error messages */}
-                            {msg.content && !msg.isStreaming && !msg.isError && (
-                              <div className="mt-2 flex items-center space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                  onClick={() => copyToClipboard(msg.content, msg.id)}
-                                  className="flex items-center space-x-1 text-xs text-muted hover:text-fg transition-colors"
-                                >
-                                  {copiedId === msg.id ? (
-                                    <>
-                                      <Check className="w-3 h-3" />
-                                      <span>Copied</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Copy className="w-3 h-3" />
-                                      <span>Copy response</span>
-                                    </>
-                                  )}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
-
-                {/* Thinking / Tool Execution indicator */}
-                {(isThinking || isExecutingTool) && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex justify-start"
-                  >
-                    <div className="flex items-start space-x-3">
-                      <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-slate-700 to-slate-600 flex items-center justify-center text-lg">
-                        {selectedAgent?.avatar || '🦄'}
-                      </div>
-                      <div className={`px-4 py-3 rounded-2xl rounded-bl-md border ${
-                        isExecutingTool
-                          ? 'bg-amber-500/10 border-amber-500/30'
-                          : 'bg-elevated/60 border-border/40'
-                      }`}>
-                        <div className="flex items-center space-x-2">
-                          {isExecutingTool ? (
-                            <>
-                              <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
-                              <div className="flex flex-col">
-                                <span className="text-xs text-amber-400 font-medium">
-                                  Executing tool: {currentToolName}
-                                </span>
-                                <span className="text-[10px] text-amber-400/60">
-                                  Running tool and processing results...
-                                </span>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="flex space-x-1">
-                                <span className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                                <span className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                                <span className="w-2 h-2 bg-unicorn-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                              </div>
-                              <span className="text-xs text-muted">
-                                {selectedAgent?.displayName || 'Agent'} is thinking...
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="flex-shrink-0 border-t border-border/50 backdrop-blur-xl bg-card/80">
-        <div className="max-w-3xl mx-auto px-4 py-4">
-          <div className="flex items-end space-x-3">
-            <div className="flex-1 relative">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  selectedAgent
-                    ? `Message ${selectedAgent.displayName || selectedAgent.name}...`
-                    : 'Select an agent to start...'
-                }
-                disabled={!selectedAgent || isStreaming || loadingConversation}
-                rows={1}
-                className="w-full resize-none rounded-xl bg-elevated/60 border border-border/50 px-4 py-3 pr-12 text-sm text-fg placeholder-slate-500 focus:outline-none focus:border-unicorn-500/50 focus:ring-1 focus:ring-unicorn-500/20 disabled:opacity-40 transition-all"
-              />
-            </div>
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim() || !selectedAgent || isStreaming || loadingConversation}
-              aria-label="Send message"
-              className="flex-shrink-0 w-10 h-10 rounded-xl bg-unicorn-600 hover:bg-unicorn-500 disabled:bg-elevated disabled:text-muted text-white flex items-center justify-center transition-all disabled:opacity-40"
-            >
-              {isStreaming ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          <p className="mt-2 text-[10px] text-muted text-center">
-            Press Enter to send, Shift+Enter for new line
-          </p>
-        </div>
-      </div>
-
-      {/* Voice Call Modal */}
-      <VoiceCallModal
-        isOpen={showVoiceModal}
-        onClose={() => setShowVoiceModal(false)}
-        agent={selectedAgent}
-        onCallStart={() => {
-          setIsInVoiceCall(true);
-          notify.success(`Voice call started with ${selectedAgent?.displayName || selectedAgent?.name}`);
-        }}
-        onCallEnd={() => {
-          setIsInVoiceCall(false);
-          notify.success('Voice call ended');
-        }}
+  const activeId = filtered[active] ? `agent-opt-${filtered[active].id}` : undefined;
+  const search = (
+    <div className="relative shrink-0 border-b border-border p-2">
+      <Search aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+      <Input
+        ref={inputRef}
+        type="search"
+        size={isPhone ? 'lg' : 'sm'}
+        role="combobox"
+        aria-label="Search agents"
+        aria-expanded="true"
+        aria-controls="agent-picker-list"
+        aria-activedescendant={activeId}
+        aria-autocomplete="list"
+        placeholder="Search agents…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={onKeyDown}
+        className="pl-8"
       />
     </div>
   );
-};
+  const list = (
+    <div id="agent-picker-list" ref={listRef} role="listbox" aria-label="Agents" className={`overflow-y-auto p-1 ${isPhone ? 'max-h-[60dvh]' : 'max-h-80'}`}>
+      {groups.length === 0 && <p className="px-3 py-6 text-center text-body-sm text-muted">No agent matches “{query}”.</p>}
+      {groups.map(([domain, items]) => (
+        <div key={domain} role="group" aria-label={domain}>
+          <p className="px-2.5 pb-1 pt-2 text-micro font-semibold uppercase tracking-wider text-subtle">{domain}</p>
+          {items.map((a) => {
+            const idx = filtered.indexOf(a);
+            const isSel = a.id === selected?.id;
+            return (
+              <button
+                key={a.id}
+                id={`agent-opt-${a.id}`}
+                role="option"
+                type="button"
+                aria-selected={isSel}
+                data-index={idx}
+                tabIndex={-1}
+                onMouseEnter={() => setActive(idx)}
+                onClick={() => choose(a)}
+                className={`flex w-full items-center gap-2.5 rounded-control px-2 text-left transition-colors duration-fast ${isPhone ? 'min-h-touch py-2' : 'py-1.5'} ${
+                  idx === active ? 'bg-elevated' : ''
+                }`}
+              >
+                <AgentAvatar agent={a} size={28} rounded="rounded-chip" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-body text-fg">{agentName(a)}</span>
+                  <span className="block truncate text-caption text-muted">{roleLine(a)}</span>
+                </span>
+                {isSel && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-accent" />}
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
 
-export default AgentChat;
+  return (
+    <div ref={rootRef} className="relative min-w-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={selected ? `${agentName(selected)}, ${statusMeta(status).label}. Change agent` : 'Choose an agent'}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); }
+        }}
+        className="flex min-h-touch min-w-0 max-w-full items-center gap-2.5 rounded-control py-1 pl-1 pr-2 text-left transition-colors duration-fast hover:bg-elevated/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+      >
+        {selected ? (
+          <>
+            <span className="relative shrink-0">
+              <AgentAvatar agent={selected} size={36} rounded="rounded-control" status={status} />
+              <StatusDot status={status} size="md" ring className="absolute -bottom-0.5 -right-0.5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-body font-semibold text-fg-strong">{agentName(selected)}</span>
+              <span className="hidden truncate text-caption text-muted sm:block">
+                {roleLine(selected)} · {statusMeta(status).label}
+              </span>
+            </span>
+          </>
+        ) : (
+          <span className="text-body text-muted">Choose an agent</span>
+        )}
+        <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted" />
+      </button>
+
+      {open && isPhone && (
+        <Sheet isOpen onClose={() => close()} title="Choose an agent" side="bottom">
+          {search}
+          {list}
+        </Sheet>
+      )}
+      {open && !isPhone && (
+        <div className="absolute left-0 top-full z-popover mt-1 flex w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-card border border-border bg-overlay shadow-e3 animate-scale-in">
+          {search}
+          {list}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── skeleton of the real shape: header + three turns ─────────────────────────
+const Bone = ({ className = '' }) => <div className={`rounded-chip bg-elevated/80 ${className}`} />;
+function ChatSkeleton({ header = false, turns = true }) {
+  return (
+    <div role="status" aria-busy="true" aria-label="Loading" className="animate-pulse">
+      {header && (
+        <div className="flex items-center gap-3 px-5 py-3">
+          <Bone className="h-9 w-9 rounded-control" />
+          <div className="space-y-2">
+            <Bone className="h-3.5 w-32" />
+            <Bone className="h-3 w-24" />
+          </div>
+          <div className="ml-auto flex gap-2">
+            <Bone className="h-8 w-28 rounded-control" />
+            <Bone className="h-8 w-20 rounded-control" />
+          </div>
+        </div>
+      )}
+      {turns && (
+      <div className="mx-auto max-w-3xl space-y-6 px-4 py-6 sm:px-6">
+        <div className="flex justify-end">
+          <Bone className="h-10 w-1/2 rounded-pane" />
+        </div>
+        <div className="flex gap-3">
+          <Bone className="h-8 w-8 rounded-control" />
+          <div className="flex-1 space-y-2 pt-1">
+            <Bone className="h-3 w-24" />
+            <Bone className="h-3.5 w-full" />
+            <Bone className="h-3.5 w-5/6" />
+            <Bone className="h-3.5 w-2/3" />
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <Bone className="h-10 w-1/3 rounded-pane" />
+        </div>
+      </div>
+      )}
+      <span className="sr-only">Loading…</span>
+    </div>
+  );
+}
+
+// ── the page ─────────────────────────────────────────────────────────────────
+export default function AgentChat() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const isPhone = useMediaQuery('(max-width: 639px)');
+
+  // roster
+  const [agents, setAgents] = useState([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
+  const [agentsError, setAgentsError] = useState(null);
+  const [agent, setAgent] = useState(null);
+  const [models, setModels] = useState([]);
+  const [modelOverride, setModelOverride] = useState('');
+
+  // conversation
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [conversationId, setConversationId] = useState(null);
+  const [conversationTitle, setConversationTitle] = useState(null);
+  const [loadingConversation, setLoadingConversation] = useState(false);
+  const [conversationError, setConversationError] = useState(null);
+
+  // live
+  const [streaming, setStreaming] = useState(false);
+  const [phase, setPhase] = useState('idle'); // idle · thinking · tool · responding · error
+  const [currentTool, setCurrentTool] = useState(null);
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  const [atBottom, setAtBottom] = useState(true);
+
+  // dialogs
+  const [showTools, setShowTools] = useState(false);
+  const [showModelSheet, setShowModelSheet] = useState(false);
+  const [showVoice, setShowVoice] = useState(false);
+  const [inCall, setInCall] = useState(false);
+
+  const messagesRef = useRef(messages);
+  const conversationIdRef = useRef(null);
+  const loadedConversationRef = useRef(null);
+  const abortRef = useRef(null);
+  const sendingRef = useRef(false);
+  const idRef = useRef(0);
+  const scrollRef = useRef(null);
+  const stickRef = useRef(true);
+  const textareaRef = useRef(null);
+  const nextId = () => `m-${(idRef.current += 1)}`;
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
+
+  const agentById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
+  const tools = useMemo(() => toolList(agent), [agent]);
+  const effectiveModel = modelOverride || getPreferences().defaultModel || agent?.model || '';
+  const status = offline ? 'offline' : phase;
+
+  // ── roster ──────────────────────────────────────────────────────────────
+  const loadAgents = useCallback(async () => {
+    setAgentsLoading(true);
+    setAgentsError(null);
+    try {
+      const data = await apiJson('/agents');
+      const list = data?.agents || (Array.isArray(data) ? data : []);
+      setAgents(list);
+      setAgent((current) => {
+        if (current && list.some((a) => a.id === current.id)) return list.find((a) => a.id === current.id);
+        if (searchParams.get('conversation')) return current;
+        const wanted = searchParams.get('agent');
+        return (wanted && list.find((a) => a.id === wanted)) || list.find((a) => a.status === 'active') || list[0] || null;
+      });
+    } catch (err) {
+      setAgentsError(err);
+    } finally {
+      setAgentsLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    loadAgents();
+    apiJson('/chat/models')
+      .then((data) => setModels((data?.models || []).filter((m) => m && m.id && m.available !== false)))
+      .catch(() => setModels([]));
+  }, [loadAgents]);
+
+  // ?agent= changes after mount (palette, dock, org chart) switch the agent.
+  useEffect(() => {
+    const wanted = searchParams.get('agent');
+    if (!wanted || agentsLoading || wanted === agent?.id) return;
+    const found = agentById.get(wanted);
+    if (found) setAgent(found);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, agentsLoading]);
+
+  // Offline is a state of the page: show it where the messages go.
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      if (agentsError) loadAgents();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [agentsError, loadAgents]);
+
+  // ── persistence ─────────────────────────────────────────────────────────
+  const createConversation = useCallback(
+    async (agentId, model) => {
+      try {
+        const data = await apiJson('/conversations', { method: 'POST', body: JSON.stringify({ agent_id: agentId, model }) });
+        if (data?.id) {
+          setConversationId(data.id);
+          conversationIdRef.current = data.id;
+          loadedConversationRef.current = data.id;
+          setSearchParams({ conversation: data.id }, { replace: true });
+        }
+        return data?.id || null;
+      } catch {
+        return null; // the chat still works without persistence
+      }
+    },
+    [setSearchParams]
+  );
+
+  const saveMessage = useCallback((convId, body) => {
+    if (!convId) return;
+    apiJson(`/conversations/${convId}/messages`, { method: 'POST', body: JSON.stringify(body) }).catch(() => {});
+  }, []);
+
+  const loadConversation = useCallback(
+    async (convId) => {
+      setLoadingConversation(true);
+      setConversationError(null);
+      try {
+        const data = await apiJson(`/conversations/${convId}`);
+        loadedConversationRef.current = convId;
+        setConversationId(data.id);
+        conversationIdRef.current = data.id;
+        setConversationTitle(data.title || null);
+        if (data.model) setModelOverride('');
+        const known = data.agent_id ? agentById.get(data.agent_id) : null;
+        if (known) setAgent(known);
+        else if (data.agent) setAgent({ ...data.agent, id: data.agent_id || data.agent.id });
+        const loaded = (data.messages || [])
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m, i) => ({
+            id: m.id || `loaded-${i}`,
+            role: m.role,
+            content: m.content || '',
+            model: m.model,
+            toolCalls: storedToolCalls(m),
+            timestamp: m.created_at,
+            agentId: data.agent_id,
+            isStreaming: false,
+          }));
+        stickRef.current = true;
+        setMessages(loaded);
+      } catch (err) {
+        setConversationError(err);
+      } finally {
+        setLoadingConversation(false);
+      }
+    },
+    [agentById]
+  );
+
+  useEffect(() => {
+    const convId = searchParams.get('conversation');
+    if (!convId || agentsLoading || convId === loadedConversationRef.current) return;
+    loadConversation(convId);
+  }, [searchParams, agentsLoading, loadConversation]);
+
+  // ── chat ────────────────────────────────────────────────────────────────
+  const stop = useCallback(() => abortRef.current?.abort(), []);
+
+  const resetConversation = useCallback(
+    (nextAgent) => {
+      stop();
+      setMessages([]);
+      setConversationId(null);
+      conversationIdRef.current = null;
+      loadedConversationRef.current = null;
+      setConversationTitle(null);
+      setConversationError(null);
+      setPhase('idle');
+      setCurrentTool(null);
+      const params = {};
+      if (nextAgent?.id) params.agent = nextAgent.id;
+      setSearchParams(params, { replace: true });
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    },
+    [setSearchParams, stop]
+  );
+
+  const newChat = useCallback(() => resetConversation(agent), [agent, resetConversation]);
+  const selectAgent = useCallback(
+    (a) => {
+      if (a.id === agent?.id) return;
+      setAgent(a);
+      setModelOverride('');
+      resetConversation(a);
+    },
+    [agent, resetConversation]
+  );
+
+  const send = useCallback(
+    async (rawText, base) => {
+      const text = (rawText ?? '').trim();
+      if (!text || !agent || sendingRef.current || offline) return;
+      sendingRef.current = true;
+
+      const prefs = getPreferences();
+      const model = modelOverride || prefs.defaultModel || agent.model;
+      const streamLive = prefs.streamResponses !== false;
+      const prior = base || messagesRef.current;
+      const history = prior.filter((m) => !m.isError && m.content).map((m) => ({ role: m.role, content: m.content }));
+
+      const userMsg = { id: nextId(), role: 'user', content: text, timestamp: new Date().toISOString() };
+      const assistantId = nextId();
+      const assistantMsg = {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        toolCalls: [],
+        agentId: agent.id,
+        model,
+        timestamp: new Date().toISOString(),
+        isStreaming: true,
+      };
+      stickRef.current = true;
+      setMessages([...prior, userMsg, assistantMsg]);
+      setInput('');
+      setStreaming(true);
+      setPhase('thinking');
+      setCurrentTool(null);
+
+      let convId = conversationIdRef.current;
+      if (!convId && prior.length === 0) convId = await createConversation(agent.id, model);
+      saveMessage(convId, { role: 'user', content: text });
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const patch = (fn) => setMessages((prev) => prev.map((m) => (m.id === assistantId ? fn(m) : m)));
+
+      let acc = '';
+      let gotToken = false;
+      let finalModel = model;
+      let completed = false;
+      let failed = false;
+      let calls = [];
+
+      try {
+        const res = await api.streamAgentChat(
+          agent.id,
+          { message: text, stream: true, history, model, temperature: agent.temperature },
+          { signal: controller.signal }
+        );
+        if (!res.ok || !res.body) {
+          const err = new Error(`HTTP ${res.status}`);
+          err.status = res.status;
+          err.data = await res.json().catch(() => null);
+          throw err;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (!payload || payload === '[DONE]') continue;
+            let ev;
+            try {
+              ev = JSON.parse(payload);
+            } catch {
+              continue;
+            }
+            if (ev.type === 'tool_call') {
+              setPhase('tool');
+              setCurrentTool(ev.name);
+              calls = [...calls, { id: ev.id, name: ev.name, arguments: ev.arguments }];
+              patch((m) => ({ ...m, toolCalls: calls }));
+            } else if (ev.type === 'tool_result') {
+              setPhase('thinking');
+              setCurrentTool(null);
+              calls = attachResult(calls, ev);
+              patch((m) => ({ ...m, toolCalls: calls }));
+            } else if (ev.type === 'token') {
+              acc += ev.content || '';
+              if (streamLive) {
+                if (!gotToken) {
+                  gotToken = true;
+                  setPhase('responding');
+                }
+                patch((m) => ({ ...m, content: acc }));
+              }
+            } else if (ev.type === 'complete') {
+              completed = true;
+              finalModel = ev.model || model;
+              acc = ev.content || acc;
+              if (Array.isArray(ev.toolCalls) && ev.toolCalls.length) calls = ev.toolCalls;
+              patch((m) => ({ ...m, content: acc, model: finalModel, toolCalls: calls, isStreaming: false }));
+              saveMessage(convId, {
+                role: 'assistant',
+                content: acc,
+                model: finalModel,
+                tokens_used: ev.usage?.total_tokens,
+                tool_calls: calls.length ? calls.map(({ id, name, arguments: args }) => ({ id, name, arguments: args })) : undefined,
+                tool_results: calls.length ? calls.map(({ id, name, result, error }) => ({ id, name, result, error: error || null, success: !error })) : undefined,
+              });
+            } else if (ev.type === 'error') {
+              const err = new Error(ev.error || 'The agent hit a problem.');
+              err.data = { detail: ev.error };
+              throw err;
+            }
+          }
+        }
+        patch((m) => ({ ...m, content: m.content || acc, isStreaming: false }));
+        if (!completed && acc) saveMessage(convId, { role: 'assistant', content: acc, model: finalModel });
+      } catch (err) {
+        if (controller.signal.aborted) {
+          setMessages((prev) =>
+            prev.flatMap((m) => (m.id !== assistantId ? [m] : acc || m.toolCalls.length ? [{ ...m, content: acc, isStreaming: false, stopped: true }] : []))
+          );
+          if (acc) saveMessage(convId, { role: 'assistant', content: acc, model: finalModel });
+        } else {
+          failed = true;
+          patch((m) => ({ ...m, content: acc, isStreaming: false, isError: true, error: humanize(err, { what: 'getting a reply' }) }));
+        }
+      } finally {
+        setStreaming(false);
+        setPhase(failed ? 'error' : 'idle');
+        setCurrentTool(null);
+        abortRef.current = null;
+        sendingRef.current = false;
+      }
+    },
+    [agent, modelOverride, offline, createConversation, saveMessage]
+  );
+
+  const retry = useCallback(
+    (failedMsg) => {
+      if (streaming) return;
+      const list = messagesRef.current;
+      const idx = list.findIndex((m) => m.id === failedMsg.id);
+      const user = idx > 0 && list[idx - 1].role === 'user' ? list[idx - 1] : null;
+      if (!user) return;
+      const base = list.filter((m) => m.id !== failedMsg.id && m.id !== user.id);
+      send(user.content, base);
+    },
+    [send, streaming]
+  );
+
+  // ── composer ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_COMPOSER_PX)}px`;
+  }, [input]);
+
+  const onComposerKeyDown = (e) => {
+    if (e.key === 'Escape' && streaming) {
+      e.preventDefault();
+      stop();
+    } else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) {
+      e.preventDefault();
+      send(input);
+    }
+  };
+
+  // ── scrolling: follow the stream only while the reader is at the bottom ─
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 64;
+    stickRef.current = near;
+    setAtBottom(near);
+  };
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
+  }, [messages, phase, loadingConversation]);
+  const jumpToLatest = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickRef.current = true;
+    setAtBottom(true);
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  };
+
+  // ── derived ─────────────────────────────────────────────────────────────
+  const composerDisabled = !agent || offline || loadingConversation || Boolean(agentsError) || agentsLoading;
+  const canSend = Boolean(input.trim()) && !composerDisabled && !streaming;
+  const hint = offline
+    ? 'You’re offline. Messages send again when the connection is back.'
+    : agentsLoading
+      ? 'Loading your agents…'
+      : agentsError
+        ? 'Your agents couldn’t be loaded — retry above.'
+      : !agent
+        ? 'Pick an agent to start.'
+        : loadingConversation
+          ? 'Opening the conversation…'
+          : streaming
+            ? `${statusMeta(phase).label}${currentTool ? ` · ${currentTool}` : ''}`
+            : '';
+
+  const modelItems = useMemo(() => {
+    const items = [
+      { id: 'default', label: `Agent default · ${shortModel(agent?.model) || 'auto'}`, icon: modelOverride ? undefined : Check, onSelect: () => setModelOverride('') },
+    ];
+    if (models.length) {
+      items.push({ type: 'separator' });
+      for (const m of models) {
+        items.push({ id: m.id, label: m.display_name || m.name || m.id, icon: modelOverride === m.id ? Check : undefined, onSelect: () => setModelOverride(m.id) });
+      }
+    }
+    return items;
+  }, [agent, models, modelOverride]);
+
+  const headerActions = agent && (
+    <>
+      <div className="hidden items-center gap-1.5 sm:flex">
+        <Menu
+          align="end"
+          items={modelItems}
+          trigger={({ props }) => (
+            <Tooltip content="Model for this chat">
+              <Button variant="secondary" size="sm" icon={Cpu} iconRight={ChevronDown} {...props}>
+                {shortModel(effectiveModel) || 'Auto'}
+              </Button>
+            </Tooltip>
+          )}
+        />
+        {tools.length ? (
+          <Button variant="secondary" size="sm" icon={Wrench} onClick={() => setShowTools(true)}>
+            {tools.length} {tools.length === 1 ? 'tool' : 'tools'}
+          </Button>
+        ) : (
+          <Tooltip content="This agent has no tools attached">
+            <Chip size="md" icon={Wrench}>
+              No tools
+            </Chip>
+          </Tooltip>
+        )}
+        <Button variant="ghost" size="sm" icon={MessageSquarePlus} onClick={newChat}>
+          New chat
+        </Button>
+      </div>
+      <VoiceCallButton onClick={() => setShowVoice(true)} isConnected={inCall} disabled={streaming} className="min-h-touch min-w-touch sm:min-h-0 sm:min-w-0" />
+      <div className="sm:hidden">
+        <Menu
+          align="end"
+          trigger={({ props }) => <IconButton icon={MoreHorizontal} label="More" className="min-h-touch min-w-touch" {...props} />}
+          items={[
+            { id: 'new', label: 'New chat', icon: MessageSquarePlus, onSelect: newChat },
+            { id: 'model', label: `Model · ${shortModel(effectiveModel) || 'Auto'}`, icon: Cpu, onSelect: () => setShowModelSheet(true) },
+            { id: 'tools', label: tools.length ? `Tools (${tools.length})` : 'No tools attached', icon: Wrench, disabled: !tools.length, onSelect: () => setShowTools(true) },
+          ]}
+        />
+      </div>
+    </>
+  );
+
+  // ── the four states of the page ─────────────────────────────────────────
+  let body;
+  if (agentsLoading) {
+    body = <ChatSkeleton />;
+  } else if (agentsError) {
+    body = (
+      <ErrorState
+        title="Couldn’t load your agents"
+        detail={humanize(agentsError, { what: 'loading the roster' })}
+        onRetry={loadAgents}
+      />
+    );
+  } else if (!agents.length) {
+    body = (
+      <EmptyState
+        icon={Bot}
+        title="No agents yet"
+        description="Build your first agent with Gunny and it shows up here, ready to talk."
+        action={
+          <Button icon={Sparkles} onClick={() => navigate('/builder-chat')}>
+            Build an agent
+          </Button>
+        }
+      />
+    );
+  } else if (loadingConversation) {
+    body = <ChatSkeleton />;
+  } else if (conversationError) {
+    body = (
+      <ErrorState
+        title="Couldn’t open that conversation"
+        detail={humanize(conversationError, { what: 'opening the conversation' })}
+        onRetry={() => loadConversation(searchParams.get('conversation'))}
+      />
+    );
+  } else if (!messages.length) {
+    body = agent ? (
+      <div className="flex min-h-[55vh] flex-col items-center justify-center text-center animate-fade-in">
+        <AgentAvatar agent={agent} size={96} rounded="rounded-pane" className="mb-4 shadow-e2" />
+        <h2 className="text-heading text-fg-strong">Chat with {agentName(agent)}</h2>
+        <p className="mt-1 text-body-sm text-muted">{roleLine(agent)}</p>
+        <p className="mt-3 max-w-md text-body text-muted">{agent.bio || agent.title || 'Ask anything. Every reply streams in as it is written.'}</p>
+        {tools.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
+            {tools.slice(0, 4).map((t) => (
+              <Chip key={t.name} size="xs" icon={getToolIcon(t.name)}>
+                {t.label}
+              </Chip>
+            ))}
+            <Chip size="xs" tone="accent" onClick={() => setShowTools(true)}>
+              {tools.length > 4 ? `+${tools.length - 4} more` : 'All tools'}
+            </Chip>
+          </div>
+        )}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2" aria-label="Suggested messages">
+          {SUGGESTIONS.map((s) => (
+            <Chip key={s} size="md" className="min-h-touch sm:min-h-0" onClick={() => send(s)}>
+              {s}
+            </Chip>
+          ))}
+        </div>
+      </div>
+    ) : (
+      <EmptyState icon={Bot} title="Pick an agent" description="Choose who to talk to from the picker above." compact />
+    );
+  } else {
+    body = (
+      <div className="space-y-7">
+        {messages.map((m) => (
+          <ChatMessage
+            key={m.id}
+            message={m}
+            agent={m.role === 'assistant' ? agentById.get(m.agentId) || agent : undefined}
+            onRetry={m.isError ? retry : undefined}
+            retryDisabled={streaming}
+          />
+        ))}
+        {streaming && phase !== 'responding' && (
+          <div className="flex items-center gap-2.5 pl-11" role="status" aria-live="polite">
+            <StatusDot status={phase} size="md" />
+            <span className="text-body-sm text-muted">
+              {phase === 'tool' ? (
+                <>
+                  Running <span className="font-mono text-fg">{currentTool}</span>…
+                </>
+              ) : (
+                `${agentName(agent)} is thinking…`
+              )}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    // contain:inline-size keeps a wide table or a long unbroken token from
+    // growing the shell's <main> (a flex item) past the viewport on phones.
+    <div className="flex h-[calc(100dvh-4rem)] flex-col bg-bg [contain:inline-size] lg:h-dvh">
+      {/* Header */}
+      <header className="relative z-raised shrink-0 border-b border-border bg-surface">
+        {agentsLoading ? (
+          <ChatSkeleton header turns={false} />
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-2 sm:px-5">
+            <div className="min-w-0 flex-1">
+              <AgentPicker agents={agents} selected={agent} onSelect={selectAgent} status={status} disabled={!agents.length} isPhone={isPhone} />
+            </div>
+            {conversationTitle && (
+              <Tooltip content={conversationTitle}>
+                <Chip size="sm" className="hidden max-w-[16rem] md:inline-flex">
+                  <span className="truncate">{conversationTitle}</span>
+                </Chip>
+              </Tooltip>
+            )}
+            {headerActions}
+          </div>
+        )}
+      </header>
+
+      {/* Messages */}
+      <div className="relative min-h-0 flex-1">
+        <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto scrollbar-thin">
+          <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+            {offline && (
+              <div className="mb-4 rounded-card border border-border bg-card">
+                <OfflineState compact onRetry={agentsError ? loadAgents : undefined} />
+              </div>
+            )}
+            {body}
+          </div>
+        </div>
+        {!atBottom && messages.length > 0 && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+            <span className="pointer-events-auto shadow-e3">
+              <Chip tone="accent" solid size="md" icon={ArrowDown} className="min-h-touch sm:min-h-0" onClick={jumpToLatest}>
+                Jump to latest
+              </Chip>
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Composer: one pane-shaped shell carries the border and the focus ring;
+          the textarea inside is bare so there is exactly one edge and one ring. */}
+      <footer className="shrink-0 border-t border-border bg-surface/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            send(input);
+          }}
+          className="mx-auto w-full max-w-3xl px-3 pb-2 pt-3 sm:px-6"
+        >
+          <div
+            className={`flex items-end gap-2 rounded-pane border bg-card p-1.5 pl-4 shadow-e1 transition-[border-color,box-shadow] duration-fast ease-standard focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/35 ${
+              composerDisabled ? 'border-border opacity-70' : 'border-border-strong/70 hover:border-border-strong'
+            }`}
+          >
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onComposerKeyDown}
+              aria-label={agent ? `Message ${agentName(agent)}` : 'Message'}
+              placeholder={agent ? `Message ${agentName(agent)}…` : 'Pick an agent to start…'}
+              disabled={composerDisabled}
+              className="max-h-40 min-h-touch w-full flex-1 resize-none bg-transparent py-2.5 text-body text-fg placeholder:text-subtle focus-visible:outline-none disabled:cursor-not-allowed sm:min-h-[40px]"
+            />
+            {streaming ? (
+              <Tooltip content="Stop the reply (Esc)">
+                <Button type="button" variant="secondary" size="lg" iconOnly icon={Square} aria-label="Stop" onClick={stop} />
+              </Tooltip>
+            ) : (
+              <Button type="submit" size="lg" iconOnly icon={Send} aria-label="Send" disabled={!canSend} />
+            )}
+          </div>
+          <div className="mt-1.5 flex min-h-5 items-center justify-between gap-3 px-1 text-micro text-subtle">
+            <span aria-live="polite" className="truncate">
+              {hint}
+            </span>
+            <span className="hidden shrink-0 items-center gap-1 sm:inline-flex">
+              <Kbd>Enter</Kbd> send · <Kbd>⇧</Kbd>
+              <Kbd>Enter</Kbd> new line
+              {streaming && (
+                <>
+                  {' '}
+                  · <Kbd>Esc</Kbd> stop
+                </>
+              )}
+            </span>
+          </div>
+        </form>
+      </footer>
+
+      {/* Tools */}
+      <Sheet isOpen={showTools && Boolean(agent)} onClose={() => setShowTools(false)} side={isPhone ? 'bottom' : 'right'} title={`${agentName(agent)}’s tools`}>
+        <p className="mb-3 text-body-sm text-muted">
+          {tools.length} {tools.length === 1 ? 'tool' : 'tools'}. The agent decides when to use one; every call shows up in the conversation as it runs.
+        </p>
+        <ul className="space-y-1.5" aria-label="Tools">
+          {tools.map((t) => {
+            const Icon = getToolIcon(t.name);
+            return (
+              <li key={t.name} className="flex items-center gap-3 rounded-control border border-border bg-card px-3 py-2">
+                <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-chip bg-elevated text-muted">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-body text-fg">{t.label}</span>
+                  {(t.provider || t.label !== t.name) && <span className="block truncate font-mono text-caption text-muted">{t.provider || t.name}</span>}
+                </span>
+                {t.paid && (
+                  <Chip tone="warn" size="xs">
+                    paid
+                  </Chip>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </Sheet>
+
+      {/* Model (phones) */}
+      <Sheet isOpen={showModelSheet} onClose={() => setShowModelSheet(false)} side="bottom" title="Model for this chat">
+        <Field label="Model" help="The agent’s own model unless you pick another one here.">
+          <Select size="lg" value={modelOverride} onChange={(e) => setModelOverride(e.target.value)}>
+            <option value="">Agent default · {shortModel(agent?.model) || 'auto'}</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.display_name || m.name || m.id}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </Sheet>
+
+      {/* Voice */}
+      <VoiceCallModal
+        isOpen={showVoice}
+        onClose={() => setShowVoice(false)}
+        agent={agent}
+        onCallStart={() => setInCall(true)}
+        onCallEnd={() => setInCall(false)}
+      />
+    </div>
+  );
+}

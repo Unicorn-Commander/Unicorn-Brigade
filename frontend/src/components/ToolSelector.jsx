@@ -1,287 +1,218 @@
-import { useState, useEffect } from 'react';
-import { Search } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Search, Wrench, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import notify from '../utils/notify';
+import { humanize } from '../utils/errors';
 import { apiJson } from '../services/http';
 import ToolCard from './ToolCard';
-import ToolConfigModal from './ToolConfigModal';
+import { Button, Chip, EmptyState, ErrorState, Input, LoadingState } from './ui';
 
-// Mock data for when API isn't ready
-const mockTools = [
-  {
-    id: 'tool-1',
-    name: 'Web Search',
-    description: 'Search the web for information and retrieve results',
-    type: 'search',
-    schema: {
-      rateLimit: { type: 'number', default: 100, label: 'Requests per minute' },
-      timeout: { type: 'number', default: 30, label: 'Timeout (seconds)' }
-    }
-  },
-  {
-    id: 'tool-2',
-    name: 'Database',
-    description: 'Execute SQL queries against configured databases',
-    type: 'data',
-    schema: {
-      connectionString: { type: 'string', default: '', label: 'Connection String' },
-      readOnly: { type: 'boolean', default: true, label: 'Read Only' }
-    }
-  },
-  {
-    id: 'tool-3',
-    name: 'Code Executor',
-    description: 'Run Python code in a sandboxed environment',
-    type: 'execution',
-    schema: {
-      maxRuntime: { type: 'number', default: 60, label: 'Max Runtime (seconds)' },
-      allowNetworkAccess: { type: 'boolean', default: false, label: 'Allow Network Access' }
-    }
-  },
-  {
-    id: 'tool-4',
-    name: 'File System',
-    description: 'Read and write files in designated directories',
-    type: 'storage',
-    schema: {
-      basePath: { type: 'string', default: '/data', label: 'Base Path' },
-      readOnly: { type: 'boolean', default: false, label: 'Read Only' }
-    }
-  },
-  {
-    id: 'tool-5',
-    name: 'API Client',
-    description: 'Make HTTP requests to external APIs',
-    type: 'integration',
-    schema: {
-      allowedDomains: { type: 'string', default: '*', label: 'Allowed Domains (comma-separated)' },
-      rateLimit: { type: 'number', default: 100, label: 'Requests per minute' }
-    }
-  },
-  {
-    id: 'tool-6',
-    name: 'Calculator',
-    description: 'Perform mathematical calculations and expressions',
-    type: 'utility',
-    schema: {
-      precision: { type: 'number', default: 10, label: 'Decimal Precision' }
-    }
-  },
-  {
-    id: 'tool-7',
-    name: 'Email Sender',
-    description: 'Send emails via configured SMTP server',
-    type: 'integration',
-    schema: {
-      smtpHost: { type: 'string', default: '', label: 'SMTP Host' },
-      smtpPort: { type: 'number', default: 587, label: 'SMTP Port' },
-      fromAddress: { type: 'string', default: '', label: 'From Address' }
-    }
-  },
-  {
-    id: 'tool-8',
-    name: 'Image Generator',
-    description: 'Generate images using AI models',
-    type: 'ai',
-    schema: {
-      model: { type: 'string', default: 'dall-e-3', label: 'AI Model' },
-      maxImages: { type: 'number', default: 5, label: 'Max Images per Request' }
-    }
-  }
-];
+const toolId = (t) => (typeof t === 'string' ? t : t?.id || t?.name || t?.toolId || null);
+const normalize = (list) => (Array.isArray(list) ? list.map(toolId).filter(Boolean) : []);
+const prettyName = (id) => String(id).replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-const ToolSelector = ({ agentId, assignedTools = [], onUpdate }) => {
-  const [availableTools, setAvailableTools] = useState([]);
-  const [assigned, setAssigned] = useState(assignedTools);
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [configTool, setConfigTool] = useState(null);
-  const [toolConfig, setToolConfig] = useState({});
+/**
+ * ToolSelector — attach and detach tools on an agent.
+ *
+ * Assigned tools sit at the top as removable chips; the library below is
+ * searchable and keyboard-first: Enter in the search adds the first match,
+ * ArrowDown moves into the list. Every change goes straight to the API
+ * (POST / DELETE /agents/:id/tools) and the caller is told through onUpdate.
+ *
+ *   <ToolSelector agentId={id} assignedTools={agent.tools} onUpdate={reload} />
+ */
+export default function ToolSelector({ agentId, assignedTools = [], onUpdate }) {
+  const navigate = useNavigate();
+  const [available, setAvailable] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(null);
+  const assignedKey = normalize(assignedTools).join('|');
+  const [assignedIds, setAssignedIds] = useState(() => normalize(assignedTools));
+  const listRef = useRef(null);
 
   useEffect(() => {
-    fetchAvailableTools();
-  }, []);
+    setAssignedIds(assignedKey ? assignedKey.split('|') : []);
+  }, [assignedKey]);
 
-  useEffect(() => {
-    setAssigned(assignedTools);
-  }, [assignedTools]);
-
-  const fetchAvailableTools = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      // Try to fetch from API, fall back to mock data
       const data = await apiJson('/tools');
-      const tools = Array.isArray(data) ? data : (data.tools || data);
-      setAvailableTools(Array.isArray(tools) ? tools : mockTools);
-    } catch (error) {
-      console.log('API not ready, using mock data');
-      setAvailableTools(mockTools);
+      const tools = Array.isArray(data) ? data : data?.tools || [];
+      setAvailable(tools.filter((t) => toolId(t)));
+    } catch (err) {
+      setError(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleAdd = async (tool) => {
-    try {
-      // POST /agents/:agentId/tools
-      await apiJson(`/agents/${agentId}/tools`, {
-        method: 'POST',
-        body: JSON.stringify({ toolId: tool.id })
-      });
+  useEffect(() => {
+    load();
+  }, [load]);
 
-      setAssigned([...assigned, tool]);
-      notify.success(`Added ${tool.name}`);
-      if (onUpdate) onUpdate();
-    } catch (error) {
-      console.error('Failed to add tool:', error);
-      toast.error('Failed to add tool');
-    }
-  };
-
-  const handleRemove = async (tool) => {
-    try {
-      // DELETE /agents/:agentId/tools/:toolId
-      await apiJson(`/agents/${agentId}/tools/${tool.id}`, { method: 'DELETE' });
-
-      setAssigned(assigned.filter(t => t.id !== tool.id));
-      notify.success(`Removed ${tool.name}`);
-      if (onUpdate) onUpdate();
-    } catch (error) {
-      console.error('Failed to remove tool:', error);
-      toast.error('Failed to remove tool');
-    }
-  };
-
-  const handleConfigure = (tool) => {
-    // Load existing config if available
-    const existingConfig = assigned.find(t => t.id === tool.id)?.config || {};
-    setToolConfig(existingConfig);
-    setConfigTool(tool);
-  };
-
-  const handleSaveConfig = async (config) => {
-    try {
-      // PATCH /agents/:agentId/tools/:toolId
-      await apiJson(`/agents/${agentId}/tools/${configTool.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ config })
-      });
-
-      // Update local state
-      setAssigned(assigned.map(t =>
-        t.id === configTool.id ? { ...t, config } : t
-      ));
-
-      notify.success('Configuration saved');
-      setConfigTool(null);
-      setToolConfig({});
-      if (onUpdate) onUpdate();
-    } catch (error) {
-      console.error('Failed to save config:', error);
-      toast.error('Failed to save configuration');
-    }
-  };
-
-  const filteredTools = availableTools.filter(t =>
-    (t.name.toLowerCase().includes(search.toLowerCase()) ||
-     t.description.toLowerCase().includes(search.toLowerCase())) &&
-    !assigned.find(a => a.id === t.id)
+  const byId = useMemo(() => new Map(available.map((t) => [toolId(t), t])), [available]);
+  const assigned = useMemo(
+    () => assignedIds.map((id) => byId.get(id) || { id, name: prettyName(id) }),
+    [assignedIds, byId]
   );
+  const candidates = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return available.filter((t) => {
+      if (assignedIds.includes(toolId(t))) return false;
+      if (!q) return true;
+      return (
+        String(t.name || '').toLowerCase().includes(q) ||
+        String(t.description || '').toLowerCase().includes(q) ||
+        String(toolId(t)).toLowerCase().includes(q)
+      );
+    });
+  }, [available, assignedIds, query]);
+
+  const add = async (tool) => {
+    const id = toolId(tool);
+    setBusy(id);
+    try {
+      await apiJson(`/agents/${agentId}/tools`, { method: 'POST', body: JSON.stringify({ toolId: id }) });
+      setAssignedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      notify.success(`${tool.name || prettyName(id)} added`);
+      onUpdate?.();
+    } catch (err) {
+      notify.error(humanize(err, { what: 'adding the tool' }));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const remove = async (tool) => {
+    const id = toolId(tool);
+    setBusy(id);
+    try {
+      await apiJson(`/agents/${agentId}/tools/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setAssignedIds((prev) => prev.filter((x) => x !== id));
+      notify.success(`${tool.name || prettyName(id)} removed`);
+      onUpdate?.();
+    } catch (err) {
+      notify.error(humanize(err, { what: 'removing the tool' }));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onSearchKey = (e) => {
+    if (e.key === 'Enter' && candidates[0]) {
+      e.preventDefault();
+      add(candidates[0]);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      listRef.current?.querySelector('button')?.focus();
+    }
+  };
+
+  let list;
+  if (loading) {
+    list = <LoadingState variant="list" count={4} label="Loading tools" />;
+  } else if (error) {
+    list = <ErrorState compact title="Couldn’t load the tool library" detail={humanize(error, { what: 'loading tools' })} onRetry={load} />;
+  } else if (!available.length) {
+    list = (
+      <EmptyState
+        compact
+        icon={Wrench}
+        title="No tools in the library yet"
+        description="Tools arrive through MCP servers and the built-in Python library."
+        action={
+          <Button size="sm" variant="secondary" onClick={() => navigate('/mcp-servers')}>
+            Open MCP servers
+          </Button>
+        }
+      />
+    );
+  } else if (!candidates.length) {
+    list = (
+      <EmptyState
+        compact
+        icon={Search}
+        title={query ? 'No tools match' : 'Every tool is already attached'}
+        description={query ? 'Try another word.' : undefined}
+        action={
+          query ? (
+            <Button size="sm" variant="secondary" icon={X} onClick={() => setQuery('')}>
+              Clear search
+            </Button>
+          ) : undefined
+        }
+      />
+    );
+  } else {
+    list = (
+      <ul ref={listRef} className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1" aria-label="Available tools">
+        {candidates.map((tool) => (
+          <li key={toolId(tool)}>
+            <ToolCard tool={tool} action="add" busy={busy === toolId(tool)} onAction={() => add(tool)} />
+          </li>
+        ))}
+      </ul>
+    );
+  }
 
   return (
-    <>
-      <div className="grid grid-cols-2 gap-6">
-        {/* Available Tools */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-lg">Available Tools</h3>
-            <span className="text-sm text-slate-400">{filteredTools.length} tools</span>
-          </div>
-
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="search"
-              placeholder="Search tools..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent outline-none"
-            />
-          </div>
-
-          {/* Tools List */}
-          <div className="space-y-2 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
-                <p className="text-slate-400 mt-2">Loading tools...</p>
-              </div>
-            ) : filteredTools.length > 0 ? (
-              filteredTools.map(tool => (
-                <ToolCard
-                  key={tool.id}
-                  tool={tool}
-                  action="add"
-                  onAction={() => handleAdd(tool)}
-                />
-              ))
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-slate-400">
-                  {search ? 'No tools found matching your search' : 'All tools have been assigned'}
-                </p>
-              </div>
-            )}
-          </div>
+    <div className="space-y-5">
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-body font-semibold text-fg-strong">Attached</h3>
+          <span className="text-caption text-muted">
+            {assigned.length} tool{assigned.length === 1 ? '' : 's'}
+          </span>
         </div>
-
-        {/* Assigned Tools */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-lg">Assigned Tools</h3>
-            <span className="text-sm text-slate-400">{assigned.length} assigned</span>
-          </div>
-
-          {/* Placeholder for search alignment */}
-          <div className="h-10"></div>
-
-          {/* Tools List */}
-          <div className="space-y-2 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-            {assigned.length > 0 ? (
-              assigned.map(tool => (
-                <ToolCard
-                  key={tool.id}
-                  tool={tool}
-                  action="remove"
-                  onAction={() => handleRemove(tool)}
-                  onConfigure={() => handleConfigure(tool)}
-                />
-              ))
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-slate-400">No tools assigned yet</p>
-                <p className="text-sm text-slate-400 mt-1">Add tools from the left panel</p>
-              </div>
-            )}
-          </div>
-        </div>
+        {assigned.length ? (
+          <ul className="flex flex-wrap gap-1.5" aria-label="Attached tools">
+            {assigned.map((tool) => (
+              <li key={toolId(tool)} className="inline-flex">
+                <Chip
+                  tone="accent"
+                  size="md"
+                  icon={X}
+                  onClick={() => remove(tool)}
+                  disabled={busy === toolId(tool)}
+                  aria-label={`Remove ${tool.name || prettyName(toolId(tool))}`}
+                >
+                  {tool.name || prettyName(toolId(tool))}
+                </Chip>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-body-sm text-muted">Nothing attached yet. Add a tool from the library below.</p>
+        )}
       </div>
 
-      {/* Configuration Modal */}
-      {configTool && (
-        <ToolConfigModal
-          tool={configTool}
-          config={toolConfig}
-          onSave={handleSaveConfig}
-          onClose={() => {
-            setConfigTool(null);
-            setToolConfig({});
-          }}
-        />
-      )}
-    </>
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-body font-semibold text-fg-strong">Library</h3>
+          {!loading && !error && (
+            <span className="text-caption text-muted">
+              {candidates.length} available
+            </span>
+          )}
+        </div>
+        <div className="relative mb-3">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input
+            type="search"
+            aria-label="Search the tool library"
+            placeholder="Search tools… Enter adds the first match"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onSearchKey}
+            className="pl-9"
+          />
+        </div>
+        {list}
+      </div>
+    </div>
   );
-};
-
-export default ToolSelector;
+}

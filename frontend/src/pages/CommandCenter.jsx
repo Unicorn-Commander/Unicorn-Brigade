@@ -1,115 +1,121 @@
 import { useMemo, useCallback, useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Controls, MiniMap, Panel, MarkerType, useReactFlow } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import { Network, LayoutGrid, Orbit, Megaphone, Target, Maximize2, Search, Bot, Sparkles, Library, ChevronsDownUp, ChevronsUpDown, ChevronRight, Zap, Repeat } from 'lucide-react';
+import { Button, IconButton, Card, Chip, Input, Select, Tabs, Tooltip, PageHeader, EmptyState, ErrorState, OfflineState, LoadingState } from '../components/ui';
+import { humanize } from '../utils/errors';
+import { tokenHsl, statusColors } from '../utils/tokens';
+import { normalizeProtocol } from '../utils/protocol';
+import { buildOrgTree } from '../utils/orgTree';
 import { useCommsStore } from '../stores/useCommsStore';
-import CommsLayer from '../components/command/CommsLayer';
+import { useAgents } from '../hooks/useAgents';
 import { useOrchestrationStream } from '../hooks/useOrchestrationStream';
+import { useOrgLayout } from '../hooks/useOrgLayout';
+import { useAutonomy } from '../hooks/useAutonomy';
+import { countsByAgent, needsAttention } from '../utils/autonomy';
+import CommsLayer from '../components/command/CommsLayer';
 import ActivityGrid from '../components/command/ActivityGrid';
 import ActivityFeed from '../components/command/ActivityFeed';
-import {
-  ReactFlow,
-  Background,
-  BackgroundVariant,
-  Controls,
-  MiniMap,
-  Panel,
-  MarkerType,
-  useReactFlow,
-  getNodesBounds,
-} from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
-import { Network, Boxes, LayoutGrid, Radio, Zap, Orbit, Loader2, Megaphone, Maximize2 } from 'lucide-react';
 import BriefingView from '../components/command/BriefingView';
-
-// Heavy (three.js) — only loaded when the operator flips to the 3D view.
-const WorkflowVisualization3D = lazy(() => import('../components/WorkflowVisualization3D'));
-import { useAgents } from '../hooks/useAgents';
-import { buildOrgTree } from '../utils/orgTree';
-import { normalizeProtocol } from '../utils/protocol';
-import { useOrgLayout, ORG_NODE_W, ORG_NODE_H } from '../hooks/useOrgLayout';
+import MissionsView from '../components/command/MissionsView';
+import AutonomousView from '../components/command/AutonomousView';
 import OrgAgentNode from '../components/command/OrgAgentNode';
+import OrgStackEdge from '../components/command/OrgStackEdge';
+import { usePhone, useReducedMotion, useThemeKey } from '../components/command/media';
+
+// Heavy (three.js) — only loaded when the operator opts into the 3D view.
+const WorkflowVisualization3D = lazy(() => import('../components/WorkflowVisualization3D'));
 
 const nodeTypes = { orgAgent: OrgAgentNode };
+const edgeTypes = { orgStack: OrgStackEdge };
 
-// A fit must be allowed to zoom out far enough to actually show the widest
-// tier. The old floor of 0.2 was *also* the zoom the fit landed on — the apex
-// has 19 direct reports, ~5100px of row inside a ~1400px pane — so every node
-// rendered as a sliver. Keep this at or below what a real fit needs, and let
-// the legibility floor below decide whether to use it at all.
+// Delegation edges light up in the protocol's colour, read from the tokens so
+// a theme flip reaches the graph too.
+const PROTOCOL_TOKEN = { internal: '--accent', a2a: '--info', paid: '--warn', peer: '--live' };
+const WORKING = new Set(['thinking', 'tool', 'responding', 'streaming']);
+
+const VIEWS = [
+  { id: 'chart', icon: Network, label: 'Org Chart' },
+  { id: 'activity', icon: LayoutGrid, label: 'Activity' },
+  { id: 'missions', icon: Target, label: 'Missions' },
+  { id: 'autonomous', icon: Repeat, label: 'Autonomous' },
+  { id: 'graph3d', icon: Orbit, label: '3D' },
+  { id: 'briefing', icon: Megaphone, label: 'Briefing' },
+];
+const VIEW_IDS = VIEWS.map((v) => v.id);
+
+// The chart remembers how you left it: which teams are folded, which team is
+// in focus, and which view you were on.
+const STORAGE_KEY = 'brigade.command-center.v1';
+const readPrefs = () => {
+  try {
+    const p = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    return p && typeof p === 'object' ? p : {};
+  } catch {
+    return {};
+  }
+};
+const writePrefs = (patch) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...readPrefs(), ...patch }));
+  } catch {
+    /* storage unavailable (private mode) — the choice just doesn't persist */
+  }
+};
+
+// When the apex has more direct reports than this, the chart opens with every
+// team folded: the apex and its leads stack on one screen, and each team is
+// one click away. (Nine leads side by side is already 2,600px wide.)
+const FOLD_ABOVE_REPORTS = 6;
+
+// A fit must be allowed to zoom out far enough to show the widest tier...
 const FIT_MIN_ZOOM = 0.12;
-const FIT_OPTIONS = { padding: 0.14, minZoom: FIT_MIN_ZOOM, maxZoom: 0.9 };
-
-// Below this, node labels stop being readable — names turn to grey mush. A
-// board this wide only "fits" at about 0.25, so fitting everything is worse
-// than not fitting: you get a ribbon that is legible at no zoom level floating
-// in an empty pane. Past this point we anchor on the apex at a readable size
-// and let the operator pan, use the minimap, or hit Fit all.
-const LEGIBLE_ZOOM = 0.55;
+const FIT_OPTIONS = { padding: 0.12, minZoom: FIT_MIN_ZOOM, maxZoom: 1 };
+// ...but below this, 14px names are under 11px on screen and nobody can read
+// them, so a board that would only fit smaller is anchored on the apex at a
+// readable size instead, and the operator pans, folds teams, or focuses one.
+const LEGIBLE_ZOOM = 0.8;
 
 /**
- * Owns the viewport. Decides — BEFORE moving it — whether a fit would land at a
- * readable zoom; fits if it would, anchors on the apex at LEGIBLE_ZOOM if it
- * would not.
- *
- * Polls for real geometry rather than gating on a single readiness signal:
- * dagre positions are synchronous but xyflow's node measurement is not, and a
- * bounds read before measurement is zero-sized. Polling is indifferent to
- * whether pane measurement, node measurement or layout settles last.
- * setInterval is deliberate over requestAnimationFrame, which never fires in a
- * hidden tab — which is every background or automated one.
- *
- * Rendered inside <ReactFlow> so it has the flow context.
+ * Owns the viewport. Decides — BEFORE moving it — whether a fit would land at
+ * a readable zoom; fits if it would, anchors on the apex at LEGIBLE_ZOOM if it
+ * would not. Polls for real geometry (xyflow measures nodes asynchronously)
+ * with setInterval, which keeps firing in a hidden tab where rAF does not.
+ * A search fits the matching nodes instead. Rendered inside <ReactFlow>.
  */
-function FitOnChange({ token, rootId, paneRef, expectedCount, onModeChange }) {
+function ViewportOwner({ token, rootId, expectedCount, paneRef, matchKey, matchIds, onModeChange }) {
   const rf = useReactFlow();
+
   useEffect(() => {
     const apply = () => {
       const pane = paneRef.current;
       const ns = rf.getNodes();
       if (!pane || !ns.length) return false;
+      // Wait for the WHOLE board: a partial node set reads as narrower than it
+      // is, takes the fit branch, and that wrong viewport is what sticks.
+      if (expectedCount && ns.length < expectedCount) return false;
       const w = pane.clientWidth;
       const h = pane.clientHeight;
-      // Wait for the WHOLE board. A partial node set reports a narrower board,
-      // which reads as "this would fit legibly", takes the fit branch, and —
-      // because apply() then returns true and stops the poll — that wrong
-      // viewport is the one that sticks. Count is the right signal because it
-      // is ours: gating on xyflow's per-node `measured` instead left the
-      // viewport at identity scale forever, since nothing ever satisfied it.
-      // A readiness signal you cannot verify is not a readiness signal.
-      if (expectedCount && ns.length < expectedCount) return false;
-      const bounds = getNodesBounds(ns);
+      const bounds = rf.getNodesBounds(ns);
       if (!w || !h || !bounds.width || !bounds.height) return false;
-
-      // What zoom would fitView land on? Mirror its padding so the choice is
-      // made before the viewport moves — fitting and then correcting would let
-      // the unreadable fit be what the operator sees first.
       const pad = 1 + FIT_OPTIONS.padding * 2;
       const wouldFit = Math.min(w / (bounds.width * pad), h / (bounds.height * pad));
-
       if (wouldFit >= LEGIBLE_ZOOM) {
         rf.fitView({ ...FIT_OPTIONS, duration: 300 });
         onModeChange?.('fit');
         return true;
       }
-      // Too WIDE to show legibly. Anchor horizontally on the apex, which sits
-      // centred over its own tier, so the top of the chain of command and the
-      // middle of the tier under it are what you land on.
       const root = rootId ? rf.getNode(rootId) : undefined;
-      const cx = root ? root.position.x + ORG_NODE_W / 2 : bounds.x + bounds.width / 2;
-      // Vertically it is only the width that forces our hand — an org chart is
-      // far wider than it is deep, and this board is 3 tiers in a pane with
-      // room for 10. Pinning the apex to the top of the pane the way a
-      // depth-constrained chart needs left 70% of the canvas empty under the
-      // chart, which is most of what "unreadable sliver in an empty pane"
-      // meant. So centre the whole depth when it fits, and only pin the apex
-      // to the top when the depth overflows too.
-      const cy =
-        bounds.height * LEGIBLE_ZOOM <= h || !root
-          ? bounds.y + bounds.height / 2
-          : root.position.y + h / (2 * LEGIBLE_ZOOM) - ORG_NODE_H;
+      const rw = root?.width || root?.measured?.width || 0;
+      const rh = root?.height || root?.measured?.height || 0;
+      const cx = root ? root.position.x + rw / 2 : bounds.x + bounds.width / 2;
+      // Centre the depth when it fits; pin the apex near the top when it doesn't.
+      const cy = bounds.height * LEGIBLE_ZOOM <= h || !root ? bounds.y + bounds.height / 2 : root.position.y + h / (2 * LEGIBLE_ZOOM) - rh;
       rf.setCenter(cx, cy, { zoom: LEGIBLE_ZOOM, duration: 300 });
       onModeChange?.('anchored');
       return true;
     };
-
     if (apply()) return undefined;
     let tries = 0;
     const iv = setInterval(() => {
@@ -117,134 +123,291 @@ function FitOnChange({ token, rootId, paneRef, expectedCount, onModeChange }) {
     }, 50);
     return () => clearInterval(iv);
   }, [token, rf, rootId, paneRef, expectedCount, onModeChange]);
+
+  useEffect(() => {
+    if (!matchIds?.length) return undefined;
+    const t = setTimeout(() => rf.fitView({ nodes: matchIds.map((id) => ({ id })), padding: 0.35, minZoom: FIT_MIN_ZOOM, maxZoom: 1, duration: 300 }), 80);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchKey, rf]);
+
   return null;
 }
 
-/** Escape hatch: show the whole board however small, on demand. */
-function FitAllButton({ onFit }) {
-  const rf = useReactFlow();
+/** The loading state of the board: the shape of an org chart, no spinner. */
+function ChartSkeleton() {
+  const Bone = ({ className = '' }) => <div className={`rounded-card border border-border bg-card ${className}`} />;
   return (
-    <button
-      onClick={() => {
-        rf.fitView({ ...FIT_OPTIONS, maxZoom: LEGIBLE_ZOOM, duration: 300 });
-        onFit?.();
-      }}
-      title="Zoom out until the whole chain of command is on screen"
-      className="flex items-center gap-1.5 rounded-lg border border-slate-700/60 bg-slate-900/80 px-2.5 py-1 text-xs font-medium text-slate-300 backdrop-blur-md transition-colors hover:border-unicorn-500/60 hover:text-slate-100"
-    >
-      <Maximize2 className="h-3.5 w-3.5" /> Fit all
-    </button>
+    <div role="status" aria-busy="true" aria-label="Loading the brigade" className="flex h-full animate-pulse flex-col items-center justify-center gap-10 px-6">
+      <Bone className="h-20 w-60" />
+      <div className="flex flex-wrap justify-center gap-6">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Bone key={i} className="h-20 w-56" />
+        ))}
+      </div>
+      <div className="hidden flex-wrap justify-center gap-6 sm:flex">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Bone key={i} className="h-20 w-56" />
+        ))}
+      </div>
+      <span className="sr-only">Loading the brigade…</span>
+    </div>
   );
 }
 
-// Live delegation-edge color by protocol (matches the knowledge-graph legend).
-const PROTOCOL_COLOR = {
-  internal: '#ec4899', // unicorn pink — in-Brigade delegation
-  a2a: '#22d3ee', // cyan — agent-to-agent
-  paid: '#f59e0b', // amber — paid external API
-  peer: '#a855f7', // purple — peer comms
-};
-const RESTING_EDGE = { stroke: '#475569', strokeWidth: 1.5 };
-
-const VIEWS = [
-  { id: 'chart', icon: Network, label: 'Org Chart' },
-  { id: 'activity', icon: LayoutGrid, label: 'Activity' },
-  { id: 'graph3d', icon: Orbit, label: '3D' },
-  { id: 'briefing', icon: Megaphone, label: 'Briefing' },
-];
-
 /**
- * Command Center — "The General's War Room".
- * The whole Brigade as a top-down org chart of real agent faces. Click any
- * agent to open comms (today: jump to /chat?agent=; soon: a floating dock).
- * Phase 1 = static chart (dagre layout, resting chain-of-command edges).
+ * Command Center — the home screen. The whole Brigade as a chain of command
+ * of real agent faces, visibly alive from the orchestration stream; click any
+ * agent to open comms in a floating dock. Views: Org Chart, Activity,
+ * Missions, Autonomous (every job that runs on its own), 3D (opt-in) and
+ * Briefing. The autonomy catalogue is read here once (every 60 s) and shared
+ * by the Autonomous view and the org chart's clock badges.
  */
 export default function CommandCenter() {
+  const navigate = useNavigate();
+  const phone = usePhone();
+  const reducedMotion = useReducedMotion();
+  const themeKey = useThemeKey();
   const { agents, loading, error, reload } = useAgents();
   const openWindow = useCommsStore((s) => s.openWindow);
-  const [view, setView] = useState('chart');
   const { statuses, connected, invocations, events } = useOrchestrationStream();
+  const autonomy = useAutonomy();
+  const autonomyByAgent = useMemo(() => countsByAgent(autonomy.items), [autonomy.items]);
+  const autonomyAttention = useMemo(() => autonomy.items.filter(needsAttention).length, [autonomy.items]);
+
+  const [view, setViewState] = useState(() => (VIEW_IDS.includes(readPrefs().view) ? readPrefs().view : 'chart'));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const setView = useCallback((v) => {
+    setViewState(v);
+    writePrefs({ view: v });
+  }, []);
+  // Deep links (?view=missions from the palette, /orchestration's redirect,
+  // ?view=autonomous&agent=<id> from an agent's page): switch once, remember
+  // it like a tab click, then drop the params so a later reload honours
+  // whatever the person picked last.
+  const [focusAgent, setFocusAgent] = useState(null);
+  useEffect(() => {
+    const v = searchParams.get('view');
+    const a = searchParams.get('agent');
+    if (!v && !a) return;
+    if (VIEW_IDS.includes(v)) setView(v);
+    if (a && v === 'autonomous') setFocusAgent(a);
+    const next = new URLSearchParams(searchParams);
+    next.delete('view');
+    next.delete('agent');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, setView]);
+  // The org chart's clock badge: jump to that agent's jobs in the catalogue.
+  const showAutonomy = useCallback(
+    (agentId) => {
+      setView('autonomous');
+      setFocusAgent(agentId);
+    },
+    [setView]
+  );
+  const clearFocusAgent = useCallback(() => setFocusAgent(null), []);
+  // null = "not decided yet": the roster size picks the default below.
+  const [collapsed, setCollapsedState] = useState(() => (Array.isArray(readPrefs().collapsed) ? new Set(readPrefs().collapsed) : null));
+  const setCollapsed = useCallback((next) => {
+    setCollapsedState(next);
+    writePrefs({ collapsed: [...next] });
+  }, []);
+  const [focus, setFocusState] = useState(() => readPrefs().focus || null);
+  const setFocus = useCallback((id) => {
+    setFocusState(id || null);
+    writePrefs({ focus: id || null });
+  }, []);
+  const [query, setQuery] = useState('');
+  const [fitMode, setFitMode] = useState(null); // 'fit' | 'anchored' | null
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  const paneRef = useRef(null);
+
+  // Offline is a state of the board, not a toast.
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      reload();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [reload]);
 
   // Defensive: `capabilities` can arrive as a non-array (bad seed data / JSON
-  // column) and downstream renderers slice/map it (org nodes, activity, 3D).
-  // Normalize once here so every consumer gets a real array.
+  // column) and downstream renderers slice/map it. Normalize once here.
   const safeAgents = useMemo(
-    () =>
-      (Array.isArray(agents) ? agents : []).map((a) =>
-        Array.isArray(a?.capabilities) ? a : { ...a, capabilities: [] }
-      ),
+    () => (Array.isArray(agents) ? agents : []).map((a) => (Array.isArray(a?.capabilities) ? a : { ...a, capabilities: [] })),
     [agents]
   );
-
   const tree = useMemo(() => buildOrgTree(safeAgents), [safeAgents]);
 
-  // Emit nodes in CHAIN-OF-COMMAND order (apex, then each parent's rank-sorted
-  // children, depth-first) rather than raw roster order. Dagre seeds its
-  // within-rank ordering from insertion order, so roster order — which arrives
-  // grouped by domain — scattered the tiers: agents landed beside strangers and
-  // their reporting lines crossed the whole board to reach them. Walking the
-  // tree puts each team together and the most senior of every tier first.
-  const orderedAgents = useMemo(() => {
+  // How many agents sit under each one (what a folded pill says).
+  const descendants = useMemo(() => {
+    const m = new Map();
+    const count = (id, trail) => {
+      if (m.has(id)) return m.get(id);
+      if (trail.has(id)) return 0;
+      trail.add(id);
+      let n = 0;
+      for (const c of tree.childrenById.get(id) || []) n += 1 + count(c, trail);
+      m.set(id, n);
+      return n;
+    };
+    tree.agents.forEach((a) => count(a.id, new Set()));
+    return m;
+  }, [tree]);
+
+  const leads = useMemo(() => tree.agents.filter((a) => (tree.childrenById.get(a.id) || []).length > 0 && a.id !== tree.root?.id), [tree]);
+
+  // Default fold: a wide apex row opens with every lead's team folded.
+  const collapsedSet = useMemo(() => {
+    if (collapsed) return collapsed;
+    const reports = tree.root ? tree.childrenById.get(tree.root.id) || [] : [];
+    if (reports.length <= FOLD_ABOVE_REPORTS) return new Set();
+    return new Set(reports.filter((id) => (tree.childrenById.get(id) || []).length > 0));
+  }, [collapsed, tree]);
+  const toggleCollapsed = useCallback(
+    (id) => {
+      const next = new Set(collapsedSet);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setCollapsed(next);
+    },
+    [collapsedSet, setCollapsed]
+  );
+  const collapseAll = () => setCollapsed(new Set(leads.map((l) => l.id)));
+  const expandAll = () => setCollapsed(new Set());
+
+  // Search: match on anything a person would type; while searching every
+  // team is open so a match is never hidden inside a folded one.
+  const q = query.trim().toLowerCase();
+  const matchIds = useMemo(() => {
+    if (!q) return null;
+    return new Set(
+      tree.agents
+        .filter((a) => [a.displayName, a.name, a.title, a.rank, a.domain, a.model, a.id].some((v) => String(v || '').toLowerCase().includes(q)))
+        .map((a) => a.id)
+    );
+  }, [q, tree]);
+  const searching = Boolean(q);
+  const focusValid = focus && tree.byId.has(focus) && (tree.childrenById.get(focus) || []).length > 0;
+
+  // Which agents are on the board right now, in chain-of-command order (apex,
+  // then each parent's rank-sorted reports, depth first) — which is also the
+  // Tab order, since xyflow renders nodes in array order.
+  const visibleIds = useMemo(() => {
     const out = [];
     const seen = new Set();
     const walk = (id) => {
-      const a = tree.byId.get(id);
-      if (!a || seen.has(id)) return;
+      if (seen.has(id) || !tree.byId.has(id)) return;
       seen.add(id);
-      out.push(a);
+      out.push(id);
+      if (collapsedSet.has(id) && !searching) return;
       (tree.childrenById.get(id) || []).forEach(walk);
     };
-    if (tree.root) walk(tree.root.id);
-    // Anyone the walk can't reach (a line the roster is mid-edit on) still has
-    // to appear — dropping an agent off the board is worse than an odd slot.
-    tree.agents.forEach((a) => {
-      if (!seen.has(a.id)) out.push(a);
-    });
+    if (focusValid) walk(focus);
+    else {
+      if (tree.root) walk(tree.root.id);
+      // Anyone the root cannot reach at all (a line the roster is mid-edit on)
+      // still has to appear — dropping an agent off the board is worse than an
+      // odd slot. Descendants of a folded team are reachable; they stay hidden.
+      const reachable = new Set();
+      const reach = (id) => {
+        if (reachable.has(id)) return;
+        reachable.add(id);
+        (tree.childrenById.get(id) || []).forEach(reach);
+      };
+      if (tree.root) reach(tree.root.id);
+      tree.agents.forEach((a) => {
+        if (!reachable.has(a.id)) walk(a.id);
+      });
+    }
     return out;
-  }, [tree]);
+  }, [tree, collapsedSet, searching, focus, focusValid]);
+  const visibleSet = useMemo(() => new Set(visibleIds), [visibleIds]);
 
-  const rawNodes = useMemo(
-    () =>
-      orderedAgents.map((a) => ({
-        id: a.id,
+  const rawNodes = useMemo(() => {
+    const siblingsOf = (id) => {
+      const p = tree.parentOf.get(id);
+      return (p ? tree.childrenById.get(p) || [] : visibleIds.filter((v) => !tree.parentOf.has(v))).filter((s) => visibleSet.has(s));
+    };
+    return visibleIds.map((id) => {
+      const agent = tree.byId.get(id);
+      const kids = tree.childrenById.get(id) || [];
+      const folded = collapsedSet.has(id) && !searching;
+      const sibs = siblingsOf(id);
+      const i = sibs.indexOf(id);
+      const parent = tree.parentOf.get(id);
+      return {
+        id,
         type: 'orgAgent',
         position: { x: 0, y: 0 },
         data: {
-          agent: a,
-          isRoot: a.id === tree.root?.id,
-          status: 'idle',
-          subordinates: (tree.childrenById.get(a.id) || []).length,
-          onOpen: openWindow, // keyboard activation path (mouse uses onNodeClick)
+          agent,
+          isRoot: id === tree.root?.id,
+          subordinates: kids.length,
+          hiddenCount: descendants.get(id) || 0,
+          collapsed: folded,
+          nav: {
+            prev: sibs[i - 1],
+            next: sibs[i + 1],
+            up: parent && visibleSet.has(parent) ? parent : undefined,
+            down: folded ? undefined : kids.find((k) => visibleSet.has(k)),
+          },
+          onOpen: openWindow,
+          onToggle: toggleCollapsed,
+          onAutonomy: showAutonomy,
         },
-      })),
-    [orderedAgents, tree, openWindow]
-  );
+      };
+    });
+  }, [visibleIds, visibleSet, tree, collapsedSet, searching, descendants, openWindow, toggleCollapsed, showAutonomy]);
 
-  // Stable topology drives the dagre layout — it must NOT change with live
-  // activity, or the nodes would jump every time a comm fires.
-  const layoutEdges = useMemo(
-    () => tree.edgesResting.map((e) => ({ ...e, type: 'smoothstep' })),
-    [tree]
-  );
-  const positioned = useOrgLayout(rawNodes, layoutEdges);
+  // Stable topology drives the layout — it must NOT change with live activity,
+  // or the nodes would jump every time a comm fires.
+  const restingEdges = useMemo(() => tree.edgesResting.filter((e) => visibleSet.has(e.source) && visibleSet.has(e.target)), [tree, visibleSet]);
+  const { nodes: positioned, edges: layoutEdges } = useOrgLayout(rawNodes, restingEdges);
 
-  // Inject live per-agent status into the positioned nodes so the chart faces
-  // light up. Reuse the exact node object when a node's source + status are
-  // unchanged, so an SSE tick re-renders only the one node that changed (not all
-  // 17), and skip the work entirely when the chart isn't the active view.
+  // Inject live status / search state / autonomy counts into the positioned
+  // nodes, reusing the exact node object when nothing changed so an SSE tick
+  // (or a catalogue refresh) re-renders only the node that changed — and
+  // never re-lays-out — skipping the work when the chart isn't showing.
   const nodesCache = useRef(new Map());
   const nodes = useMemo(() => {
     if (view !== 'chart') return positioned;
     const cache = nodesCache.current;
     const next = positioned.map((n) => {
-      const status = statuses[n.id]?.status || 'idle';
+      const live = statuses[n.id];
+      const status = live?.status || 'idle';
+      const reason = status === 'error' ? live?.reason : undefined;
+      const match = matchIds ? matchIds.has(n.id) : false;
+      const dim = matchIds ? !match : false;
+      const autonomy = autonomyByAgent.get(n.id) || null;
+      const sig = `${status}|${reason || ''}|${match}|${dim}|${autonomy ? `${autonomy.total}/${autonomy.failing}/${autonomy.stale}` : ''}`;
       const cached = cache.get(n.id);
-      if (cached && cached.__src === n && cached.__status === status) return cached;
-      return { ...n, data: { ...n.data, status }, __src: n, __status: status };
+      if (cached && cached.__src === n && cached.__sig === sig) return cached;
+      return { ...n, data: { ...n.data, status, reason, match, dim, autonomy }, __src: n, __sig: sig };
     });
     nodesCache.current = new Map(next.map((nn) => [nn.id, nn]));
     return next;
-  }, [positioned, statuses, view]);
+  }, [positioned, statuses, matchIds, view, autonomyByAgent]);
+
+  // Colours for the parts of the chart that cannot take a class.
+  const colors = useMemo(
+    () => ({
+      status: statusColors(),
+      edge: tokenHsl('--border-strong'),
+      node: tokenHsl('--muted'),
+      dots: tokenHsl('--border', 0.55),
+      mask: tokenHsl('--bg', 0.72),
+      proto: Object.fromEntries(Object.entries(PROTOCOL_TOKEN).map(([k, v]) => [k, tokenHsl(v)])),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [themeKey]
+  );
 
   // Active delegation edges, keyed source->target (latest wins).
   const liveByPair = useMemo(() => {
@@ -253,70 +416,53 @@ export default function CommandCenter() {
     return m;
   }, [invocations]);
 
-  // Resting chain-of-command edges, lit + animated where a delegation is live,
-  // plus transient edges for comms that jump across the hierarchy.
+  // Resting chain-of-command edges, lit where a delegation is live, plus
+  // transient edges for comms that jump across the hierarchy.
   const edges = useMemo(() => {
-    if (view !== 'chart') return []; // ReactFlow isn't mounted in other views
+    if (view !== 'chart') return [];
     const staticPairs = new Set();
-    const base = tree.edgesResting.map((e) => {
+    const base = layoutEdges.map((e) => {
       staticPairs.add(`${e.source}->${e.target}`);
       staticPairs.add(`${e.target}->${e.source}`);
-      const live =
-        liveByPair.get(`${e.source}->${e.target}`) || liveByPair.get(`${e.target}->${e.source}`);
-      if (live) {
-        const protocol = normalizeProtocol(live.protocol);
-        const color = PROTOCOL_COLOR[protocol] || PROTOCOL_COLOR.internal;
-        return {
-          ...e,
-          type: 'smoothstep',
-          animated: true,
-          style: { stroke: color, strokeWidth: 2.75 },
-          markerEnd: { type: MarkerType.ArrowClosed, color },
-          zIndex: 10,
-        };
-      }
-      return { ...e, type: 'smoothstep', animated: false, style: RESTING_EDGE };
+      const live = liveByPair.get(`${e.source}->${e.target}`) || liveByPair.get(`${e.target}->${e.source}`);
+      if (!live) return { ...e, animated: false, style: { stroke: colors.edge, strokeWidth: 1.5 } };
+      const color = colors.proto[normalizeProtocol(live.protocol)] || colors.proto.internal;
+      return { ...e, animated: !reducedMotion, style: { stroke: color, strokeWidth: 2.5 }, markerEnd: { type: MarkerType.ArrowClosed, color }, zIndex: 10 };
     });
     const extra = [];
     for (const [key, inv] of liveByPair) {
-      if (staticPairs.has(key)) continue;
-      const protocol = normalizeProtocol(inv.protocol);
-      const color = PROTOCOL_COLOR[protocol] || PROTOCOL_COLOR.internal;
+      if (staticPairs.has(key) || !visibleSet.has(inv.source) || !visibleSet.has(inv.target)) continue;
+      const color = colors.proto[normalizeProtocol(inv.protocol)] || colors.proto.internal;
       extra.push({
         id: `live-${key}`,
         source: inv.source,
         target: inv.target,
+        sourceHandle: 'bottom',
+        targetHandle: 'top',
         type: 'smoothstep',
-        animated: true,
+        animated: !reducedMotion,
         style: { stroke: color, strokeWidth: 2, strokeDasharray: '6 4' },
         markerEnd: { type: MarkerType.ArrowClosed, color },
         zIndex: 10,
       });
     }
     return [...base, ...extra];
-  }, [tree, liveByPair, view]);
+  }, [layoutEdges, liveByPair, visibleSet, view, colors, reducedMotion]);
 
-  const onNodeClick = useCallback(
-    (_, node) => {
-      const agent = tree.byId.get(node.id);
-      if (agent) openWindow(agent);
+  const minimapColor = useCallback(
+    (n) => {
+      const s = n.data?.status;
+      return s && s !== 'idle' ? colors.status[s === 'done' ? 'responding' : s] || colors.status.accent : colors.node;
     },
-    [tree, openWindow]
+    [colors]
   );
 
-  // Active agent ids (for the 3D graph's node highlighting).
-  const activeAgents = useMemo(
-    () => Object.entries(statuses).filter(([, v]) => v && v.status !== 'idle').map(([id]) => id),
-    [statuses]
-  );
+  // Agents working right now (for the 3D graph's highlighting and the header).
+  const activeAgents = useMemo(() => Object.entries(statuses).filter(([, v]) => v && WORKING.has(v.status)).map(([id]) => id), [statuses]);
+  const attention = useMemo(() => Object.values(statuses).filter((v) => v?.status === 'error').length, [statuses]);
 
-  // Measured so the viewport owner can tell whether a fit would land at a
-  // readable zoom BEFORE it moves anything.
-  const paneRef = useRef(null);
-  const [fitMode, setFitMode] = useState(null); // 'fit' | 'anchored' | null
-
-  // Only surface a disconnect after it persists ~2.5s, so brief EventSource
-  // reconnect blips don't flash a banner.
+  // Only call the feed stale after it stays down ~2.5s, so EventSource
+  // reconnect blips don't flash the chip.
   const [staleFeed, setStaleFeed] = useState(false);
   useEffect(() => {
     if (connected) {
@@ -327,165 +473,255 @@ export default function CommandCenter() {
     return () => clearTimeout(t);
   }, [connected]);
 
-  return (
-    // Fill the viewport minus the mobile top bar (lg uses the sidebar, no top
-    // bar) so the Controls, tray, and Briefing composer never clip off-screen.
-    <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden lg:h-[100dvh]">
-      {/* HUD header */}
-      <div className="flex items-center gap-3 border-b border-slate-800 px-6 py-3.5">
-        <div className="rounded-xl border border-unicorn-500/30 bg-gradient-to-br from-unicorn-500/30 to-unicorn-600/20 p-2">
-          <Network className="h-5 w-5 text-unicorn-300" />
-        </div>
-        <div>
-          <h1 className="text-gradient text-xl font-bold leading-tight">Command Center</h1>
-          <p className="text-xs text-slate-400">
-            The General&apos;s War Room — click any agent to open comms
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <div
-            role="tablist"
-            aria-label="Command Center view"
-            className="flex items-center gap-1 rounded-lg border border-slate-700/60 bg-slate-900/60 p-0.5"
-          >
-            {VIEWS.map(({ id, icon: Icon, label }) => (
-              <button
-                key={id}
-                role="tab"
-                aria-selected={view === id}
-                onClick={() => setView(id)}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  view === id ? 'bg-unicorn-500/20 text-unicorn-200' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" /> {label}
-              </button>
-            ))}
-          </div>
-          {liveByPair.size > 0 && (
-            <div
-              className="flex items-center gap-1.5 rounded-full border border-unicorn-500/40 bg-unicorn-500/10 px-2.5 py-1 text-xs font-medium text-unicorn-200"
-              title="Agents are delegating to each other right now"
-            >
-              <Zap className="h-3.5 w-3.5 animate-pulse text-unicorn-300" />
-              {liveByPair.size} live comm{liveByPair.size > 1 ? 's' : ''}
-            </div>
-          )}
-          <div
-            className="flex items-center gap-1.5 text-xs text-slate-400"
-            title={connected ? 'Live feed connected' : 'Live feed offline'}
-          >
-            <Radio
-              aria-hidden="true"
-              className={`h-3.5 w-3.5 ${connected ? 'text-emerald-400' : 'text-slate-600'}`}
-            />
-            <span className="sr-only">{connected ? 'Live feed connected. ' : 'Live feed disconnected. '}</span>
-            <Boxes aria-hidden="true" className="h-4 w-4" />
-            {loading ? '…' : agents.length}
-            <span className="sr-only"> agents</span>
-          </div>
-        </div>
-      </div>
+  const matchList = useMemo(() => (matchIds ? [...matchIds].filter((id) => visibleSet.has(id)) : []), [matchIds, visibleSet]);
+  const roster = safeAgents.length;
+  const description =
+    loading && !roster
+      ? 'Loading the roster…'
+      : error && !roster
+        ? 'The roster could not be loaded.'
+        : !roster
+          ? 'No agents in this organization yet.'
+          : `${roster} agent${roster === 1 ? '' : 's'} · ${activeAgents.length ? `${activeAgents.length} working now` : 'all idle'}${
+              attention ? ` · ${attention} need${attention === 1 ? 's' : ''} attention` : ''
+            }`;
 
-      {/* Canvas — org chart or live activity; comms windows float over both */}
-      <div className="relative flex-1">
-        {staleFeed && (
-          <div className="absolute left-1/2 top-2 z-30 -translate-x-1/2 rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 text-xs text-amber-200 shadow-lg">
-            Live feed disconnected — reconnecting…
+  // ── the four states of the board ─────────────────────────────────────────
+  // The Autonomous catalogue stands on its own data (an outside job needs no
+  // agent), so it skips the roster's states and draws its own.
+  let body;
+  if (view === 'autonomous') {
+    body = <AutonomousView autonomy={autonomy} agents={safeAgents} focusAgentId={focusAgent} onFocusHandled={clearFocusAgent} />;
+  } else if (offline && !roster) {
+    body = <OfflineState onRetry={reload} />;
+  } else if (loading && !roster) {
+    body = <ChartSkeleton />;
+  } else if (error && !roster) {
+    body = <ErrorState title="Couldn’t load the roster" detail={humanize(error, { what: 'loading the roster' })} onRetry={reload} />;
+  } else if (!roster) {
+    body = (
+      <EmptyState
+        icon={Bot}
+        title="No agents yet"
+        description="Build your first agent with Gunny, or import one from the library, and the chain of command appears here."
+        action={
+          <Button icon={Sparkles} onClick={() => navigate('/builder-chat')}>
+            Build an agent
+          </Button>
+        }
+        secondary={
+          <Button variant="ghost" icon={Library} onClick={() => navigate('/library')}>
+            Open the library
+          </Button>
+        }
+      />
+    );
+  } else if (view === 'chart') {
+    const focusLead = focusValid ? tree.byId.get(focus) : null;
+    // On a phone the toolbar sits above the canvas in normal flow, so nothing
+    // floats over the nodes; from `sm` it floats in the top-left corner.
+    const toolbar = (
+      <Card padding="sm" variant="glass" className={`flex flex-col gap-2 ${phone ? 'w-full' : 'w-[min(calc(100vw_-_2.5rem),22rem)]'}`}>
+        <div className="relative">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input type="search" size="sm" aria-label="Search agents" placeholder="Search agents…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-8" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="min-w-0 flex-1">
+            <Select size="sm" aria-label="Focus on a team" value={focusValid ? focus : ''} onChange={(e) => setFocus(e.target.value)}>
+              <option value="">Whole brigade</option>
+              {leads.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.displayName || l.name} · {descendants.get(l.id)} under
+                </option>
+              ))}
+            </Select>
           </div>
+          <IconButton icon={ChevronsDownUp} label="Collapse all teams" variant="secondary" size="sm" onClick={collapseAll} disabled={!leads.length} />
+          <IconButton icon={ChevronsUpDown} label="Expand all teams" variant="secondary" size="sm" onClick={expandAll} disabled={!collapsedSet.size} />
+          <FitAllButton />
+        </div>
+        {focusLead && (
+          <nav aria-label="Chart focus" className="flex items-center gap-1 text-caption text-muted">
+            <Button variant="link" size="xs" onClick={() => setFocus(null)}>
+              Whole brigade
+            </Button>
+            <ChevronRight aria-hidden="true" className="h-3 w-3" />
+            <span className="truncate font-medium text-fg">{focusLead.displayName || focusLead.name}’s team</span>
+          </nav>
         )}
-        {error ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-sm">
-            <p className="text-slate-300">Couldn&apos;t load the agent roster.</p>
-            <button
-              onClick={reload}
-              className="rounded-lg bg-unicorn-500/80 px-3 py-1.5 font-medium text-white hover:bg-unicorn-500"
-            >
-              Retry
-            </button>
-          </div>
-        ) : loading && !agents.length ? (
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-400">
-            <Loader2 className="h-5 w-5 animate-spin" /> Loading the Brigade…
-          </div>
-        ) : view === 'chart' ? (
-          <div ref={paneRef} className="h-full w-full">
+        {searching && (
+          <p className="text-caption text-muted" aria-live="polite">
+            {matchList.length === 0 ? 'No agent matches.' : `${matchList.length} match${matchList.length === 1 ? '' : 'es'} — the rest are dimmed.`}
+          </p>
+        )}
+        {!searching && fitMode === 'anchored' && (
+          <p className="hidden text-micro text-subtle sm:block">Too wide to show at a readable size — anchored on the top of the chain. Pan, fold teams, or focus one.</p>
+        )}
+      </Card>
+    );
+    body = (
+      <ReactFlowProvider>
+        <div role="tabpanel" aria-labelledby="cc-view-chart" className="flex h-full w-full flex-col">
+          {phone && <div className="shrink-0 border-b border-border p-3">{toolbar}</div>}
+          <div ref={paneRef} className="min-h-0 flex-1">
             <ReactFlow
               nodes={nodes}
               edges={edges}
               nodeTypes={nodeTypes}
-              onNodeClick={onNodeClick}
-              // No `fitView` prop: ReactFlow's built-in fit and <FitOnChange>
-              // would both drive the viewport, and the built-in one wins — the
-              // legibility anchoring below was computed, applied, and then
-              // silently overwritten by a fit back down to ~0.25. One owner for
-              // the viewport.
+              edgeTypes={edgeTypes}
+              // No `fitView` prop: one owner for the viewport (ViewportOwner).
               minZoom={FIT_MIN_ZOOM}
               maxZoom={1.6}
               nodesDraggable={false}
+              nodesConnectable={false}
+              nodesFocusable={false}
+              edgesFocusable={false}
+              // Nodes stay selectable: xyflow gives a node that is neither
+              // selectable nor draggable `pointer-events: none`, which would
+              // swallow the clicks on the buttons inside it.
               proOptions={{ hideAttribution: true }}
               className="bg-transparent"
             >
-              <FitOnChange
-                token={`${positioned.length}:${tree.root?.id || ''}`}
-                rootId={tree.root?.id}
-                paneRef={paneRef}
+              <ViewportOwner
+                token={`${visibleIds.join(',')}|${phone ? 'p' : 'd'}`}
+                rootId={focusValid ? focus : tree.root?.id}
                 expectedCount={positioned.length}
+                paneRef={paneRef}
+                matchKey={matchList.join(',')}
+                matchIds={matchList}
                 onModeChange={setFitMode}
               />
-              <Panel position="top-right" className="!m-2 flex flex-col items-end gap-1">
-                <FitAllButton onFit={() => setFitMode('fit')} />
-                {fitMode === 'anchored' && (
-                  <p className="max-w-[13rem] text-right text-[10px] leading-tight text-slate-500">
-                    Too wide to show legibly — anchored on{' '}
-                    {tree.root?.displayName || tree.root?.name || 'the apex'}. Pan, use the
-                    minimap, or Fit all.
-                  </p>
-                )}
-              </Panel>
-              <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#1e293b" />
-              <Controls showInteractive={false} className="!border-slate-700 !bg-slate-800/80" />
-              <MiniMap
-                pannable
-                zoomable
-                nodeColor="#7c3aed"
-                maskColor="rgba(2,6,23,0.7)"
-                className="!border-slate-700 !bg-slate-900"
-              />
+              {!phone && <Panel position="top-left">{toolbar}</Panel>}
+              <Background variant={BackgroundVariant.Dots} gap={22} size={1} color={colors.dots} />
+              <Controls showInteractive={false} />
+              {!phone && <MiniMap pannable zoomable nodeColor={minimapColor} nodeStrokeWidth={0} maskColor={colors.mask} />}
             </ReactFlow>
           </div>
-        ) : view === 'activity' ? (
-          <div className="flex h-full min-h-0 flex-col lg:flex-row">
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <ActivityGrid agents={safeAgents} statuses={statuses} onOpen={openWindow} />
-            </div>
-            <div className="min-h-0 shrink-0 border-t border-slate-800 bg-slate-950/40 lg:w-80 lg:border-l lg:border-t-0">
-              <ActivityFeed events={events} agents={safeAgents} onOpen={openWindow} />
-            </div>
-          </div>
-        ) : view === 'graph3d' ? (
-          <Suspense
-            fallback={
-              <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-400">
-                <Loader2 className="h-5 w-5 animate-spin" /> Loading 3D comms graph…
+        </div>
+      </ReactFlowProvider>
+    );
+  } else if (view === 'activity') {
+    body = (
+      <div role="tabpanel" aria-labelledby="cc-view-activity" className="flex h-full min-h-0 flex-col lg:flex-row">
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <ActivityGrid agents={safeAgents} statuses={statuses} onOpen={openWindow} />
+        </div>
+        <div className="max-h-[45%] min-h-0 shrink-0 border-t border-border bg-surface/50 lg:max-h-none lg:w-80 lg:border-l lg:border-t-0">
+          <ActivityFeed events={events} agents={safeAgents} connected={connected} onOpen={openWindow} />
+        </div>
+      </div>
+    );
+  } else if (view === 'missions') {
+    body = (
+      <div role="tabpanel" aria-labelledby="cc-view-missions" className="h-full">
+        <MissionsView agents={safeAgents} statuses={statuses} events={events} connected={connected} onOpen={openWindow} />
+      </div>
+    );
+  } else if (view === 'graph3d') {
+    body = (
+      <div role="tabpanel" aria-labelledby="cc-view-graph3d" className="h-full">
+        {/* Live: statuses and delegations repaint the graph from the SSE stream;
+            the roster itself refreshes every 30s through useAgents. */}
+        <Suspense fallback={<LoadingState variant="chart" label="Loading the 3D view" className="p-6" />}>
+          <WorkflowVisualization3D
+            agents={safeAgents}
+            connections={tree.edgesResting}
+            activeAgents={activeAgents}
+            statuses={statuses}
+            realtimeEvents={events}
+            onAgentClick={(node) => {
+              const a = node?.id ? tree.byId.get(node.id) : null;
+              if (a) openWindow(a);
+            }}
+          />
+        </Suspense>
+      </div>
+    );
+  } else {
+    body = (
+      <div role="tabpanel" aria-labelledby="cc-view-briefing" className="h-full">
+        <BriefingView tree={tree} onPromote={openWindow} />
+      </div>
+    );
+  }
+
+  const feedChip = connected ? (
+    <Chip tone="ok" dot size="sm">
+      Live
+    </Chip>
+  ) : staleFeed ? (
+    <Tooltip content="The live feed dropped and is reconnecting — statuses may be stale.">
+      <Chip tone="warn" dot pulse size="sm">
+        Reconnecting…
+      </Chip>
+    </Tooltip>
+  ) : (
+    <Chip dot size="sm">
+      Connecting…
+    </Chip>
+  );
+
+  return (
+    // Fill the viewport minus the mobile top bar (lg uses the sidebar, no top
+    // bar) so the Controls, tray and Briefing composer never clip off-screen.
+    <div className="flex h-[calc(100dvh-4rem)] flex-col overflow-hidden lg:h-[100dvh]">
+      <div className="border-b border-border px-4 pt-4 sm:px-6 sm:pt-5">
+        <PageHeader
+          eyebrow="Command"
+          title="Command Center"
+          description={description}
+          actions={
+            <>
+              {liveByPair.size > 0 && (
+                <Tooltip content="Agents are delegating to each other right now">
+                  <Chip tone="accent" dot pulse size="sm" icon={Zap}>
+                    {liveByPair.size} live comm{liveByPair.size > 1 ? 's' : ''}
+                  </Chip>
+                </Tooltip>
+              )}
+              {feedChip}
+              <div className="max-w-full overflow-x-auto">
+                <Tabs
+                  variant="segmented"
+                  size="sm"
+                  label="Command Center view"
+                  idBase="cc-view"
+                  value={view}
+                  onChange={setView}
+                  tabs={VIEWS.map((v) =>
+                    v.id === 'activity' && activeAgents.length
+                      ? { ...v, count: activeAgents.length }
+                      : v.id === 'autonomous' && autonomyAttention
+                        ? { ...v, count: autonomyAttention }
+                        : v
+                  )}
+                />
               </div>
-            }
-          >
-            <WorkflowVisualization3D
-              agents={safeAgents}
-              activeAgents={activeAgents}
-              realtimeEvents={events}
-              onAgentClick={(node) => {
-                const a = node?.id ? tree.byId.get(node.id) : null;
-                if (a) openWindow(a);
-              }}
-            />
-          </Suspense>
-        ) : (
-          <BriefingView tree={tree} onPromote={openWindow} />
-        )}
+            </>
+          }
+        />
+      </div>
+
+      {/* Canvas — the board or a view; comms windows float over all of them */}
+      <div className="relative min-h-0 flex-1">
+        {body}
         <CommsLayer />
       </div>
     </div>
+  );
+}
+
+/** Escape hatch: show the whole board however small, on demand. */
+function FitAllButton() {
+  const rf = useReactFlow();
+  return (
+    <IconButton
+      icon={Maximize2}
+      label="Fit the whole chart"
+      variant="secondary"
+      size="sm"
+      onClick={() => rf.fitView({ ...FIT_OPTIONS, duration: 300 })}
+    />
   );
 }

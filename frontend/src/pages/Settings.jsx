@@ -1,453 +1,631 @@
-import { useState, useEffect } from 'react';
-import {
-  Settings as SettingsIcon,
-  Zap,
-  Globe,
-  Cpu,
-  Database,
-  CheckCircle,
-  AlertCircle,
-  RefreshCw,
-  Monitor,
-  Sun,
-  Moon,
-  Palette,
-  Bell,
-  Shield,
-  Key,
-  Info
-} from 'lucide-react';
-import { toast } from 'react-hot-toast';
-import Breadcrumbs from '../components/Breadcrumbs';
-import ApiKeyCard from '../components/ApiKeyCard';
+/**
+ * Settings — preferences for this browser, the LLM providers behind the
+ * platform, and the caller's personal API keys.
+ *
+ * Preferences are real and consumed (src/utils/preferences.js): theme →
+ * src/utils/theme.js, defaultModel + streamResponses → the chat request path,
+ * notifications → src/utils/notify.js. Keys: GET/POST/DELETE /users/me/api-keys;
+ * the full key value is shown once, by KeyRevealModal, at creation.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Cpu, Key, Keyboard, LogIn, Monitor, Moon, Palette, Plus, RefreshCw, Sun, Trash2, Zap, Info } from 'lucide-react';
 import KeyRevealModal from '../components/KeyRevealModal';
-import Toggle from '../components/ui/Toggle';
+import Breadcrumbs from '../components/Breadcrumbs';
 import notify from '../utils/notify';
+import { humanize } from '../utils/errors';
 import { getPreferences, savePreferences } from '../utils/preferences';
-import { applyTheme } from '../utils/theme';
+import { THEME_FAMILIES, applyTheme, applyThemeFamily, normalizeFamily, resolveTheme } from '../utils/theme';
 import { apiJson } from '../services/http';
+import {
+  Button,
+  Card,
+  CardHeader,
+  Chip,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  Field,
+  IconButton,
+  Input,
+  Kbd,
+  LoadingState,
+  Modal,
+  Page,
+  PageHeader,
+  Select,
+  Tabs,
+  Toggle,
+  Tooltip,
+} from '../components/ui';
 
-const Settings = () => {
+const THEME_TABS = [
+  { id: 'system', label: 'System', icon: Monitor },
+  { id: 'light', label: 'Light', icon: Sun },
+  { id: 'dark', label: 'Dark', icon: Moon },
+];
+
+// Static swatches per family × mode — page, panel, accent fill, ok, warn,
+// danger — copied from src/styles/tokens.css. The picker shows every family
+// while only the chosen one is applied to the document, so these cannot be
+// read from the live tokens. Keep in step with tokens.css.
+const SWATCH_NAMES = ['page', 'panel', 'accent', 'ok', 'warning', 'danger'];
+const FAMILY_SWATCHES = {
+  brigade: {
+    dark: ['232 30% 5%', '230 26% 9%', '332 78% 47%', '158 64% 52%', '40 95% 58%', '0 90% 70%'],
+    light: ['220 30% 97%', '0 0% 100%', '332 76% 44%', '158 72% 24%', '32 92% 29%', '0 70% 42%'],
+  },
+  business: {
+    dark: ['220 14% 6%', '220 12% 9%', '221 75% 54%', '158 64% 52%', '40 95% 58%', '0 90% 70%'],
+    light: ['220 20% 97%', '0 0% 100%', '221 72% 46%', '158 72% 24%', '32 92% 29%', '0 70% 42%'],
+  },
+  graphite: {
+    dark: ['0 0% 4%', '0 0% 7%', '0 0% 96%', '150 55% 56%', '40 90% 60%', '0 85% 70%'],
+    light: ['0 0% 98%', '0 0% 100%', '0 0% 10%', '150 60% 26%', '32 90% 30%', '0 70% 42%'],
+  },
+};
+
+/** Three selectable cards, one per theme family: a radio group with arrow keys. */
+function FamilyPicker({ value, mode, onChange }) {
+  const refs = useRef([]);
+  const select = (i) => {
+    const f = THEME_FAMILIES[i];
+    if (!f) return;
+    onChange(f.id);
+    refs.current[i]?.focus();
+  };
+  const onKeyDown = (e, i) => {
+    const n = THEME_FAMILIES.length;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') select((i + 1) % n);
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') select((i - 1 + n) % n);
+    else if (e.key === 'Home') select(0);
+    else if (e.key === 'End') select(n - 1);
+    else return;
+    e.preventDefault();
+  };
+  return (
+    <div role="radiogroup" aria-label="Theme family" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      {THEME_FAMILIES.map((f, i) => {
+        const selected = f.id === value;
+        const swatches = (FAMILY_SWATCHES[f.id] || FAMILY_SWATCHES.brigade)[mode] || FAMILY_SWATCHES.brigade.dark;
+        return (
+          <button
+            key={f.id}
+            ref={(el) => (refs.current[i] = el)}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(f.id)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+            className={`rounded-card border p-3 text-left transition-[border-color,background-color,box-shadow] duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card ${
+              selected ? 'border-accent bg-accent/5 shadow-e1' : 'border-border bg-surface/50 hover:border-border-strong'
+            }`}
+          >
+            <svg role="img" aria-label={`${f.label} palette, ${mode}: ${SWATCH_NAMES.join(', ')}`} viewBox="0 0 60 10" preserveAspectRatio="none" className="block h-3 w-full overflow-hidden rounded-chip border border-border">
+              {swatches.map((hsl, k) => (
+                <rect key={SWATCH_NAMES[k]} x={k * 10} y={0} width={10} height={10} fill={`hsl(${hsl})`} />
+              ))}
+            </svg>
+            <span className="mt-2.5 flex items-center justify-between gap-2">
+              <span className="text-body font-medium text-fg-strong">{f.label}</span>
+              {selected && (
+                <Chip tone="accent" size="xs" dot>
+                  Active
+                </Chip>
+              )}
+            </span>
+            <span className="mt-0.5 block text-caption text-muted">{f.blurb}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const PROVIDER_STATUS = {
+  connected: { tone: 'ok', label: 'Connected' },
+  degraded: { tone: 'warn', label: 'Degraded' },
+  disconnected: { tone: 'danger', label: 'Unreachable' },
+  error: { tone: 'danger', label: 'Unreachable' },
+};
+const providerStatus = (s) => PROVIDER_STATUS[s] || { tone: 'danger', label: 'Unreachable' };
+
+const DAY = 86400000;
+const fmtDate = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+function timeAgo(iso) {
+  if (!iso) return 'Never';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return 'Never';
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 45) return 'Just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  const d = Math.round(h / 24);
+  if (d < 30) return `${d} day${d === 1 ? '' : 's'} ago`;
+  return fmtDate(iso);
+}
+
+/** One labelled row in a settings card: text on the left, the control on the right. */
+function SettingRow({ id, label, description, children }) {
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+      <div className="min-w-0">
+        <label htmlFor={id} className="text-body font-medium text-fg">
+          {label}
+        </label>
+        {description && <p className="mt-0.5 text-body-sm text-muted">{description}</p>}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
+
+export default function Settings() {
+  const navigate = useNavigate();
   const [providers, setProviders] = useState([]);
+  const [providersError, setProvidersError] = useState(null);
   const [models, setModels] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   const [apiKeys, setApiKeys] = useState([]);
   const [keysLoading, setKeysLoading] = useState(true);
   const [keysError, setKeysError] = useState(null);
   const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyError, setNewKeyError] = useState(null);
   const [creatingKey, setCreatingKey] = useState(false);
   const [revealedKey, setRevealedKey] = useState(null);
-  // Real, consumed preferences only (see src/utils/preferences.js). defaultModel
-  // + streamResponses feed the chat request path (useAgentChat); notifications
-  // gates toast output (src/utils/notify.js). Dropped the placebo theme/
-  // compactMode toggles that nothing read.
+  const [revoking, setRevoking] = useState(null); // key awaiting confirmation
+  const [revokeBusy, setRevokeBusy] = useState(false);
+
   const [preferences, setPreferences] = useState(getPreferences);
-
   const updatePref = (key, value) => setPreferences((prev) => ({ ...prev, [key]: value }));
-
-  useEffect(() => {
-    loadSettings();
-    loadApiKeys();
-  }, []);
 
   useEffect(() => {
     savePreferences(preferences);
   }, [preferences]);
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     setLoading(true);
-    try {
-      const results = await Promise.allSettled([
-        apiJson('/providers'),
-        apiJson('/chat/models'),
-        apiJson('/stats'),
-      ]);
-      const providersData = results[0].status === 'fulfilled' ? results[0].value : {};
-      const modelsData = results[1].status === 'fulfilled' ? results[1].value : {};
-      const statsData = results[2].status === 'fulfilled' ? results[2].value : null;
-      setProviders(providersData.providers || []);
-      setModels(modelsData.models || []);
-      setStats(statsData);
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-    } finally {
-      setLoading(false);
+    const [p, m, s] = await Promise.allSettled([apiJson('/providers'), apiJson('/chat/models'), apiJson('/stats')]);
+    if (p.status === 'fulfilled') {
+      setProviders(p.value?.providers || []);
+      setProvidersError(null);
+    } else {
+      setProviders([]);
+      setProvidersError(p.reason);
     }
-  };
+    setModels(m.status === 'fulfilled' ? m.value?.models || [] : []);
+    setStats(s.status === 'fulfilled' ? s.value : null);
+    setLoading(false);
+  }, []);
 
-  const loadApiKeys = async () => {
+  const loadApiKeys = useCallback(async () => {
     setKeysLoading(true);
     try {
       const data = await apiJson('/users/me/api-keys', { redirectOn401: false });
-      setApiKeys(data.keys || []);
+      setApiKeys(data?.keys || []);
       setKeysError(null);
-    } catch (error) {
+    } catch (err) {
       setApiKeys([]);
-      setKeysError(
-        error.status === 401
-          ? 'Sign in to manage your API keys'
-          : error.message || 'Failed to load API keys'
-      );
+      setKeysError(err);
     } finally {
       setKeysLoading(false);
     }
-  };
+  }, []);
 
-  const handleCreateKey = async () => {
+  useEffect(() => {
+    loadSettings();
+    loadApiKeys();
+  }, [loadSettings, loadApiKeys]);
+
+  const createKey = async (e) => {
+    e?.preventDefault?.();
     const name = newKeyName.trim();
-    if (!name || creatingKey) return;
+    if (!name) {
+      setNewKeyError('Give the key a name so you can tell it apart later.');
+      return;
+    }
+    if (creatingKey) return;
     setCreatingKey(true);
+    setNewKeyError(null);
     try {
-      const created = await apiJson('/users/me/api-keys', {
-        method: 'POST',
-        body: JSON.stringify({ name }),
-      });
-      setRevealedKey(created); // full key value is only returned once
+      const created = await apiJson('/users/me/api-keys', { method: 'POST', body: JSON.stringify({ name }) });
+      setRevealedKey(created); // the full key value is only returned once
       setNewKeyName('');
       notify.success('API key created');
       await loadApiKeys();
-    } catch (error) {
-      toast.error(error.message || 'Failed to create API key');
+    } catch (err) {
+      setNewKeyError(humanize(err, { what: 'creating the key' }));
     } finally {
       setCreatingKey(false);
     }
   };
 
-  const handleRevokeKey = async (key) => {
+  const confirmRevoke = async () => {
+    if (!revoking) return;
+    setRevokeBusy(true);
     try {
-      await apiJson(`/users/me/api-keys/${key.id}`, { method: 'DELETE' });
-      notify.success('API key revoked');
-      setApiKeys(prev => prev.filter(k => k.id !== key.id));
-    } catch (error) {
-      toast.error(error.message || 'Failed to revoke API key');
+      await apiJson(`/users/me/api-keys/${revoking.id}`, { method: 'DELETE' });
+      setApiKeys((prev) => prev.filter((k) => k.id !== revoking.id));
+      notify.success(`Revoked “${revoking.name}”`);
+      setRevoking(null);
+    } catch (err) {
+      notify.error(humanize(err, { what: 'revoking the key' }));
+    } finally {
+      setRevokeBusy(false);
     }
   };
 
-  const modelCategories = models.reduce((acc, m) => {
-    const cat = m.category || 'unknown';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(m);
-    return acc;
-  }, {});
+  const modelGroups = useMemo(() => {
+    const groups = {};
+    for (const m of models) (groups[m.category || 'other'] ||= []).push(m);
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [models]);
+
+  // ── API key columns ────────────────────────────────────────────────────────
+  const keyColumns = [
+    {
+      key: 'name',
+      label: 'Name',
+      render: (k) => (
+        <span className="flex flex-col">
+          <span className="font-medium text-fg-strong">{k.name}</span>
+          <span className="font-mono text-caption text-muted">{k.keyPrefix}…</span>
+        </span>
+      ),
+    },
+    {
+      key: 'permissions',
+      label: 'Permissions',
+      render: (k) => (
+        <span className="inline-flex flex-wrap gap-1">
+          {(k.permissions || []).map((p) => (
+            <Chip key={p} size="xs">
+              {p}
+            </Chip>
+          ))}
+        </span>
+      ),
+    },
+    { key: 'lastUsedAt', label: 'Last used', render: (k) => <span className="text-muted">{timeAgo(k.lastUsedAt)}</span> },
+    {
+      key: 'expiresAt',
+      label: 'Expires',
+      render: (k) => {
+        if (!k.expiresAt) return <span className="text-muted">Never</span>;
+        const left = new Date(k.expiresAt).getTime() - Date.now();
+        if (left < 0) return <Chip tone="danger" size="xs">Expired {fmtDate(k.expiresAt)}</Chip>;
+        if (left < 14 * DAY) return <Chip tone="warn" size="xs">In {Math.max(1, Math.round(left / DAY))} days</Chip>;
+        return <span className="text-muted">{fmtDate(k.expiresAt)}</span>;
+      },
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (k) => {
+        const expired = k.expiresAt && new Date(k.expiresAt) < new Date();
+        const active = (k.isActive ?? true) && !expired;
+        return (
+          <Chip tone={active ? 'ok' : 'neutral'} size="xs" dot>
+            {active ? 'Active' : expired ? 'Expired' : 'Revoked'}
+          </Chip>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      label: '',
+      align: 'right',
+      hideOnMobile: false,
+      render: (k) => (
+        <IconButton icon={Trash2} label={`Revoke ${k.name}`} size="sm" className="text-danger hover:text-danger" onClick={() => setRevoking(k)} />
+      ),
+    },
+  ];
+
+  // ── keys section states ────────────────────────────────────────────────────
+  let keysBody;
+  if (keysError && (keysError.status === 401 || keysError.status === 403)) {
+    keysBody = (
+      <EmptyState
+        compact
+        icon={Key}
+        title="Sign in to manage your API keys"
+        description="Personal keys belong to your account. Sign in and they appear here."
+        action={
+          <Button size="sm" icon={LogIn} onClick={() => navigate('/login')}>
+            Sign in
+          </Button>
+        }
+      />
+    );
+  } else {
+    keysBody = (
+      <>
+        <form onSubmit={createKey} className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start">
+          <Field label="New key name" error={newKeyError} className="flex-1" htmlFor="new-key-name">
+            <Input value={newKeyName} onChange={(e) => { setNewKeyName(e.target.value); if (newKeyError) setNewKeyError(null); }} placeholder="e.g. CLI, n8n, staging" autoComplete="off" />
+          </Field>
+          <Button type="submit" icon={Plus} loading={creatingKey} className="sm:mt-[26px]">
+            Create key
+          </Button>
+        </form>
+        <DataTable
+          caption="Your API keys"
+          columns={keyColumns}
+          rows={apiKeys}
+          rowKey="id"
+          dense
+          loading={keysLoading}
+          error={keysError && { title: 'Couldn’t load your API keys', detail: humanize(keysError, { what: 'loading your keys' }), onRetry: loadApiKeys }}
+          empty={{ icon: Key, title: 'No API keys yet', description: 'Create one above to call the Brigade API from scripts, n8n or another app.' }}
+        />
+      </>
+    );
+  }
 
   return (
-    <div className="min-h-screen p-4 md:p-6 lg:p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <Breadcrumbs />
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gradient">
-              Settings
-            </h1>
-            <p className="text-muted mt-1">Platform configuration and preferences</p>
+    <Page className="max-w-5xl">
+      <PageHeader
+        breadcrumbs={<Breadcrumbs />}
+        eyebrow="System"
+        title="Settings"
+        description="Preferences for this browser, the model providers behind the platform, and your personal API keys."
+        actions={
+          <Button variant="secondary" icon={RefreshCw} loading={loading} onClick={loadSettings}>
+            Refresh
+          </Button>
+        }
+      />
+
+      <div className="space-y-5">
+        {/* Appearance */}
+        <Card>
+          <CardHeader icon={Palette} title="Appearance" description="Applies immediately and is remembered in this browser." />
+          <div className="pb-4">
+            <p id="pref-family-label" className="text-body font-medium text-fg">
+              Theme family
+            </p>
+            <p className="mb-3 mt-0.5 text-body-sm text-muted">Each family has a light and a dark side; pick the family here and the mode below.</p>
+            <FamilyPicker
+              value={normalizeFamily(preferences.themeFamily)}
+              mode={resolveTheme(preferences.theme)}
+              onChange={(id) => {
+                updatePref('themeFamily', id);
+                applyThemeFamily(id);
+              }}
+            />
           </div>
-          <button
-            onClick={loadSettings}
-            disabled={loading}
-            className="px-4 py-2 bg-elevated text-muted rounded-lg hover:bg-elevated transition-colors flex items-center space-x-2 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
-          </button>
-        </div>
-
-        {/* LLM Provider */}
-        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-fg mb-4 flex items-center space-x-2">
-            <Zap className="w-5 h-5 text-unicorn-400" />
-            <span>LLM Provider</span>
-          </h2>
-          <div className="space-y-4">
-            {providers.map((provider, idx) => (
-              <div key={idx} className="p-4 bg-elevated/50 rounded-lg flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 rounded-lg bg-unicorn-500/20 flex items-center justify-center">
-                    <Globe className="w-5 h-5 text-unicorn-400" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-fg">{provider.name}</h3>
-                    <p className="text-sm text-muted">{provider.endpoint || provider.url}</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {provider.status === 'connected' ? (
-                    <span className="flex items-center space-x-1 text-emerald-400 text-sm">
-                      <CheckCircle className="w-4 h-4" />
-                      <span>Connected</span>
-                    </span>
-                  ) : (
-                    <span className="flex items-center space-x-1 text-orange-400 text-sm">
-                      <AlertCircle className="w-4 h-4" />
-                      <span>Disconnected</span>
-                    </span>
-                  )}
-                  {typeof provider.latency_ms === 'number' && (
-                    <span className="text-xs text-muted ml-2">
-                      {provider.latency_ms} ms
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-            {providers.length === 0 && !loading && (
-              <p className="text-muted text-center py-4">No providers configured</p>
-            )}
-          </div>
-        </div>
-
-        {/* API Keys */}
-        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-fg mb-1 flex items-center space-x-2">
-            <Key className="w-5 h-5 text-cyan-400" />
-            <span>API Keys</span>
-          </h2>
-          <p className="text-sm text-muted mb-4">
-            Personal keys for the Brigade API — send them as an <code className="text-muted">X-API-Key</code> header.
-            The full key value is shown only once, at creation.
-          </p>
-          {keysError ? (
-            <p className="text-muted text-center py-4">{keysError}</p>
-          ) : (
-            <>
-              <div className="flex items-center space-x-2 mb-4">
-                <input
-                  type="text"
-                  value={newKeyName}
-                  onChange={(e) => setNewKeyName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreateKey(); }}
-                  placeholder="Key name (e.g. CLI, n8n, staging)"
-                  className="flex-1 px-3 py-2 bg-elevated border border-border rounded-lg text-sm text-fg placeholder-slate-500 focus:ring-2 focus:ring-unicorn-500 focus:border-transparent outline-none"
-                />
-                <button
-                  onClick={handleCreateKey}
-                  disabled={creatingKey || !newKeyName.trim()}
-                  className="px-4 py-2 bg-unicorn-600 hover:bg-unicorn-500 text-white rounded-lg transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {creatingKey ? 'Creating…' : 'Create Key'}
-                </button>
-              </div>
-              {keysLoading ? (
-                <p className="text-muted text-center py-4">Loading keys…</p>
-              ) : apiKeys.length > 0 ? (
-                <div className="space-y-3">
-                  {apiKeys.map((key) => (
-                    <ApiKeyCard key={key.id} apiKey={key} onRevoke={handleRevokeKey} />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted text-center py-4">No API keys yet — create one above.</p>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Available Models */}
-        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-fg mb-4 flex items-center space-x-2">
-            <Cpu className="w-5 h-5 text-blue-400" />
-            <span>Available Models ({models.length})</span>
-          </h2>
-          <div className="space-y-4">
-            {Object.entries(modelCategories).map(([category, categoryModels]) => (
-              <div key={category}>
-                <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-2">
-                  {category} ({categoryModels.length})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {categoryModels.slice(0, 6).map((model, idx) => (
-                    <div key={idx} className="p-3 bg-elevated/50 rounded-lg flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-fg font-medium">{model.name || model.id}</p>
-                        {model.provider && (
-                          <p className="text-xs text-muted">{model.provider}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {model.speed && (
-                          <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-400">
-                            Speed: {model.speed}/5
-                          </span>
-                        )}
-                        {model.quality && (
-                          <span className="text-xs px-2 py-0.5 rounded bg-unicorn-500/20 text-unicorn-400">
-                            Quality: {model.quality}/5
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {categoryModels.length > 6 && (
-                  <p className="text-xs text-muted mt-1">+ {categoryModels.length - 6} more</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* User Preferences */}
-        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-fg mb-4 flex items-center space-x-2">
-            <Palette className="w-5 h-5 text-unicorn-400" />
-            <span>Preferences</span>
-          </h2>
-          <div className="space-y-4">
-            {/* Appearance — applied immediately + persisted; 'system' follows the OS.
-                Wired to src/utils/theme.js which flips data-theme on <html>. */}
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-fg">Appearance</p>
-                <p className="text-xs text-muted">Color theme for the interface</p>
-              </div>
-              <div
-                role="radiogroup"
-                aria-label="Color theme"
-                className="flex items-center gap-1 rounded-lg border border-border/60 bg-elevated/60 p-1"
-              >
-                {[
-                  { value: 'system', label: 'System', icon: Monitor },
-                  { value: 'light', label: 'Light', icon: Sun },
-                  { value: 'dark', label: 'Dark', icon: Moon },
-                ].map(({ value, label, icon: Icon }) => {
-                  const active = preferences.theme === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => {
-                        updatePref('theme', value);
-                        applyTheme(value);
-                      }}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-unicorn-500/60 ${
-                        active
-                          ? 'bg-unicorn-600 text-white shadow'
-                          : 'text-muted hover:text-fg'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4" aria-hidden="true" />
-                      <span>{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+          <SettingRow id="pref-theme" label="Mode" description="System follows your operating system’s light or dark setting.">
+            <Tabs
+              variant="segmented"
+              label="Color mode"
+              idBase="pref-theme"
+              tabs={THEME_TABS}
+              value={preferences.theme}
+              onChange={(v) => {
+                updatePref('theme', v);
+                applyTheme(v, preferences.themeFamily);
+              }}
+            />
+          </SettingRow>
+          <div className="mt-3 rounded-control border border-border bg-surface p-3" aria-label="Theme preview">
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                ['bg-bg', 'Page'],
+                ['bg-surface', 'Panel'],
+                ['bg-card', 'Card'],
+                ['bg-elevated', 'Tile'],
+                ['bg-accent-fill', 'Accent'],
+              ].map(([cls, name]) => (
+                <Tooltip key={cls} content={name}>
+                  <span tabIndex={0} aria-label={`${name} colour`} className={`h-7 w-7 rounded-chip border border-border ${cls} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`} />
+                </Tooltip>
+              ))}
+              <span className="ml-auto inline-flex items-center gap-2">
+                <Chip tone="ok" size="xs" dot>
+                  Ready
+                </Chip>
+                <Chip tone="accent" size="xs">
+                  Accent
+                </Chip>
+                <Button size="xs" variant="secondary">
+                  Sample
+                </Button>
+              </span>
             </div>
+          </div>
+        </Card>
 
-            {/* Default Model — used by new chats via useAgentChat when no per-window override is set */}
-            <div className="flex items-center justify-between">
-              <div>
-                <label htmlFor="pref-default-model" className="text-sm font-medium text-fg">Default Model</label>
-                <p className="text-xs text-muted">Model used for new conversations</p>
-              </div>
-              <select
+        {/* Chat defaults */}
+        <Card>
+          <CardHeader icon={Cpu} title="Chat defaults" description="Used by new conversations unless a chat window overrides them." />
+          <div className="divide-y divide-border">
+            <SettingRow id="pref-default-model" label="Default model" description={models.length ? `${models.length} models available` : loading ? 'Loading models…' : 'No models reported by the platform'}>
+              <Select
                 id="pref-default-model"
+                aria-label="Default model"
                 value={preferences.defaultModel}
+                disabled={loading && !models.length}
                 onChange={(e) => {
                   updatePref('defaultModel', e.target.value);
                   notify.success('Default model updated');
                 }}
-                className="bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-fg max-w-xs"
+                className="sm:w-72"
               >
                 <option value="">Auto (server default)</option>
-                {models.map((model, idx) => (
-                  <option key={idx} value={model.id || model.name}>
-                    {model.name || model.id}
-                    {model.provider ? ` (${model.provider})` : ''}
-                  </option>
+                {modelGroups.map(([category, list]) => (
+                  <optgroup key={category} label={category.charAt(0).toUpperCase() + category.slice(1)}>
+                    {list.map((m) => (
+                      <option key={m.id || m.name} value={m.id || m.name}>
+                        {m.display_name || m.name || m.id}
+                        {m.provider ? ` · ${m.provider}` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
-                {models.length === 0 && (
-                  <option disabled>Loading models...</option>
-                )}
-              </select>
-            </div>
+              </Select>
+            </SettingRow>
+            <SettingRow id="pref-stream" label="Stream responses" description="Show text as it is generated instead of all at once.">
+              <Toggle id="pref-stream" label="Stream responses" checked={preferences.streamResponses} onChange={(v) => updatePref('streamResponses', v)} />
+            </SettingRow>
+            <SettingRow id="pref-notifications" label="Notifications" description="Show success and info toasts. Errors always show.">
+              <Toggle id="pref-notifications" label="Notifications" checked={preferences.notifications} onChange={(v) => updatePref('notifications', v)} />
+            </SettingRow>
+          </div>
+        </Card>
 
-            {/* Stream Responses — read by useAgentChat to render tokens live vs. all-at-once */}
-            <div className="flex items-center justify-between">
+        {/* LLM providers */}
+        <Card>
+          <CardHeader icon={Zap} title="LLM providers" description="Where inference is routed. Checked when this page loads." />
+          {loading ? (
+            <LoadingState variant="list" count={2} label="Checking providers" />
+          ) : providersError ? (
+            <ErrorState compact title="Couldn’t check the providers" detail={humanize(providersError, { what: 'checking providers' })} onRetry={loadSettings} />
+          ) : providers.length === 0 ? (
+            <EmptyState compact icon={Zap} title="No providers configured" description="Point the platform at Ops-Center or a local router and it appears here with its status." />
+          ) : (
+            <ul className="divide-y divide-border">
+              {providers.map((p) => {
+                const st = providerStatus(p.status);
+                return (
+                  <li key={p.id || p.name} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2 text-body font-medium text-fg-strong">
+                        {p.name}
+                        {p.isDefault && (
+                          <Chip tone="accent" size="xs">
+                            Default
+                          </Chip>
+                        )}
+                      </p>
+                      <p className="truncate font-mono text-caption text-muted">{p.endpoint || p.url}</p>
+                      {p.description && <p className="mt-0.5 text-body-sm text-muted">{p.description}</p>}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Chip tone={st.tone} dot pulse={st.tone === 'ok'}>
+                        {st.label}
+                      </Chip>
+                      {typeof p.latency_ms === 'number' && (
+                        <Chip size="sm" className="tabular-nums">
+                          {p.latency_ms} ms
+                        </Chip>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
+
+        {/* API keys */}
+        <Card>
+          <CardHeader
+            icon={Key}
+            title="API keys"
+            description={
+              <>
+                Personal keys for the Brigade API, sent as an <code className="font-mono text-fg">X-API-Key</code> header. The full value is shown once, at creation.
+              </>
+            }
+          />
+          {keysBody}
+        </Card>
+
+        {/* Keyboard shortcuts + platform */}
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <Card>
+            <CardHeader icon={Keyboard} title="Keyboard shortcuts" />
+            <ul className="divide-y divide-border">
+              {[
+                { keys: ['⌘', 'K'], action: 'Command palette' },
+                { keys: ['Enter'], action: 'Send message (in chat)' },
+                { keys: ['Shift', 'Enter'], action: 'New line (in chat)' },
+                { keys: ['Esc'], action: 'Close dialogs' },
+              ].map((s) => (
+                <li key={s.action} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0 text-body-sm text-fg">
+                  <span>{s.action}</span>
+                  <span className="inline-flex items-center gap-0.5">
+                    {s.keys.map((k) => (
+                      <Kbd key={k}>{k}</Kbd>
+                    ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+          <Card>
+            <CardHeader icon={Info} title="Platform" />
+            <dl className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-sm font-medium text-fg">Stream Responses</p>
-                <p className="text-xs text-muted">Show text as it's generated</p>
+                <dt className="text-caption text-muted">Version</dt>
+                <dd className="mt-0.5 text-body font-medium text-fg">{stats?.version ? `v${stats.version}` : loading ? '…' : 'Not reported'}</dd>
               </div>
-              <Toggle
-                checked={preferences.streamResponses}
-                onChange={(v) => updatePref('streamResponses', v)}
-                label="Stream responses"
-              />
-            </div>
-
-            {/* Notifications — read by notify.js to gate non-error toasts */}
-            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-fg">Notifications</p>
-                <p className="text-xs text-muted">Show non-error toast notifications</p>
+                <dt className="text-caption text-muted">Agents</dt>
+                <dd className="mt-0.5 text-body font-medium tabular-nums text-fg">{stats?.totalAgents ?? (loading ? '…' : 'Not reported')}</dd>
               </div>
-              <Toggle
-                checked={preferences.notifications}
-                onChange={(v) => updatePref('notifications', v)}
-                label="Notifications"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Platform Info */}
-        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-fg mb-4 flex items-center space-x-2">
-            <Info className="w-5 h-5 text-muted" />
-            <span>Platform Info</span>
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-3 bg-elevated/50 rounded-lg">
-              <p className="text-xs text-muted">Platform</p>
-              <p className="text-fg font-semibold">Unicorn Brigade</p>
-            </div>
-            <div className="p-3 bg-elevated/50 rounded-lg">
-              <p className="text-xs text-muted">Version</p>
-              <p className="text-fg font-semibold">{stats?.version ? `v${stats.version}` : '—'}</p>
-            </div>
-            <div className="p-3 bg-elevated/50 rounded-lg">
-              <p className="text-xs text-muted">Backend</p>
-              <p className="text-fg font-semibold">FastAPI + SQLAlchemy</p>
-            </div>
-            <div className="p-3 bg-elevated/50 rounded-lg">
-              <p className="text-xs text-muted">Agents</p>
-              <p className="text-fg font-semibold">{stats?.totalAgents ?? '—'}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Keyboard Shortcuts */}
-        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-fg mb-4 flex items-center space-x-2">
-            <Monitor className="w-5 h-5 text-cyan-400" />
-            <span>Keyboard Shortcuts</span>
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {[
-              { keys: '⌘ K', action: 'Command palette' },
-              { keys: 'Enter', action: 'Send message (in chat)' },
-              { keys: 'Shift + Enter', action: 'New line (in chat)' },
-              { keys: 'Esc', action: 'Close dialogs' },
-            ].map((shortcut, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-elevated/50 rounded-lg">
-                <span className="text-sm text-muted">{shortcut.action}</span>
-                <kbd className="px-2 py-1 bg-elevated rounded text-xs text-muted font-mono">
-                  {shortcut.keys}
-                </kbd>
+              <div>
+                <dt className="text-caption text-muted">Status</dt>
+                <dd className="mt-0.5">
+                  {stats?.status ? (
+                    <Chip tone={stats.status === 'operational' ? 'ok' : 'warn'} size="xs" dot className="capitalize">
+                      {stats.status}
+                    </Chip>
+                  ) : (
+                    <span className="text-body text-muted">{loading ? '…' : 'Not reported'}</span>
+                  )}
+                </dd>
               </div>
-            ))}
-          </div>
+              <div>
+                <dt className="text-caption text-muted">Notifications</dt>
+                <dd className="mt-0.5 flex items-center gap-1.5 text-body text-fg">
+                  <Bell aria-hidden="true" className="h-3.5 w-3.5 text-muted" />
+                  {preferences.notifications ? 'On' : 'Errors only'}
+                </dd>
+              </div>
+            </dl>
+          </Card>
         </div>
       </div>
 
-      {/* One-time reveal of a freshly created key */}
-      {revealedKey && (
-        <KeyRevealModal apiKey={revealedKey} onClose={() => setRevealedKey(null)} />
-      )}
-    </div>
-  );
-};
+      {/* One-time reveal of a freshly created key (Lane B component) */}
+      {revealedKey && <KeyRevealModal apiKey={revealedKey} onClose={() => setRevealedKey(null)} />}
 
-export default Settings;
+      {/* Revoke confirmation */}
+      <Modal
+        isOpen={Boolean(revoking)}
+        onClose={() => (revokeBusy ? null : setRevoking(null))}
+        tone="danger"
+        size="sm"
+        title={revoking ? `Revoke “${revoking.name}”?` : 'Revoke key'}
+        description="Anything still using this key stops working immediately. This can’t be undone."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRevoking(null)} disabled={revokeBusy}>
+              Keep it
+            </Button>
+            <Button variant="danger" icon={Trash2} loading={revokeBusy} onClick={confirmRevoke}>
+              Revoke key
+            </Button>
+          </>
+        }
+      >
+        {revoking && (
+          <p className="font-mono text-body-sm text-muted">
+            {revoking.keyPrefix}… · {(revoking.permissions || []).join(', ') || 'no permissions'}
+          </p>
+        )}
+      </Modal>
+    </Page>
+  );
+}

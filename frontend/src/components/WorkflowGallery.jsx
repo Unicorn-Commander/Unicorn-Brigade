@@ -1,143 +1,65 @@
 /**
- * WorkflowGallery - Responsive grid gallery for workflow cards
- *
- * Features:
- * - Responsive grid layout (1-3 columns based on screen size)
- * - List view alternative
- * - Loading states
- * - Empty states
- * - Smooth transitions
+ * WorkflowGallery — the templates grid or list, with all four states in the
+ * place the content goes. A filtered-to-nothing empty is its own compact state.
  */
-
-import { GitBranch } from 'lucide-react';
+import { GitBranch, Search, X, RefreshCw } from 'lucide-react';
 import WorkflowCard from './WorkflowCard';
-import CardSkeleton from './skeletons/CardSkeleton';
-import ListSkeleton from './skeletons/ListSkeleton';
+import { Button, EmptyState, ErrorState, LoadingState } from './ui';
 
-const WorkflowGallery = ({
-  workflows,
-  viewMode = 'grid',
-  loading = false,
-  onViewDetails,
-  onExecute,
-}) => {
-  // Loading State
-  if (loading) {
+export default function WorkflowGallery({ workflows = [], viewMode = 'grid', loading = false, error = null, onRetry, onViewDetails, onExecute, busyId = null, hasFilters = false, onClearFilters }) {
+  if (loading) return <LoadingState variant={viewMode === 'grid' ? 'cards' : 'list'} count={6} label="Loading workflows" />;
+  if (error) return <ErrorState title="Couldn’t load the workflow templates" detail={error} onRetry={onRetry} />;
+  if (workflows.length === 0) {
+    if (hasFilters) {
+      return (
+        <EmptyState
+          compact
+          icon={Search}
+          title="No workflows match"
+          description="Try another word, or clear the tag and complexity filters."
+          action={
+            <Button variant="secondary" size="sm" icon={X} onClick={onClearFilters}>
+              Clear filters
+            </Button>
+          }
+        />
+      );
+    }
     return (
-      <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : ''}>
-        {viewMode === 'grid' ? <CardSkeleton count={6} /> : <ListSkeleton rows={6} />}
-      </div>
+      <EmptyState
+        icon={GitBranch}
+        title="No workflow templates yet"
+        description="Templates are registered by the workflow engine on the server. When it has one, it appears here ready to run."
+        action={
+          onRetry && (
+            <Button variant="secondary" icon={RefreshCw} onClick={onRetry}>
+              Check again
+            </Button>
+          )
+        }
+      />
     );
   }
 
-  // Empty State
-  if (!workflows || workflows.length === 0) {
+  if (viewMode === 'list') {
     return (
-      <div className="flex flex-col items-center justify-center py-16">
-        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 border border-unicorn-500/30 flex items-center justify-center mb-4">
-          <GitBranch className="w-10 h-10 text-unicorn-400" />
-        </div>
-        <h3 className="text-xl font-semibold text-slate-300 mb-2">
-          No workflows found
-        </h3>
-        <p className="text-slate-400 text-center max-w-md">
-          Try adjusting your filters or search query to find workflows
-        </p>
-      </div>
-    );
-  }
-
-  // Grid View
-  if (viewMode === 'grid') {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fadeIn">
-        {workflows.map((workflow) => (
-          <WorkflowCard
-            key={workflow.id}
-            workflow={workflow}
-            onViewDetails={onViewDetails}
-            onExecute={onExecute}
-            showDiagram={true}
-            compact={false}
-          />
+      <ul className="space-y-3 animate-fade-in" aria-label="Workflow templates">
+        {workflows.map((w) => (
+          <li key={w.id}>
+            <WorkflowCard workflow={w} layout="list" busy={busyId === w.id} onViewDetails={onViewDetails} onExecute={onExecute} />
+          </li>
         ))}
-      </div>
+      </ul>
     );
   }
 
-  // List View
   return (
-    <div className="space-y-4 animate-fadeIn">
-      {workflows.map((workflow) => (
-        <div
-          key={workflow.id}
-          className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl overflow-hidden hover:border-unicorn-500/50 transition-all"
-        >
-          <div className="flex items-stretch">
-            {/* Diagram Preview (smaller in list view) */}
-            <div className="w-64 flex-shrink-0 bg-slate-900/50 relative">
-              <WorkflowCard
-                workflow={workflow}
-                onViewDetails={onViewDetails}
-                onExecute={onExecute}
-                showDiagram={false}
-                compact={true}
-              />
-            </div>
-
-            {/* Workflow Details */}
-            <div className="flex-1 p-6 flex flex-col justify-between">
-              <div>
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="text-xl font-semibold text-white group-hover:text-unicorn-400 transition-colors">
-                      {workflow.name}
-                    </h3>
-                    <p className="text-sm text-slate-400 mt-1">
-                      {workflow.description}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Tags */}
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {(workflow.tags || []).slice(0, 6).map(tag => (
-                    <span
-                      key={tag}
-                      className="px-2.5 py-1 rounded-lg text-xs border bg-slate-800/50 text-slate-300 border-slate-700"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                  {(workflow.tags || []).length > 6 && (
-                    <span className="px-2.5 py-1 rounded-lg bg-slate-800 text-xs text-slate-400">
-                      +{(workflow.tags || []).length - 6} more
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-3 mt-4">
-                <button
-                  onClick={() => onViewDetails(workflow)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
-                >
-                  <span>View Details</span>
-                </button>
-                <button
-                  onClick={() => onExecute(workflow)}
-                  className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center gap-2 text-sm font-medium"
-                >
-                  <span>Execute Workflow</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+    <ul className="grid grid-cols-1 gap-4 animate-fade-in sm:grid-cols-2 xl:grid-cols-3" aria-label="Workflow templates">
+      {workflows.map((w) => (
+        <li key={w.id}>
+          <WorkflowCard workflow={w} layout="grid" busy={busyId === w.id} onViewDetails={onViewDetails} onExecute={onExecute} />
+        </li>
       ))}
-    </div>
+    </ul>
   );
-};
-
-export default WorkflowGallery;
+}

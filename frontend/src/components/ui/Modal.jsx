@@ -1,121 +1,59 @@
-import { useEffect, useId, useRef } from 'react';
-import { X } from 'lucide-react';
+import { useId } from 'react';
+import { X, AlertTriangle } from 'lucide-react';
+import useFocusTrap from './useFocusTrap';
 
 /**
- * Accessible modal dialog primitive.
+ * Modal — the one dialog.
  *
- * Bakes in the a11y contract that the audit found missing on 24 hand-rolled
- * `fixed inset-0` modals (only CommsWindow had any of it):
- *   - role="dialog" + aria-modal="true"
- *   - labelled by its title (aria-labelledby) or an explicit aria-label
- *   - Escape to close
- *   - focus trap (Tab/Shift+Tab cycle within the panel)
- *   - focus restore to the element that was focused before opening
- *   - backdrop click to close
- *   - background scroll lock while open
+ * Accessibility is built in: role=dialog + aria-modal, labelled by its title,
+ * Escape closes, focus is trapped and restored, body scroll is locked, the
+ * backdrop closes it (unless closeOnBackdrop={false}).
  *
- * Visuals are caller-owned via `panelClassName` so existing modals keep their
- * exact look while gaining the semantics. Pass a `title` to get the built-in
- * header + close button, or render your own header inside `children` and pass
- * `ariaLabel` + `showClose={false}`.
+ *   <Modal isOpen={open} onClose={close} title="Delete agent" tone="danger"
+ *          description="This removes Sgt. Scribe and every conversation with it."
+ *          footer={<><Button variant="ghost" onClick={close}>Cancel</Button>
+ *                   <Button variant="danger" onClick={confirm}>Delete</Button></>}>
+ *     …body…
+ *   </Modal>
+ *
+ * Sizes: sm · md (default) · lg · xl · 2xl · 3xl. On phones every size is a
+ * full-width sheet pinned to the bottom with a 44px close target.
+ * `panelClassName` is the legacy escape hatch for callers that draw their own
+ * frame; prefer title/description/footer.
  */
 const SIZE = {
-  sm: 'max-w-sm',
-  md: 'max-w-md',
-  lg: 'max-w-lg',
-  xl: 'max-w-xl',
-  '2xl': 'max-w-2xl',
-  '3xl': 'max-w-3xl',
+  sm: 'sm:max-w-sm',
+  md: 'sm:max-w-md',
+  lg: 'sm:max-w-lg',
+  xl: 'sm:max-w-xl',
+  '2xl': 'sm:max-w-2xl',
+  '3xl': 'sm:max-w-3xl',
 };
-
-const FOCUSABLE =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export default function Modal({
   isOpen = true,
   onClose,
   title,
+  description,
   ariaLabel,
+  tone = 'default',
   children,
+  footer,
   size = 'md',
   panelClassName,
+  bodyClassName = '',
   showClose = true,
   closeOnBackdrop = true,
   initialFocusRef,
 }) {
-  const panelRef = useRef(null);
-  const previouslyFocused = useRef(null);
+  const panelRef = useFocusTrap({ isOpen, onClose, initialFocusRef });
   const titleId = useId();
-
-  useEffect(() => {
-    if (!isOpen) return undefined;
-
-    previouslyFocused.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-    // Move focus into the dialog.
-    const focusFirst = () => {
-      const panel = panelRef.current;
-      if (!panel) return;
-      const target =
-        initialFocusRef?.current ||
-        panel.querySelector('[data-autofocus]') ||
-        panel.querySelector(FOCUSABLE) ||
-        panel;
-      target?.focus?.();
-    };
-    // rAF so the element exists and layout has settled before focusing.
-    const raf = requestAnimationFrame(focusFirst);
-
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        onClose?.();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      const panel = panelRef.current;
-      if (!panel) return;
-      const items = Array.from(panel.querySelectorAll(FOCUSABLE)).filter(
-        (el) => el.offsetParent !== null || el === document.activeElement
-      );
-      if (items.length === 0) {
-        e.preventDefault();
-        panel.focus();
-        return;
-      }
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown, true);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', onKeyDown, true);
-      document.body.style.overflow = prevOverflow;
-      previouslyFocused.current?.focus?.();
-    };
-  }, [isOpen, onClose, initialFocusRef]);
-
+  const descId = useId();
   if (!isOpen) return null;
-
-  const labelledBy = title ? titleId : undefined;
-  const label = !title ? ariaLabel : undefined;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-modal flex items-end justify-center bg-bg/70 p-0 backdrop-blur-sm animate-fade-in sm:items-center sm:p-4"
       onMouseDown={(e) => {
         if (closeOnBackdrop && e.target === e.currentTarget) onClose?.();
       }}
@@ -124,37 +62,55 @@ export default function Modal({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={labelledBy}
-        aria-label={label}
+        aria-labelledby={title ? titleId : undefined}
+        aria-label={!title ? ariaLabel : undefined}
+        aria-describedby={description ? descId : undefined}
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         className={
           panelClassName ||
-          `w-full ${SIZE[size] || SIZE.md} rounded-xl border border-border/60 bg-surface/95 backdrop-blur-xl shadow-2xl focus:outline-none`
+          `flex max-h-[92dvh] w-full flex-col rounded-t-pane border border-border bg-overlay shadow-e4 animate-slide-up focus:outline-none sm:max-h-[85vh] sm:rounded-pane ${
+            SIZE[size] || SIZE.md
+          }`
         }
       >
         {(title || showClose) && (
-          <div className="flex items-start justify-between gap-4 p-6 border-b border-border/50">
-            {title ? (
-              <h2 id={titleId} className="text-xl font-bold text-fg">
-                {title}
-              </h2>
-            ) : (
-              <span />
+          <div className="flex items-start gap-3 px-5 pb-3 pt-5 sm:px-6">
+            {tone === 'danger' && (
+              <span aria-hidden="true" className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-danger/10 text-danger">
+                <AlertTriangle className="h-5 w-5" />
+              </span>
             )}
+            <div className="min-w-0 flex-1">
+              {title && (
+                <h2 id={titleId} className="text-heading text-fg-strong">
+                  {title}
+                </h2>
+              )}
+              {description && (
+                <p id={descId} className="mt-1 text-body text-muted">
+                  {description}
+                </p>
+              )}
+            </div>
             {showClose && (
               <button
                 type="button"
                 onClick={onClose}
                 aria-label="Close dialog"
-                className="p-2 -m-2 rounded-lg text-muted hover:text-fg hover:bg-white/5 transition-colors"
+                className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             )}
           </div>
         )}
-        {children}
+        <div className={`min-h-0 flex-1 overflow-y-auto px-5 pb-5 sm:px-6 ${bodyClassName}`}>{children}</div>
+        {footer && (
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3 sm:px-6">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

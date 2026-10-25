@@ -1,143 +1,111 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Search,
-  Plus,
-  Play,
-  Download,
-  Upload,
-  Trash2,
-  ExternalLink,
-  RefreshCw,
-  AlertCircle,
-  CheckCircle,
-  X,
-  Workflow,
-  Clock,
-  FileJson,
-  Copy,
-  ChevronRight,
-  Loader2
-} from 'lucide-react';
-import { toast } from 'react-hot-toast';
+/**
+ * Langflow flows — visual flows built in Langflow, run from Brigade.
+ * Only reachable when the deployment enables Langflow (the nav hides it
+ * otherwise). Frame → toolbar → the four states → cards → run/delete dialogs.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Search, Plus, Play, Download, Upload, Trash2, ExternalLink, RefreshCw, Workflow, Copy, MoreHorizontal, X } from 'lucide-react';
 import notify from '../utils/notify';
+import { humanize } from '../utils/errors';
+import { apiJson } from '../services/http';
 import Breadcrumbs from '../components/Breadcrumbs';
-import Modal from '../components/ui/Modal';
-import { apiJson, ApiError } from '../services/http';
+import { relativeTime, absoluteTime } from '../components/ActivityFeed';
+import { Button, IconButton, Card, Chip, Input, Field, Textarea, Modal, Menu, Tooltip, Page, PageHeader, EmptyState, ErrorState, OfflineState, LoadingState } from '../components/ui';
 
-const LangflowFlows = () => {
+const LANGFLOW_URL = (import.meta.env.VITE_LANGFLOW_URL || 'http://localhost:7860').replace(/\/$/, '');
+
+export default function LangflowFlows() {
   const [flows, setFlows] = useState([]);
-  const [filteredFlows, setFilteredFlows] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [healthStatus, setHealthStatus] = useState(null);
-  const [selectedFlow, setSelectedFlow] = useState(null);
-  const [showRunModal, setShowRunModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [flowToDelete, setFlowToDelete] = useState(null);
-  const [runInputs, setRunInputs] = useState({});
+  const [error, setError] = useState(null);
+  const [health, setHealth] = useState(null); // { ok, detail }
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState(null);
+  const [runInput, setRunInput] = useState('');
   const [runOutput, setRunOutput] = useState(null);
-  const [isRunning, setIsRunning] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const fileInputRef = useRef(null);
+  const [running, setRunning] = useState(false);
+  const [exporting, setExporting] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const fileRef = useRef(null);
 
-  useEffect(() => {
-    checkHealth();
-    loadFlows();
-  }, []);
-
-  useEffect(() => {
-    applyFilters();
-  }, [flows, searchQuery]);
-
-  const checkHealth = async () => {
+  const checkHealth = useCallback(async () => {
     try {
       const data = await apiJson('/langflow/health');
-      // Check for 'healthy' status, anything else is an error (unreachable, disabled, etc.)
-      setHealthStatus(data.status === 'healthy' ? 'connected' : 'error');
-    } catch (error) {
-      console.error('Health check failed:', error);
-      setHealthStatus('error');
+      setHealth({ ok: data?.status === 'healthy', detail: data?.detail || data?.message || (data?.enabled === false ? 'Langflow is turned off for this deployment.' : null) });
+    } catch (err) {
+      setHealth({ ok: false, detail: humanize(err, { what: 'reaching Langflow' }) });
     }
-  };
+  }, []);
 
-  const loadFlows = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await apiJson('/langflow/flows');
-      setFlows(data.flows || []);
-    } catch (error) {
-      console.error('Failed to load flows:', error);
-      // ApiError = backend answered with an error payload; anything else = unreachable.
-      toast.error(error instanceof ApiError
-        ? (error.message || 'Failed to load flows')
-        : 'Failed to connect to Langflow service');
-      setFlows([]);
+      setFlows(Array.isArray(data?.flows) ? data.flows : []);
+    } catch (err) {
+      setError(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const applyFilters = () => {
-    // Ensure flows is always an array
-    const flowsArray = Array.isArray(flows) ? flows : [];
-    let filtered = [...flowsArray];
+  useEffect(() => {
+    checkHealth();
+    load();
+  }, [checkHealth, load]);
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(flow =>
-        flow?.name?.toLowerCase().includes(query) ||
-        flow?.description?.toLowerCase().includes(query)
-      );
-    }
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      checkHealth();
+      load();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [checkHealth, load]);
 
-    setFilteredFlows(filtered);
-  };
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? flows.filter((f) => (f?.name || '').toLowerCase().includes(q) || (f?.description || '').toLowerCase().includes(q)) : flows;
+  }, [flows, query]);
 
-  const handleFlowClick = async (flow) => {
+  const openFlow = async (flow) => {
     try {
       const data = await apiJson(`/langflow/flows/${flow.id}`);
-      setSelectedFlow(data);
-      setRunInputs({});
+      setSelected(data || flow);
+      setRunInput('');
       setRunOutput(null);
-      setShowRunModal(true);
-    } catch (error) {
-      console.error('Failed to load flow details:', error);
-      toast.error('Failed to load flow details');
+    } catch (err) {
+      notify.error(humanize(err, { what: 'opening the flow' }));
     }
   };
 
-  const handleRunFlow = async () => {
-    if (!selectedFlow) return;
-
-    setIsRunning(true);
+  const runFlow = async (e) => {
+    e.preventDefault();
+    if (!selected) return;
+    setRunning(true);
     setRunOutput(null);
-
     try {
-      const data = await apiJson(`/langflow/flows/${selectedFlow.id}/run`, {
-        method: 'POST',
-        body: JSON.stringify({ inputs: runInputs }),
-      });
-
-      setRunOutput(data);
-      notify.success('Flow executed successfully');
-    } catch (error) {
-      console.error('Failed to run flow:', error);
-      if (error instanceof ApiError) {
-        toast.error(error.message || 'Failed to run flow');
-        setRunOutput({ error: error.message || 'Execution failed' });
-      } else {
-        toast.error('Failed to run flow');
-        setRunOutput({ error: error.message });
-      }
+      const data = await apiJson(`/langflow/flows/${selected.id}/run`, { method: 'POST', body: JSON.stringify({ inputs: { input_value: runInput } }) });
+      setRunOutput({ data });
+      notify.success('Flow ran');
+    } catch (err) {
+      setRunOutput({ error: humanize(err, { what: 'running the flow' }) });
     } finally {
-      setIsRunning(false);
+      setRunning(false);
     }
   };
 
-  const handleExportFlow = async (flow, e) => {
-    e?.stopPropagation();
-    setIsExporting(true);
-
+  const exportFlow = async (flow) => {
+    setExporting(flow.id);
     try {
       const data = await apiJson(`/langflow/flows/${flow.id}/export`);
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -147,450 +115,268 @@ const LangflowFlows = () => {
       a.download = `${flow.name || 'flow'}.json`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       URL.revokeObjectURL(url);
-      notify.success('Flow exported successfully');
-    } catch (error) {
-      console.error('Failed to export flow:', error);
-      toast.error('Failed to export flow');
+      notify.success(`Exported ${flow.name || 'flow'}.json`);
+    } catch (err) {
+      notify.error(humanize(err, { what: 'exporting the flow' }));
     } finally {
-      setIsExporting(false);
+      setExporting(null);
     }
   };
 
-  const handleImportFlow = async (e) => {
+  const importFlow = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
-      const text = await file.text();
-      const flowData = JSON.parse(text);
-
-      await apiJson('/langflow/flows/import', {
-        method: 'POST',
-        body: JSON.stringify(flowData),
-      });
-
-      notify.success('Flow imported successfully');
-      loadFlows();
-    } catch (error) {
-      console.error('Failed to import flow:', error);
-      // ApiError = backend rejected the flow; anything else = bad local file.
-      toast.error(error instanceof ApiError
-        ? (error.message || 'Failed to import flow')
-        : 'Invalid JSON file');
-    }
-
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      const flowData = JSON.parse(await file.text());
+      await apiJson('/langflow/flows/import', { method: 'POST', body: JSON.stringify(flowData) });
+      notify.success(`Imported ${file.name}`);
+      load();
+    } catch (err) {
+      notify.error(err instanceof SyntaxError ? `${file.name} isn’t valid JSON.` : humanize(err, { what: 'importing the flow' }));
+    } finally {
+      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
-  const handleDeleteFlow = async () => {
-    if (!flowToDelete) return;
-
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setDeleteBusy(true);
     try {
-      await apiJson(`/langflow/flows/${flowToDelete.id}`, {
-        method: 'DELETE',
-      });
-
-      notify.success('Flow deleted successfully');
-      setFlows(flows.filter(f => f.id !== flowToDelete.id));
-      setShowDeleteModal(false);
-      setFlowToDelete(null);
-    } catch (error) {
-      console.error('Failed to delete flow:', error);
-      toast.error('Failed to delete flow');
+      await apiJson(`/langflow/flows/${deleting.id}`, { method: 'DELETE' });
+      notify.success(`Deleted ${deleting.name || 'the flow'}`);
+      setFlows((l) => l.filter((f) => f.id !== deleting.id));
+      if (selected?.id === deleting.id) setSelected(null);
+      setDeleting(null);
+    } catch (err) {
+      notify.error(humanize(err, { what: 'deleting the flow' }));
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
-  const confirmDelete = (flow, e) => {
-    e?.stopPropagation();
-    setFlowToDelete(flow);
-    setShowDeleteModal(true);
+  const copyId = async (id) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      notify.success('Flow id copied');
+    } catch {
+      notify.error('Couldn’t copy — your browser blocked clipboard access.');
+    }
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    notify.success('Copied to clipboard');
-  };
+  const healthChip = !health ? (
+    <Chip dot>Checking Langflow…</Chip>
+  ) : health.ok ? (
+    <Chip tone="ok" dot>
+      Langflow connected
+    </Chip>
+  ) : (
+    <Tooltip content={health.detail || 'Langflow did not answer its health check'}>
+      <Chip tone="danger" dot>
+        Langflow unreachable
+      </Chip>
+    </Tooltip>
+  );
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Unknown';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+  let body;
+  if (offline && !flows.length) body = <OfflineState onRetry={load} />;
+  else if (loading) body = <LoadingState variant="cards" count={6} label="Loading flows" />;
+  else if (error)
+    body = <ErrorState title="Couldn’t load the flows" detail={health && !health.ok && health.detail ? health.detail : humanize(error, { what: 'loading the flows' })} onRetry={() => { checkHealth(); load(); }} />;
+  else if (health && !health.ok && !flows.length)
+    body = (
+      <ErrorState
+        title="Langflow isn’t reachable"
+        detail={health.detail || 'Brigade could not reach the Langflow service, so there are no flows to show. Start Langflow, or check its URL in the deployment settings.'}
+        onRetry={() => {
+          checkHealth();
+          load();
+        }}
+      />
+    );
+  else if (!flows.length)
+    body = (
+      <EmptyState
+        icon={Workflow}
+        title="No flows yet"
+        description="Build a flow in Langflow and it appears here to run, or import one from a JSON export."
+        action={
+          <Button as="a" href={LANGFLOW_URL} target="_blank" rel="noopener noreferrer" icon={Plus} iconRight={ExternalLink}>
+            Create in Langflow
+          </Button>
+        }
+        secondary={
+          <Button variant="secondary" icon={Upload} onClick={() => fileRef.current?.click()}>
+            Import a flow
+          </Button>
+        }
+      />
+    );
+  else if (!filtered.length)
+    body = <EmptyState compact icon={Search} title="No flows match" description="Try another word." action={<Button variant="secondary" size="sm" icon={X} onClick={() => setQuery('')}>Clear search</Button>} />;
+  else
+    body = (
+      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Flows">
+        {filtered.map((flow) => {
+          const name = flow.name || 'Untitled flow';
+          const when = flow.updated_at || flow.created_at;
+          return (
+            <li key={flow.id}>
+              <Card className="flex h-full flex-col">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-elevated text-accent">
+                      <Workflow className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <button type="button" onClick={() => openFlow(flow)} className="block max-w-full truncate rounded-chip text-left text-body font-semibold text-fg-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        {name}
+                      </button>
+                      {when && (
+                        <Tooltip content={absoluteTime(when)}>
+                          <p className="truncate text-caption text-muted">Updated {relativeTime(when)}</p>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </div>
+                  <Menu
+                    align="end"
+                    trigger={({ props }) => <IconButton icon={MoreHorizontal} label={`Actions for ${name}`} size="sm" {...props} />}
+                    items={[
+                      { id: 'run', label: 'Run', icon: Play, onSelect: () => openFlow(flow) },
+                      { id: 'export', label: 'Export JSON', icon: Download, onSelect: () => exportFlow(flow) },
+                      { id: 'edit', label: 'Edit in Langflow', icon: ExternalLink, onSelect: () => window.open(`${LANGFLOW_URL}/flow/${flow.id}`, '_blank', 'noopener') },
+                      { type: 'separator' },
+                      { id: 'delete', label: 'Delete', icon: Trash2, tone: 'danger', onSelect: () => setDeleting(flow) },
+                    ]}
+                  />
+                </div>
+                <p className="mb-4 line-clamp-2 flex-1 text-body-sm text-muted">{flow.description || 'No description yet.'}</p>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" icon={Play} onClick={() => openFlow(flow)} className="flex-1">
+                    Run
+                  </Button>
+                  <Button variant="secondary" size="sm" icon={Download} loading={exporting === flow.id} onClick={() => exportFlow(flow)}>
+                    Export
+                  </Button>
+                </div>
+              </Card>
+            </li>
+          );
+        })}
+      </ul>
+    );
 
   return (
-    <div className="min-h-screen p-4 md:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <Breadcrumbs />
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
-              Langflow Flows
-            </h1>
-            <p className="text-slate-400 mt-1">
-              {filteredFlows.length} of {flows.length} flows
-            </p>
-          </div>
+    <Page>
+      <input ref={fileRef} type="file" accept=".json,application/json" onChange={importFlow} className="sr-only" aria-label="Import a flow JSON file" tabIndex={-1} />
+      <PageHeader
+        breadcrumbs={<Breadcrumbs />}
+        eyebrow="Builders"
+        title="Langflow flows"
+        description={loading ? 'Visual flows built in Langflow, run from here' : `${filtered.length === flows.length ? flows.length : `${filtered.length} of ${flows.length}`} flow${flows.length === 1 ? '' : 's'}`}
+        actions={
+          <>
+            {healthChip}
+            <Button variant="secondary" icon={RefreshCw} onClick={() => { checkHealth(); load(); }}>
+              Refresh
+            </Button>
+            <Button variant="secondary" icon={Upload} onClick={() => fileRef.current?.click()}>
+              Import
+            </Button>
+            <Button as="a" href={LANGFLOW_URL} target="_blank" rel="noopener noreferrer" icon={ExternalLink}>
+              Open Langflow
+            </Button>
+          </>
+        }
+      />
 
-          <div className="flex items-center space-x-4">
-            {/* Health Status */}
-            <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg ${
-              healthStatus === 'connected'
-                ? 'bg-emerald-500/20 text-emerald-400'
-                : healthStatus === 'error'
-                ? 'bg-red-500/20 text-red-400'
-                : 'bg-slate-500/20 text-slate-400'
-            }`}>
-              {healthStatus === 'connected' ? (
-                <CheckCircle className="w-4 h-4" />
-              ) : healthStatus === 'error' ? (
-                <AlertCircle className="w-4 h-4" />
-              ) : (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              )}
-              <span className="text-sm font-medium">
-                {healthStatus === 'connected' ? 'Connected' : healthStatus === 'error' ? 'Disconnected' : 'Checking...'}
-              </span>
-            </div>
-
-            {/* Refresh Button */}
-            <button
-              onClick={() => { checkHealth(); loadFlows(); }}
-              className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
-              title="Refresh"
-              aria-label="Refresh flows"
-            >
-              <RefreshCw className="w-5 h-5 text-slate-400" />
-            </button>
-
-            {/* Import Button */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImportFlow}
-              accept=".json"
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center space-x-2"
-            >
-              <Upload className="w-5 h-5" />
-              <span>Import</span>
-            </button>
-
-            {/* Open Langflow Button */}
-            <a
-              href="http://localhost:7860"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center space-x-2"
-            >
-              <ExternalLink className="w-5 h-5" />
-              <span>Open Langflow</span>
-            </a>
-          </div>
+      <Card padding="sm" className="mb-5">
+        <div className="relative">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input type="search" aria-label="Search flows" placeholder="Search flows…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9" />
         </div>
+      </Card>
 
-        {/* Search */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <div className="relative">
-            <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search flows..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent"
-            />
-          </div>
-        </div>
+      {body}
 
-        {/* Loading State */}
-        {loading && (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-unicorn-500"></div>
-            <p className="text-slate-400 mt-4">Loading flows...</p>
-          </div>
-        )}
-
-        {/* Flows Grid */}
-        {!loading && filteredFlows.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredFlows.map(flow => (
-              <div
-                key={flow.id}
-                className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 hover:border-unicorn-500/50 transition-all cursor-pointer group"
-                onClick={() => handleFlowClick(flow)}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
-                      <Workflow className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-white group-hover:text-unicorn-400 transition-colors">
-                        {flow.name || 'Untitled Flow'}
-                      </h3>
-                      <p className="text-xs text-slate-400 flex items-center space-x-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{formatDate(flow.updated_at || flow.created_at)}</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-sm text-slate-400 mb-4 line-clamp-2">
-                  {flow.description || 'No description provided'}
-                </p>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleFlowClick(flow); }}
-                      className="p-2 bg-unicorn-500/20 hover:bg-unicorn-500/30 text-unicorn-400 rounded-lg transition-colors"
-                      title="Run Flow"
-                      aria-label={`Run flow ${flow.name || 'Untitled Flow'}`}
-                    >
-                      <Play className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => handleExportFlow(flow, e)}
-                      className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg transition-colors"
-                      title="Export Flow"
-                      aria-label={`Export flow ${flow.name || 'Untitled Flow'}`}
-                      disabled={isExporting}
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => confirmDelete(flow, e)}
-                      className="p-2 bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-lg transition-colors"
-                      title="Delete Flow"
-                      aria-label={`Delete flow ${flow.name || 'Untitled Flow'}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-unicorn-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Empty State */}
-        {!loading && filteredFlows.length === 0 && (
-          <div className="text-center py-12">
-            <Workflow className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-slate-300 mb-2">
-              {searchQuery ? 'No flows found' : 'No flows yet'}
-            </h3>
-            <p className="text-slate-400 mb-6">
-              {searchQuery
-                ? 'Try adjusting your search'
-                : 'Create your first flow in Langflow or import one'}
-            </p>
-            <div className="flex items-center justify-center space-x-4">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center space-x-2"
-              >
-                <Upload className="w-5 h-5" />
-                <span>Import Flow</span>
-              </button>
-              <a
-                href="http://localhost:7860"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center space-x-2"
-              >
-                <Plus className="w-5 h-5" />
-                <span>Create in Langflow</span>
-              </a>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Run Flow Modal */}
-      {showRunModal && selectedFlow && (
-        <Modal
-          onClose={() => setShowRunModal(false)}
-          ariaLabel={`Run flow ${selectedFlow.name || 'Untitled Flow'}`}
-          showClose={false}
-          panelClassName="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto focus:outline-none"
-        >
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
-                  <Workflow className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white">{selectedFlow.name || 'Untitled Flow'}</h2>
-                  <p className="text-slate-400">Run this flow with custom inputs</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowRunModal(false)}
-                aria-label="Close dialog"
-                className="text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {selectedFlow.description && (
-              <p className="text-slate-300 mb-6">{selectedFlow.description}</p>
-            )}
-
-            <div className="space-y-6">
-              {/* Flow Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-slate-400 mb-2">Flow ID</p>
-                  <div className="flex items-center space-x-2">
-                    <code className="px-3 py-1 bg-slate-800 rounded text-sm text-slate-300 font-mono truncate flex-1">
-                      {selectedFlow.id}
-                    </code>
-                    <button
-                      onClick={() => copyToClipboard(selectedFlow.id)}
-                      aria-label="Copy flow ID"
-                      className="p-2 hover:bg-slate-800 rounded transition-colors"
-                    >
-                      <Copy className="w-4 h-4 text-slate-400" />
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400 mb-2">Last Updated</p>
-                  <span className="px-3 py-1 bg-slate-800 rounded text-sm text-slate-300">
-                    {formatDate(selectedFlow.updated_at || selectedFlow.created_at)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Input Fields */}
+      {/* ── run ── */}
+      <Modal
+        isOpen={Boolean(selected)}
+        onClose={() => !running && setSelected(null)}
+        size="xl"
+        title={selected?.name || 'Untitled flow'}
+        description={selected?.description || 'Run this flow with an input of your choice.'}
+        footer={
+          selected && (
+            <>
+              <Button variant="ghost" icon={Download} loading={exporting === selected.id} onClick={() => exportFlow(selected)}>
+                Export
+              </Button>
+              <Button as="a" variant="secondary" href={`${LANGFLOW_URL}/flow/${selected.id}`} target="_blank" rel="noopener noreferrer" icon={ExternalLink}>
+                Edit in Langflow
+              </Button>
+              <Button type="submit" form="langflow-run" icon={Play} loading={running}>
+                Run flow
+              </Button>
+            </>
+          )
+        }
+      >
+        {selected && (
+          <form id="langflow-run" onSubmit={runFlow} className="space-y-4">
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <p className="text-sm text-slate-400 mb-2">Input Value</p>
-                <textarea
-                  value={runInputs.input_value || ''}
-                  onChange={(e) => setRunInputs({ ...runInputs, input_value: e.target.value })}
-                  placeholder="Enter your input message..."
-                  className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent resize-none h-24"
-                />
+                <dt className="text-caption text-muted">Flow id</dt>
+                <dd className="mt-1 flex items-center gap-1">
+                  <code className="min-w-0 flex-1 truncate rounded-chip bg-elevated px-2 py-1 font-mono text-caption text-fg">{selected.id}</code>
+                  <IconButton icon={Copy} label="Copy flow id" size="sm" onClick={() => copyId(selected.id)} />
+                </dd>
               </div>
-
-              {/* Run Button */}
-              <button
-                onClick={handleRunFlow}
-                disabled={isRunning}
-                className="w-full px-4 py-3 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isRunning ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Running...</span>
-                  </>
+              <div>
+                <dt className="text-caption text-muted">Last updated</dt>
+                <dd className="mt-1 text-body-sm text-fg">{absoluteTime(selected.updated_at || selected.created_at) || 'Unknown'}</dd>
+              </div>
+            </dl>
+            <Field label="Input" help="Sent to the flow as input_value.">
+              <Textarea rows={4} value={runInput} onChange={(e) => setRunInput(e.target.value)} placeholder="Your message or input for the flow…" />
+            </Field>
+            {runOutput && (
+              <div>
+                <p className="mb-1.5 text-caption text-muted">Output</p>
+                {runOutput.error ? (
+                  <ErrorState compact title="The flow didn’t finish" detail={runOutput.error} />
                 ) : (
-                  <>
-                    <Play className="w-5 h-5" />
-                    <span>Run Flow</span>
-                  </>
+                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-control border border-border bg-surface p-3 font-mono text-caption text-fg">
+                    {typeof runOutput.data === 'string' ? runOutput.data : JSON.stringify(runOutput.data, null, 2)}
+                  </pre>
                 )}
-              </button>
-
-              {/* Output Display */}
-              {runOutput && (
-                <div>
-                  <p className="text-sm text-slate-400 mb-2">Output</p>
-                  <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 max-h-64 overflow-y-auto">
-                    {runOutput.error ? (
-                      <div className="text-red-400 flex items-start space-x-2">
-                        <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                        <span>{runOutput.error}</span>
-                      </div>
-                    ) : (
-                      <pre className="text-slate-300 text-sm whitespace-pre-wrap font-mono">
-                        {typeof runOutput === 'string'
-                          ? runOutput
-                          : JSON.stringify(runOutput, null, 2)}
-                      </pre>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Actions */}
-              <div className="flex space-x-3 pt-4 border-t border-slate-700">
-                <button
-                  onClick={(e) => handleExportFlow(selectedFlow, e)}
-                  disabled={isExporting}
-                  className="flex-1 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors flex items-center justify-center space-x-2"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Export</span>
-                </button>
-                <a
-                  href={`http://localhost:7860/flow/${selectedFlow.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors flex items-center justify-center space-x-2"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  <span>Edit in Langflow</span>
-                </a>
               </div>
-            </div>
-        </Modal>
-      )}
+            )}
+          </form>
+        )}
+      </Modal>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && flowToDelete && (
-        <Modal
-          onClose={() => setShowDeleteModal(false)}
-          ariaLabel="Delete flow"
-          showClose={false}
-          panelClassName="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-md w-full focus:outline-none"
-        >
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
-                <Trash2 className="w-8 h-8 text-red-400" />
-              </div>
-              <h2 className="text-xl font-bold text-white mb-2">Delete Flow</h2>
-              <p className="text-slate-400">
-                Are you sure you want to delete <span className="text-white font-medium">{flowToDelete.name || 'this flow'}</span>? This action cannot be undone.
-              </p>
-            </div>
-
-            <div className="flex space-x-3">
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                className="flex-1 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteFlow}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-              >
-                Delete
-              </button>
-            </div>
-        </Modal>
-      )}
-    </div>
+      {/* ── delete ── */}
+      <Modal
+        isOpen={Boolean(deleting)}
+        onClose={() => !deleteBusy && setDeleting(null)}
+        tone="danger"
+        size="sm"
+        title="Delete this flow?"
+        description={deleting ? `“${deleting.name || 'This flow'}” is removed from Langflow. This can’t be undone.` : ''}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleting(null)} disabled={deleteBusy}>
+              Keep it
+            </Button>
+            <Button variant="danger" icon={Trash2} loading={deleteBusy} onClick={confirmDelete}>
+              Delete
+            </Button>
+          </>
+        }
+      />
+    </Page>
   );
-};
-
-export default LangflowFlows;
+}

@@ -1,0 +1,1256 @@
+{
+  "nodes": [
+    {
+      "id": "node-0",
+      "name": "The General",
+      "type": "Agent",
+      "created_at": "$now-55d",
+      "created_by": "gunny",
+      "val": 10
+    },
+    {
+      "id": "node-1",
+      "name": "Col. Finance",
+      "type": "Agent",
+      "created_at": "$now-15d",
+      "created_by": "sgt-scribe",
+      "val": 10
+    },
+    {
+      "id": "node-2",
+      "name": "Maj. DevOps",
+      "type": "Agent",
+      "created_at": "$now-72d",
+      "created_by": "gunny",
+      "val": 10
+    },
+    {
+      "id": "node-3",
+      "name": "Prof. DataSci",
+      "type": "Agent",
+      "created_at": "$now-65d",
+      "created_by": "gunny",
+      "val": 10
+    },
+    {
+      "id": "node-4",
+      "name": "Gunny",
+      "type": "Agent",
+      "created_at": "$now-23d",
+      "created_by": "gunny",
+      "val": 10
+    },
+    {
+      "id": "node-5",
+      "name": "Accounting-Ops",
+      "type": "Service",
+      "created_at": "$now-86d",
+      "created_by": "the-general",
+      "val": 10
+    },
+    {
+      "id": "node-6",
+      "name": "Project-Ops",
+      "type": "Service",
+      "created_at": "$now-27d",
+      "created_by": "the-general",
+      "val": 10
+    },
+    {
+      "id": "node-7",
+      "name": "Meeting-Ops",
+      "type": "Service",
+      "created_at": "$now-65d",
+      "created_by": "gunny",
+      "val": 10
+    },
+    {
+      "id": "node-8",
+      "name": "Email-Ops",
+      "type": "Service",
+      "created_at": "$now-2d",
+      "created_by": "the-general",
+      "val": 10
+    },
+    {
+      "id": "node-9",
+      "name": "gpu-01",
+      "type": "Host",
+      "created_at": "$now-21d",
+      "created_by": "the-general",
+      "val": 10
+    },
+    {
+      "id": "node-10",
+      "name": "edge-01",
+      "type": "Host",
+      "created_at": "$now-6d",
+      "created_by": "the-general",
+      "val": 10
+    },
+    {
+      "id": "node-11",
+      "name": "studio Mac",
+      "type": "Host",
+      "created_at": "$now-28d",
+      "created_by": "sgt-scribe",
+      "val": 10
+    },
+    {
+      "id": "node-12",
+      "name": "Q3 runway review",
+      "type": "Project",
+      "created_at": "$now-25d",
+      "created_by": "sgt-scribe",
+      "val": 10
+    },
+    {
+      "id": "node-13",
+      "name": "Footage catalog",
+      "type": "Project",
+      "created_at": "$now-43d",
+      "created_by": "the-general",
+      "val": 10
+    },
+    {
+      "id": "node-14",
+      "name": "Northbridge Tax",
+      "type": "Customer",
+      "created_at": "$now-20d",
+      "created_by": "sgt-scribe",
+      "val": 10
+    },
+    {
+      "id": "node-15",
+      "name": "Ridgeline Outfitters",
+      "type": "Customer",
+      "created_at": "$now-79d",
+      "created_by": "sgt-scribe",
+      "val": 10
+    },
+    {
+      "id": "node-16",
+      "name": "web_search",
+      "type": "Tool",
+      "created_at": "$now-32d",
+      "created_by": "sgt-scribe",
+      "val": 10
+    },
+    {
+      "id": "node-17",
+      "name": "calculator",
+      "type": "Tool",
+      "created_at": "$now-36d",
+      "created_by": "the-general",
+      "val": 10
+    },
+    {
+      "id": "node-18",
+      "name": "FalkorDB",
+      "type": "Concept",
+      "created_at": "$now-54d",
+      "created_by": "sgt-scribe",
+      "val": 10
+    },
+    {
+      "id": "node-19",
+      "name": "Chain of command",
+      "type": "Concept",
+      "created_at": "$now-78d",
+      "created_by": "the-general",
+      "val": 10
+    }
+  ],
+  "links": [
+    {
+      "id": "link-0",
+      "source": "node-1",
+      "target": "node-0",
+      "label": "REPORTS_TO",
+      "confidence": 0.67,
+      "learned_at": "$now-7d"
+    },
+    {
+      "id": "link-1",
+      "source": "node-2",
+      "target": "node-0",
+      "label": "REPORTS_TO",
+      "confidence": 0.78,
+      "learned_at": "$now-15d"
+    },
+    {
+      "id": "link-2",
+      "source": "node-3",
+      "target": "node-0",
+      "label": "REPORTS_TO",
+      "confidence": 0.67,
+      "learned_at": "$now-58d"
+    },
+    {
+      "id": "link-3",
+      "source": "node-4",
+      "target": "node-0",
+      "label": "REPORTS_TO",
+      "confidence": 0.94,
+      "learned_at": "$now-45d"
+    },
+    {
+      "id": "link-4",
+      "source": "node-1",
+      "target": "node-5",
+      "label": "USES",
+      "confidence": 0.9,
+      "learned_at": "$now-59d"
+    },
+    {
+      "id": "link-5",
+      "source": "node-1",
+      "target": "node-17",
+      "label": "USES",
+      "confidence": 0.91,
+      "learned_at": "$now-2d"
+    },
+    {
+      "id": "link-6",
+      "source": "node-1",
+      "target": "node-16",
+      "label": "USES",
+      "confidence": 0.67,
+      "learned_at": "$now-22d"
+    },
+    {
+      "id": "link-7",
+      "source": "node-1",
+      "target": "node-12",
+      "label": "WORKS_ON",
+      "confidence": 0.98,
+      "learned_at": "$now-59d"
+    },
+    {
+      "id": "link-8",
+      "source": "node-2",
+      "target": "node-9",
+      "label": "OPERATES",
+      "confidence": 0.8,
+      "learned_at": "$now-19d"
+    },
+    {
+      "id": "link-9",
+      "source": "node-2",
+      "target": "node-10",
+      "label": "OPERATES",
+      "confidence": 0.85,
+      "learned_at": "$now-59d"
+    },
+    {
+      "id": "link-10",
+      "source": "node-3",
+      "target": "node-13",
+      "label": "WORKS_ON",
+      "confidence": 0.92,
+      "learned_at": "$now-9d"
+    },
+    {
+      "id": "link-11",
+      "source": "node-13",
+      "target": "node-9",
+      "label": "RUNS_ON",
+      "confidence": 0.67,
+      "learned_at": "$now-9d"
+    },
+    {
+      "id": "link-12",
+      "source": "node-5",
+      "target": "node-9",
+      "label": "RUNS_ON",
+      "confidence": 0.75,
+      "learned_at": "$now-1d"
+    },
+    {
+      "id": "link-13",
+      "source": "node-6",
+      "target": "node-9",
+      "label": "RUNS_ON",
+      "confidence": 0.96,
+      "learned_at": "$now-35d"
+    },
+    {
+      "id": "link-14",
+      "source": "node-7",
+      "target": "node-10",
+      "label": "RUNS_ON",
+      "confidence": 0.74,
+      "learned_at": "$now-42d"
+    },
+    {
+      "id": "link-15",
+      "source": "node-8",
+      "target": "node-9",
+      "label": "RUNS_ON",
+      "confidence": 0.65,
+      "learned_at": "$now-4d"
+    },
+    {
+      "id": "link-16",
+      "source": "node-14",
+      "target": "node-5",
+      "label": "CUSTOMER_OF",
+      "confidence": 0.69,
+      "learned_at": "$now-27d"
+    },
+    {
+      "id": "link-17",
+      "source": "node-15",
+      "target": "node-6",
+      "label": "CUSTOMER_OF",
+      "confidence": 0.9,
+      "learned_at": "$now-39d"
+    },
+    {
+      "id": "link-18",
+      "source": "node-4",
+      "target": "node-19",
+      "label": "KNOWS_ABOUT",
+      "confidence": 0.61,
+      "learned_at": "$now-25d"
+    },
+    {
+      "id": "link-19",
+      "source": "node-0",
+      "target": "node-19",
+      "label": "KNOWS_ABOUT",
+      "confidence": 0.91,
+      "learned_at": "$now-47d"
+    },
+    {
+      "id": "link-20",
+      "source": "node-7",
+      "target": "node-18",
+      "label": "DEPENDS_ON",
+      "confidence": 0.72,
+      "learned_at": "$now-20d"
+    },
+    {
+      "id": "link-21",
+      "source": "node-11",
+      "target": "node-13",
+      "label": "HOSTS",
+      "confidence": 0.99,
+      "learned_at": "$now-17d"
+    },
+    {
+      "id": "link-22",
+      "source": "node-3",
+      "target": "node-18",
+      "label": "USES",
+      "confidence": 0.6,
+      "learned_at": "$now-19d"
+    },
+    {
+      "id": "link-23",
+      "source": "node-12",
+      "target": "node-14",
+      "label": "MENTIONS",
+      "confidence": 0.67,
+      "learned_at": "$now-45d"
+    }
+  ],
+  "stats": {
+    "success": true,
+    "status": "connected",
+    "enabled": true,
+    "host": "falkordb",
+    "port": 6379,
+    "graphs": {
+      "brigade_knowledge": {
+        "nodes": 20,
+        "relationships": 24
+      },
+      "agent_memory": {
+        "nodes": 312,
+        "relationships": 877
+      }
+    },
+    "entity_types": [
+      "Agent",
+      "Concept",
+      "Customer",
+      "Host",
+      "Project",
+      "Service",
+      "Tool"
+    ],
+    "relationship_types": [
+      "CUSTOMER_OF",
+      "DEPENDS_ON",
+      "HOSTS",
+      "KNOWS_ABOUT",
+      "MENTIONS",
+      "OPERATES",
+      "REPORTS_TO",
+      "RUNS_ON",
+      "USES",
+      "WORKS_ON"
+    ],
+    "total_entities": 332,
+    "total_relationships": 901
+  },
+  "entities": {
+    "The General": {
+      "success": true,
+      "entity": {
+        "name": "The General",
+        "type": "Agent",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Col. Finance",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "The General",
+            "type": "Agent"
+          },
+          "relationship": "REPORTS_TO",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Maj. DevOps",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "The General",
+            "type": "Agent"
+          },
+          "relationship": "REPORTS_TO",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Prof. DataSci",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "The General",
+            "type": "Agent"
+          },
+          "relationship": "REPORTS_TO",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Gunny",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "The General",
+            "type": "Agent"
+          },
+          "relationship": "REPORTS_TO",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "The General",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "Chain of command",
+            "type": "Concept"
+          },
+          "relationship": "KNOWS_ABOUT",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Col. Finance": {
+      "success": true,
+      "entity": {
+        "name": "Col. Finance",
+        "type": "Agent",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Col. Finance",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "The General",
+            "type": "Agent"
+          },
+          "relationship": "REPORTS_TO",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Col. Finance",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "Accounting-Ops",
+            "type": "Service"
+          },
+          "relationship": "USES",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Col. Finance",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "calculator",
+            "type": "Tool"
+          },
+          "relationship": "USES",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Col. Finance",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "web_search",
+            "type": "Tool"
+          },
+          "relationship": "USES",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Col. Finance",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "Q3 runway review",
+            "type": "Project"
+          },
+          "relationship": "WORKS_ON",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Maj. DevOps": {
+      "success": true,
+      "entity": {
+        "name": "Maj. DevOps",
+        "type": "Agent",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Maj. DevOps",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "The General",
+            "type": "Agent"
+          },
+          "relationship": "REPORTS_TO",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Maj. DevOps",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "gpu-01",
+            "type": "Host"
+          },
+          "relationship": "OPERATES",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Maj. DevOps",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "edge-01",
+            "type": "Host"
+          },
+          "relationship": "OPERATES",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Prof. DataSci": {
+      "success": true,
+      "entity": {
+        "name": "Prof. DataSci",
+        "type": "Agent",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Prof. DataSci",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "The General",
+            "type": "Agent"
+          },
+          "relationship": "REPORTS_TO",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Prof. DataSci",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "Footage catalog",
+            "type": "Project"
+          },
+          "relationship": "WORKS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Prof. DataSci",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "FalkorDB",
+            "type": "Concept"
+          },
+          "relationship": "USES",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Gunny": {
+      "success": true,
+      "entity": {
+        "name": "Gunny",
+        "type": "Agent",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Gunny",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "The General",
+            "type": "Agent"
+          },
+          "relationship": "REPORTS_TO",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Gunny",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "Chain of command",
+            "type": "Concept"
+          },
+          "relationship": "KNOWS_ABOUT",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Accounting-Ops": {
+      "success": true,
+      "entity": {
+        "name": "Accounting-Ops",
+        "type": "Service",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Col. Finance",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "Accounting-Ops",
+            "type": "Service"
+          },
+          "relationship": "USES",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Accounting-Ops",
+            "type": "Service"
+          },
+          "to": {
+            "name": "gpu-01",
+            "type": "Host"
+          },
+          "relationship": "RUNS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Northbridge Tax",
+            "type": "Customer"
+          },
+          "to": {
+            "name": "Accounting-Ops",
+            "type": "Service"
+          },
+          "relationship": "CUSTOMER_OF",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Project-Ops": {
+      "success": true,
+      "entity": {
+        "name": "Project-Ops",
+        "type": "Service",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Project-Ops",
+            "type": "Service"
+          },
+          "to": {
+            "name": "gpu-01",
+            "type": "Host"
+          },
+          "relationship": "RUNS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Ridgeline Outfitters",
+            "type": "Customer"
+          },
+          "to": {
+            "name": "Project-Ops",
+            "type": "Service"
+          },
+          "relationship": "CUSTOMER_OF",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Meeting-Ops": {
+      "success": true,
+      "entity": {
+        "name": "Meeting-Ops",
+        "type": "Service",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Meeting-Ops",
+            "type": "Service"
+          },
+          "to": {
+            "name": "edge-01",
+            "type": "Host"
+          },
+          "relationship": "RUNS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Meeting-Ops",
+            "type": "Service"
+          },
+          "to": {
+            "name": "FalkorDB",
+            "type": "Concept"
+          },
+          "relationship": "DEPENDS_ON",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Email-Ops": {
+      "success": true,
+      "entity": {
+        "name": "Email-Ops",
+        "type": "Service",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Email-Ops",
+            "type": "Service"
+          },
+          "to": {
+            "name": "gpu-01",
+            "type": "Host"
+          },
+          "relationship": "RUNS_ON",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "gpu-01": {
+      "success": true,
+      "entity": {
+        "name": "gpu-01",
+        "type": "Host",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Maj. DevOps",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "gpu-01",
+            "type": "Host"
+          },
+          "relationship": "OPERATES",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Footage catalog",
+            "type": "Project"
+          },
+          "to": {
+            "name": "gpu-01",
+            "type": "Host"
+          },
+          "relationship": "RUNS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Accounting-Ops",
+            "type": "Service"
+          },
+          "to": {
+            "name": "gpu-01",
+            "type": "Host"
+          },
+          "relationship": "RUNS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Project-Ops",
+            "type": "Service"
+          },
+          "to": {
+            "name": "gpu-01",
+            "type": "Host"
+          },
+          "relationship": "RUNS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Email-Ops",
+            "type": "Service"
+          },
+          "to": {
+            "name": "gpu-01",
+            "type": "Host"
+          },
+          "relationship": "RUNS_ON",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "edge-01": {
+      "success": true,
+      "entity": {
+        "name": "edge-01",
+        "type": "Host",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Maj. DevOps",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "edge-01",
+            "type": "Host"
+          },
+          "relationship": "OPERATES",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Meeting-Ops",
+            "type": "Service"
+          },
+          "to": {
+            "name": "edge-01",
+            "type": "Host"
+          },
+          "relationship": "RUNS_ON",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "studio Mac": {
+      "success": true,
+      "entity": {
+        "name": "studio Mac",
+        "type": "Host",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "studio Mac",
+            "type": "Host"
+          },
+          "to": {
+            "name": "Footage catalog",
+            "type": "Project"
+          },
+          "relationship": "HOSTS",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Q3 runway review": {
+      "success": true,
+      "entity": {
+        "name": "Q3 runway review",
+        "type": "Project",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Col. Finance",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "Q3 runway review",
+            "type": "Project"
+          },
+          "relationship": "WORKS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Q3 runway review",
+            "type": "Project"
+          },
+          "to": {
+            "name": "Northbridge Tax",
+            "type": "Customer"
+          },
+          "relationship": "MENTIONS",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Footage catalog": {
+      "success": true,
+      "entity": {
+        "name": "Footage catalog",
+        "type": "Project",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Prof. DataSci",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "Footage catalog",
+            "type": "Project"
+          },
+          "relationship": "WORKS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Footage catalog",
+            "type": "Project"
+          },
+          "to": {
+            "name": "gpu-01",
+            "type": "Host"
+          },
+          "relationship": "RUNS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "studio Mac",
+            "type": "Host"
+          },
+          "to": {
+            "name": "Footage catalog",
+            "type": "Project"
+          },
+          "relationship": "HOSTS",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Northbridge Tax": {
+      "success": true,
+      "entity": {
+        "name": "Northbridge Tax",
+        "type": "Customer",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Northbridge Tax",
+            "type": "Customer"
+          },
+          "to": {
+            "name": "Accounting-Ops",
+            "type": "Service"
+          },
+          "relationship": "CUSTOMER_OF",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Q3 runway review",
+            "type": "Project"
+          },
+          "to": {
+            "name": "Northbridge Tax",
+            "type": "Customer"
+          },
+          "relationship": "MENTIONS",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Ridgeline Outfitters": {
+      "success": true,
+      "entity": {
+        "name": "Ridgeline Outfitters",
+        "type": "Customer",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Ridgeline Outfitters",
+            "type": "Customer"
+          },
+          "to": {
+            "name": "Project-Ops",
+            "type": "Service"
+          },
+          "relationship": "CUSTOMER_OF",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "web_search": {
+      "success": true,
+      "entity": {
+        "name": "web_search",
+        "type": "Tool",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Col. Finance",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "web_search",
+            "type": "Tool"
+          },
+          "relationship": "USES",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "calculator": {
+      "success": true,
+      "entity": {
+        "name": "calculator",
+        "type": "Tool",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Col. Finance",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "calculator",
+            "type": "Tool"
+          },
+          "relationship": "USES",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "FalkorDB": {
+      "success": true,
+      "entity": {
+        "name": "FalkorDB",
+        "type": "Concept",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Meeting-Ops",
+            "type": "Service"
+          },
+          "to": {
+            "name": "FalkorDB",
+            "type": "Concept"
+          },
+          "relationship": "DEPENDS_ON",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "Prof. DataSci",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "FalkorDB",
+            "type": "Concept"
+          },
+          "relationship": "USES",
+          "confidence": 0.9
+        }
+      ]
+    },
+    "Chain of command": {
+      "success": true,
+      "entity": {
+        "name": "Chain of command",
+        "type": "Concept",
+        "created_at": "$now-30d",
+        "created_by": "the-general",
+        "properties": {
+          "source": "orchestration-events"
+        }
+      },
+      "relationships": [
+        {
+          "from": {
+            "name": "Gunny",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "Chain of command",
+            "type": "Concept"
+          },
+          "relationship": "KNOWS_ABOUT",
+          "confidence": 0.9
+        },
+        {
+          "from": {
+            "name": "The General",
+            "type": "Agent"
+          },
+          "to": {
+            "name": "Chain of command",
+            "type": "Concept"
+          },
+          "relationship": "KNOWS_ABOUT",
+          "confidence": 0.9
+        }
+      ]
+    }
+  }
+}

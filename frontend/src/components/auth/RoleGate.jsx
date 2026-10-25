@@ -1,101 +1,44 @@
-import React from 'react';
 import PropTypes from 'prop-types';
 import { useAuth } from '../../hooks/useAuth';
+import { LoadingState } from '../ui';
 import UpgradePrompt from './UpgradePrompt';
 
+const ROLE_HIERARCHY = {
+  'brigade-user': 0,
+  'brigade-builder': 1,
+  'brigade-power-builder': 2,
+  'brigade-org-admin': 3,
+  'brigade-platform-admin': 4,
+};
+
 /**
- * RoleGate Component
+ * RoleGate — renders children only when the user has the role (or any of
+ * `roles`, or at least `minRole` in the hierarchy); otherwise an inline upgrade
+ * prompt (or your fallback).
  *
- * Conditionally renders children based on user role.
- * Shows upgrade prompt or custom fallback if user lacks role.
- *
- * @component
- * @example
- * // Single role
- * <RoleGate role="brigade-builder">
- *   <AdminPanel />
- * </RoleGate>
- *
- * @example
- * // Multiple roles with OR logic
- * <RoleGate roles={["brigade-builder", "brigade-power-builder"]}>
- *   <AdvancedFeatures />
- * </RoleGate>
- *
- * @example
- * // Minimum role level
- * <RoleGate minRole="brigade-power-builder">
- *   <TeamManagement />
- * </RoleGate>
+ *   <RoleGate role="admin" showUpgradePrompt={false}>…</RoleGate>
+ *   <RoleGate roles={["brigade-builder", "brigade-power-builder"]}>…</RoleGate>
+ *   <RoleGate minRole="brigade-power-builder">…</RoleGate>
  */
-const RoleGate = ({
-  role,
-  roles,
-  minRole,
-  fallback = null,
-  showUpgradePrompt = true,
-  children
-}) => {
+const RoleGate = ({ role, roles, minRole, fallback = null, showUpgradePrompt = true, children }) => {
   const { user, hasRole, loading } = useAuth();
 
-  // Role hierarchy for minRole checks
-  const ROLE_HIERARCHY = {
-    'brigade-user': 0,
-    'brigade-builder': 1,
-    'brigade-power-builder': 2,
-    'brigade-org-admin': 3,
-    'brigade-platform-admin': 4
-  };
+  if (loading) return <LoadingState variant="text" count={1} label="Checking access" className="max-w-xs" />;
 
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-unicorn-600"></div>
-      </div>
-    );
-  }
-
-  // Handle minimum role check (hierarchical)
+  let allowed = true;
+  let required = null;
   if (minRole) {
-    const userRoleLevel = ROLE_HIERARCHY[user?.role] || 0;
-    const requiredRoleLevel = ROLE_HIERARCHY[minRole] || 0;
-
-    const allowed = userRoleLevel >= requiredRoleLevel;
-    if (!allowed) {
-      if (showUpgradePrompt) {
-        return <UpgradePrompt requiredRole={minRole} inline />;
-      }
-      return fallback;
-    }
-    return <>{children}</>;
+    allowed = (ROLE_HIERARCHY[user?.role] || 0) >= (ROLE_HIERARCHY[minRole] || 0);
+    required = minRole;
+  } else if (role) {
+    allowed = hasRole(role);
+    required = role;
+  } else if (Array.isArray(roles)) {
+    allowed = roles.some((r) => hasRole(r));
+    required = roles[0];
   }
 
-  // Handle single role check
-  if (role) {
-    const allowed = hasRole(role);
-    if (!allowed) {
-      if (showUpgradePrompt) {
-        return <UpgradePrompt requiredRole={role} inline />;
-      }
-      return fallback;
-    }
-    return <>{children}</>;
-  }
-
-  // Handle multiple roles check (OR logic)
-  if (roles && Array.isArray(roles)) {
-    const allowed = roles.some(r => hasRole(r));
-    if (!allowed) {
-      if (showUpgradePrompt) {
-        return <UpgradePrompt requiredRole={roles[0]} inline />;
-      }
-      return fallback;
-    }
-    return <>{children}</>;
-  }
-
-  // No roles specified, show children by default
+  if (!allowed) return showUpgradePrompt ? <UpgradePrompt requiredRole={required} inline /> : fallback;
   return <>{children}</>;
 };
 
@@ -105,19 +48,13 @@ RoleGate.propTypes = {
   /** Array of roles to check (OR logic) */
   roles: PropTypes.arrayOf(PropTypes.string),
   /** Minimum role level required (hierarchical check) */
-  minRole: PropTypes.oneOf([
-    'brigade-user',
-    'brigade-builder',
-    'brigade-power-builder',
-    'brigade-org-admin',
-    'brigade-platform-admin'
-  ]),
+  minRole: PropTypes.oneOf(['brigade-user', 'brigade-builder', 'brigade-power-builder', 'brigade-org-admin', 'brigade-platform-admin']),
   /** Custom fallback to show when role denied */
   fallback: PropTypes.node,
   /** Whether to show upgrade prompt when role denied */
   showUpgradePrompt: PropTypes.bool,
   /** Content to render when role granted */
-  children: PropTypes.node.isRequired
+  children: PropTypes.node.isRequired,
 };
 
 export default RoleGate;

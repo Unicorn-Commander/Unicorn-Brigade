@@ -1,0 +1,917 @@
+{
+  "catalog": [
+    {
+      "name": "web_search",
+      "displayName": "Web Search",
+      "costTier": "metered",
+      "permissionLevel": 1,
+      "provider": "Built-in",
+      "external": true
+    },
+    {
+      "name": "http_request",
+      "displayName": "HTTP Request",
+      "costTier": "free",
+      "permissionLevel": 2,
+      "provider": "Built-in",
+      "external": true
+    },
+    {
+      "name": "calculator",
+      "displayName": "Calculator",
+      "costTier": "free",
+      "permissionLevel": 1,
+      "provider": "Built-in",
+      "external": false
+    },
+    {
+      "name": "datetime",
+      "displayName": "Datetime",
+      "costTier": "free",
+      "permissionLevel": 1,
+      "provider": "Built-in",
+      "external": false
+    },
+    {
+      "name": "json",
+      "displayName": "Json",
+      "costTier": "free",
+      "permissionLevel": 1,
+      "provider": "Built-in",
+      "external": false
+    },
+    {
+      "name": "shell",
+      "displayName": "Shell",
+      "costTier": "free",
+      "permissionLevel": 3,
+      "provider": "Built-in",
+      "external": false
+    },
+    {
+      "name": "memory",
+      "displayName": "Memory",
+      "costTier": "free",
+      "permissionLevel": 1,
+      "provider": "Built-in",
+      "external": false
+    },
+    {
+      "name": "email",
+      "displayName": "Email",
+      "costTier": "paid",
+      "permissionLevel": 3,
+      "provider": "Extended",
+      "external": true
+    },
+    {
+      "name": "file",
+      "displayName": "File",
+      "costTier": "free",
+      "permissionLevel": 2,
+      "provider": "Extended",
+      "external": false
+    },
+    {
+      "name": "code",
+      "displayName": "Code",
+      "costTier": "free",
+      "permissionLevel": 3,
+      "provider": "Extended",
+      "external": false
+    },
+    {
+      "name": "text",
+      "displayName": "Text",
+      "costTier": "free",
+      "permissionLevel": 1,
+      "provider": "Extended",
+      "external": false
+    },
+    {
+      "name": "image",
+      "displayName": "Image",
+      "costTier": "paid",
+      "permissionLevel": 2,
+      "provider": "Extended",
+      "external": true
+    },
+    {
+      "name": "database",
+      "displayName": "Database",
+      "costTier": "free",
+      "permissionLevel": 3,
+      "provider": "Extended",
+      "external": false
+    },
+    {
+      "name": "notify",
+      "displayName": "Notify",
+      "costTier": "metered",
+      "permissionLevel": 2,
+      "provider": "Extended",
+      "external": true
+    },
+    {
+      "name": "qrcode",
+      "displayName": "Qrcode",
+      "costTier": "free",
+      "permissionLevel": 1,
+      "provider": "Extended",
+      "external": false
+    },
+    {
+      "name": "agentic_rag",
+      "displayName": "Agentic Rag",
+      "costTier": "metered",
+      "permissionLevel": 2,
+      "provider": "Extended",
+      "external": false
+    },
+    {
+      "name": "browser",
+      "displayName": "Browser",
+      "costTier": "metered",
+      "permissionLevel": 3,
+      "provider": "Advanced",
+      "external": true
+    },
+    {
+      "name": "code_sandbox",
+      "displayName": "Code Sandbox",
+      "costTier": "metered",
+      "permissionLevel": 3,
+      "provider": "Advanced",
+      "external": true
+    },
+    {
+      "name": "screenshot",
+      "displayName": "Screenshot",
+      "costTier": "free",
+      "permissionLevel": 2,
+      "provider": "Advanced",
+      "external": false
+    },
+    {
+      "name": "pdf_extract",
+      "displayName": "Pdf Extract",
+      "costTier": "free",
+      "permissionLevel": 1,
+      "provider": "Advanced",
+      "external": false
+    },
+    {
+      "name": "doc_generate",
+      "displayName": "Doc Generate",
+      "costTier": "free",
+      "permissionLevel": 2,
+      "provider": "Advanced",
+      "external": false
+    },
+    {
+      "name": "data_analyze",
+      "displayName": "Data Analyze",
+      "costTier": "free",
+      "permissionLevel": 2,
+      "provider": "Advanced",
+      "external": false
+    },
+    {
+      "name": "url_preview",
+      "displayName": "Url Preview",
+      "costTier": "free",
+      "permissionLevel": 1,
+      "provider": "Advanced",
+      "external": true
+    },
+    {
+      "name": "kg_query",
+      "displayName": "Kg Query",
+      "costTier": "free",
+      "permissionLevel": 2,
+      "provider": "Advanced",
+      "external": false
+    }
+  ],
+  "tools": [
+    {
+      "id": "web_search",
+      "name": "Web Search",
+      "description": "Search the web for up-to-date information",
+      "type": "Python",
+      "domain": "general",
+      "icon": "🔍",
+      "provider": "Built-in",
+      "parameters": [
+        "query",
+        "max_results"
+      ],
+      "capabilities": [
+        "Real-time web search",
+        "Multi-provider support",
+        "Result filtering"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "web_search",
+          "description": "Search the web for up-to-date information",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "http_request",
+      "name": "HTTP Request",
+      "description": "Make HTTP requests to REST APIs",
+      "type": "Python",
+      "domain": "general",
+      "icon": "🌐",
+      "provider": "Built-in",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "REST API calls",
+        "Multiple HTTP methods",
+        "JSON parsing",
+        "Custom headers"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "http_request",
+          "description": "Make HTTP requests to REST APIs",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "calculator",
+      "name": "Calculator",
+      "description": "Evaluate mathematical expressions safely",
+      "type": "Python",
+      "domain": "general",
+      "icon": "🧮",
+      "provider": "Built-in",
+      "parameters": [
+        "expression"
+      ],
+      "capabilities": [
+        "Arithmetic",
+        "Trigonometry",
+        "Scientific functions",
+        "Safe evaluation"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "calculator",
+          "description": "Evaluate mathematical expressions safely",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "datetime",
+      "name": "Datetime",
+      "description": "Current time, timezone conversion and date math",
+      "type": "Python",
+      "domain": "general",
+      "icon": "🕐",
+      "provider": "Built-in",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Current time",
+        "Timezone conversion",
+        "Date formatting",
+        "Time math"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "datetime",
+          "description": "Current time, timezone conversion and date math",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "json",
+      "name": "Json",
+      "description": "Parse, query and validate JSON documents",
+      "type": "Python",
+      "domain": "technology",
+      "icon": "📋",
+      "provider": "Built-in",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Parse JSON",
+        "Stringify",
+        "JSONPath access",
+        "Schema validation"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "json",
+          "description": "Parse, query and validate JSON documents",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "shell",
+      "name": "Shell",
+      "description": "Run shell commands in a sandboxed environment",
+      "type": "Python",
+      "domain": "technology",
+      "icon": "💻",
+      "provider": "Built-in",
+      "parameters": [
+        "command",
+        "timeout"
+      ],
+      "capabilities": [
+        "Shell command execution",
+        "Sandboxed environment",
+        "Timeout support"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "shell",
+          "description": "Run shell commands in a sandboxed environment",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "memory",
+      "name": "Memory",
+      "description": "Persist and recall key-value memories across turns",
+      "type": "Python",
+      "domain": "general",
+      "icon": "🧠",
+      "provider": "Built-in",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Key-value storage",
+        "Session persistence",
+        "Conversation memory"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "memory",
+          "description": "Persist and recall key-value memories across turns",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "email",
+      "name": "Email",
+      "description": "Send email through the configured provider",
+      "type": "Python",
+      "domain": "business",
+      "icon": "📧",
+      "provider": "Extended",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Send emails",
+        "Multi-provider",
+        "MS365/Google/Resend/SendGrid",
+        "HTML support"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "email",
+          "description": "Send email through the configured provider",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "file",
+      "name": "File",
+      "description": "Read, write and list files in the workspace",
+      "type": "Python",
+      "domain": "technology",
+      "icon": "📁",
+      "provider": "Extended",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Read files",
+        "Write files",
+        "List directories",
+        "File operations"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "file",
+          "description": "Read, write and list files in the workspace",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "code",
+      "name": "Code",
+      "description": "Execute Python or JavaScript snippets",
+      "type": "Python",
+      "domain": "technology",
+      "icon": "⚙️",
+      "provider": "Extended",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Code execution",
+        "Python/JavaScript",
+        "Safe environment",
+        "Result capture"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "code",
+          "description": "Execute Python or JavaScript snippets",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "text",
+      "name": "Text",
+      "description": "Text manipulation, search/replace and formatting",
+      "type": "Python",
+      "domain": "general",
+      "icon": "📝",
+      "provider": "Extended",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Text manipulation",
+        "Search/replace",
+        "Formatting",
+        "Encoding"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "text",
+          "description": "Text manipulation, search/replace and formatting",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "image",
+      "name": "Image",
+      "description": "Generate images with the configured AI model",
+      "type": "Python",
+      "domain": "creative",
+      "icon": "🖼️",
+      "provider": "Extended",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Image generation",
+        "AI models",
+        "Stable Diffusion",
+        "DALL-E"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "image",
+          "description": "Generate images with the configured AI model",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "database",
+      "name": "Database",
+      "description": "Run SQL against PostgreSQL / MySQL",
+      "type": "Python",
+      "domain": "technology",
+      "icon": "🗄️",
+      "provider": "Extended",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "SQL queries",
+        "PostgreSQL/MySQL",
+        "CRUD operations",
+        "Schema access"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "database",
+          "description": "Run SQL against PostgreSQL / MySQL",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "notify",
+      "name": "Notify",
+      "description": "Push notifications and webhook calls",
+      "type": "Python",
+      "domain": "business",
+      "icon": "🔔",
+      "provider": "Extended",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Push notifications",
+        "Webhook calls",
+        "Multi-channel",
+        "Event triggers"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "notify",
+          "description": "Push notifications and webhook calls",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "qrcode",
+      "name": "Qrcode",
+      "description": "Generate QR codes",
+      "type": "Python",
+      "domain": "general",
+      "icon": "📱",
+      "provider": "Extended",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "QR code generation",
+        "Custom data",
+        "Image output",
+        "Error correction"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "qrcode",
+          "description": "Generate QR codes",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "agentic_rag",
+      "name": "Agentic Rag",
+      "description": "Retrieve and inject document context",
+      "type": "Python",
+      "domain": "ai",
+      "icon": "🤖",
+      "provider": "Extended",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "RAG pipeline",
+        "Document retrieval",
+        "AI-powered search",
+        "Context injection"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "agentic_rag",
+          "description": "Retrieve and inject document context",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "browser",
+      "name": "Browser",
+      "description": "Drive a headless browser with Playwright",
+      "type": "Python",
+      "domain": "automation",
+      "icon": "🌐",
+      "provider": "Advanced",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Web automation",
+        "Playwright",
+        "AI-driven clicks",
+        "Form filling"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "browser",
+          "description": "Drive a headless browser with Playwright",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "code_sandbox",
+      "name": "Code Sandbox",
+      "description": "Sandboxed multi-language execution (Docker/E2B)",
+      "type": "Python",
+      "domain": "technology",
+      "icon": "🐳",
+      "provider": "Advanced",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Sandboxed execution",
+        "Docker/E2B",
+        "Multi-language",
+        "Package install"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "code_sandbox",
+          "description": "Sandboxed multi-language execution (Docker/E2B)",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "screenshot",
+      "name": "Screenshot",
+      "description": "Capture a page screenshot",
+      "type": "Python",
+      "domain": "automation",
+      "icon": "📸",
+      "provider": "Advanced",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Page capture",
+        "Viewport presets",
+        "Full-page",
+        "PNG output"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "screenshot",
+          "description": "Capture a page screenshot",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "pdf_extract",
+      "name": "Pdf Extract",
+      "description": "Extract text and tables from PDFs",
+      "type": "Python",
+      "domain": "documents",
+      "icon": "📄",
+      "provider": "Advanced",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Text extraction",
+        "Table extraction",
+        "OCR fallback",
+        "Page ranges"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "pdf_extract",
+          "description": "Extract text and tables from PDFs",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "doc_generate",
+      "name": "Doc Generate",
+      "description": "Generate DOCX/PDF documents from templates",
+      "type": "Python",
+      "domain": "documents",
+      "icon": "📃",
+      "provider": "Advanced",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Templates",
+        "DOCX output",
+        "PDF output",
+        "Markdown input"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "doc_generate",
+          "description": "Generate DOCX/PDF documents from templates",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "data_analyze",
+      "name": "Data Analyze",
+      "description": "Statistical analysis over tabular data",
+      "type": "Python",
+      "domain": "ai",
+      "icon": "📊",
+      "provider": "Advanced",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Descriptive stats",
+        "Pandas",
+        "Charts",
+        "CSV/XLSX input"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "data_analyze",
+          "description": "Statistical analysis over tabular data",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "url_preview",
+      "name": "Url Preview",
+      "description": "Fetch and summarize a URL",
+      "type": "Python",
+      "domain": "general",
+      "icon": "🔗",
+      "provider": "Advanced",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Open Graph",
+        "Readability",
+        "Summaries",
+        "Link safety"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "url_preview",
+          "description": "Fetch and summarize a URL",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "kg_query",
+      "name": "Kg Query",
+      "description": "Query the FalkorDB knowledge graph",
+      "type": "Python",
+      "domain": "ai",
+      "icon": "🕸️",
+      "provider": "Advanced",
+      "parameters": [
+        "input"
+      ],
+      "capabilities": [
+        "Knowledge graph",
+        "Cypher queries",
+        "FalkorDB",
+        "Graph relationships"
+      ],
+      "status": "active",
+      "schema": {
+        "type": "function",
+        "function": {
+          "name": "kg_query",
+          "description": "Query the FalkorDB knowledge graph",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    }
+  ]
+}

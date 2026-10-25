@@ -1,170 +1,126 @@
 import { useMemo } from 'react';
-import { motion } from 'framer-motion';
-import {
-  FileCode,
-  User,
-  Clock,
-  Sparkles,
-  GitCommit,
-  Calendar
-} from 'lucide-react';
+import { Calendar, Clock, FileCode, GitCommit, Sparkles, User } from 'lucide-react';
 import PropTypes from 'prop-types';
+import { Card, Chip, EmptyState } from './ui';
 
 /**
- * AttributionTimeline - Displays code attributions in a chronological timeline
+ * AttributionTimeline — attributions in chronological groups, one day per
+ * group, newest first. Each item opens the file's attributions.
  */
-const AttributionTimeline = ({ attributions, onItemClick }) => {
-  // Group attributions by date
-  const groupedByDate = useMemo(() => {
-    const groups = {};
+const dayKey = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+};
+const fmtTime = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+};
+const fileName = (p = '') => p.split('/').pop() || p;
 
-    attributions.forEach(attr => {
-      const date = new Date(attr.timestamp).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-
-      if (!groups[date]) {
-        groups[date] = [];
-      }
-      groups[date].push(attr);
-    });
-
-    return groups;
+export default function AttributionTimeline({ attributions, onItemClick }) {
+  const groups = useMemo(() => {
+    const sorted = [...attributions].sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+    const map = new Map();
+    for (const a of sorted) {
+      const k = dayKey(a.timestamp);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(a);
+    }
+    return [...map.entries()];
   }, [attributions]);
 
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+  if (groups.length === 0) {
+    return <EmptyState compact icon={Calendar} title="No activity in this window" description="Widen the date range, or check back after an agent has written code." />;
+  }
 
-  const getFileName = (path) => {
-    return path.split('/').pop() || path;
-  };
+  const clickable = typeof onItemClick === 'function';
 
   return (
     <div className="space-y-8">
-      {Object.entries(groupedByDate).map(([date, items]) => (
-        <div key={date} className="relative">
-          {/* Date Header */}
-          <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-sm py-2 mb-4">
+      {groups.map(([date, items]) => (
+        <section key={date} aria-label={date}>
+          <div className="sticky top-0 z-raised mb-3 bg-bg/95 py-2 backdrop-blur-sm">
             <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-unicorn-400" />
-              <h3 className="text-sm font-semibold text-slate-200">{date}</h3>
-              <span className="text-xs text-slate-400">
-                ({items.length} {items.length === 1 ? 'change' : 'changes'})
+              <Calendar aria-hidden="true" className="h-4 w-4 text-accent" />
+              <h3 className="text-body font-semibold text-fg-strong">{date}</h3>
+              <span className="text-caption text-muted">
+                {items.length} {items.length === 1 ? 'change' : 'changes'}
               </span>
             </div>
           </div>
-
-          {/* Timeline Items */}
-          <div className="relative pl-8 space-y-4">
-            {/* Timeline Line */}
-            <div className="absolute left-2 top-0 bottom-0 w-px bg-gradient-to-b from-unicorn-500/50 via-unicorn-500/20 to-transparent" />
-
-            {items.map((attr, index) => (
-              <motion.div
-                key={attr.id || `${attr.file_path}-${index}`}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="relative"
-              >
-                {/* Timeline Dot */}
-                <div className="absolute left-[-26px] top-3">
-                  <div className="w-3 h-3 rounded-full bg-unicorn-500 ring-4 ring-slate-900" />
-                </div>
-
-                {/* Timeline Item Card */}
-                <div
-                  className="card p-3 hover:border-unicorn-500/30 transition-all cursor-pointer group"
-                  onClick={() => onItemClick && onItemClick(attr)}
+          <ol className="relative space-y-3 pl-7">
+            <span aria-hidden="true" className="absolute bottom-2 left-2 top-2 w-px bg-border" />
+            {items.map((a, i) => (
+              <li key={a.id || `${a.file_path}-${i}`} className="relative">
+                <span aria-hidden="true" className="absolute -left-[22px] top-4 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-bg" />
+                <Card
+                  as={clickable ? 'button' : 'div'}
+                  type={clickable ? 'button' : undefined}
+                  interactive={clickable}
+                  padding="sm"
+                  className="w-full"
+                  onClick={clickable ? () => onItemClick(a) : undefined}
                 >
-                  {/* Time Badge */}
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <Clock className="w-3 h-3" />
-                      {formatTime(attr.timestamp)}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <FileCode aria-hidden="true" className="h-4 w-4 shrink-0 text-accent" />
+                        <span className="truncate text-body font-semibold text-fg-strong">{fileName(a.file_path)}</span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted">
+                        <span className="inline-flex items-center gap-1">
+                          <User aria-hidden="true" className="h-3 w-3" />
+                          {a.agent_name || a.agent_id}
+                        </span>
+                        {a.model && (
+                          <span className="inline-flex items-center gap-1">
+                            <Sparkles aria-hidden="true" className="h-3 w-3" />
+                            {a.model}
+                          </span>
+                        )}
+                        {a.start_line != null && a.end_line != null && (
+                          <span className="inline-flex items-center gap-1 font-mono">
+                            <GitCommit aria-hidden="true" className="h-3 w-3" />
+                            {a.start_line}–{a.end_line}
+                          </span>
+                        )}
+                      </div>
+                      {a.prompt && <p className="mt-2 line-clamp-2 text-caption text-muted">{a.prompt}</p>}
                     </div>
-                    <span className="badge badge-purple text-xs">
-                      {attr.lines_count} lines
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Chip tone="accent" size="xs" className="tabular-nums">
+                        {a.lines_count ?? 0} lines
+                      </Chip>
+                      <span className="inline-flex items-center gap-1 text-caption text-muted">
+                        <Clock aria-hidden="true" className="h-3 w-3" />
+                        {fmtTime(a.timestamp)}
+                      </span>
+                    </div>
                   </div>
-
-                  {/* File Path */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileCode className="w-4 h-4 text-unicorn-400" />
-                    <span className="text-sm font-medium text-slate-200">
-                      {getFileName(attr.file_path)}
-                    </span>
-                  </div>
-
-                  {/* Agent & Model */}
-                  <div className="flex items-center gap-4 text-xs text-slate-400 mb-2">
-                    <div className="flex items-center gap-1.5">
-                      <User className="w-3 h-3" />
-                      <span>{attr.agent_name || attr.agent_id}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Sparkles className="w-3 h-3" />
-                      <span className="truncate">{attr.model}</span>
-                    </div>
-                  </div>
-
-                  {/* Prompt */}
-                  {attr.prompt && (
-                    <div className="mt-2 p-2 bg-slate-800/40 rounded border border-slate-700/50">
-                      <p className="text-xs text-slate-400 line-clamp-2">
-                        {attr.prompt}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Line Range */}
-                  {attr.start_line && attr.end_line && (
-                    <div className="flex items-center gap-2 mt-2 text-xs text-slate-400">
-                      <GitCommit className="w-3 h-3" />
-                      <span>Lines {attr.start_line}-{attr.end_line}</span>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
+                </Card>
+              </li>
             ))}
-          </div>
-        </div>
+          </ol>
+        </section>
       ))}
-
-      {/* Empty State */}
-      {Object.keys(groupedByDate).length === 0 && (
-        <div className="text-center py-12">
-          <Calendar className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-          <p className="text-slate-400">No activity in this time period</p>
-        </div>
-      )}
     </div>
   );
-};
+}
 
 AttributionTimeline.propTypes = {
   attributions: PropTypes.arrayOf(
     PropTypes.shape({
       id: PropTypes.string,
       file_path: PropTypes.string.isRequired,
-      agent_id: PropTypes.string.isRequired,
+      agent_id: PropTypes.string,
       agent_name: PropTypes.string,
-      model: PropTypes.string.isRequired,
-      timestamp: PropTypes.string.isRequired,
+      model: PropTypes.string,
+      timestamp: PropTypes.string,
       lines_count: PropTypes.number,
       start_line: PropTypes.number,
       end_line: PropTypes.number,
-      prompt: PropTypes.string
+      prompt: PropTypes.string,
     })
   ).isRequired,
-  onItemClick: PropTypes.func
+  onItemClick: PropTypes.func,
 };
-
-export default AttributionTimeline;

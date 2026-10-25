@@ -1,166 +1,105 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import {
-  FileCode,
-  User,
-  Calendar,
-  Clock,
-  Code,
-  ChevronRight,
-  ExternalLink,
-  GitCommit,
-  Sparkles
-} from 'lucide-react';
+import { Calendar, Clock, FileCode, GitCommit, Sparkles, User } from 'lucide-react';
 import PropTypes from 'prop-types';
+import { Card, Chip } from './ui';
 
 /**
- * CodeAttributionCard - Displays a single code attribution
- * Shows which agent generated which code, when, and with what prompt
+ * CodeAttributionCard — one attribution: which agent wrote which lines of
+ * which file, when, and from what prompt. Clickable when `onClick` is given.
  */
-const CodeAttributionCard = ({ attribution, onClick, compact = false }) => {
-  const [expanded, setExpanded] = useState(false);
+const fmtDate = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+const fmtTime = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+};
+const fileName = (p = '') => p.split('/').pop() || p;
+const dirName = (p = '') => p.split('/').slice(0, -1).join('/') || '/';
 
-  const handleClick = () => {
-    if (onClick) {
-      onClick(attribution);
-    } else {
-      setExpanded(!expanded);
-    }
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  // Get file name from path
-  const getFileName = (path) => {
-    return path.split('/').pop() || path;
-  };
-
-  // Get relative path without file name
-  const getFilePath = (path) => {
-    const parts = path.split('/');
-    return parts.slice(0, -1).join('/') || '/';
-  };
-
+export default function CodeAttributionCard({ attribution: a, onClick, compact = false }) {
+  const clickable = typeof onClick === 'function';
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className={`
-        card hover:border-unicorn-500/30 transition-all cursor-pointer group
-        ${compact ? 'p-3' : 'p-4'}
-      `}
-      onClick={handleClick}
+    <Card
+      as={clickable ? 'button' : 'div'}
+      type={clickable ? 'button' : undefined}
+      interactive={clickable}
+      padding={compact ? 'sm' : 'md'}
+      className="h-full w-full"
+      onClick={clickable ? () => onClick(a) : undefined}
+      aria-label={clickable ? `Open attributions for ${fileName(a.file_path)}` : undefined}
     >
-      {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          {/* File Info */}
-          <div className="flex items-center gap-2 mb-2">
-            <FileCode className="w-4 h-4 text-unicorn-400 flex-shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-2">
+            <FileCode aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-slate-200 truncate">
-                {getFileName(attribution.file_path)}
-              </p>
-              <p className="text-xs text-slate-400 truncate">
-                {getFilePath(attribution.file_path)}
-              </p>
+              <p className="truncate text-body font-semibold text-fg-strong">{fileName(a.file_path)}</p>
+              <p className="truncate font-mono text-caption text-muted">{dirName(a.file_path)}</p>
             </div>
           </div>
-
-          {/* Agent & Model */}
-          <div className="flex items-center gap-4 text-xs text-slate-400">
-            <div className="flex items-center gap-1.5">
-              <User className="w-3 h-3" />
-              <span>{attribution.agent_name || attribution.agent_id}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3" />
-              <span>{attribution.model}</span>
-            </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted">
+            <span className="inline-flex items-center gap-1">
+              <User aria-hidden="true" className="h-3 w-3" />
+              {a.agent_name || a.agent_id}
+            </span>
+            {a.model && (
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <Sparkles aria-hidden="true" className="h-3 w-3" />
+                <span className="truncate">{a.model}</span>
+              </span>
+            )}
           </div>
         </div>
-
-        {/* Stats Badge */}
-        <div className="flex flex-col items-end gap-1">
-          <span className="badge badge-purple text-xs">
-            {attribution.lines_count} lines
-          </span>
-          <div className="flex items-center gap-1 text-xs text-slate-400">
-            <Clock className="w-3 h-3" />
-            {formatTime(attribution.timestamp)}
-          </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Chip tone="accent" size="xs" className="tabular-nums">
+            {a.lines_count ?? 0} lines
+          </Chip>
+          {a.timestamp && (
+            <span className="inline-flex items-center gap-1 text-caption text-muted">
+              <Clock aria-hidden="true" className="h-3 w-3" />
+              {fmtTime(a.timestamp)}
+            </span>
+          )}
         </div>
       </div>
 
       {!compact && (
         <>
-          {/* Date */}
-          <div className="flex items-center gap-1.5 mt-3 text-xs text-slate-400">
-            <Calendar className="w-3 h-3" />
-            {formatDate(attribution.timestamp)}
-          </div>
-
-          {/* Prompt Preview */}
-          {attribution.prompt && (
-            <div className="mt-3 p-2.5 bg-slate-800/40 rounded-lg border border-slate-700/50">
-              <p className="text-xs text-slate-400 line-clamp-2">
-                {attribution.prompt}
-              </p>
-            </div>
+          {a.timestamp && (
+            <p className="mt-3 inline-flex items-center gap-1.5 text-caption text-muted">
+              <Calendar aria-hidden="true" className="h-3 w-3" />
+              {fmtDate(a.timestamp)}
+            </p>
           )}
-
-          {/* Line Range */}
-          {attribution.start_line && attribution.end_line && (
-            <div className="flex items-center gap-2 mt-3 text-xs">
-              <GitCommit className="w-3 h-3 text-slate-400" />
-              <span className="text-slate-400">
-                Lines {attribution.start_line}-{attribution.end_line}
-              </span>
-            </div>
+          {a.prompt && (
+            <p className="mt-3 line-clamp-2 rounded-control border border-border bg-elevated/50 px-2.5 py-2 text-caption text-muted">{a.prompt}</p>
           )}
-
-          {/* Expand Indicator */}
-          <div className="flex items-center justify-end mt-3 text-xs text-unicorn-400 opacity-0 group-hover:opacity-100 transition-opacity">
-            <span>View details</span>
-            <ChevronRight className="w-3 h-3 ml-1" />
-          </div>
+          {a.start_line != null && a.end_line != null && (
+            <p className="mt-3 inline-flex items-center gap-1.5 font-mono text-caption text-muted">
+              <GitCommit aria-hidden="true" className="h-3 w-3" />
+              Lines {a.start_line}–{a.end_line}
+            </p>
+          )}
         </>
       )}
-    </motion.div>
+    </Card>
   );
-};
+}
 
 CodeAttributionCard.propTypes = {
   attribution: PropTypes.shape({
     id: PropTypes.string,
     file_path: PropTypes.string.isRequired,
-    agent_id: PropTypes.string.isRequired,
+    agent_id: PropTypes.string,
     agent_name: PropTypes.string,
-    model: PropTypes.string.isRequired,
-    timestamp: PropTypes.string.isRequired,
+    model: PropTypes.string,
+    timestamp: PropTypes.string,
     lines_count: PropTypes.number,
     start_line: PropTypes.number,
     end_line: PropTypes.number,
-    prompt: PropTypes.string
+    prompt: PropTypes.string,
   }).isRequired,
   onClick: PropTypes.func,
-  compact: PropTypes.bool
+  compact: PropTypes.bool,
 };
-
-export default CodeAttributionCard;

@@ -1,97 +1,29 @@
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  /*
-   * Semantic design tokens (HSL channel triples, consumed by tailwind.config.js
-   * as hsl(var(--token) / <alpha>)). These ARE the theme and are consumed by the
-   * primitives (Modal, Card, StatCard, Button, Toggle), the charts, and the
-   * high-traffic surfaces (nav, dashboard, chat, settings, auth, org).
-   *
-   * TWO themes now ship. Dark is the default (values on :root, so no-JS / first
-   * paint = dark, matching the historical look). Light overrides live on
-   * :root[data-theme="light"]. The runtime toggle (src/utils/theme.js, wired
-   * from Settings → Appearance) flips data-theme on <html> and mirrors it on the
-   * `dark` class; prefers-color-scheme seeds the initial default.
-   *
-   * Not every historical slate/white utility has been migrated to tokens — the
-   * high-traffic surfaces have; low-traffic pages (see the LIGHT-MODE COVERAGE
-   * note at the end of this file) keep dark slate panels and render dark-correct
-   * on the light page. Semantic status colors (emerald/red/amber/cyan/…-400) and
-   * translucent-white tints are remapped app-wide for light mode by the scoped
-   * overrides at the end of this file, so they stay legible on both white and
-   * dark panels without touching JSX.
-   */
-  :root {
-    --bg: 229 84% 5%;        /* app background   ≈ slate-950 */
-    --surface: 222 47% 11%;  /* elevated panel   ≈ slate-900 */
-    --card: 222 47% 11%;     /* card background  ≈ slate-900 */
-    --elevated: 217 33% 17%; /* nested tiles     ≈ slate-800 */
-    --border: 215 25% 27%;   /* hairline borders ≈ slate-700 */
-    --fg: 210 40% 98%;       /* primary text     ≈ slate-50 (was text-white) */
-    --muted: 215 20% 65%;    /* muted body text  = slate-400 (AA on dark) */
-    --accent: 322.8 84.7% 59.8%; /* one accent    = unicorn-500 */
-
-    /* Legacy vars kept for anything still referencing them. */
-    --background: 220 20% 8%;
-    --foreground: 210 40% 98%;
-    --card-foreground: 210 40% 98%;
-    --primary: 322.8 84.7% 59.8%;
-    --primary-foreground: 210 40% 98%;
-
-    /*
-     * Data-viz palette (validated via the dataviz skill on the dark chart
-     * surface ≈ slate-900). Categorical series are a CVD-safe blue+magenta
-     * pair (worst adjacent CVD ΔE 15.9). These flip under [data-theme="light"].
-     */
-    --chart-1: #3987e5;                     /* series 1 — blue    (CPU)    */
-    --chart-2: #d55181;                     /* series 2 — magenta (Memory) */
-    --chart-3: #199e70;                     /* series 3 — aqua             */
-    --chart-grid: rgba(148, 163, 184, 0.14);
-    --chart-axis: #94a3b8;                  /* slate-400 — axis/ticks      */
-  }
-
-  /* ---- Light theme token overrides ---------------------------------------
-   * Verified for AA: fg (slate-900) on card (white) ≈ 17:1; muted (slate-600)
-   * on white ≈ 7:1 and on bg (slate-100) ≈ 6.4:1; accent (unicorn-600) on
-   * white ≈ 3.9:1 (AA for UI / large accent text). */
-  :root[data-theme="light"] {
-    --bg: 210 40% 96%;       /* page background  ≈ slate-100 */
-    --surface: 0 0% 100%;    /* raised panels    = white */
-    --card: 0 0% 100%;       /* cards            = white */
-    --elevated: 214 32% 93%; /* nested tiles     ≈ slate-200 */
-    --border: 214 25% 84%;   /* hairline borders ≈ slate-300 */
-    --fg: 222 47% 13%;       /* primary text     ≈ slate-900 */
-    --muted: 215 19% 35%;    /* muted body text  ≈ slate-600/700 (AA on white) */
-    --accent: 330 81% 44%;   /* accent           ≈ unicorn-600 (AA on white) */
-
-    --background: 210 40% 96%;
-    --foreground: 222 47% 13%;
-    --card-foreground: 222 47% 13%;
-    --primary: 330 81% 44%;
-    --primary-foreground: 0 0% 100%;
-
-    /* Chart palette re-tuned for the white plot surface (darker, saturated). */
-    --chart-1: #1d67c9;                     /* blue    */
-    --chart-2: #be2a63;                     /* magenta */
-    --chart-3: #0f7a54;                     /* aqua    */
-    --chart-grid: rgba(51, 65, 85, 0.14);
-    --chart-axis: #475569;                  /* slate-600 axis/ticks */
-  }
-}
-
-@layer base {
   body {
     @apply bg-bg text-fg font-sans antialiased;
     background-image:
-      radial-gradient(at 27% 37%, hsla(215, 98%, 61%, 0.15) 0px, transparent 50%),
-      radial-gradient(at 97% 21%, hsla(322, 87%, 65%, 0.15) 0px, transparent 50%),
-      radial-gradient(at 52% 99%, hsla(189, 100%, 56%, 0.1) 0px, transparent 50%),
-      radial-gradient(at 10% 29%, hsla(256, 96%, 67%, 0.1) 0px, transparent 50%),
-      radial-gradient(at 76% 65%, hsla(187, 100%, 42%, 0.1) 0px, transparent 50%);
+      radial-gradient(at 27% 37%, hsla(215, 98%, 61%, 0.07) 0px, transparent 50%),
+      radial-gradient(at 97% 21%, hsla(322, 87%, 65%, 0.07) 0px, transparent 50%),
+      radial-gradient(at 52% 99%, hsla(189, 100%, 56%, 0.05) 0px, transparent 50%),
+      radial-gradient(at 10% 29%, hsla(256, 96%, 67%, 0.05) 0px, transparent 50%),
+      radial-gradient(at 76% 65%, hsla(187, 100%, 42%, 0.05) 0px, transparent 50%);
     min-height: 100vh;
     margin: 0;
+  }
+
+  /* The aurora is the Brigade family's signature; the other families are flat. */
+  /* Listed with [data-theme] too so it outranks the light-mode aurora below. */
+  :root[data-theme-family="business"] body,
+  :root[data-theme-family="graphite"] body,
+  :root[data-theme-family="business"][data-theme] body,
+  :root[data-theme-family="graphite"][data-theme] body {
+    background-image: none;
   }
 
   /* Soften the aurora on light so it reads as a faint tint, not muddy blobs. */
@@ -106,254 +38,45 @@
 }
 
 @layer components {
-  .glass {
-    @apply bg-surface/40 backdrop-blur-md border border-border/40;
-  }
-
-  .glass-hover {
-    @apply hover:bg-elevated/50 transition-all duration-200;
-  }
-
-  .btn-primary {
-    @apply bg-gradient-to-r from-unicorn-500 to-unicorn-600 text-white px-6 py-3 rounded-lg font-medium hover:from-unicorn-600 hover:to-unicorn-700 transition-all duration-200 shadow-lg hover:shadow-unicorn-500/25;
-  }
-
-  .btn-secondary {
-    @apply bg-elevated/60 text-fg px-6 py-3 rounded-lg font-medium hover:bg-elevated transition-all duration-200 border border-border/60;
-  }
-
-  .card {
-    @apply glass rounded-xl p-6 shadow-xl;
-  }
-
-  .input {
-    @apply bg-surface/50 border border-border/60 rounded-lg px-4 py-2 text-fg placeholder-muted focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50;
-  }
-
+  /* Accent gradient text — the wordmark and the auth pages only. */
   .text-gradient {
-    @apply bg-gradient-to-r from-unicorn-400 to-cyan-400 bg-clip-text text-transparent;
+    background-image: linear-gradient(90deg, hsl(var(--accent)), hsl(262 85% 72%));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* The General's rainbow — ONE word in a hero, never a heading style. */
+  .text-gradient-brand {
+    background-image: var(--gradient-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 }
 
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgb(100 116 139) transparent;
+    scrollbar-color: hsl(var(--border-strong) / 0.9) transparent;
   }
-
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgb(100 116 139);
-    border-radius: 3px;
-  }
-
-  .custom-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: rgb(100 116 139 / 0.5) transparent;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgb(100 116 139 / 0.5);
-    border-radius: 4px;
-    border: 2px solid transparent;
-    background-clip: content-box;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: rgb(100 116 139 / 0.7);
-  }
-
-  /* Agent Preview Animations */
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes pulse-soft {
-    0%, 100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.9;
-    }
-  }
-
-  @keyframes slide-in-right {
-    from {
-      opacity: 0;
-      transform: translateX(100%);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-
-  @keyframes shimmer {
-    0% {
-      background-position: -1000px 0;
-    }
-    100% {
-      background-position: 1000px 0;
-    }
-  }
-
-  .animate-fade-in {
-    animation: fade-in 0.3s ease-out;
-  }
-
-  .animate-fadeIn {
-    animation: fade-in 0.3s ease-out;
-  }
-
-  .animate-pulse-soft {
-    animation: pulse-soft 2s ease-in-out infinite;
-  }
-
-  .animate-slide-in-right {
-    animation: slide-in-right 0.4s ease-out;
-  }
-
-  .animate-shimmer {
-    animation: shimmer 2s linear infinite;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(255, 255, 255, 0.1),
-      transparent
-    );
-    background-size: 1000px 100%;
-  }
-
-  /* Tool Call Card Animations */
-  @keyframes tool-pulse {
-    0%, 100% {
-      box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.4);
-    }
-    50% {
-      box-shadow: 0 0 0 4px rgba(234, 179, 8, 0);
-    }
-  }
-
-  @keyframes tool-success {
-    0% {
-      transform: scale(1);
-    }
-    50% {
-      transform: scale(1.05);
-    }
-    100% {
-      transform: scale(1);
-    }
-  }
-
-  @keyframes expand-in {
-    from {
-      opacity: 0;
-      transform: scaleY(0.95);
-      transform-origin: top;
-    }
-    to {
-      opacity: 1;
-      transform: scaleY(1);
-      transform-origin: top;
-    }
-  }
-
-  @keyframes status-dot {
-    0%, 80%, 100% {
-      transform: scale(0.6);
-      opacity: 0.5;
-    }
-    40% {
-      transform: scale(1);
-      opacity: 1;
-    }
-  }
-
-  .animate-tool-pulse {
-    animation: tool-pulse 2s ease-in-out infinite;
-  }
-
-  .animate-tool-success {
-    animation: tool-success 0.3s ease-out;
-  }
-
-  .animate-expand-in {
-    animation: expand-in 0.2s ease-out;
-  }
-
-  .animate-status-dot-1 {
-    animation: status-dot 1.4s ease-in-out infinite;
-    animation-delay: 0s;
-  }
-
-  .animate-status-dot-2 {
-    animation: status-dot 1.4s ease-in-out infinite;
-    animation-delay: 0.2s;
-  }
-
-  .animate-status-dot-3 {
-    animation: status-dot 1.4s ease-in-out infinite;
-    animation-delay: 0.4s;
-  }
-
-  /* Tool card hover effects */
-  .tool-card-hover {
-    @apply transition-all duration-200;
-  }
-
-  .tool-card-hover:hover {
-    @apply bg-slate-700/30 shadow-md;
-  }
-
-  /* Syntax highlighting color scheme for tool results */
-  .syntax-string { @apply text-emerald-400; }
-  .syntax-number { @apply text-amber-400; }
-  .syntax-boolean { @apply text-cyan-400; }
-  .syntax-null { @apply text-slate-500; }
-  .syntax-key { @apply text-purple-400; }
-  .syntax-punctuation { @apply text-slate-500; }
 }
 
 @layer base {
   /* Thin, on-brand scrollbars everywhere (was only on opt-in utility classes). */
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgb(100 116 139 / 0.45) transparent;
+    scrollbar-color: hsl(var(--border-strong) / 0.9) transparent;
   }
   *::-webkit-scrollbar { width: 8px; height: 8px; }
   *::-webkit-scrollbar-track { background: transparent; }
   *::-webkit-scrollbar-thumb {
-    background-color: rgb(100 116 139 / 0.45);
+    background-color: hsl(var(--border-strong) / 0.9);
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
-  *::-webkit-scrollbar-thumb:hover { background-color: rgb(100 116 139 / 0.7); }
+  *::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--border-strong)); }
 
   /* Visible keyboard-focus ring on interactive elements (mouse clicks unaffected). */
   a:focus-visible,
@@ -364,10 +87,72 @@
   [tabindex]:focus-visible,
   [role='button']:focus-visible,
   [role='tab']:focus-visible {
-    outline: 2px solid rgb(236 72 153 / 0.75); /* unicorn-500 */
+    outline: 2px solid hsl(var(--ring) / 0.9);
     outline-offset: 2px;
     border-radius: 6px;
   }
+}
+
+/* ==========================================================================
+ * THIRD-PARTY WIDGETS — themed here, under the token layer, instead of with
+ * `!` overrides at the call site. xyflow's default controls are WHITE buttons
+ * (the "white block" in the Command Center corner); react-tooltip and
+ * react-hot-toast get the same surface/edge/text as every other popover.
+ * ====================================================================== */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-controls-button-background-color: hsl(var(--elevated));
+  --xy-controls-button-background-color-hover: hsl(var(--border));
+  --xy-controls-button-color: hsl(var(--fg));
+  --xy-controls-button-color-hover: hsl(var(--fg-strong));
+  --xy-controls-button-border-color: hsl(var(--border));
+  --xy-controls-box-shadow: var(--shadow-e2);
+  --xy-minimap-background-color: hsl(var(--surface));
+  --xy-minimap-mask-background-color: hsl(var(--bg) / 0.65);
+  --xy-minimap-mask-stroke-color: hsl(var(--border-strong));
+  --xy-minimap-node-background-color: hsl(var(--border-strong));
+  --xy-minimap-node-stroke-color: transparent;
+  --xy-edge-label-background-color: hsl(var(--overlay));
+  --xy-edge-label-color: hsl(var(--fg));
+  --xy-attribution-background-color: transparent;
+}
+.react-flow .react-flow__controls {
+  border-radius: 8px;
+  overflow: hidden;
+}
+.react-flow .react-flow__controls-button svg {
+  fill: currentColor;
+  max-width: 14px;
+  max-height: 14px;
+}
+.react-flow .react-flow__minimap {
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+}
+.react-flow__attribution { display: none; }
+.ub-toast {
+  background: hsl(var(--overlay)) !important;
+  color: hsl(var(--fg)) !important;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  box-shadow: var(--shadow-e3);
+  font-size: 14px;
+  line-height: 20px;
+  max-width: 24rem;
+}
+.ub-toast-ok { border-color: hsl(var(--ok) / 0.4); }
+.ub-toast-danger { border-color: hsl(var(--danger) / 0.4); }
+.react-tooltip.ub-tooltip {
+  background: hsl(var(--overlay) / 0.98) !important;
+  color: hsl(var(--fg)) !important;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  box-shadow: var(--shadow-e3);
+  font-size: 12px;
+  line-height: 16px;
+  padding: 6px 10px;
+  z-index: 90;
+  max-width: 20rem;
 }
 
 /* Respect the OS "reduce motion" setting: neutralize the infinite pulses,
@@ -390,54 +175,24 @@
  * historical utilities app-wide WITHOUT touching JSX, so light mode is legible
  * even on the low-traffic pages that still ship dark slate panels:
  *
- *   1. Semantic status TEXT colors. In dark they're the -400 shades. The -600/
- *      -700 replacements below are chosen to clear AA on BOTH the white cards of
- *      converted surfaces AND the dark slate panels of unconverted ones (each is
- *      ≥3.5:1 on white and ≥3:1 on slate-900). Backgrounds (bg-*-500/20 tints)
- *      are left alone — they're pale on white and subtle on dark, both fine.
- *   2. Translucent-white elevation/hover tints → translucent-black, so hovers
- *      and glassy fills read on light surfaces instead of vanishing.
+ *   Since the 2026-10 pass every page is on the token layer, so the only
+ *   remaining remaps are the five hues of the agent-classification vocabulary
+ *   (utils/agentClass.js, shared verbatim with Stable), darkened for white.
  *
  * They sit outside @layer so they win the cascade over the layered utilities
  * regardless of source order. Deliberately NOT overridden: text-white (means
  * "on-accent" on buttons — must stay white) and text/bg-slate-* (context
  * dependent — migrated per-surface instead).
  * ====================================================================== */
-:root[data-theme="light"] .text-emerald-400 { color: #059669; }
 :root[data-theme="light"] .text-emerald-300 { color: #047857; }
-:root[data-theme="light"] .text-teal-400    { color: #0d9488; }
-:root[data-theme="light"] .text-green-400   { color: #16a34a; }
-:root[data-theme="light"] .text-red-400     { color: #dc2626; }
-:root[data-theme="light"] .text-red-300     { color: #dc2626; }
-:root[data-theme="light"] .text-red-200     { color: #b91c1c; }
-:root[data-theme="light"] .text-rose-400    { color: #e11d48; }
-:root[data-theme="light"] .text-amber-400   { color: #b45309; }
 :root[data-theme="light"] .text-amber-300   { color: #b45309; }
-:root[data-theme="light"] .text-amber-200   { color: #92400e; }
-:root[data-theme="light"] .text-yellow-400  { color: #a16207; }
-:root[data-theme="light"] .text-yellow-200  { color: #854d0e; }
-:root[data-theme="light"] .text-orange-400  { color: #c2410c; }
-:root[data-theme="light"] .text-cyan-400    { color: #0e7490; }
+:root[data-theme="light"] .text-rose-300    { color: #be123c; }
+:root[data-theme="light"] .text-violet-300  { color: #6d28d9; }
 :root[data-theme="light"] .text-cyan-300    { color: #0e7490; }
-:root[data-theme="light"] .text-sky-400     { color: #0369a1; }
-:root[data-theme="light"] .text-blue-400    { color: #2563eb; }
-:root[data-theme="light"] .text-indigo-400  { color: #4f46e5; }
-:root[data-theme="light"] .text-violet-400  { color: #7c3aed; }
-:root[data-theme="light"] .text-purple-400  { color: #9333ea; }
-:root[data-theme="light"] .text-pink-400    { color: #db2777; }
-:root[data-theme="light"] .text-unicorn-400 { color: #db2777; }
-:root[data-theme="light"] .text-unicorn-300 { color: #be185d; }
-:root[data-theme="light"] .text-unicorn-200 { color: #9d174d; }
-
-/* Translucent-white tints → translucent-black on light surfaces. */
-:root[data-theme="light"] .bg-white\/5        { background-color: rgb(15 23 42 / 0.05); }
-:root[data-theme="light"] .bg-white\/10       { background-color: rgb(15 23 42 / 0.08); }
-:root[data-theme="light"] .hover\:bg-white\/5:hover  { background-color: rgb(15 23 42 / 0.05); }
-:root[data-theme="light"] .hover\:bg-white\/10:hover { background-color: rgb(15 23 42 / 0.08); }
 
 /* Wordmark / heading gradient: light pink→cyan washes out on white, so darken. */
 :root[data-theme="light"] .text-gradient {
-  background-image: linear-gradient(to right, #be185d, #0e7490);
+  background-image: linear-gradient(90deg, hsl(var(--accent)), hsl(262 70% 45%));
 }
 
 /* ==========================================================================

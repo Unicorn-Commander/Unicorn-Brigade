@@ -4,6 +4,7 @@ Role-Based Access Control Configuration
 Defines user roles and path-based access rules.
 """
 
+import re
 from enum import Enum
 from typing import Set
 
@@ -131,6 +132,56 @@ PUBLIC_PATHS: Set[str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# P-00092 — the autonomy:report scope (outside loops reporting their runs)
+# ---------------------------------------------------------------------------
+#
+# A cron job on bigboy, a systemd timer on commander, a LaunchAgent on the Mac
+# Studio or a Claude Code routine registers itself and reports each run with a
+# key carrying this ONE scope. It must grant nothing else:
+#   * ``role_from_permissions`` ignores it, so such a key stays VIEWER;
+#   * a credential whose only scope is this one is CONFINED to the two reporting
+#     endpoints (see ``is_reporter_only_credential`` + the middleware), so a key
+#     sitting in an unattended script cannot read the roster, the knowledge
+#     graph or the event stream;
+#   * ``mcp_scope_level`` gives it no MCP access.
+AUTONOMY_REPORT_PERMISSION = "autonomy:report"
+AUTONOMY_PATH_PREFIX = "/api/v1/autonomy"
+_AUTONOMY_JOB_PATH = re.compile(r"/api/v1/autonomy/jobs/[^/]+/?")
+_AUTONOMY_JOB_RUNS_PATH = re.compile(r"/api/v1/autonomy/jobs/[^/]+/runs/?")
+
+
+def _normalized_scopes(permissions) -> set:
+    return {str(p).strip().lower() for p in (permissions or []) if str(p).strip()}
+
+
+def has_autonomy_report_scope(permissions) -> bool:
+    """True when a credential's scopes include ``autonomy:report``."""
+    return AUTONOMY_REPORT_PERMISSION in _normalized_scopes(permissions)
+
+
+def is_reporter_only_credential(permissions) -> bool:
+    """True when ``autonomy:report`` is the credential's ONLY scope.
+
+    Such a key exists to report autonomous runs and is confined to the two
+    reporting endpoints. A key that also carries other scopes is judged by
+    those scopes as usual (the extra scope then only adds reporting).
+    """
+    return _normalized_scopes(permissions) == {AUTONOMY_REPORT_PERMISSION}
+
+
+def is_autonomy_report_request(path: str, method: str) -> bool:
+    """The two requests an outside loop makes: register/update its job
+    (``PUT /api/v1/autonomy/jobs/{key}``) and report a run
+    (``POST /api/v1/autonomy/jobs/{key}/runs``)."""
+    verb = (method or "").upper()
+    if verb == "PUT":
+        return bool(_AUTONOMY_JOB_PATH.fullmatch(path or ""))
+    if verb == "POST":
+        return bool(_AUTONOMY_JOB_RUNS_PATH.fullmatch(path or ""))
+    return False
+
+
 def is_admin_path(path: str) -> bool:
     """Check if a path requires admin access"""
     # Exact match
@@ -177,6 +228,20 @@ def get_minimum_role_for_method(path: str, method: str) -> UserRole:
     # accepting an invite or creating their own org.
     if path.startswith("/api/v1/orgs"):
         return UserRole.VIEWER
+
+    # Autonomy catalogue (P-00092). Outside loops report with a key whose ONLY
+    # scope is ``autonomy:report`` — a VIEWER-level credential — so the two
+    # reporting endpoints only require authentication here; the real gate is the
+    # route's ``require_autonomy_reporter`` (operator/admin, or that scope). The
+    # rest of the prefix keeps the plain default (GET viewer, writes operator),
+    # and every autonomy route also declares its own require_* dependency.
+    # This rule sits ABOVE the substring rules below on purpose: a job key such
+    # as ``agents-sync`` or ``knowledge-refresh`` must not pull a path under the
+    # /agents (DELETE/PUT -> admin) or /knowledge rules.
+    if path == AUTONOMY_PATH_PREFIX or path.startswith(AUTONOMY_PATH_PREFIX + "/"):
+        if is_autonomy_report_request(path, method):
+            return UserRole.VIEWER
+        return UserRole.VIEWER if method == "GET" else UserRole.OPERATOR
 
     # Agent routes
     if "/agents" in path:
@@ -274,6 +339,9 @@ def role_from_permissions(permissions, base_role=None) -> UserRole:
     read-only key). Pass ``None`` for an AGENT/SERVICE key that has no backing
     user row — then only the key's scopes decide. This reproduces the exact prior
     behavior of both middleware sites, byte-for-byte, now from one place.
+
+    ``autonomy:report`` (P-00092) deliberately raises nothing: a key that
+    carries only that scope resolves to VIEWER, the lowest role.
     """
     perms = {str(p).lower() for p in (permissions or [])}
     br = (base_role.value if hasattr(base_role, "value") else str(base_role or "")).lower()
@@ -477,6 +545,10 @@ def mcp_scope_level(user_role, permissions) -> int:
     explicit = [MCP_SCOPE_LEVELS[p] for p in perms if p in MCP_SCOPE_LEVELS]
     if explicit:
         return max(explicit)
+    # P-00092: a reporter key (autonomy:report only) gets NO MCP access — it
+    # must not fall through to the VIEWER role's read level below.
+    if is_reporter_only_credential(permissions):
+        return 0
 
     role_val = user_role.value if hasattr(user_role, "value") else str(user_role)
     if role_val == UserRole.ADMIN.value:

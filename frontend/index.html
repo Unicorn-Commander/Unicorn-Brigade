@@ -24,6 +24,10 @@
           var root = document.documentElement;
           root.setAttribute('data-theme', dark ? 'dark' : 'light');
           root.classList.toggle('dark', dark);
+          var family = prefs.themeFamily;
+          if (family === 'business' || family === 'graphite') {
+            root.setAttribute('data-theme-family', family);
+          }
         } catch (e) {
           /* default markup (class="dark") already renders dark */
         }

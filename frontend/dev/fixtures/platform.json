@@ -1,0 +1,291 @@
+{
+  "health": {
+    "status": "healthy",
+    "memory_available": true,
+    "workflow_available": true
+  },
+  "health_degraded": {
+    "status": "degraded",
+    "memory_available": false,
+    "workflow_available": false,
+    "detail": "database: connection refused (mock error scenario)"
+  },
+  "auth_me": {
+    "id": "dev-user-001",
+    "userId": "dev-user-001",
+    "email": "dev@unicorncommander.ai",
+    "name": "Dev User",
+    "role": "admin",
+    "authSource": "mock",
+    "permissions": [
+      "*",
+      "admin"
+    ]
+  },
+  "auth_config": {
+    "sso_enabled": false,
+    "native_register_enabled": true,
+    "langflow_enabled": false,
+    "falkordb_enabled": true,
+    "version": "1.17.0-mock",
+    "environment": "mock"
+  },
+  "models": [
+    {
+      "id": "uc/chat-default-nothink",
+      "name": "Qwen 3.6 35B A3B (default)",
+      "display_name": "Qwen 3.6 35B A3B (default)",
+      "provider": "Unicorn Commander",
+      "category": "local",
+      "input_price": 0,
+      "output_price": 0,
+      "context_length": 131072,
+      "speed": "fast",
+      "quality": "good",
+      "available": true
+    },
+    {
+      "id": "uc/chat-local-p40",
+      "name": "Qwen 3.6 35B (P40 lane)",
+      "display_name": "Qwen 3.6 35B (P40 lane)",
+      "provider": "Unicorn Commander",
+      "category": "local",
+      "input_price": 0,
+      "output_price": 0,
+      "context_length": 65536,
+      "speed": "fast",
+      "quality": "good",
+      "available": true
+    },
+    {
+      "id": "qwen3.6-35b-a3b",
+      "name": "Qwen 3.6 35B A3B",
+      "display_name": "Qwen 3.6 35B A3B",
+      "provider": "Local",
+      "category": "local",
+      "input_price": 0,
+      "output_price": 0,
+      "context_length": 131072,
+      "speed": "fast",
+      "quality": "good",
+      "available": true
+    },
+    {
+      "id": "Qwen3-30B-Q4_K_M",
+      "name": "Qwen3 30B Q4_K_M",
+      "display_name": "Qwen3 30B Q4_K_M",
+      "provider": "Local",
+      "category": "local",
+      "input_price": 0,
+      "output_price": 0,
+      "context_length": 32768,
+      "speed": "fast",
+      "quality": "good",
+      "available": true
+    },
+    {
+      "id": "uc/auto-router",
+      "name": "Auto router (per request)",
+      "display_name": "Auto router (per request)",
+      "provider": "Unicorn Commander",
+      "category": "router",
+      "input_price": 0,
+      "output_price": 0,
+      "context_length": 131072,
+      "speed": "medium",
+      "quality": "good",
+      "available": true
+    },
+    {
+      "id": "claude-sonnet-4",
+      "name": "Claude Sonnet 4",
+      "display_name": "Claude Sonnet 4",
+      "provider": "Anthropic",
+      "category": "anthropic",
+      "input_price": 3,
+      "output_price": 15,
+      "context_length": 200000,
+      "speed": "medium",
+      "quality": "high",
+      "available": true
+    },
+    {
+      "id": "anthropic/claude-opus-4-5",
+      "name": "Claude Opus 4.5",
+      "display_name": "Claude Opus 4.5",
+      "provider": "Anthropic",
+      "category": "anthropic",
+      "input_price": 15,
+      "output_price": 75,
+      "context_length": 200000,
+      "speed": "medium",
+      "quality": "high",
+      "available": true
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "GPT-4o mini",
+      "display_name": "GPT-4o mini",
+      "provider": "OpenAI",
+      "category": "openai",
+      "input_price": 0.15,
+      "output_price": 0.6,
+      "context_length": 128000,
+      "speed": "medium",
+      "quality": "good",
+      "available": true
+    },
+    {
+      "id": "google/gemma-4-26b",
+      "name": "Gemma 4 26B",
+      "display_name": "Gemma 4 26B",
+      "provider": "Google",
+      "category": "local",
+      "input_price": 0,
+      "output_price": 0,
+      "context_length": 32768,
+      "speed": "fast",
+      "quality": "good",
+      "available": true
+    }
+  ],
+  "providers": [
+    {
+      "id": "ops-center",
+      "name": "Ops-Center (UC-Cloud)",
+      "type": "gateway",
+      "endpoint": "https://ops.unicorncommander.ai",
+      "status": "connected",
+      "latency_ms": 142,
+      "detail": "HTTP 200",
+      "isDefault": true,
+      "description": "UC-Cloud inference gateway routing to 70+ models via vLLM, OpenRouter, and BYOK keys.",
+      "supported_providers": [
+        "openai",
+        "anthropic",
+        "google",
+        "meta",
+        "mistral",
+        "deepseek"
+      ],
+      "icon": "🦄"
+    },
+    {
+      "id": "local-vllm",
+      "name": "Local LLM Router",
+      "type": "local",
+      "endpoint": "http://llm-router:8000",
+      "status": "connected",
+      "latency_ms": 88,
+      "detail": "HTTP 200",
+      "isDefault": false,
+      "description": "Local GPU inference via the llama.cpp router. Zero cost, full privacy.",
+      "icon": "🖥️"
+    }
+  ],
+  "builder_info": {
+    "builder": {
+      "id": "gunny",
+      "name": "Gunny",
+      "displayName": "Gunny",
+      "title": "Agent Builder & Drill Instructor",
+      "avatar": "🎯",
+      "bio": "Gunny builds new agents through conversation. Give him a mission brief and he'll configure, test, and deploy a new agent to spec.",
+      "status": "ready"
+    },
+    "theGeneral": {
+      "status": "online",
+      "agentCount": 17
+    },
+    "capabilities": {
+      "availableTools": [
+        "web_search",
+        "http_request",
+        "calculator",
+        "datetime",
+        "json",
+        "shell",
+        "memory"
+      ],
+      "availableDomains": [
+        "data",
+        "engineering",
+        "financial",
+        "intelligence",
+        "investigation",
+        "knowledge",
+        "legal",
+        "medical",
+        "meta",
+        "orchestration",
+        "productivity",
+        "sales",
+        "support",
+        "technology"
+      ],
+      "availableModels": [
+        {
+          "id": "claude-sonnet-4",
+          "name": "Claude Sonnet 4",
+          "provider": "Anthropic"
+        },
+        {
+          "id": "anthropic/claude-opus-4-5",
+          "name": "Claude Opus 4.5",
+          "provider": "Anthropic"
+        },
+        {
+          "id": "qwen3.6-35b-a3b",
+          "name": "Qwen 3.6 35B A3B",
+          "provider": "Local"
+        },
+        {
+          "id": "uc/chat-local-p40",
+          "name": "Qwen 3.6 35B (P40 lane)",
+          "provider": "Unicorn Commander"
+        },
+        {
+          "id": "openai/gpt-4o-mini",
+          "name": "GPT-4o mini",
+          "provider": "OpenAI"
+        }
+      ]
+    }
+  },
+  "voice_health": {
+    "status": "healthy",
+    "livekit": {
+      "url": "ws://localhost:7880",
+      "configured": false
+    },
+    "providers": {
+      "stt": {
+        "deepgram": {
+          "configured": false
+        },
+        "whisper": {
+          "configured": true
+        }
+      },
+      "tts": {
+        "openai": {
+          "configured": false
+        },
+        "elevenlabs": {
+          "configured": false
+        },
+        "kokoro": {
+          "configured": true
+        }
+      }
+    },
+    "available": {
+      "stt": [
+        "whisper"
+      ],
+      "tts": [
+        "kokoro"
+      ]
+    }
+  }
+}

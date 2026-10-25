@@ -1,202 +1,109 @@
-import React, { useState, useRef, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  User,
-  Settings,
-  CreditCard,
-  LogOut,
-  ChevronDown,
-  Mail
-} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Settings, CreditCard, LogOut, ChevronsUpDown } from 'lucide-react';
 import useAuth from '../../hooks/useAuth';
+import { Menu } from '../ui';
 import TierBadge from './TierBadge';
 import RoleBadge from './RoleBadge';
 
 /**
- * UserProfile Component
- *
- * Displays user profile information with dropdown menu.
- * Shows username, email, tier, role, and navigation options.
- *
- * @component
- * @example
- * <UserProfile />
- *
- * @example
- * <UserProfile onLogout={handleLogout} />
+ * UserProfile — the signed-in person, as a ui Menu in the sidebar footer:
+ * initials, name, email, tier and role chips; items for settings, the billing
+ * dashboard (paid tiers) and sign-out.
  */
-const UserProfile = ({
-  onLogout,
-  showBilling = true,
-  className = ''
-}) => {
+function initialsOf(name) {
+  if (!name) return 'U';
+  const parts = String(name).trim().split(/\s+/);
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+const UserProfile = ({ onLogout, showBilling = true, className = '' }) => {
   const { user, logout, isLoading: loading } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef(null);
+  const navigate = useNavigate();
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [isOpen]);
-
-  const handleLogoutClick = async () => {
-    setIsOpen(false);
-    if (onLogout) {
-      await onLogout();
-    } else {
-      await logout();
-    }
-  };
-
-  const handleProfileClick = () => {
-    setIsOpen(false);
-    // Navigate to settings (profile lives on the Settings page)
-    window.location.href = '/settings';
-  };
-
-  const handleBillingClick = () => {
-    setIsOpen(false);
-    // Navigate to billing dashboard (Ops Center)
-    window.open('https://unicorncommander.ai/billing-settings.html', '_blank');
-  };
-
-  // Show loading state
   if (loading) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2">
-        <div className="animate-pulse bg-elevated rounded-full h-8 w-8"></div>
-        <div className="animate-pulse bg-elevated rounded h-4 w-24"></div>
+      <div aria-hidden="true" className={`flex items-center gap-3 px-2 py-2 ${className}`}>
+        <div className="h-9 w-9 animate-pulse rounded-full bg-elevated" />
+        <div className="flex-1 space-y-1.5">
+          <div className="h-3 w-24 animate-pulse rounded-chip bg-elevated" />
+          <div className="h-2.5 w-32 animate-pulse rounded-chip bg-elevated" />
+        </div>
       </div>
     );
   }
+  if (!user) return null;
 
-  if (!user) {
-    return null;
-  }
+  const displayName = user.username || user.name || 'User';
+  const canSeeBilling =
+    showBilling && user.tier && ['professional', 'enterprise', 'founders'].includes(String(user.tier).toLowerCase());
 
-  // Get user initials for avatar
-  const getInitials = (name) => {
-    if (!name) return 'U';
-    const parts = name.trim().split(' ');
-    if (parts.length === 1) return parts[0][0].toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
-
-  const initials = getInitials(user.username || user.name);
-
-  // Determine if billing should be shown (professional tier or higher)
-  const canSeeBilling = showBilling && user.tier &&
-    ['professional', 'enterprise', 'founders'].includes(user.tier.toLowerCase());
+  const items = [
+    { id: 'settings', icon: Settings, label: 'Profile settings', onSelect: () => navigate('/settings') },
+    ...(canSeeBilling
+      ? [
+          {
+            id: 'billing',
+            icon: CreditCard,
+            label: 'Billing dashboard',
+            onSelect: () => window.open('https://unicorncommander.ai/billing-settings.html', '_blank', 'noopener'),
+          },
+        ]
+      : []),
+    { type: 'separator' },
+    {
+      id: 'signout',
+      icon: LogOut,
+      label: 'Sign out',
+      tone: 'danger',
+      onSelect: async () => {
+        if (onLogout) await onLogout();
+        else await logout();
+      },
+    },
+  ];
 
   return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
-      {/* Profile Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors w-full"
-      >
-        {/* Avatar */}
-        <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center text-white font-semibold text-sm">
-          {initials}
-        </div>
-
-        {/* User Info */}
-        <div className="flex-1 min-w-0 text-left">
-          <p className="text-sm font-medium text-fg truncate">
-            {user.username || user.name || 'User'}
-          </p>
-          <p className="text-xs text-muted truncate">
-            {user.email}
-          </p>
-        </div>
-
-        {/* Chevron */}
-        <ChevronDown
-          size={16}
-          className={`flex-shrink-0 text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {/* Dropdown Menu */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 right-0 mt-2 bg-surface rounded-lg shadow-xl border border-border z-50 overflow-hidden"
-          >
-            {/* User Details */}
-            <div className="p-4 border-b border-border/60 bg-elevated/50">
-              <p className="text-sm font-medium text-fg mb-1">
-                {user.username || user.name}
-              </p>
-              <div className="flex items-center gap-1 text-xs text-muted mb-2">
-                <Mail size={12} />
-                {user.email}
-              </div>
-              <div className="flex flex-wrap gap-2">
+    <Menu
+      className={`w-full ${className}`}
+      side="top"
+      align="start"
+      items={items}
+      trigger={({ props }) => (
+        <button
+          type="button"
+          {...props}
+          aria-label={`Account: ${displayName}, ${user.email || ''}. Open account menu`}
+          className="flex w-full items-center gap-3 rounded-control px-2 py-2 text-left transition-colors duration-fast hover:bg-elevated/60"
+        >
+          <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-fill text-caption font-semibold text-on-accent">
+            {initialsOf(displayName)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-body-sm font-medium text-fg">{displayName}</span>
+            <span className="block truncate text-caption text-muted">{user.email}</span>
+            {(user.tier || user.role) && (
+              <span className="mt-1 flex flex-wrap gap-1">
                 {user.tier && <TierBadge tier={user.tier} size="small" />}
                 {user.role && <RoleBadge role={user.role} size="small" />}
-              </div>
-            </div>
-
-            {/* Menu Items */}
-            <div className="py-1">
-              <button
-                onClick={handleProfileClick}
-                className="w-full flex items-center gap-3 px-4 py-2 text-sm text-fg hover:bg-white/5 transition-colors"
-              >
-                <Settings size={16} />
-                Profile Settings
-              </button>
-
-              {canSeeBilling && (
-                <button
-                  onClick={handleBillingClick}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-fg hover:bg-white/5 transition-colors"
-                >
-                  <CreditCard size={16} />
-                  Billing Dashboard
-                </button>
-              )}
-            </div>
-
-            {/* Logout */}
-            <div className="border-t border-border/60">
-              <button
-                onClick={handleLogoutClick}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-              >
-                <LogOut size={16} />
-                Sign Out
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+              </span>
+            )}
+          </span>
+          <ChevronsUpDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted" />
+        </button>
+      )}
+    />
   );
 };
 
 UserProfile.propTypes = {
   /** Custom logout handler */
   onLogout: PropTypes.func,
-  /** Whether to show billing dashboard option */
+  /** Whether to show the billing dashboard item (paid tiers only) */
   showBilling: PropTypes.bool,
   /** Additional CSS classes */
-  className: PropTypes.string
+  className: PropTypes.string,
 };
 
 export default UserProfile;

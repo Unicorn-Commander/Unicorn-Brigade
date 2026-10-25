@@ -1,418 +1,395 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Search, Server, RefreshCw, CheckCircle, X, Package } from 'lucide-react';
-import { toast } from 'react-hot-toast';
-import notify from '../utils/notify';
-import api from '../services/api';
-import MCPServerCard from '../components/MCPServerCard';
-import MCPToolList from '../components/MCPToolList';
-import MCPServerControlPanel from '../components/MCPServerControlPanel';
-import Breadcrumbs from '../components/Breadcrumbs';
-import CardSkeleton from '../components/skeletons/CardSkeleton';
+/**
+ * MCP Servers — the registry of Model Context Protocol servers agents can
+ * draw tools from. Cards are drawn from what the list endpoint actually
+ * returns (name, display_name, description, capabilities, transport, enabled,
+ * running); command, args and env vars come from the detail endpoint inside
+ * Manage. Start/Stop report their result and keep a failure's reason on the
+ * card until the next attempt.
+ */
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Activity,
+  BookOpen,
+  Package,
+  RefreshCw,
+  Search,
+  Server,
+  X,
+} from "lucide-react";
+import { apiJson } from "../services/http";
+import notify from "../utils/notify";
+import { humanize } from "../utils/errors";
+import MCPServerCard from "../components/MCPServerCard";
+import MCPToolList from "../components/MCPToolList";
+import MCPServerControlPanel from "../components/MCPServerControlPanel";
+import Breadcrumbs from "../components/Breadcrumbs";
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Input,
+  LoadingState,
+  OfflineState,
+  Page,
+  PageHeader,
+  Select,
+  StatCard,
+} from "../components/ui";
 
-const MCPServers = () => {
+const POLL_MS = 10000;
+const text = (v) => String(v || "").toLowerCase();
+
+export default function MCPServers() {
+  const navigate = useNavigate();
   const [servers, setServers] = useState([]);
-  const [filteredServers, setFilteredServers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [serverStates, setServerStates] = useState({});
+  const [error, setError] = useState(null);
+  const [offline, setOffline] = useState(
+    typeof navigator !== "undefined" && navigator.onLine === false,
+  );
+  const [running, setRunning] = useState(null); // Set of names from /servers/running, null until polled
+  const [pending, setPending] = useState({}); // name → 'start' | 'stop'
+  const [failures, setFailures] = useState({}); // name → human reason
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [toolsFor, setToolsFor] = useState(null); // { server, state, list, error }
   const [controlServer, setControlServer] = useState(null);
-  const [healthPolling, setHealthPolling] = useState(true);
 
-  // Filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('');
-  const [viewMode, setViewMode] = useState('grid'); // grid or list
-
-  // Tool view
-  const [selectedServer, setSelectedServer] = useState(null);
-  const [serverTools, setServerTools] = useState([]);
-
-  useEffect(() => {
-    loadServers();
+  const pollRunning = useCallback(async () => {
+    try {
+      const data = await apiJson("/mcp/registry/servers/running");
+      const list = data?.servers || data?.running_servers || [];
+      setRunning(new Set(list.map((s) => s.name).filter(Boolean)));
+    } catch {
+      /* keep the last known set; the list endpoint's `running` flag still applies */
+    }
   }, []);
 
-  useEffect(() => {
-    if (!healthPolling) return;
-
-    const pollHealth = async () => {
+  const load = useCallback(
+    async ({ quiet = false } = {}) => {
+      if (quiet) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
       try {
-        const running = await api.getRunningMCPServers();
-        const runningServers = running.servers || running.running_servers || [];
-        const states = {};
-        runningServers.forEach((server) => {
-          if (server.name) {
-            states[server.name] = 'running';
-          }
-        });
-        setServerStates(states);
-      } catch (error) {
-        console.error('Failed to fetch MCP health:', error);
+        const data = await apiJson("/mcp/registry/servers");
+        setServers(Array.isArray(data) ? data : data?.servers || []);
+        await pollRunning();
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    };
-
-    pollHealth();
-    const interval = setInterval(pollHealth, 10000);
-    return () => clearInterval(interval);
-  }, [healthPolling]);
+    },
+    [pollRunning],
+  );
 
   useEffect(() => {
-    applyFilters();
-  }, [servers, searchQuery, selectedCategory, selectedStatus, serverStates]);
+    load();
+  }, [load]);
 
-  const loadServers = async () => {
-    setLoading(true);
-    try {
-      const [response] = await Promise.all([
-        api.getMCPServers(),
-        new Promise(resolve => setTimeout(resolve, 300)),
-      ]);
-      setServers(response.servers || []);
-    } catch (error) {
-      console.error('Failed to load MCP servers:', error);
-      toast.error('Failed to load MCP servers');
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    const id = setInterval(pollRunning, POLL_MS);
+    return () => clearInterval(id);
+  }, [pollRunning]);
 
-  const refreshServers = async () => {
-    setRefreshing(true);
-    try {
-      await loadServers();
-      notify.success('Servers refreshed');
-    } catch (error) {
-      toast.error('Failed to refresh servers');
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      load();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, [load]);
 
-  const applyFilters = () => {
-    let filtered = [...servers];
+  const statusOf = (s) =>
+    failures[s.name]
+      ? "error"
+      : (running ? running.has(s.name) : s.running || s.status === "running")
+        ? "running"
+        : "stopped";
 
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(server =>
-        server.name?.toLowerCase().includes(query) ||
-        server.display_name?.toLowerCase().includes(query) ||
-        server.description?.toLowerCase().includes(query) ||
-        server.category?.toLowerCase().includes(query)
+  const stats = useMemo(() => {
+    const up = servers.filter((s) => statusOf(s) === "running").length;
+    const declared = servers.reduce(
+      (n, s) => n + (Array.isArray(s.capabilities) ? s.capabilities.length : 0),
+      0,
+    );
+    return { up, total: servers.length, declared };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servers, running, failures]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return servers.filter((s) => {
+      if (statusFilter && statusOf(s) !== statusFilter) return false;
+      if (!q) return true;
+      const caps = Array.isArray(s.capabilities) ? s.capabilities : [];
+      return (
+        text(s.name).includes(q) ||
+        text(s.display_name).includes(q) ||
+        text(s.description).includes(q) ||
+        caps.some((c) => text(c).includes(q))
       );
-    }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servers, query, statusFilter, running, failures]);
 
-    // Category filter
-    if (selectedCategory) {
-      filtered = filtered.filter(server => server.category === selectedCategory);
-    }
+  const hasFilters = Boolean(query || statusFilter);
+  const clearFilters = () => {
+    setQuery("");
+    setStatusFilter("");
+  };
 
-    // Status filter
-    if (selectedStatus) {
-      filtered = filtered.filter(server => {
-        const status = serverStates[server.name] || (server.running ? 'running' : 'stopped');
-        return status === selectedStatus;
+  const act = async (server, what) => {
+    const title = server.display_name || server.name;
+    setPending((p) => ({ ...p, [server.name]: what }));
+    try {
+      await apiJson(
+        `/mcp/registry/servers/${encodeURIComponent(server.name)}/${what}`,
+        { method: "POST" },
+      );
+      setFailures((f) => {
+        const next = { ...f };
+        delete next[server.name];
+        return next;
+      });
+      setRunning((r) => {
+        const next = new Set(
+          r || servers.filter((s) => s.running).map((s) => s.name),
+        );
+        if (what === "start") next.add(server.name);
+        else next.delete(server.name);
+        return next;
+      });
+      notify.success(`${title} ${what === "start" ? "started" : "stopped"}`);
+      pollRunning();
+    } catch (err) {
+      const reason = humanize(err, { what: `${what}ing ${title}` });
+      setFailures((f) => ({ ...f, [server.name]: reason }));
+      notify.error(`${title}: ${reason}`);
+    } finally {
+      setPending((p) => {
+        const next = { ...p };
+        delete next[server.name];
+        return next;
       });
     }
-
-    setFilteredServers(filtered);
   };
 
-  const handleStartServer = async (serverName) => {
+  const viewTools = async (server) => {
+    setToolsFor({ server, state: "loading", list: [], error: null });
     try {
-      await api.startMCPServer(serverName);
-      await loadServers(); // Reload to get updated status
-    } catch (error) {
-      throw error;
+      const detail = await apiJson(
+        `/mcp/registry/servers/${encodeURIComponent(server.name)}`,
+      );
+      const caps = Array.isArray(detail?.capabilities)
+        ? detail.capabilities
+        : Array.isArray(server.capabilities)
+          ? server.capabilities
+          : [];
+      const list = caps.map((c) => (typeof c === "string" ? { name: c } : c));
+      setToolsFor({ server, state: "ready", list, error: null });
+    } catch (err) {
+      setToolsFor({ server, state: "error", list: [], error: err });
     }
   };
 
-  const handleStopServer = async (serverName) => {
-    try {
-      await api.stopMCPServer(serverName);
-      await loadServers(); // Reload to get updated status
-    } catch (error) {
-      throw error;
-    }
-  };
+  // ── the four states ──────────────────────────────────────────────────────
+  let body;
+  if (offline && !servers.length) {
+    body = <OfflineState onRetry={load} />;
+  } else if (loading) {
+    body = (
+      <LoadingState variant="cards" count={6} label="Loading MCP servers" />
+    );
+  } else if (error) {
+    body = (
+      <ErrorState
+        title="Couldn’t load the MCP registry"
+        detail={humanize(error, { what: "loading MCP servers" })}
+        onRetry={load}
+      />
+    );
+  } else if (!servers.length) {
+    body = (
+      <EmptyState
+        icon={Server}
+        title="No MCP servers registered"
+        description="An MCP server gives every agent a set of tools: GitHub, a filesystem, a database, a browser. Register one on the API host and it appears here."
+        action={
+          <Button icon={BookOpen} onClick={() => navigate("/mcp-docs")}>
+            Read the MCP guide
+          </Button>
+        }
+      />
+    );
+  } else if (!filtered.length) {
+    body = (
+      <EmptyState
+        compact
+        icon={Search}
+        title="No servers match"
+        description="Try another word, or clear the status filter."
+        action={
+          <Button variant="secondary" size="sm" icon={X} onClick={clearFilters}>
+            Clear filters
+          </Button>
+        }
+      />
+    );
+  } else {
+    body = (
+      <ul
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        aria-label="MCP servers"
+      >
+        {filtered.map((server) => (
+          <li key={server.name}>
+            <MCPServerCard
+              server={server}
+              status={statusOf(server)}
+              reason={failures[server.name]}
+              busy={Boolean(pending[server.name])}
+              onStart={(s) => act(s, "start")}
+              onStop={(s) => act(s, "stop")}
+              onViewTools={viewTools}
+              onManage={setControlServer}
+            />
+          </li>
+        ))}
+      </ul>
+    );
+  }
 
-  const handleViewTools = async (server) => {
-    setSelectedServer(server);
-    // Load tools for this server
-    try {
-      const response = await api.getMCPServerDetails(server.name);
-      const capabilities = response.capabilities || [];
-      setServerTools(capabilities.map((name) => ({ name })));
-    } catch (error) {
-      console.error('Failed to load server tools:', error);
-      toast.error('Failed to load server tools');
-      setServerTools([]);
-    }
-  };
-
-  // Extract unique categories (registry entries may not have one)
-  const categories = useMemo(() => {
-    const cats = new Set();
-    servers.forEach(s => s.category && cats.add(s.category));
-    return Array.from(cats).sort();
-  }, [servers]);
-
-  // Group servers by category (only used when the registry provides categories)
-  const groupedServers = useMemo(() => {
-    const grouped = {};
-    filteredServers.forEach(server => {
-      const category = server.category || 'Uncategorized';
-      if (!grouped[category]) {
-        grouped[category] = [];
-      }
-      grouped[category].push(server);
-    });
-    return grouped;
-  }, [filteredServers]);
-
-  // Stats — tool counts are declared capabilities, not runtime-discovered tools
-  const stats = useMemo(() => {
-    const running = servers.filter(
-      s => (serverStates[s.name] || (s.running ? 'running' : 'stopped')) === 'running'
-    ).length;
-    const total = servers.length;
-    const declaredTools = servers.reduce((sum, s) => sum + (s.capabilities?.length || 0), 0);
-    return { running, total, declaredTools };
-  }, [servers, serverStates]);
+  const quiet = !loading && (error || !servers.length); // nothing to filter yet
+  const description =
+    loading || quiet
+      ? "Tool servers agents can draw on"
+      : `${stats.up} of ${stats.total} running · ${stats.declared} declared tool${stats.declared === 1 ? "" : "s"}`;
 
   return (
-    <div className="min-h-screen p-4 md:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <Breadcrumbs />
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gradient">MCP Servers</h1>
-            <p className="text-slate-400 mt-1">
-              {stats.running} running • {stats.total} total servers • {stats.declaredTools} declared tools
-            </p>
-          </div>
-
-          <button
-            onClick={refreshServers}
-            disabled={refreshing}
-            className="btn-primary flex items-center space-x-2"
+    <Page>
+      <PageHeader
+        breadcrumbs={<Breadcrumbs />}
+        eyebrow="Tools"
+        title="MCP Servers"
+        description={description}
+        actions={
+          <Button
+            variant="secondary"
+            icon={RefreshCw}
+            loading={refreshing}
+            onClick={() => load({ quiet: true })}
           >
-            <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
-          </button>
+            Refresh
+          </Button>
+        }
+      />
+
+      {!loading && !error && servers.length > 0 && (
+        <div className="mb-5 hidden gap-4 sm:grid sm:grid-cols-3">
+          <StatCard icon={Activity} label="Running now" value={stats.up} />
+          <StatCard
+            icon={Server}
+            label="Registered servers"
+            value={stats.total}
+          />
+          <StatCard
+            icon={Package}
+            label="Declared tools (registry)"
+            value={stats.declared}
+          />
         </div>
+      )}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="card border-emerald-500/20 bg-emerald-500/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Running Servers</p>
-                <p className="text-2xl font-bold text-emerald-400">{stats.running}</p>
-              </div>
-              <CheckCircle className="w-8 h-8 text-emerald-400" />
-            </div>
-          </div>
-
-          <div className="card border-unicorn-500/20 bg-unicorn-500/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Total Servers</p>
-                <p className="text-2xl font-bold text-unicorn-400">{stats.total}</p>
-              </div>
-              <Server className="w-8 h-8 text-unicorn-400" />
-            </div>
-          </div>
-
-          <div className="card border-cyan-500/20 bg-cyan-500/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Declared Tools</p>
-                <p className="text-2xl font-bold text-cyan-400">{stats.declaredTools}</p>
-              </div>
-              <Package className="w-8 h-8 text-cyan-400" />
-            </div>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="card">
-          <div className={`grid grid-cols-1 gap-4 ${categories.length > 0 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-            {/* Search */}
-            <div className="relative md:col-span-1">
-              <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search servers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white placeholder-slate-500"
+      {!quiet && (
+        <Card padding="sm" className="mb-5">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+              />
+              <Input
+                type="search"
+                aria-label="Search servers"
+                placeholder="Search servers, tools…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="pl-9"
               />
             </div>
-
-            {/* Category Filter (only when the registry provides categories) */}
-            {categories.length > 0 && (
-              <select
-                aria-label="Filter by category"
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white"
-              >
-                <option value="">All Categories</option>
-                {categories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            )}
-
-            {/* Status Filter */}
-            <select
+            <Select
               aria-label="Filter by status"
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-white"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="md:w-44"
             >
-              <option value="">All Status</option>
+              <option value="">Any status</option>
               <option value="running">Running</option>
               <option value="stopped">Stopped</option>
-            </select>
+              <option value="error">Error</option>
+            </Select>
           </div>
-
-          {/* Active Filters Display */}
-          {(searchQuery || selectedCategory || selectedStatus) && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-400">Active filters:</span>
-              {searchQuery && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-unicorn-500/20 text-unicorn-400 text-xs">
-                  Search: {searchQuery}
-                  <button onClick={() => setSearchQuery('')} aria-label="Clear search filter" className="hover:text-white">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              {selectedCategory && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs">
-                  Category: {selectedCategory}
-                  <button onClick={() => setSelectedCategory('')} aria-label="Clear category filter" className="hover:text-white">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              {selectedStatus && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
-                  Status: {selectedStatus}
-                  <button onClick={() => setSelectedStatus('')} aria-label="Clear status filter" className="hover:text-white">
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              )}
-              <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setSelectedCategory('');
-                  setSelectedStatus('');
-                }}
-                className="text-xs text-slate-400 hover:text-white underline"
-              >
-                Clear all
-              </button>
+          {hasFilters && !loading && (
+            <div className="mt-2 flex items-center gap-2 text-caption text-muted">
+              <span>
+                {filtered.length} match{filtered.length === 1 ? "" : "es"}
+              </span>
+              <Button variant="link" size="xs" onClick={clearFilters}>
+                Clear
+              </Button>
             </div>
           )}
-        </div>
+        </Card>
+      )}
 
-        {/* Loading State */}
-        {loading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <CardSkeleton count={6} />
-          </div>
-        )}
+      {body}
 
-        {/* Empty State */}
-        {!loading && filteredServers.length === 0 && (
-          <div className="text-center py-12">
-            <Server className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-slate-300 mb-2">No servers found</h3>
-            <p className="text-slate-400">Try adjusting your filters</p>
-          </div>
-        )}
-
-        {/* Servers — grouped by category when the registry provides one, flat grid otherwise */}
-        {!loading && categories.length > 0 && Object.keys(groupedServers).map(category => {
-          const categoryServers = groupedServers[category];
-
-          return (
-            <div key={category} className="space-y-4">
-              {/* Category Header */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold text-white">{category}</h2>
-                  <p className="text-sm text-slate-400">{categoryServers.length} servers</p>
-                </div>
-              </div>
-
-              {/* Servers Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {categoryServers.map(server => (
-                  <MCPServerCard
-                    key={server.name}
-                    server={server}
-                    onStart={handleStartServer}
-                    onStop={handleStopServer}
-                    onViewTools={handleViewTools}
-                    onManage={() => setControlServer(server)}
-                    isLoading={loading}
-                    statusOverride={serverStates[server.name]}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-
-        {!loading && categories.length === 0 && filteredServers.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredServers.map(server => (
-              <MCPServerCard
-                key={server.name}
-                server={server}
-                onStart={handleStartServer}
-                onStop={handleStopServer}
-                onViewTools={handleViewTools}
-                onManage={() => setControlServer(server)}
-                isLoading={loading}
-                statusOverride={serverStates[server.name]}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Tool List Modal */}
-        {selectedServer && (
-          <MCPToolList
-            server={selectedServer}
-            tools={serverTools}
-            onClose={() => {
-              setSelectedServer(null);
-              setServerTools([]);
-            }}
-          />
-        )}
-
-        {controlServer && (
-          <MCPServerControlPanel
-            server={controlServer}
-            onClose={() => setControlServer(null)}
-            onServerUpdated={(updated) => {
-              setServers(prev =>
-                prev.map(s => (s.name === updated.name ? { ...s, ...updated } : s))
-              );
-            }}
-          />
-        )}
-      </div>
-    </div>
+      {toolsFor && (
+        <MCPToolList
+          server={toolsFor.server}
+          tools={toolsFor.list}
+          loading={toolsFor.state === "loading"}
+          error={toolsFor.state === "error" ? toolsFor.error : null}
+          onRetry={() => viewTools(toolsFor.server)}
+          onClose={() => setToolsFor(null)}
+        />
+      )}
+      {controlServer && (
+        <MCPServerControlPanel
+          server={controlServer}
+          onClose={() => {
+            setControlServer(null);
+            pollRunning();
+          }}
+          onServerUpdated={(detail) => {
+            if (!detail?.name) return;
+            setServers((prev) =>
+              prev.map((s) =>
+                s.name === detail.name ? { ...s, ...detail } : s,
+              ),
+            );
+            if (typeof detail.running === "boolean") {
+              setRunning((r) => {
+                const next = new Set(r || []);
+                if (detail.running) next.add(detail.name);
+                else next.delete(detail.name);
+                return next;
+              });
+            }
+          }}
+        />
+      )}
+    </Page>
   );
-};
-
-export default MCPServers;
+}

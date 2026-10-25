@@ -1153,6 +1153,122 @@ MIGRATIONS = [
         ON CONFLICT (name) DO NOTHING;
         """,
     ),
+    (
+        "20261024_01_autonomy_catalogue",
+        "P-00092: autonomy catalogue — scheduled_runs.description + autonomous_jobs / autonomous_job_runs (org RLS)",
+        # One place listing every agent job that runs on its own: Brigade's own
+        # scheduled runs (now with a plain-language description) AND outside loops
+        # (cron / systemd / launchd / Claude Code routines / continuous watchers)
+        # that register and report through /api/v1/autonomy.
+        #
+        # Both new tables are TENANT DATA with the scheduled_runs tenancy shape:
+        # org_id NOT NULL DEFAULT current_org_id(), ENABLE + FORCE RLS, and an
+        # org-isolation policy both ways. autonomous_job_runs mirrors
+        # scheduled_run_history: its WITH CHECK also requires the parent job to be
+        # in the caller's org, so a run can never be attached to another org's job.
+        #
+        # create_all builds both tables from the ORM models (AutonomousJob /
+        # AutonomousJobRun) BEFORE this runs — on a fresh install AND on a deployed
+        # DB, since the tables are new — so the CREATE TABLE / CREATE INDEX here
+        # are idempotent no-ops kept identical to the ORM DDL. The column ALTER,
+        # the RLS switches, the policies and the grants are what this migration
+        # really applies. Timestamps are naive UTC (timestamp without time zone),
+        # like scheduled_runs.
+        [
+            "ALTER TABLE scheduled_runs ADD COLUMN IF NOT EXISTS description text",
+            """
+            CREATE TABLE IF NOT EXISTS autonomous_jobs (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                org_id uuid NOT NULL DEFAULT current_org_id() REFERENCES organizations(id) ON DELETE CASCADE,
+                key varchar(120) NOT NULL,
+                name varchar(255) NOT NULL,
+                agent_id varchar(255) REFERENCES agents(id) ON DELETE SET NULL,
+                responsibility text NOT NULL,
+                host varchar(120) NOT NULL,
+                runner varchar(32) NOT NULL,
+                schedule varchar(120),
+                timezone varchar(64) NOT NULL DEFAULT 'UTC',
+                schedule_note varchar(255),
+                command varchar(500),
+                runbook_url varchar(500),
+                owner varchar(255),
+                notes text,
+                enabled boolean NOT NULL DEFAULT true,
+                last_run_at timestamp,
+                last_status varchar(16),
+                last_summary text,
+                last_error text,
+                last_duration_ms integer,
+                created_at timestamp NOT NULL DEFAULT timezone('utc', now()),
+                updated_at timestamp NOT NULL DEFAULT timezone('utc', now()),
+                CONSTRAINT uq_autonomous_jobs_org_key UNIQUE (org_id, key)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS autonomous_job_runs (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                org_id uuid NOT NULL DEFAULT current_org_id() REFERENCES organizations(id) ON DELETE CASCADE,
+                job_id uuid NOT NULL REFERENCES autonomous_jobs(id) ON DELETE CASCADE,
+                run_id varchar(120),
+                status varchar(16) NOT NULL,
+                started_at timestamp NOT NULL,
+                finished_at timestamp,
+                duration_ms integer,
+                summary text,
+                error text,
+                created_at timestamp NOT NULL DEFAULT timezone('utc', now())
+            )
+            """,
+            # Belt-and-braces for a table that pre-exists without the per-org key
+            # uniqueness (ADD CONSTRAINT has no IF NOT EXISTS on Postgres).
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_autonomous_jobs_org_key') THEN
+                    ALTER TABLE autonomous_jobs ADD CONSTRAINT uq_autonomous_jobs_org_key UNIQUE (org_id, key);
+                END IF;
+            END $$;
+            """,
+            "ALTER TABLE autonomous_jobs ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "ALTER TABLE autonomous_job_runs ALTER COLUMN org_id SET DEFAULT current_org_id()",
+            "CREATE INDEX IF NOT EXISTS ix_autonomous_jobs_org_id ON autonomous_jobs(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_autonomous_jobs_agent_id ON autonomous_jobs(agent_id)",
+            "CREATE INDEX IF NOT EXISTS ix_autonomous_job_runs_org_id ON autonomous_job_runs(org_id)",
+            "CREATE INDEX IF NOT EXISTS ix_autonomous_job_runs_job_started ON autonomous_job_runs(job_id, started_at DESC)",
+            "ALTER TABLE autonomous_jobs ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE autonomous_job_runs ENABLE ROW LEVEL SECURITY",
+            "ALTER TABLE autonomous_jobs FORCE ROW LEVEL SECURITY",
+            "ALTER TABLE autonomous_job_runs FORCE ROW LEVEL SECURITY",
+            "DROP POLICY IF EXISTS autonomous_jobs_org_isolation ON autonomous_jobs",
+            "CREATE POLICY autonomous_jobs_org_isolation ON autonomous_jobs USING (org_id = current_org_id()) WITH CHECK (org_id = current_org_id())",
+            "DROP POLICY IF EXISTS autonomous_job_runs_org_isolation ON autonomous_job_runs",
+            """
+            CREATE POLICY autonomous_job_runs_org_isolation ON autonomous_job_runs
+            USING (org_id = current_org_id())
+            WITH CHECK (
+                org_id = current_org_id()
+                AND EXISTS (
+                    SELECT 1 FROM autonomous_jobs j
+                    WHERE j.id = autonomous_job_runs.job_id
+                    AND j.org_id = current_org_id()
+                )
+            )
+            """,
+            # New tables created after 20260626_01's blanket GRANT — grant the app
+            # role explicitly (guarded on the role existing; idempotent; mirrors the
+            # invitations / usage-ledger migrations). The request session (RLS
+            # subject) reads AND writes both tables.
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'brigade_app') THEN
+                    GRANT SELECT, INSERT, UPDATE, DELETE ON autonomous_jobs TO brigade_app;
+                    GRANT SELECT, INSERT, UPDATE, DELETE ON autonomous_job_runs TO brigade_app;
+                END IF;
+            END $$;
+            """,
+        ],
+    ),
 ]
 
 # Recorded in schema_migrations so the one-shot identity remap runs once per DB.

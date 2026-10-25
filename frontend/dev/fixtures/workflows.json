@@ -1,0 +1,1826 @@
+{
+  "templates": [
+    {
+      "id": "investment-due-diligence",
+      "name": "Investment Due Diligence",
+      "description": "Full diligence pass on a target: financials, market, legal exposure, and a go/no-go memo.",
+      "tags": [
+        "finance",
+        "research",
+        "investment"
+      ],
+      "required_inputs": [
+        "target_company",
+        "investment_thesis"
+      ],
+      "step_count": 5,
+      "checkpoint_count": 1
+    },
+    {
+      "id": "content-production-factory",
+      "name": "Content Production Factory",
+      "description": "Brief in, published-ready article out: research, outline, draft, SEO pass, editorial approval.",
+      "tags": [
+        "content",
+        "seo",
+        "marketing"
+      ],
+      "required_inputs": [
+        "topic",
+        "audience",
+        "target_keyword"
+      ],
+      "step_count": 4,
+      "checkpoint_count": 2
+    },
+    {
+      "id": "incident-response",
+      "name": "Incident Response & Resolution",
+      "description": "Triage an incident, find the first bad line, run the matching runbook, write the postmortem.",
+      "tags": [
+        "devops",
+        "incident",
+        "monitoring"
+      ],
+      "required_inputs": [
+        "alert",
+        "service"
+      ],
+      "step_count": 5,
+      "checkpoint_count": 0
+    },
+    {
+      "id": "contract-review",
+      "name": "Contract Review",
+      "description": "Clause extraction, risk rating and a redline summary for counsel.",
+      "tags": [
+        "legal",
+        "documents",
+        "analysis"
+      ],
+      "required_inputs": [
+        "contract_pdf",
+        "counterparty"
+      ],
+      "step_count": 3,
+      "checkpoint_count": 1
+    },
+    {
+      "id": "market-research-brief",
+      "name": "Market Research Brief",
+      "description": "A graded-source market brief on a segment with sizing and pricing.",
+      "tags": [
+        "research",
+        "marketing",
+        "analysis"
+      ],
+      "required_inputs": [
+        "segment",
+        "geography"
+      ],
+      "step_count": 3,
+      "checkpoint_count": 0
+    },
+    {
+      "id": "customer-onboarding",
+      "name": "Customer Onboarding",
+      "description": "Provision the workspace, send the welcome kit, schedule the walkthrough.",
+      "tags": [
+        "sales",
+        "support",
+        "content"
+      ],
+      "required_inputs": [
+        "customer",
+        "plan"
+      ],
+      "step_count": 3,
+      "checkpoint_count": 1
+    }
+  ],
+  "details": {
+    "investment-due-diligence": {
+      "id": "investment-due-diligence",
+      "name": "Investment Due Diligence",
+      "description": "Full diligence pass on a target: financials, market, legal exposure, and a go/no-go memo.",
+      "version": "1.2.0",
+      "orchestratorModel": "anthropic/claude-opus-4-5",
+      "orchestratorPrompt": "Coordinate the Investment Due Diligence workflow across the team leads.",
+      "teamLeads": [
+        {
+          "id": "finance-lead",
+          "name": "Col. Finance",
+          "domain": "finance",
+          "description": "Financial analysis and modelling.",
+          "model": "claude-sonnet-4",
+          "modelTier": "frontier",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the finance team. Financial analysis and modelling.",
+          "workers": [
+            {
+              "id": "ratio-analyst",
+              "name": "Ratio Analyst",
+              "description": "Computes financial ratios from statements.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Ratio Analyst. Computes financial ratios from statements.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "calculator",
+              "examples": []
+            },
+            {
+              "id": "cashflow-modeler",
+              "name": "Cash-flow Modeler",
+              "description": "Builds a 12-month cash-flow model.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Cash-flow Modeler. Builds a 12-month cash-flow model.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "calculator",
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        },
+        {
+          "id": "research-lead",
+          "name": "Maj. Recon",
+          "domain": "research",
+          "description": "Market and competitor research.",
+          "model": "qwen3.6-35b-a3b",
+          "modelTier": "local",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the research team. Market and competitor research.",
+          "workers": [
+            {
+              "id": "web-researcher",
+              "name": "Web Researcher",
+              "description": "Searches and grades public sources.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Web Researcher. Searches and grades public sources.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "web_search",
+              "examples": []
+            },
+            {
+              "id": "summarizer",
+              "name": "Summarizer",
+              "description": "Condenses sources into briefs.",
+              "model": "uc/chat-local-p40",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Summarizer. Condenses sources into briefs.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        },
+        {
+          "id": "legal-lead",
+          "name": "Judge Advocate",
+          "domain": "legal",
+          "description": "Contract and compliance review.",
+          "model": "claude-sonnet-4",
+          "modelTier": "frontier",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the legal team. Contract and compliance review.",
+          "workers": [
+            {
+              "id": "clause-extractor",
+              "name": "Clause Extractor",
+              "description": "Extracts and classifies clauses.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Clause Extractor. Extracts and classifies clauses.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "pdf_extract",
+              "examples": []
+            },
+            {
+              "id": "risk-rater",
+              "name": "Risk Rater",
+              "description": "Rates each clause for risk.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Risk Rater. Rates each clause for risk.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        }
+      ],
+      "steps": [
+        {
+          "id": "gather-financials",
+          "name": "Gather financials",
+          "description": "Collect the last 3 years of statements.",
+          "executor": "finance-lead",
+          "inputs": {
+            "target": "inputs.target_company"
+          },
+          "outputs": [
+            "statements"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "ratio-analysis",
+          "name": "Ratio analysis",
+          "description": "Liquidity, leverage and growth ratios.",
+          "executor": "finance-lead",
+          "inputs": {
+            "statements": "gather-financials.statements"
+          },
+          "outputs": [
+            "ratios"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "market-scan",
+          "name": "Market scan",
+          "description": "Competitors, TAM and pricing pressure.",
+          "executor": "research-lead",
+          "inputs": {
+            "target": "inputs.target_company"
+          },
+          "outputs": [
+            "market_brief"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "legal-exposure",
+          "name": "Legal exposure",
+          "description": "Litigation, licences and regulatory flags.",
+          "executor": "legal-lead",
+          "inputs": {
+            "target": "inputs.target_company"
+          },
+          "outputs": [
+            "legal_flags"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "synthesize-memo",
+          "name": "Synthesize memo",
+          "description": "Go / no-go memo with the evidence attached.",
+          "executor": "orchestrator",
+          "inputs": {
+            "ratios": "ratio-analysis.ratios",
+            "market": "market-scan.market_brief",
+            "legal": "legal-exposure.legal_flags"
+          },
+          "outputs": [
+            "memo"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        }
+      ],
+      "checkpoints": [
+        {
+          "id": "cp-memo",
+          "name": "Approve memo",
+          "type": "approval",
+          "afterStep": "synthesize-memo",
+          "prompt": "Approve the diligence memo for release?",
+          "options": [
+            "approve",
+            "revise",
+            "reject"
+          ],
+          "gateCondition": null,
+          "failureAction": "pause"
+        }
+      ],
+      "requiredInputs": [
+        "target_company",
+        "investment_thesis"
+      ],
+      "finalOutputs": [
+        "memo"
+      ],
+      "createdAt": "2026-02-11T15:00:00",
+      "updatedAt": "2026-09-30T18:20:00",
+      "tags": [
+        "finance",
+        "research",
+        "investment"
+      ]
+    },
+    "content-production-factory": {
+      "id": "content-production-factory",
+      "name": "Content Production Factory",
+      "description": "Brief in, published-ready article out: research, outline, draft, SEO pass, editorial approval.",
+      "version": "1.2.0",
+      "orchestratorModel": "anthropic/claude-opus-4-5",
+      "orchestratorPrompt": "Coordinate the Content Production Factory workflow across the team leads.",
+      "teamLeads": [
+        {
+          "id": "research-lead",
+          "name": "Maj. Recon",
+          "domain": "research",
+          "description": "Market and competitor research.",
+          "model": "qwen3.6-35b-a3b",
+          "modelTier": "local",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the research team. Market and competitor research.",
+          "workers": [
+            {
+              "id": "web-researcher",
+              "name": "Web Researcher",
+              "description": "Searches and grades public sources.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Web Researcher. Searches and grades public sources.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "web_search",
+              "examples": []
+            },
+            {
+              "id": "summarizer",
+              "name": "Summarizer",
+              "description": "Condenses sources into briefs.",
+              "model": "uc/chat-local-p40",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Summarizer. Condenses sources into briefs.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        },
+        {
+          "id": "content-lead",
+          "name": "The CMO",
+          "domain": "content",
+          "description": "Content production and SEO.",
+          "model": "claude-sonnet-4",
+          "modelTier": "frontier",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the content team. Content production and SEO.",
+          "workers": [
+            {
+              "id": "outliner",
+              "name": "Outliner",
+              "description": "Turns a brief into an outline.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Outliner. Turns a brief into an outline.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            },
+            {
+              "id": "drafter",
+              "name": "Drafter",
+              "description": "Writes the draft from the outline.",
+              "model": "claude-sonnet-4",
+              "modelTier": "frontier",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Drafter. Writes the draft from the outline.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            },
+            {
+              "id": "seo-checker",
+              "name": "SEO Checker",
+              "description": "Checks headings, meta and keyword use.",
+              "model": "uc/chat-local-p40",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are SEO Checker. Checks headings, meta and keyword use.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        }
+      ],
+      "steps": [
+        {
+          "id": "research-topic",
+          "name": "Research topic",
+          "description": "Collect sources and angles.",
+          "executor": "research-lead",
+          "inputs": {
+            "topic": "inputs.topic"
+          },
+          "outputs": [
+            "sources"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "outline",
+          "name": "Outline",
+          "description": "Structure the piece.",
+          "executor": "content-lead",
+          "inputs": {
+            "sources": "research-topic.sources"
+          },
+          "outputs": [
+            "outline"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "draft",
+          "name": "Draft",
+          "description": "Write the full draft.",
+          "executor": "content-lead",
+          "inputs": {
+            "outline": "outline.outline"
+          },
+          "outputs": [
+            "draft"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "seo-pass",
+          "name": "SEO pass",
+          "description": "Headings, meta and internal links.",
+          "executor": "content-lead",
+          "inputs": {
+            "draft": "draft.draft"
+          },
+          "outputs": [
+            "final_draft"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        }
+      ],
+      "checkpoints": [
+        {
+          "id": "cp-editorial",
+          "name": "Editorial approval",
+          "type": "approval",
+          "afterStep": "draft",
+          "prompt": "Approve the draft before the SEO pass?",
+          "options": [
+            "approve",
+            "revise"
+          ],
+          "gateCondition": null,
+          "failureAction": "pause"
+        },
+        {
+          "id": "cp-publish",
+          "name": "Publish approval",
+          "type": "approval",
+          "afterStep": "seo-pass",
+          "prompt": "Publish this piece?",
+          "options": [
+            "publish",
+            "hold"
+          ],
+          "gateCondition": null,
+          "failureAction": "pause"
+        }
+      ],
+      "requiredInputs": [
+        "topic",
+        "audience",
+        "target_keyword"
+      ],
+      "finalOutputs": [
+        "final_draft"
+      ],
+      "createdAt": "2026-02-11T15:00:00",
+      "updatedAt": "2026-09-30T18:20:00",
+      "tags": [
+        "content",
+        "seo",
+        "marketing"
+      ]
+    },
+    "incident-response": {
+      "id": "incident-response",
+      "name": "Incident Response & Resolution",
+      "description": "Triage an incident, find the first bad line, run the matching runbook, write the postmortem.",
+      "version": "1.2.0",
+      "orchestratorModel": "anthropic/claude-opus-4-5",
+      "orchestratorPrompt": "Coordinate the Incident Response & Resolution workflow across the team leads.",
+      "teamLeads": [
+        {
+          "id": "devops-lead",
+          "name": "Maj. DevOps",
+          "domain": "devops",
+          "description": "Infrastructure and incident response.",
+          "model": "qwen3.6-35b-a3b",
+          "modelTier": "local",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the devops team. Infrastructure and incident response.",
+          "workers": [
+            {
+              "id": "log-triager",
+              "name": "Log Triager",
+              "description": "Finds the first bad line in the logs.",
+              "model": "uc/chat-local-p40",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Log Triager. Finds the first bad line in the logs.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "shell",
+              "examples": []
+            },
+            {
+              "id": "runbook-executor",
+              "name": "Runbook Executor",
+              "description": "Executes the matching runbook step.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Runbook Executor. Executes the matching runbook step.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "shell",
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        },
+        {
+          "id": "research-lead",
+          "name": "Maj. Recon",
+          "domain": "research",
+          "description": "Market and competitor research.",
+          "model": "qwen3.6-35b-a3b",
+          "modelTier": "local",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the research team. Market and competitor research.",
+          "workers": [
+            {
+              "id": "web-researcher",
+              "name": "Web Researcher",
+              "description": "Searches and grades public sources.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Web Researcher. Searches and grades public sources.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "web_search",
+              "examples": []
+            },
+            {
+              "id": "summarizer",
+              "name": "Summarizer",
+              "description": "Condenses sources into briefs.",
+              "model": "uc/chat-local-p40",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Summarizer. Condenses sources into briefs.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        }
+      ],
+      "steps": [
+        {
+          "id": "triage-incident",
+          "name": "Triage incident",
+          "description": "Severity, blast radius and owner.",
+          "executor": "devops-lead",
+          "inputs": {
+            "alert": "inputs.alert"
+          },
+          "outputs": [
+            "severity",
+            "owner"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "collect-logs",
+          "name": "Collect logs",
+          "description": "Pull logs from the affected services.",
+          "executor": "devops-lead",
+          "inputs": {
+            "severity": "triage-incident.severity"
+          },
+          "outputs": [
+            "logs"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "root-cause",
+          "name": "Root cause",
+          "description": "First bad line and the change that caused it.",
+          "executor": "devops-lead",
+          "inputs": {
+            "logs": "collect-logs.logs"
+          },
+          "outputs": [
+            "root_cause"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "remediate",
+          "name": "Remediate",
+          "description": "Execute the runbook step.",
+          "executor": "devops-lead",
+          "inputs": {
+            "root_cause": "root-cause.root_cause"
+          },
+          "outputs": [
+            "remediation"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "postmortem",
+          "name": "Postmortem",
+          "description": "Timeline, cause, fix, follow-ups.",
+          "executor": "orchestrator",
+          "inputs": {
+            "remediation": "remediate.remediation"
+          },
+          "outputs": [
+            "postmortem"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        }
+      ],
+      "checkpoints": [],
+      "requiredInputs": [
+        "alert",
+        "service"
+      ],
+      "finalOutputs": [
+        "postmortem"
+      ],
+      "createdAt": "2026-02-11T15:00:00",
+      "updatedAt": "2026-09-30T18:20:00",
+      "tags": [
+        "devops",
+        "incident",
+        "monitoring"
+      ]
+    },
+    "contract-review": {
+      "id": "contract-review",
+      "name": "Contract Review",
+      "description": "Clause extraction, risk rating and a redline summary for counsel.",
+      "version": "1.2.0",
+      "orchestratorModel": "anthropic/claude-opus-4-5",
+      "orchestratorPrompt": "Coordinate the Contract Review workflow across the team leads.",
+      "teamLeads": [
+        {
+          "id": "legal-lead",
+          "name": "Judge Advocate",
+          "domain": "legal",
+          "description": "Contract and compliance review.",
+          "model": "claude-sonnet-4",
+          "modelTier": "frontier",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the legal team. Contract and compliance review.",
+          "workers": [
+            {
+              "id": "clause-extractor",
+              "name": "Clause Extractor",
+              "description": "Extracts and classifies clauses.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Clause Extractor. Extracts and classifies clauses.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "pdf_extract",
+              "examples": []
+            },
+            {
+              "id": "risk-rater",
+              "name": "Risk Rater",
+              "description": "Rates each clause for risk.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Risk Rater. Rates each clause for risk.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        }
+      ],
+      "steps": [
+        {
+          "id": "extract-clauses",
+          "name": "Extract clauses",
+          "description": "Pull every clause with its type.",
+          "executor": "legal-lead",
+          "inputs": {
+            "document": "inputs.contract_pdf"
+          },
+          "outputs": [
+            "clauses"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "rate-risk",
+          "name": "Rate risk",
+          "description": "Rate each clause high/medium/low.",
+          "executor": "legal-lead",
+          "inputs": {
+            "clauses": "extract-clauses.clauses"
+          },
+          "outputs": [
+            "risk_table"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "redline-summary",
+          "name": "Redline summary",
+          "description": "What to push back on and why.",
+          "executor": "orchestrator",
+          "inputs": {
+            "risk_table": "rate-risk.risk_table"
+          },
+          "outputs": [
+            "summary"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        }
+      ],
+      "checkpoints": [
+        {
+          "id": "cp-counsel",
+          "name": "Counsel review",
+          "type": "approval",
+          "afterStep": "redline-summary",
+          "prompt": "Send the redline summary to counsel?",
+          "options": [
+            "send",
+            "revise"
+          ],
+          "gateCondition": null,
+          "failureAction": "pause"
+        }
+      ],
+      "requiredInputs": [
+        "contract_pdf",
+        "counterparty"
+      ],
+      "finalOutputs": [
+        "summary"
+      ],
+      "createdAt": "2026-02-11T15:00:00",
+      "updatedAt": "2026-09-30T18:20:00",
+      "tags": [
+        "legal",
+        "documents",
+        "analysis"
+      ]
+    },
+    "market-research-brief": {
+      "id": "market-research-brief",
+      "name": "Market Research Brief",
+      "description": "A graded-source market brief on a segment with sizing and pricing.",
+      "version": "1.2.0",
+      "orchestratorModel": "anthropic/claude-opus-4-5",
+      "orchestratorPrompt": "Coordinate the Market Research Brief workflow across the team leads.",
+      "teamLeads": [
+        {
+          "id": "research-lead",
+          "name": "Maj. Recon",
+          "domain": "research",
+          "description": "Market and competitor research.",
+          "model": "qwen3.6-35b-a3b",
+          "modelTier": "local",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the research team. Market and competitor research.",
+          "workers": [
+            {
+              "id": "web-researcher",
+              "name": "Web Researcher",
+              "description": "Searches and grades public sources.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Web Researcher. Searches and grades public sources.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "web_search",
+              "examples": []
+            },
+            {
+              "id": "summarizer",
+              "name": "Summarizer",
+              "description": "Condenses sources into briefs.",
+              "model": "uc/chat-local-p40",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Summarizer. Condenses sources into briefs.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        }
+      ],
+      "steps": [
+        {
+          "id": "collect-sources",
+          "name": "Collect sources",
+          "description": "Search and grade sources.",
+          "executor": "research-lead",
+          "inputs": {
+            "segment": "inputs.segment"
+          },
+          "outputs": [
+            "sources"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "size-market",
+          "name": "Size market",
+          "description": "TAM/SAM/SOM with assumptions stated.",
+          "executor": "research-lead",
+          "inputs": {
+            "sources": "collect-sources.sources"
+          },
+          "outputs": [
+            "sizing"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "write-brief",
+          "name": "Write brief",
+          "description": "Two pages, receipts attached.",
+          "executor": "orchestrator",
+          "inputs": {
+            "sizing": "size-market.sizing"
+          },
+          "outputs": [
+            "brief"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        }
+      ],
+      "checkpoints": [],
+      "requiredInputs": [
+        "segment",
+        "geography"
+      ],
+      "finalOutputs": [
+        "brief"
+      ],
+      "createdAt": "2026-02-11T15:00:00",
+      "updatedAt": "2026-09-30T18:20:00",
+      "tags": [
+        "research",
+        "marketing",
+        "analysis"
+      ]
+    },
+    "customer-onboarding": {
+      "id": "customer-onboarding",
+      "name": "Customer Onboarding",
+      "description": "Provision the workspace, send the welcome kit, schedule the walkthrough.",
+      "version": "1.2.0",
+      "orchestratorModel": "anthropic/claude-opus-4-5",
+      "orchestratorPrompt": "Coordinate the Customer Onboarding workflow across the team leads.",
+      "teamLeads": [
+        {
+          "id": "content-lead",
+          "name": "The CMO",
+          "domain": "content",
+          "description": "Content production and SEO.",
+          "model": "claude-sonnet-4",
+          "modelTier": "frontier",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the content team. Content production and SEO.",
+          "workers": [
+            {
+              "id": "outliner",
+              "name": "Outliner",
+              "description": "Turns a brief into an outline.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Outliner. Turns a brief into an outline.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            },
+            {
+              "id": "drafter",
+              "name": "Drafter",
+              "description": "Writes the draft from the outline.",
+              "model": "claude-sonnet-4",
+              "modelTier": "frontier",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Drafter. Writes the draft from the outline.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            },
+            {
+              "id": "seo-checker",
+              "name": "SEO Checker",
+              "description": "Checks headings, meta and keyword use.",
+              "model": "uc/chat-local-p40",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are SEO Checker. Checks headings, meta and keyword use.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": null,
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        },
+        {
+          "id": "devops-lead",
+          "name": "Maj. DevOps",
+          "domain": "devops",
+          "description": "Infrastructure and incident response.",
+          "model": "qwen3.6-35b-a3b",
+          "modelTier": "local",
+          "temperature": 0.4,
+          "maxTokens": 4000,
+          "systemPrompt": "You lead the devops team. Infrastructure and incident response.",
+          "workers": [
+            {
+              "id": "log-triager",
+              "name": "Log Triager",
+              "description": "Finds the first bad line in the logs.",
+              "model": "uc/chat-local-p40",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Log Triager. Finds the first bad line in the logs.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "shell",
+              "examples": []
+            },
+            {
+              "id": "runbook-executor",
+              "name": "Runbook Executor",
+              "description": "Executes the matching runbook step.",
+              "model": "qwen3.6-35b-a3b",
+              "modelTier": "local",
+              "temperature": 0.3,
+              "maxTokens": 2000,
+              "taskPrompt": "You are Runbook Executor. Executes the matching runbook step.",
+              "inputSchema": {
+                "type": "object"
+              },
+              "outputSchema": {
+                "type": "object"
+              },
+              "tool": "shell",
+              "examples": []
+            }
+          ],
+          "delegationPrompt": "Delegate narrow tasks to workers and synthesize."
+        }
+      ],
+      "steps": [
+        {
+          "id": "provision",
+          "name": "Provision workspace",
+          "description": "Create the org, seats and mailbox.",
+          "executor": "devops-lead",
+          "inputs": {
+            "customer": "inputs.customer"
+          },
+          "outputs": [
+            "workspace"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "welcome-kit",
+          "name": "Welcome kit",
+          "description": "Personalized welcome email and print kit.",
+          "executor": "content-lead",
+          "inputs": {
+            "workspace": "provision.workspace"
+          },
+          "outputs": [
+            "kit"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        },
+        {
+          "id": "schedule-walkthrough",
+          "name": "Schedule walkthrough",
+          "description": "Book the 20-minute walkthrough.",
+          "executor": "orchestrator",
+          "inputs": {
+            "kit": "welcome-kit.kit"
+          },
+          "outputs": [
+            "booking"
+          ],
+          "condition": null,
+          "maxRetries": 2,
+          "retryDelaySeconds": 5,
+          "timeoutSeconds": 300
+        }
+      ],
+      "checkpoints": [
+        {
+          "id": "cp-send-kit",
+          "name": "Approve welcome kit",
+          "type": "approval",
+          "afterStep": "welcome-kit",
+          "prompt": "Send the welcome kit?",
+          "options": [
+            "send",
+            "edit"
+          ],
+          "gateCondition": null,
+          "failureAction": "pause"
+        }
+      ],
+      "requiredInputs": [
+        "customer",
+        "plan"
+      ],
+      "finalOutputs": [
+        "booking"
+      ],
+      "createdAt": "2026-02-11T15:00:00",
+      "updatedAt": "2026-09-30T18:20:00",
+      "tags": [
+        "sales",
+        "support",
+        "content"
+      ]
+    }
+  },
+  "executions": [
+    {
+      "id": "exec-7c2a91-running",
+      "workflowId": "investment-due-diligence",
+      "workflowName": "Investment Due Diligence",
+      "state": "running",
+      "currentStep": "market-scan",
+      "startedAt": "$now-6m",
+      "completedAt": null,
+      "inputs": {
+        "target_company": "Contoso Robotics",
+        "investment_thesis": "Vertical SaaS for warehouse automation"
+      },
+      "outputs": {},
+      "stepExecutions": {
+        "gather-financials": {
+          "stepId": "gather-financials",
+          "state": "completed",
+          "startedAt": "$now-6m",
+          "completedAt": "$now-4m",
+          "executorId": "finance-lead",
+          "modelUsed": "claude-sonnet-4",
+          "inputsReceived": {},
+          "outputs": {
+            "statements": "3 fiscal years, audited"
+          },
+          "workerCalls": 4,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 5447,
+          "estimatedCost": 0.0308
+        },
+        "ratio-analysis": {
+          "stepId": "ratio-analysis",
+          "state": "completed",
+          "startedAt": "$now-4m",
+          "completedAt": "$now-3m",
+          "executorId": "finance-lead",
+          "modelUsed": "claude-sonnet-4",
+          "inputsReceived": {},
+          "outputs": {
+            "ratios": {
+              "current": 1.8,
+              "debt_to_equity": 0.42,
+              "revenue_cagr": 0.31
+            }
+          },
+          "workerCalls": 2,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 4024,
+          "estimatedCost": 0.0203
+        },
+        "market-scan": {
+          "stepId": "market-scan",
+          "state": "running",
+          "startedAt": "$now-3m",
+          "completedAt": null,
+          "executorId": "research-lead",
+          "modelUsed": "qwen3.6-35b-a3b",
+          "inputsReceived": {},
+          "outputs": {},
+          "workerCalls": 2,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 4858,
+          "estimatedCost": 0.0759
+        },
+        "legal-exposure": {
+          "stepId": "legal-exposure",
+          "state": "pending",
+          "startedAt": null,
+          "completedAt": null,
+          "executorId": "legal-lead",
+          "modelUsed": null,
+          "inputsReceived": {},
+          "outputs": {},
+          "workerCalls": 0,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 0,
+          "estimatedCost": 0
+        },
+        "synthesize-memo": {
+          "stepId": "synthesize-memo",
+          "state": "pending",
+          "startedAt": null,
+          "completedAt": null,
+          "executorId": "orchestrator",
+          "modelUsed": null,
+          "inputsReceived": {},
+          "outputs": {},
+          "workerCalls": 0,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 0,
+          "estimatedCost": 0
+        }
+      },
+      "pendingCheckpoint": null,
+      "checkpointResponses": {},
+      "error": null,
+      "totalTokens": 14329,
+      "totalCost": 0.127,
+      "missionId": "mission-q4-dd",
+      "modelConfigUsed": {
+        "preset": "balanced",
+        "orchestrator": "anthropic/claude-opus-4-5",
+        "teamLeads": "claude-sonnet-4",
+        "workers": "qwen3.6-35b-a3b"
+      }
+    },
+    {
+      "id": "exec-3b9e04-failed",
+      "workflowId": "incident-response",
+      "workflowName": "Incident Response & Resolution",
+      "state": "failed",
+      "currentStep": null,
+      "startedAt": "$now-2h",
+      "completedAt": "$now-1h50m",
+      "inputs": {
+        "alert": "email-ops prod 502 after deploy",
+        "service": "email-ops"
+      },
+      "outputs": {},
+      "stepExecutions": {
+        "triage-incident": {
+          "stepId": "triage-incident",
+          "state": "completed",
+          "startedAt": "$now-2h",
+          "completedAt": "$now-1h58m",
+          "executorId": "devops-lead",
+          "modelUsed": "qwen3.6-35b-a3b",
+          "inputsReceived": {},
+          "outputs": {
+            "severity": "sev-2",
+            "owner": "maj-devops"
+          },
+          "workerCalls": 1,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 5678,
+          "estimatedCost": 0.0747
+        },
+        "collect-logs": {
+          "stepId": "collect-logs",
+          "state": "completed",
+          "startedAt": "$now-1h58m",
+          "completedAt": "$now-1h55m",
+          "executorId": "devops-lead",
+          "modelUsed": "uc/chat-local-p40",
+          "inputsReceived": {},
+          "outputs": {
+            "logs": "14,208 lines from traefik + email-ops"
+          },
+          "workerCalls": 4,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 4521,
+          "estimatedCost": 0.0205
+        },
+        "root-cause": {
+          "stepId": "root-cause",
+          "state": "failed",
+          "startedAt": "$now-1h55m",
+          "completedAt": "$now-1h50m",
+          "executorId": "devops-lead",
+          "modelUsed": "qwen3.6-35b-a3b",
+          "inputsReceived": {},
+          "outputs": {},
+          "workerCalls": 1,
+          "error": "Step 'root-cause' failed after 3 retries: upstream LLM gateway returned 502 (ops-center) — budget exhausted for lane 'local-p40'",
+          "retries": 3,
+          "tokensUsed": 2338,
+          "estimatedCost": 0.0291
+        },
+        "remediate": {
+          "stepId": "remediate",
+          "state": "skipped",
+          "startedAt": null,
+          "completedAt": null,
+          "executorId": "devops-lead",
+          "modelUsed": null,
+          "inputsReceived": {},
+          "outputs": {},
+          "workerCalls": 0,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 0,
+          "estimatedCost": 0
+        },
+        "postmortem": {
+          "stepId": "postmortem",
+          "state": "skipped",
+          "startedAt": null,
+          "completedAt": null,
+          "executorId": "orchestrator",
+          "modelUsed": null,
+          "inputsReceived": {},
+          "outputs": {},
+          "workerCalls": 0,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 0,
+          "estimatedCost": 0
+        }
+      },
+      "pendingCheckpoint": null,
+      "checkpointResponses": {},
+      "error": "Step 'root-cause' failed after 3 retries: upstream LLM gateway returned 502 (ops-center) — budget exhausted for lane 'local-p40'",
+      "totalTokens": 12537,
+      "totalCost": 0.1243,
+      "missionId": null,
+      "modelConfigUsed": {
+        "preset": "balanced",
+        "orchestrator": "anthropic/claude-opus-4-5",
+        "teamLeads": "claude-sonnet-4",
+        "workers": "qwen3.6-35b-a3b"
+      }
+    },
+    {
+      "id": "exec-51d7f2-waiting",
+      "workflowId": "content-production-factory",
+      "workflowName": "Content Production Factory",
+      "state": "waiting",
+      "currentStep": "draft",
+      "startedAt": "$now-38m",
+      "completedAt": null,
+      "inputs": {
+        "topic": "Why the receipts are the content",
+        "audience": "founders",
+        "target_keyword": "build in public"
+      },
+      "outputs": {},
+      "stepExecutions": {
+        "research-topic": {
+          "stepId": "research-topic",
+          "state": "completed",
+          "startedAt": "$now-38m",
+          "completedAt": "$now-33m",
+          "executorId": "research-lead",
+          "modelUsed": "qwen3.6-35b-a3b",
+          "inputsReceived": {},
+          "outputs": {
+            "sources": 9
+          },
+          "workerCalls": 3,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 2605,
+          "estimatedCost": 0.0008
+        },
+        "outline": {
+          "stepId": "outline",
+          "state": "completed",
+          "startedAt": "$now-33m",
+          "completedAt": "$now-31m",
+          "executorId": "content-lead",
+          "modelUsed": "claude-sonnet-4",
+          "inputsReceived": {},
+          "outputs": {
+            "outline": "7 sections"
+          },
+          "workerCalls": 1,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 3527,
+          "estimatedCost": 0.0178
+        },
+        "draft": {
+          "stepId": "draft",
+          "state": "completed",
+          "startedAt": "$now-31m",
+          "completedAt": "$now-24m",
+          "executorId": "content-lead",
+          "modelUsed": "claude-sonnet-4",
+          "inputsReceived": {},
+          "outputs": {
+            "draft": "1,840 words"
+          },
+          "workerCalls": 3,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 3217,
+          "estimatedCost": 0.0443
+        },
+        "seo-pass": {
+          "stepId": "seo-pass",
+          "state": "pending",
+          "startedAt": null,
+          "completedAt": null,
+          "executorId": "content-lead",
+          "modelUsed": null,
+          "inputsReceived": {},
+          "outputs": {},
+          "workerCalls": 0,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 0,
+          "estimatedCost": 0
+        }
+      },
+      "pendingCheckpoint": {
+        "id": "cp-editorial",
+        "name": "Editorial approval",
+        "afterStep": "draft",
+        "prompt": "Approve the draft before the SEO pass?",
+        "options": [
+          "approve",
+          "revise"
+        ]
+      },
+      "checkpointResponses": {},
+      "error": null,
+      "totalTokens": 9349,
+      "totalCost": 0.0629,
+      "missionId": null,
+      "modelConfigUsed": {
+        "preset": "balanced",
+        "orchestrator": "anthropic/claude-opus-4-5",
+        "teamLeads": "claude-sonnet-4",
+        "workers": "qwen3.6-35b-a3b"
+      }
+    },
+    {
+      "id": "exec-9ae0c3-done",
+      "workflowId": "contract-review",
+      "workflowName": "Contract Review",
+      "state": "completed",
+      "currentStep": null,
+      "startedAt": "$now-1d2h",
+      "completedAt": "$now-1d1h48m",
+      "inputs": {
+        "contract_pdf": "acme-client-msa-v2.pdf",
+        "counterparty": "Ridgeline Outfitters"
+      },
+      "outputs": {
+        "summary": "Push back on indemnity cap, auto-renewal and the non-solicit."
+      },
+      "stepExecutions": {
+        "extract-clauses": {
+          "stepId": "extract-clauses",
+          "state": "completed",
+          "startedAt": "$now-1d2h",
+          "completedAt": "$now-1d1h57m",
+          "executorId": "legal-lead",
+          "modelUsed": "claude-sonnet-4",
+          "inputsReceived": {},
+          "outputs": {
+            "clauses": 42
+          },
+          "workerCalls": 4,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 1806,
+          "estimatedCost": 0.0295
+        },
+        "rate-risk": {
+          "stepId": "rate-risk",
+          "state": "completed",
+          "startedAt": "$now-1d1h57m",
+          "completedAt": "$now-1d1h52m",
+          "executorId": "legal-lead",
+          "modelUsed": "qwen3.6-35b-a3b",
+          "inputsReceived": {},
+          "outputs": {
+            "risk_table": {
+              "high": 3,
+              "medium": 9,
+              "low": 30
+            }
+          },
+          "workerCalls": 2,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 4537,
+          "estimatedCost": 0.0743
+        },
+        "redline-summary": {
+          "stepId": "redline-summary",
+          "state": "completed",
+          "startedAt": "$now-1d1h52m",
+          "completedAt": "$now-1d1h48m",
+          "executorId": "orchestrator",
+          "modelUsed": "anthropic/claude-opus-4-5",
+          "inputsReceived": {},
+          "outputs": {
+            "summary": "Push back on indemnity cap, auto-renewal and the non-solicit."
+          },
+          "workerCalls": 2,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 2562,
+          "estimatedCost": 0.0363
+        }
+      },
+      "pendingCheckpoint": null,
+      "checkpointResponses": {
+        "cp-counsel": "send"
+      },
+      "error": null,
+      "totalTokens": 8905,
+      "totalCost": 0.1401,
+      "missionId": null,
+      "modelConfigUsed": {
+        "preset": "balanced",
+        "orchestrator": "anthropic/claude-opus-4-5",
+        "teamLeads": "claude-sonnet-4",
+        "workers": "qwen3.6-35b-a3b"
+      }
+    },
+    {
+      "id": "exec-2f61ab-done",
+      "workflowId": "investment-due-diligence",
+      "workflowName": "Investment Due Diligence",
+      "state": "completed",
+      "currentStep": null,
+      "startedAt": "$now-3d",
+      "completedAt": "$now-3d",
+      "inputs": {
+        "target_company": "Harbor Freight Analytics",
+        "investment_thesis": "Logistics data broker"
+      },
+      "outputs": {
+        "memo": "No-go at the asked valuation."
+      },
+      "stepExecutions": {
+        "gather-financials": {
+          "stepId": "gather-financials",
+          "state": "completed",
+          "startedAt": "$now-3d",
+          "completedAt": "$now-3d",
+          "executorId": "finance-lead",
+          "modelUsed": "claude-sonnet-4",
+          "inputsReceived": {},
+          "outputs": {
+            "statements": "2 fiscal years"
+          },
+          "workerCalls": 1,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 3744,
+          "estimatedCost": 0.0682
+        },
+        "ratio-analysis": {
+          "stepId": "ratio-analysis",
+          "state": "completed",
+          "startedAt": "$now-3d",
+          "completedAt": "$now-3d",
+          "executorId": "finance-lead",
+          "modelUsed": "qwen3.6-35b-a3b",
+          "inputsReceived": {},
+          "outputs": {
+            "ratios": {
+              "current": 1.1
+            }
+          },
+          "workerCalls": 3,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 2471,
+          "estimatedCost": 0.013
+        },
+        "market-scan": {
+          "stepId": "market-scan",
+          "state": "completed",
+          "startedAt": "$now-3d",
+          "completedAt": "$now-3d",
+          "executorId": "research-lead",
+          "modelUsed": "qwen3.6-35b-a3b",
+          "inputsReceived": {},
+          "outputs": {
+            "market_brief": "crowded, price-led"
+          },
+          "workerCalls": 3,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 5850,
+          "estimatedCost": 0.0723
+        },
+        "legal-exposure": {
+          "stepId": "legal-exposure",
+          "state": "completed",
+          "startedAt": "$now-3d",
+          "completedAt": "$now-3d",
+          "executorId": "legal-lead",
+          "modelUsed": "claude-sonnet-4",
+          "inputsReceived": {},
+          "outputs": {
+            "legal_flags": [
+              "pending trademark dispute"
+            ]
+          },
+          "workerCalls": 4,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 964,
+          "estimatedCost": 0.0214
+        },
+        "synthesize-memo": {
+          "stepId": "synthesize-memo",
+          "state": "completed",
+          "startedAt": "$now-3d",
+          "completedAt": "$now-3d",
+          "executorId": "orchestrator",
+          "modelUsed": "anthropic/claude-opus-4-5",
+          "inputsReceived": {},
+          "outputs": {
+            "memo": "No-go at the asked valuation."
+          },
+          "workerCalls": 3,
+          "error": null,
+          "retries": 0,
+          "tokensUsed": 4759,
+          "estimatedCost": 0.0748
+        }
+      },
+      "pendingCheckpoint": null,
+      "checkpointResponses": {
+        "cp-memo": "approve"
+      },
+      "error": null,
+      "totalTokens": 17788,
+      "totalCost": 0.2497,
+      "missionId": null,
+      "modelConfigUsed": {
+        "preset": "balanced",
+        "orchestrator": "anthropic/claude-opus-4-5",
+        "teamLeads": "claude-sonnet-4",
+        "workers": "qwen3.6-35b-a3b"
+      }
+    }
+  ]
+}

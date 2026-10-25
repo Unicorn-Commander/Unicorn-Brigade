@@ -1,351 +1,404 @@
-import { useState, useEffect } from 'react';
+/**
+ * Conversations — every saved chat with an agent.
+ *
+ * Shaped on the Tool Library exemplar: <Page> + <PageHeader>, a toolbar Card
+ * (search · sort · agent filter), ALL FOUR STATES in the place the list goes,
+ * rows as Cards with the agent's real portrait, and a per-row Menu with only
+ * the actions the API supports (GET / PATCH title / DELETE in
+ * app/api/conversation_routes.py): Open · Rename · Delete.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Search,
-  MessageSquare,
-  Trash2,
-  Clock,
-  Hash,
-  Cpu,
-  Loader2,
-  MessagesSquare,
-  AlertCircle,
-  ArrowUpDown
-} from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { Cpu, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Search, Trash2, X } from 'lucide-react';
 import notify from '../utils/notify';
+import { humanize } from '../utils/errors';
 import { apiJson } from '../services/http';
+import AgentAvatar from '../components/AgentAvatar';
+import { formatAbsolute, formatRelative, shortModel } from '../components/ChatMessage';
+import {
+  Button,
+  Card,
+  Chip,
+  EmptyState,
+  ErrorState,
+  Field,
+  Input,
+  LoadingState,
+  Menu,
+  Modal,
+  OfflineState,
+  PageHeader,
+  Page,
+  Select,
+  Tooltip,
+} from '../components/ui';
 
-const Conversations = () => {
+// One tone per conversation status, everywhere.
+const STATUS = {
+  active: { tone: 'ok', label: 'Active' },
+  completed: { tone: 'info', label: 'Completed' },
+  archived: { tone: 'neutral', label: 'Archived' },
+};
+const statusOf = (s) => STATUS[s] || { tone: 'neutral', label: s || 'Unknown' };
+const agentLabel = (c) => c.agent?.displayName || c.agent?.name || c.agent_id || 'Unknown agent';
+const titleOf = (c) => c.title || 'Untitled conversation';
+const when = (c) => c.updated_at || c.created_at;
+
+export default function Conversations() {
   const navigate = useNavigate();
   const [conversations, setConversations] = useState([]);
-  const [filteredConversations, setFilteredConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('newest');
-  const [deletingId, setDeletingId] = useState(null);
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('newest');
+  const [agentFilter, setAgentFilter] = useState('');
 
-  useEffect(() => {
-    loadConversations();
+  const [renaming, setRenaming] = useState(null); // conversation
+  const [renameValue, setRenameValue] = useState('');
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameError, setRenameError] = useState(null);
+  const [deleting, setDeleting] = useState(null); // conversation
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  const renameInputRef = useRef(null);
+
+  // The roster supplies each face. A conversation record carries the agent's
+  // id and name but not its portrait link, so drawing from it missed real
+  // portraits (Majik showed the emoji fallback). Best-effort: if the roster
+  // fails, rows fall back to the conversation's own agent record.
+  const [roster, setRoster] = useState(() => new Map());
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    // Both before the first render, so every row's face comes from the roster.
+    const [convs, agents] = await Promise.allSettled([apiJson('/conversations'), apiJson('/agents')]);
+    if (agents.status === 'fulfilled') {
+      const d = agents.value;
+      setRoster(new Map((d?.agents || (Array.isArray(d) ? d : [])).map((a) => [a.id, a])));
+    }
+    if (convs.status === 'fulfilled') setConversations(convs.value?.conversations || []);
+    else setError(convs.reason);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    applyFilters();
-  }, [conversations, searchQuery, sortBy]);
+    load();
+  }, [load]);
 
-  const loadConversations = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // No hardcoded user_id: the backend scopes the list to the authenticated
-      // user (and defaults to "anonymous" otherwise).
-      const data = await apiJson('/conversations');
-      setConversations(data.conversations || []);
-    } catch (err) {
-      console.error('Failed to load conversations:', err);
-      setError('Failed to load conversations. The backend may not be available yet.');
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      load();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [load]);
+
+  const agentsInList = useMemo(() => {
+    const m = new Map();
+    for (const c of conversations) {
+      const id = c.agent?.id || c.agent_id;
+      if (id && !m.has(id)) m.set(id, agentLabel(c));
     }
-  };
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [conversations]);
 
-  const applyFilters = () => {
-    let filtered = [...conversations];
-
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(conv =>
-        conv.title?.toLowerCase().includes(query) ||
-        conv.agent?.displayName?.toLowerCase().includes(query) ||
-        conv.agent?.name?.toLowerCase().includes(query) ||
-        conv.model?.toLowerCase().includes(query)
-      );
-    }
-
-    // Sort
-    filtered.sort((a, b) => {
-      if (sortBy === 'newest') {
-        return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0);
-      } else if (sortBy === 'oldest') {
-        return new Date(a.updated_at || a.created_at || 0) - new Date(b.updated_at || b.created_at || 0);
-      } else if (sortBy === 'most-messages') {
-        return (b.message_count || 0) - (a.message_count || 0);
-      } else if (sortBy === 'a-z') {
-        return (a.title || '').localeCompare(b.title || '');
-      }
-      return 0;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = conversations.filter((c) => {
+      if (agentFilter && (c.agent?.id || c.agent_id) !== agentFilter) return false;
+      if (!q) return true;
+      return titleOf(c).toLowerCase().includes(q) || agentLabel(c).toLowerCase().includes(q) || String(c.model || '').toLowerCase().includes(q);
     });
+    const time = (c) => new Date(when(c) || 0).getTime();
+    list.sort((a, b) => {
+      if (sort === 'oldest') return time(a) - time(b);
+      if (sort === 'most-messages') return (b.message_count || 0) - (a.message_count || 0);
+      if (sort === 'a-z') return titleOf(a).localeCompare(titleOf(b));
+      return time(b) - time(a);
+    });
+    return list;
+  }, [conversations, query, sort, agentFilter]);
 
-    setFilteredConversations(filtered);
+  const hasFilters = Boolean(query || agentFilter);
+  const clearFilters = () => {
+    setQuery('');
+    setAgentFilter('');
   };
 
-  const deleteConversation = async (e, conversationId) => {
-    e.stopPropagation();
+  const open = (c) => navigate(`/chat?conversation=${encodeURIComponent(c.id)}`);
 
-    if (!confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
+  const startRename = (c) => {
+    setRenaming(c);
+    setRenameValue(c.title || '');
+    setRenameError(null);
+  };
+  const submitRename = async (e) => {
+    e?.preventDefault?.();
+    if (!renaming) return;
+    const title = renameValue.trim();
+    if (!title) {
+      setRenameError('Give the conversation a name.');
       return;
     }
-
-    setDeletingId(conversationId);
+    setRenameBusy(true);
+    setRenameError(null);
     try {
-      await apiJson(`/conversations/${conversationId}`, { method: 'DELETE' });
-      setConversations(prev => prev.filter(c => c.id !== conversationId));
+      const updated = await apiJson(`/conversations/${renaming.id}`, { method: 'PATCH', body: JSON.stringify({ title }) });
+      setConversations((prev) => prev.map((c) => (c.id === renaming.id ? { ...c, ...(updated || {}), title } : c)));
+      setRenaming(null);
+      notify.success('Renamed');
+    } catch (err) {
+      setRenameError(humanize(err, { what: 'renaming the conversation' }));
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await apiJson(`/conversations/${deleting.id}`, { method: 'DELETE' });
+      setConversations((prev) => prev.filter((c) => c.id !== deleting.id));
+      setDeleting(null);
       notify.success('Conversation deleted');
     } catch (err) {
-      console.error('Failed to delete conversation:', err);
-      toast.error('Failed to delete conversation');
+      setDeleteError(humanize(err, { what: 'deleting the conversation' }));
     } finally {
-      setDeletingId(null);
+      setDeleteBusy(false);
     }
   };
 
-  const resumeConversation = (conversationId) => {
-    navigate(`/chat?conversation=${conversationId}`);
-  };
-
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'Unknown';
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'active': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-      case 'completed': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-      case 'archived': return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
-      default: return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
-    }
-  };
-
-  return (
-    <div className="min-h-screen p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
-              Conversations
-            </h1>
-            <p className="text-slate-400 mt-1">
-              {filteredConversations.length} of {conversations.length} conversations
-            </p>
-          </div>
-
-          <button
-            onClick={() => navigate('/chat')}
-            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-unicorn-600 hover:bg-unicorn-500 text-white font-medium transition-all"
-          >
-            <MessageSquare className="w-5 h-5" />
-            <span>New Chat</span>
-          </button>
-        </div>
-
-        {/* Filters */}
-        <div className="rounded-xl border border-slate-700/50 bg-slate-900/50 backdrop-blur-xl p-4">
-          <div className="flex flex-col md:flex-row md:items-center gap-4">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search conversations by title, agent, or model..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50 transition-all"
-              />
-            </div>
-
-            {/* Sort */}
-            <div className="flex items-center space-x-2">
-              <ArrowUpDown className="w-4 h-4 text-slate-400" />
-              <select
-                aria-label="Sort conversations"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
+  // ── the four states ──────────────────────────────────────────────────────
+  let body;
+  if (offline && !conversations.length) {
+    body = <OfflineState onRetry={load} />;
+  } else if (loading) {
+    body = <LoadingState variant="list" count={6} label="Loading conversations" />;
+  } else if (error) {
+    body = <ErrorState title="Couldn’t load your conversations" detail={humanize(error, { what: 'loading conversations' })} onRetry={load} />;
+  } else if (!conversations.length) {
+    body = (
+      <EmptyState
+        icon={MessageSquare}
+        title="No conversations yet"
+        description="Talk to an agent and the conversation is saved here, with every tool call it made."
+        action={
+          <Button icon={MessageSquarePlus} onClick={() => navigate('/chat')}>
+            Start a chat
+          </Button>
+        }
+      />
+    );
+  } else if (!filtered.length) {
+    body = (
+      <EmptyState
+        compact
+        icon={Search}
+        title="No conversations match"
+        description="Try another word, or clear the search and the agent filter."
+        action={
+          <Button variant="secondary" size="sm" icon={X} onClick={clearFilters}>
+            Clear filters
+          </Button>
+        }
+      />
+    );
+  } else {
+    body = (
+      <ul className="space-y-2" aria-label="Conversations">
+        {filtered.map((c) => {
+          const st = statusOf(c.status);
+          const title = titleOf(c);
+          const ts = when(c);
+          return (
+            <li key={c.id}>
+              <Card
+                padding="none"
+                className="relative flex items-start gap-3 p-3 transition-[border-color,box-shadow] duration-base ease-standard hover:border-border-strong hover:shadow-e2 focus-within:border-border-strong focus-within:shadow-e2 sm:items-center sm:gap-4 sm:px-4"
               >
-                <option value="newest">Newest First</option>
-                <option value="oldest">Oldest First</option>
-                <option value="most-messages">Most Messages</option>
-                <option value="a-z">A-Z</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Loading State */}
-        {loading && (
-          <div className="text-center py-16">
-            <Loader2 className="w-12 h-12 text-unicorn-400 animate-spin mx-auto mb-4" />
-            <p className="text-slate-400">Loading conversations...</p>
-          </div>
-        )}
-
-        {/* Error State */}
-        {!loading && error && (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
-              <AlertCircle className="w-8 h-8 text-red-400" />
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Unable to Load Conversations</h3>
-            <p className="text-slate-400 max-w-md mx-auto mb-6">{error}</p>
-            <button
-              onClick={loadConversations}
-              className="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white hover:border-unicorn-500/40 transition-all"
-            >
-              Try Again
-            </button>
-          </div>
-        )}
-
-        {/* Empty State */}
-        {!loading && !error && conversations.length === 0 && (
-          <div className="text-center py-16">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 flex items-center justify-center mx-auto mb-6">
-              <MessagesSquare className="w-10 h-10 text-unicorn-400" />
-            </div>
-            <h3 className="text-2xl font-bold text-white mb-2">No Conversations Yet</h3>
-            <p className="text-slate-400 max-w-md mx-auto mb-6">
-              Start chatting with an agent to create your first conversation. All your chats will be saved here for easy access.
-            </p>
-            <button
-              onClick={() => navigate('/chat')}
-              className="flex items-center space-x-2 px-6 py-3 rounded-lg bg-unicorn-600 hover:bg-unicorn-500 text-white font-medium transition-all mx-auto"
-            >
-              <MessageSquare className="w-5 h-5" />
-              <span>Start a Conversation</span>
-            </button>
-          </div>
-        )}
-
-        {/* No Search Results */}
-        {!loading && !error && conversations.length > 0 && filteredConversations.length === 0 && (
-          <div className="text-center py-16">
-            <Search className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">No Matching Conversations</h3>
-            <p className="text-slate-400 mb-4">
-              No conversations match your search for "{searchQuery}"
-            </p>
-            <button
-              onClick={() => setSearchQuery('')}
-              className="text-unicorn-400 hover:text-unicorn-300 text-sm transition-colors"
-            >
-              Clear search
-            </button>
-          </div>
-        )}
-
-        {/* Conversations List */}
-        {!loading && !error && filteredConversations.length > 0 && (
-          <div className="space-y-3">
-            {filteredConversations.map((conv) => (
-              <div
-                key={conv.id}
-                onClick={() => resumeConversation(conv.id)}
-                className="group relative overflow-hidden rounded-xl border border-slate-700/50 bg-slate-900/50 backdrop-blur-xl cursor-pointer transition-all duration-300 hover:border-unicorn-500/40 hover:shadow-lg hover:shadow-unicorn-500/10"
-              >
-                <div className="p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    {/* Left: Avatar + Content */}
-                    <div className="flex items-start space-x-4 flex-1 min-w-0">
-                      {/* Agent Avatar */}
-                      <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-slate-700 to-slate-600 border border-slate-600/50 flex items-center justify-center text-2xl shadow-lg">
-                        {conv.agent?.avatar || '🦄'}
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        {/* Title */}
-                        <h3 className="text-base font-semibold text-white group-hover:text-unicorn-400 transition-colors truncate">
-                          {conv.title || 'Untitled Conversation'}
-                        </h3>
-
-                        {/* Agent Name */}
-                        <p className="text-sm text-slate-400 mt-0.5">
-                          with {conv.agent?.displayName || conv.agent?.name || 'Unknown Agent'}
-                        </p>
-
-                        {/* Meta Info */}
-                        <div className="flex flex-wrap items-center gap-3 mt-2.5">
-                          {/* Message Count */}
-                          <div className="flex items-center space-x-1.5 text-xs text-slate-400">
-                            <Hash className="w-3 h-3" />
-                            <span>{conv.message_count || 0} messages</span>
-                          </div>
-
-                          {/* Model */}
-                          {conv.model && (
-                            <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-md bg-slate-800/60 border border-slate-700/50 text-xs text-slate-400">
-                              <Cpu className="w-3 h-3" />
-                              <span>{conv.model.split('/').pop()}</span>
-                            </div>
-                          )}
-
-                          {/* Status */}
-                          {conv.status && (
-                            <span className={`px-2 py-0.5 rounded-md text-xs border ${getStatusColor(conv.status)}`}>
-                              {conv.status}
-                            </span>
-                          )}
-
-                          {/* Tokens */}
-                          {conv.total_tokens > 0 && (
-                            <div className="flex items-center space-x-1 text-xs text-slate-400">
-                              <span>{conv.total_tokens.toLocaleString()} tokens</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right: Timestamp + Actions */}
-                    <div className="flex flex-col items-end space-y-2 flex-shrink-0">
-                      {/* Timestamp */}
-                      <div className="flex items-center space-x-1.5 text-xs text-slate-400">
-                        <Clock className="w-3 h-3" />
-                        <span>{formatTimestamp(conv.updated_at || conv.created_at)}</span>
-                      </div>
-
-                      {/* Delete Button */}
+                <AgentAvatar agent={roster.get(c.agent?.id || c.agent_id) || c.agent || { id: c.agent_id }} size={40} rounded="rounded-control" className="mt-0.5 sm:mt-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <Tooltip content={title}>
+                      {/* The title is the row's link: its ::after stretches over the card so the whole row opens the conversation. */}
                       <button
-                        onClick={(e) => deleteConversation(e, conv.id)}
-                        disabled={deletingId === conv.id}
-                        className="p-1.5 rounded-lg text-slate-600 opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-50 transition-all"
-                        title="Delete conversation"
-                        aria-label="Delete conversation"
+                        type="button"
+                        onClick={() => open(c)}
+                        className="min-w-0 truncate text-left text-body font-semibold text-fg-strong after:absolute after:inset-0 after:rounded-card after:content-[''] hover:text-accent focus-visible:outline-none"
                       >
-                        {deletingId === conv.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
-                        )}
+                        {title}
                       </button>
-                    </div>
+                    </Tooltip>
+                  </div>
+                  <p className="truncate text-body-sm text-muted">with {agentLabel(c)}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <Chip size="xs">
+                      {c.message_count || 0} {c.message_count === 1 ? 'message' : 'messages'}
+                    </Chip>
+                    {c.model && (
+                      <Chip size="xs" icon={Cpu}>
+                        {shortModel(c.model)}
+                      </Chip>
+                    )}
+                    {c.status && (
+                      <Chip size="xs" tone={st.tone} dot>
+                        {st.label}
+                      </Chip>
+                    )}
+                    {c.total_tokens > 0 && <span className="text-micro text-subtle">{c.total_tokens.toLocaleString()} tokens</span>}
                   </div>
                 </div>
+                <div className="relative z-raised flex shrink-0 items-center gap-1 self-start sm:self-center">
+                  {ts && (
+                    <Tooltip content={formatAbsolute(ts)}>
+                      <time dateTime={ts} tabIndex={0} className="rounded-chip text-caption text-muted">
+                        {formatRelative(ts)}
+                      </time>
+                    </Tooltip>
+                  )}
+                  <Menu
+                    align="end"
+                    trigger={({ props }) => (
+                      <Button variant="ghost" size="sm" iconOnly icon={MoreHorizontal} aria-label={`Actions for ${title}`} className="min-h-touch min-w-touch sm:min-h-0 sm:min-w-0" {...props} />
+                    )}
+                    items={[
+                      { id: 'open', label: 'Open', icon: MessageSquare, onSelect: () => open(c) },
+                      { id: 'rename', label: 'Rename', icon: Pencil, onSelect: () => startRename(c) },
+                      { type: 'separator' },
+                      { id: 'delete', label: 'Delete', icon: Trash2, tone: 'danger', onSelect: () => { setDeleteError(null); setDeleting(c); } },
+                    ]}
+                  />
+                </div>
+              </Card>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
 
-                {/* Hover glow effect */}
-                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-r from-unicorn-500/5 to-unicorn-500/5 pointer-events-none"></div>
-              </div>
+  const description = loading
+    ? 'Every chat with an agent, saved with its tool calls'
+    : conversations.length === 0
+      ? 'Nothing saved yet'
+      : hasFilters
+        ? `${filtered.length} of ${conversations.length} conversations shown`
+        : `${conversations.length} ${conversations.length === 1 ? 'conversation' : 'conversations'}`;
+
+  return (
+    <Page width="wide" className="[contain:inline-size]">
+      <PageHeader
+        eyebrow="Main"
+        title="Conversations"
+        description={description}
+        actions={
+          <Button icon={MessageSquarePlus} className="min-h-touch sm:min-h-0" onClick={() => navigate('/chat')}>
+            New chat
+          </Button>
+        }
+      />
+
+      {/* Toolbar */}
+      <Card padding="sm" className="mb-5">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto]">
+          <div className="relative">
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <Input
+              type="search"
+              aria-label="Search conversations"
+              placeholder="Search by title, agent or model…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="min-h-touch pl-9 sm:min-h-0"
+            />
+          </div>
+          <Select aria-label="Sort conversations" value={sort} onChange={(e) => setSort(e.target.value)} className="min-h-touch sm:min-h-0 md:w-44">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="most-messages">Most messages</option>
+            <option value="a-z">A to Z</option>
+          </Select>
+          <Select aria-label="Filter by agent" value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)} className="min-h-touch sm:min-h-0 md:w-52">
+            <option value="">All agents</option>
+            {agentsInList.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
             ))}
+          </Select>
+        </div>
+        {hasFilters && !loading && (
+          <div className="mt-2 flex items-center gap-2 text-caption text-muted">
+            <span>
+              {filtered.length} match{filtered.length === 1 ? '' : 'es'}
+            </span>
+            <Button variant="link" size="xs" onClick={clearFilters}>
+              Clear
+            </Button>
           </div>
         )}
-      </div>
-    </div>
-  );
-};
+      </Card>
 
-export default Conversations;
+      {body}
+
+      {/* Rename */}
+      <Modal
+        isOpen={Boolean(renaming)}
+        onClose={() => (renameBusy ? null : setRenaming(null))}
+        title="Rename conversation"
+        description={renaming ? `with ${agentLabel(renaming)}` : undefined}
+        initialFocusRef={renameInputRef}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRenaming(null)} disabled={renameBusy}>
+              Cancel
+            </Button>
+            <Button onClick={submitRename} loading={renameBusy}>
+              Save
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={submitRename}>
+          <Field label="Title" error={renameError}>
+            <Input ref={renameInputRef} value={renameValue} onChange={(e) => setRenameValue(e.target.value)} maxLength={200} autoComplete="off" />
+          </Field>
+        </form>
+      </Modal>
+
+      {/* Delete */}
+      <Modal
+        isOpen={Boolean(deleting)}
+        onClose={() => (deleteBusy ? null : setDeleting(null))}
+        tone="danger"
+        title="Delete this conversation?"
+        description={deleting ? `“${titleOf(deleting)}” with ${agentLabel(deleting)} and its ${deleting.message_count || 0} messages will be removed. This can’t be undone.` : undefined}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleting(null)} disabled={deleteBusy}>
+              Cancel
+            </Button>
+            <Button variant="danger" icon={Trash2} onClick={confirmDelete} loading={deleteBusy}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        {deleteError && (
+          <p role="alert" className="text-body-sm text-danger">
+            {deleteError}
+          </p>
+        )}
+      </Modal>
+    </Page>
+  );
+}

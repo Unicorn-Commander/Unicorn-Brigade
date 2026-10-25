@@ -272,27 +272,6 @@ export const useAuth = create((set, get) => ({
     return user?.name || user?.username || user?.email || 'User';
   },
 
-  /**
-   * Get user's tier badge color
-   * @returns {string} Tailwind color class
-   */
-  getTierColor: () => {
-    const { user } = get();
-
-    if (!user?.tier) {
-      return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-
-    const tierColors = {
-      trial: 'bg-slate-100 text-slate-800 border-slate-200',
-      starter: 'bg-blue-100 text-blue-800 border-blue-200',
-      professional: 'bg-unicorn-100 text-unicorn-800 border-unicorn-200',
-      enterprise: 'bg-amber-100 text-amber-800 border-amber-200',
-      founders: 'bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white border-unicorn-300'
-    };
-
-    return tierColors[user.tier] || 'bg-gray-100 text-gray-800 border-gray-200';
-  },
 
   /**
    * Initiate OIDC login flow (SSO)

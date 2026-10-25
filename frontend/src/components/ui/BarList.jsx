@@ -15,7 +15,7 @@ export default function BarList({ items = [], renderValue, className = '' }) {
   const total = rows.reduce((s, r) => s + (r.value || 0), 0);
 
   if (rows.length === 0) {
-    return <p className="text-center text-sm text-muted py-6">No data to display</p>;
+    return <p className="py-6 text-center text-body-sm text-muted">No data to display</p>;
   }
 
   return (
@@ -29,27 +29,26 @@ export default function BarList({ items = [], renderValue, className = '' }) {
             <Row
               type={item.onClick ? 'button' : undefined}
               onClick={item.onClick}
-              className={`group relative block w-full overflow-hidden rounded-lg border border-border/40 bg-elevated/40 px-3 py-2 text-left transition-colors ${
-                item.onClick ? 'hover:border-unicorn-500/40 hover:bg-elevated/70' : ''
+              className={`group relative block w-full overflow-hidden rounded-control border border-border bg-elevated/40 px-3 py-2 text-left transition-colors duration-fast ${
+                item.onClick ? 'hover:border-accent/40 hover:bg-elevated/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : ''
               }`}
             >
               {/* Bar fill (anchored left, scaled to the max value) */}
               <span
                 aria-hidden="true"
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-unicorn-500/25 to-unicorn-500/5"
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-accent/25 to-accent/5"
                 style={{ width: `${Math.max(pct, 6)}%` }}
               />
               <span className="relative flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2.5 min-w-0">
                   {item.icon && <span className="flex-shrink-0 text-muted">{item.icon}</span>}
-                  <span className="truncate font-medium text-fg capitalize">{item.label}</span>
+                  <span className="truncate text-body font-medium capitalize text-fg">{item.label}</span>
                 </span>
                 <span
-                  className="flex-shrink-0 text-sm text-muted"
-                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                  className="flex-shrink-0 text-body-sm tabular-nums text-muted"
                 >
                   {renderValue ? renderValue(item) : item.value}
-                  <span className="ml-2 text-xs text-muted">{share}%</span>
+                  <span className="ml-2 text-caption text-subtle">{share}%</span>
                 </span>
               </span>
             </Row>

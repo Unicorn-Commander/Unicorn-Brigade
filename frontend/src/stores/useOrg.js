@@ -60,11 +60,13 @@ const useOrg = create((set, get) => ({
       set({ orgs, activeOrgId, loading: false, loaded: true, error: null });
       return orgs;
     } catch (err) {
+      // Keep the thrown error itself (status, detail) so a page can humanize it;
+      // OrgSwitcher only needs its truthiness.
       set({
         orgs: [],
         loading: false,
         loaded: true,
-        error: err?.message || 'Failed to load organizations',
+        error: err || new Error('Failed to load organizations'),
       });
       return [];
     }

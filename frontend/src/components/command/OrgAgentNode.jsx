@@ -1,173 +1,157 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Star } from 'lucide-react';
+import { Star, ChevronDown, ChevronRight, Clock } from 'lucide-react';
 import AgentAvatar from '../AgentAvatar';
-import { rankStars } from '../../utils/rank';
 import { AffiliationChip, ModelTierChip, PaidToolsBadge } from '../AgentBadges';
-import {
-  AFFIL_META,
-  affiliationOf,
-  TIER_META,
-  tierOf,
-  paidToolSummary,
-  prettyDomain,
-  roleLine,
-} from '../../utils/agentClass';
+import { StatusDot, statusMeta, Tooltip } from '../ui';
+import { AFFIL_META, affiliationOf, TIER_META, tierOf, paidToolSummary, prettyDomain, roleLine } from '../../utils/agentClass';
+import { ORG_NODE_W, ORG_NODE_H } from '../../hooks/useOrgLayout';
+import { autonomyLine } from '../../utils/autonomy';
 
-// Domain → ring color, so a node's chain-of-command rank reads at a glance.
-const domainRing = {
-  financial: 'ring-amber-400/70',
-  legal: 'ring-blue-400/70',
-  medical: 'ring-rose-400/70',
-  technology: 'ring-cyan-400/70',
-  engineering: 'ring-cyan-400/70',
-  orchestration: 'ring-yellow-300/80',
-  investigation: 'ring-orange-400/70',
-  intelligence: 'ring-indigo-400/70',
-  meta: 'ring-unicorn-400/70',
-  sales: 'ring-emerald-400/70',
-  data: 'ring-sky-400/70',
-  knowledge: 'ring-violet-400/70',
-  productivity: 'ring-teal-400/70',
-  support: 'ring-unicorn-400/70',
-  default: 'ring-slate-500/60',
-};
+// Handles exist so xyflow can anchor edges; the chart draws no connectors.
+const HANDLE = { opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, border: 0 };
 
-const statusDot = {
-  thinking: 'bg-amber-400',
-  tool: 'bg-cyan-400',
-  responding: 'bg-emerald-400',
-  streaming: 'bg-emerald-400',
-  error: 'bg-red-400',
-  idle: 'bg-slate-500',
-};
+const ARROW_TO_NAV = { ArrowLeft: 'prev', ArrowRight: 'next', ArrowUp: 'up', ArrowDown: 'down' };
 
-const STATUS_LABEL = {
-  thinking: 'Thinking',
-  tool: 'Running a tool',
-  responding: 'Responding',
-  streaming: 'Responding',
-  error: 'Error',
-  idle: 'Idle',
-};
-
-function OrgAgentNodeBase({ data }) {
-  const { agent, isRoot, status = 'idle', subordinates = 0 } = data;
-  const ring = domainRing[agent.domain?.toLowerCase()] || domainRing.default;
-  const stars = rankStars(agent.rank);
-  const avatarSize = isRoot ? 52 : 42;
-  const active = status !== 'idle';
-  const capabilities = (agent.capabilities || []).slice(0, 6);
-
-  // The two classification axes, same vocabulary Stable renders.
+/** Everything the node cannot fit, as one line for the tooltip and the accessible name. */
+function detailLine(agent, { status, reason, subordinates, autonomy }) {
   const affil = AFFIL_META[affiliationOf(agent)];
   const tier = TIER_META[tierOf(agent)];
+  const parts = [roleLine(agent)];
+  if (agent.rank && agent.rank !== roleLine(agent)) parts.push(agent.rank);
+  parts.push(prettyDomain(agent.domain));
+  parts.push(`${affil.label} · ${tier.label} model${agent.model ? ` (${agent.model})` : ''}`);
+  if (subordinates > 0) parts.push(`${subordinates} report${subordinates === 1 ? '' : 's'}`);
   const paid = paidToolSummary(agent);
-  const role = roleLine(agent);
+  if (paid) parts.push(paid);
+  if (autonomy?.total) parts.push(autonomyLine(autonomy));
+  if (status === 'error') parts.push(`Needs attention: ${reason || 'the agent stopped without saying why'}`);
+  else if (status !== 'idle') parts.push(statusMeta(status).label);
+  return parts.filter(Boolean).join(' · ');
+}
 
-  const restingBorder = isRoot
-    ? 'border-yellow-300/50 bg-yellow-300/[0.06] shadow-lg shadow-yellow-300/10'
-    : 'border-slate-700/60 bg-slate-900/70';
+/**
+ * One agent on the org chart: portrait, name, role, the two classification
+ * chips, a live status dot — and, for a lead, the pill that folds its team.
+ * Everything else (rank, domain, model, paid tools, the failure reason) lives
+ * in the tooltip, which also doubles as the spoken description.
+ *
+ * data: { agent, isRoot, status, reason, subordinates, hiddenCount, collapsed,
+ *         match, dim, autonomy: { total, failing, stale } | null,
+ *         nav: { prev, next, up, down }, onOpen, onToggle, onAutonomy }
+ *
+ * An agent with jobs that run on its own wears a small clock badge on its
+ * top edge (danger when one is failing, warn when one is stale); clicking it
+ * opens the Command Center's Autonomous view on that agent's jobs.
+ */
+function OrgAgentNodeBase({ data }) {
+  const { agent, isRoot, status = 'idle', reason, subordinates = 0, hiddenCount = 0, collapsed = false, match, dim, nav, autonomy } = data;
+  const name = agent.displayName || agent.name;
+  const affil = AFFIL_META[affiliationOf(agent)];
+  const active = status !== 'idle';
+  const detail = detailLine(agent, { status, reason, subordinates, autonomy });
+  const autoTone = autonomy?.failing
+    ? 'border-danger-fill bg-danger-fill text-white'
+    : autonomy?.stale
+      ? 'border-warn-fill bg-warn-fill text-on-warn'
+      : 'border-border-strong bg-elevated text-muted hover:text-fg';
+
+  const onKeyDown = (e) => {
+    const dir = ARROW_TO_NAV[e.key];
+    if (!dir || !nav?.[dir]) return;
+    // Ids can hold dots, quotes or spaces (dogfood has `cpl.-colophon`): escape, never splice.
+    const next = document.querySelector(`[data-org-node="${CSS.escape(nav[dir])}"] [data-org-open]`);
+    if (next) {
+      e.preventDefault();
+      next.focus();
+    }
+  };
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      // The full classification, said out loud — a screen reader gets what the
-      // border color and the two chips convey visually.
-      aria-label={`Open comms with ${agent.displayName || agent.name}${role ? `, ${role}` : ''}. ${affil.label}, ${tier.label} model.${paid ? ` ${paid}.` : ''} ${STATUS_LABEL[status] || 'Idle'}.`}
-      title={`${affil.label} · ${tier.label} model — click to open comms`}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          data.onOpen?.(agent);
-        }
-      }}
-      className={`group relative flex cursor-pointer items-center gap-2.5 rounded-xl border border-l-4 ${affil.border} px-2.5 py-2 backdrop-blur-md transition-colors
-        ${active ? 'border-unicorn-500/70 bg-slate-900/90 shadow-lg shadow-unicorn-500/20' : restingBorder}
-        hover:border-unicorn-500/70 hover:bg-slate-900/90`}
-      style={{ width: 236 }}
+      data-org-node={agent.id}
+      className={`relative transition-opacity duration-base ${dim ? 'opacity-40' : ''}`}
+      style={{ width: ORG_NODE_W, height: ORG_NODE_H }}
     >
-      <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-0 !bg-slate-600" />
+      <Handle type="target" position={Position.Top} id="top" style={HANDLE} />
+      <Handle type="target" position={Position.Left} id="left" style={HANDLE} />
+      <Handle type="source" position={Position.Bottom} id="bottom" style={HANDLE} />
 
-      <div className={`relative shrink-0 rounded-full ring-2 ${active ? 'ring-unicorn-500/70' : isRoot ? 'ring-yellow-300/80' : ring}`}>
-        <AgentAvatar agent={agent} size={avatarSize} rounded="rounded-full" status={status} />
-        <span
-          aria-hidden="true"
-          className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-900 ${
-            statusDot[status] || statusDot.idle
-          } ${active ? 'animate-pulse' : ''}`}
-        />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1">
-          <span className="truncate text-[13px] font-semibold text-white">
-            {agent.displayName || agent.name}
+      <Tooltip content={detail} side="bottom">
+        <button
+          type="button"
+          data-org-open
+          onClick={() => data.onOpen?.(agent)}
+          onKeyDown={onKeyDown}
+          aria-label={`Open comms with ${name}. ${detail}`}
+          className={[
+            'flex h-full w-full items-center gap-2 rounded-card border border-l-4 px-2 text-left',
+            'transition-[border-color,box-shadow] duration-fast ease-standard',
+            'hover:border-border-strong hover:shadow-e2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
+            affil.border,
+            status === 'error'
+              ? 'border-danger/60 bg-card shadow-e2'
+              : active
+                ? 'border-accent/60 bg-card shadow-e2'
+                : isRoot
+                  ? 'border-warn/50 bg-card'
+                  : 'border-border bg-card/90',
+            match ? 'ring-2 ring-accent' : '',
+          ].join(' ')}
+        >
+          <span className="relative shrink-0">
+            <AgentAvatar agent={agent} size={isRoot ? 44 : 40} rounded="rounded-full" status={status} />
+            <StatusDot status={status} size="md" ring className="absolute -bottom-0.5 -right-0.5" />
           </span>
-          {isRoot && <Star aria-hidden="true" className="h-3 w-3 shrink-0 fill-current text-yellow-300" />}
-        </div>
-        <div className="truncate text-[10px] text-slate-300">{role}</div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-1">
-          <AffiliationChip agent={agent} size="xs" />
-          <ModelTierChip agent={agent} size="xs" />
-          <PaidToolsBadge agent={agent} size="xs" />
-        </div>
-        {stars > 0 && !isRoot && (
-          <div aria-hidden="true" className="mt-0.5 flex gap-px text-yellow-400">
-            {Array.from({ length: stars }).map((_, i) => (
-              <Star key={i} className="h-2 w-2 fill-current" />
-            ))}
-          </div>
-        )}
-      </div>
-
-      <Handle type="source" position={Position.Bottom} className="!h-1.5 !w-1.5 !border-0 !bg-slate-600" />
-
-      {/* Hover detail — appears on hover, never blocks the click-to-open. */}
-      <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-64 -translate-x-1/2 rounded-lg border border-slate-700 bg-slate-900/95 p-3 text-left shadow-2xl shadow-black/60 backdrop-blur-md group-hover:block">
-        <div className="text-sm font-semibold text-white">{agent.displayName || agent.name}</div>
-        <div className="text-[11px] text-slate-400">{role}</div>
-        <div className="mt-2 flex flex-wrap gap-1">
-          <span className={`rounded border px-1.5 py-0.5 text-[10px] ${affil.chip} ${affil.text}`}>
-            {affil.label}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1">
+              <span className="truncate text-body font-semibold text-fg-strong">{name}</span>
+              {isRoot && <Star aria-hidden="true" className="h-3 w-3 shrink-0 fill-current text-warn" />}
+            </span>
+            <span className={`block truncate text-caption ${status === 'error' ? 'font-medium text-danger' : 'text-muted'}`}>
+              {status === 'error' ? 'Needs attention' : roleLine(agent)}
+            </span>
+            <span className="mt-1 flex items-center gap-1 overflow-hidden">
+              <AffiliationChip agent={agent} size="xs" />
+              <ModelTierChip agent={agent} size="xs" />
+              <PaidToolsBadge agent={agent} size="xs" compact />
+            </span>
           </span>
-          {agent.rank && (
-            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300">{agent.rank}</span>
-          )}
-          {agent.domain && (
-            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300">
-              {prettyDomain(agent.domain)}
-            </span>
-          )}
-          {subordinates > 0 && (
-            <span className="rounded bg-unicorn-500/20 px-1.5 py-0.5 text-[10px] text-unicorn-200">
-              {subordinates} report{subordinates > 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-        {agent.model && (
-          <div className="mt-2 text-[11px]">
-            <span className="text-slate-400">Model: </span>
-            <span className="text-cyan-300">{agent.model}</span>
-            <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] leading-none ${tier.chip}`}>{tier.label}</span>
-          </div>
-        )}
-        {paid && (
-          <div className="mt-2 flex items-start gap-1 text-[11px] text-amber-200">
-            <span className="truncate">{paid}</span>
-          </div>
-        )}
-        {capabilities.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {capabilities.map((c) => (
-              <span key={c} className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[10px] text-slate-300">
-                {c}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+        </button>
+      </Tooltip>
+
+      {autonomy?.total > 0 && (
+        <Tooltip content={autonomyLine(autonomy)}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onAutonomy?.(agent.id);
+            }}
+            aria-label={`${name}: ${autonomyLine(autonomy).replace(/ · /g, ', ')}. Show them in Autonomous.`}
+            className={`absolute -top-2.5 right-3 z-raised flex h-5 items-center gap-0.5 rounded-full border px-1.5 text-micro font-semibold tabular-nums shadow-e1 transition-[filter,color] duration-fast hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3 [@media(pointer:coarse)]:after:content-[''] ${autoTone}`}
+          >
+            <Clock aria-hidden="true" className="h-3 w-3" />
+            {autonomy.total}
+          </button>
+        </Tooltip>
+      )}
+
+      {subordinates > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onToggle?.(agent.id);
+          }}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? `Show the ${hiddenCount} agents under ${name}` : `Hide the agents under ${name}`}
+          className="absolute -bottom-3 left-1/2 z-raised flex h-6 -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-elevated px-1.5 text-micro font-semibold tabular-nums text-muted shadow-e1 transition-colors duration-fast hover:border-border-strong hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {collapsed ? <ChevronRight aria-hidden="true" className="h-3 w-3" /> : <ChevronDown aria-hidden="true" className="h-3 w-3" />}
+          {collapsed ? hiddenCount : subordinates}
+        </button>
+      )}
     </div>
   );
 }

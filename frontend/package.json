@@ -6,7 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "audit:contrast": "node scripts/audit-contrast.mjs",
+    "audit:design": "node scripts/audit-design-system.mjs",
+    "audit": "npm run audit:contrast && npm run audit:design",
+    "mock": "node dev/mock-api.mjs --port 8100 --scenario normal",
+    "dev:mock": "VITE_API_URL=/api/v1 VITE_DEV_MODE=true vite"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",

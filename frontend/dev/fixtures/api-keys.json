@@ -1,0 +1,95 @@
+{
+  "userKeys": [
+    {
+      "id": "0067d95a-70c2-4cce-aea9-d6db815441b1",
+      "userId": "dev-user-001",
+      "name": "Local scripts",
+      "keyPrefix": "brg_mk1a",
+      "permissions": [
+        "chat",
+        "read"
+      ],
+      "rateLimit": 100,
+      "expiresAt": "$now+20d",
+      "lastUsedAt": "$now-2h",
+      "usageCount": 1842,
+      "isActive": true,
+      "createdAt": "$now-70d",
+      "createdVia": "ui"
+    },
+    {
+      "id": "184657b9-0cb6-403a-a4f3-bfc71580434d",
+      "userId": "dev-user-001",
+      "name": "Stable bridge (persephone seat)",
+      "keyPrefix": "brg_mk2b",
+      "permissions": [
+        "chat",
+        "read",
+        "write"
+      ],
+      "rateLimit": 100,
+      "expiresAt": "$now+70d",
+      "lastUsedAt": "$now-9m",
+      "usageCount": 322,
+      "isActive": true,
+      "createdAt": "$now-20d",
+      "createdVia": "ui"
+    },
+    {
+      "id": "c69ed523-75ef-436d-a618-d5dcf8e5eabf",
+      "userId": "dev-user-001",
+      "name": "Old laptop (revoked)",
+      "keyPrefix": "brg_mk3c",
+      "permissions": [
+        "read"
+      ],
+      "rateLimit": 100,
+      "expiresAt": "$now-110d",
+      "lastUsedAt": "$now-120d",
+      "usageCount": 14,
+      "isActive": false,
+      "createdAt": "$now-200d",
+      "createdVia": "ui"
+    }
+  ],
+  "agentKeys": {
+    "the-general": [
+      {
+        "id": "56bb7a45-a111-43be-ad94-cb267dd79ce0",
+        "agentId": "the-general",
+        "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "name": "Brigade MCP",
+        "keyPrefix": "brg_ag1d",
+        "permissions": [
+          "chat",
+          "read"
+        ],
+        "rateLimit": 60,
+        "expiresAt": "$now+80d",
+        "lastUsedAt": "$now-1h",
+        "usageCount": 912,
+        "isActive": true,
+        "createdAt": "$now-30d"
+      }
+    ],
+    "col-finance": [
+      {
+        "id": "f457512c-1c9e-40f1-a87f-57b947531438",
+        "agentId": "col-finance",
+        "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "name": "Accounting-Ops federation",
+        "keyPrefix": "brg_ag2e",
+        "permissions": [
+          "chat",
+          "read"
+        ],
+        "rateLimit": 60,
+        "expiresAt": "$now+80d",
+        "lastUsedAt": "$now-5h",
+        "usageCount": 141,
+        "isActive": true,
+        "createdAt": "$now-12d"
+      }
+    ]
+  }
+}

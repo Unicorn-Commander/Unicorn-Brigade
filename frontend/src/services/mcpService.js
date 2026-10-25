@@ -1,20 +1,15 @@
 // MCP Registry API Service
-import { buildAuthHeaders, handleUnauthorized } from './authHeaders';
+import { apiFetch } from './http';
 
 class MCPService {
-  constructor() {
-    this.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8100/api/v1';
-  }
-
   async request(endpoint, options = {}) {
     try {
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
+      // Unified client: auth headers, silent refresh + retry on a lapsed
+      // access token, consistent 401 handling (was a raw fetch that 401'd
+      // the MCP pages after the token aged out).
+      const response = await apiFetch(endpoint, {
         ...options,
-        credentials: 'include',
-        headers: buildAuthHeaders({
-          'Content-Type': 'application/json',
-          ...options.headers,
-        }),
+        headers: { 'Content-Type': 'application/json', ...options.headers },
       });
 
       const contentType = response.headers.get('content-type');
@@ -27,10 +22,10 @@ class MCPService {
       }
 
       if (!response.ok) {
-        if (response.status === 401 && !endpoint.includes('/auth/')) {
-          handleUnauthorized();
-        }
-        throw new Error(data.error || data.message || `API Error: ${response.statusText}`);
+        const err = new Error(data?.error || data?.message || data?.detail || `Request failed with status ${response.status}`);
+        err.status = response.status;
+        err.data = data;
+        throw err;
       }
 
       return data;

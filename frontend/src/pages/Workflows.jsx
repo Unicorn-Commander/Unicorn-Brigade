@@ -1,1146 +1,579 @@
-import { useState, useEffect } from 'react';
-import {
-  Search,
-  Filter,
-  Play,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  ChevronRight,
-  ChevronDown,
-  Users,
-  Cpu,
-  DollarSign,
-  RefreshCw,
-  X,
-  Loader2,
-  GitBranch,
-  ArrowRight,
-  Zap,
-  Settings,
-  FileText,
-  Tag,
-  Timer,
-  Activity,
-  PauseCircle,
-  XCircle,
-  Eye,
-  BarChart3,
-  List,
-  Network,
-  Grid3x3
-} from 'lucide-react';
-import { toast } from 'react-hot-toast';
+/**
+ * Workflows — templates to run and the executions they produced.
+ *
+ * Templates: toolbar → grid/list of cards → all four states (+ filtered-empty).
+ * Executions: a DataTable with status chips that carry the failure reason.
+ * Running, viewing and retrying all happen in one side panel
+ * (WorkflowExecutionPanel), so the page has no execution modal of its own.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GitBranch, Activity, RefreshCw, Play, Eye, XCircle, RotateCcw, Users, PauseCircle, Network, List, DollarSign, CheckCircle2 } from 'lucide-react';
 import notify from '../utils/notify';
+import { humanize } from '../utils/errors';
+import { apiJson } from '../services/http';
+import Breadcrumbs from '../components/Breadcrumbs';
 import WorkflowDiagram from '../components/WorkflowDiagram';
 import WorkflowGallery from '../components/WorkflowGallery';
 import WorkflowFilters from '../components/WorkflowFilters';
-import WorkflowExecutionPanel from '../components/WorkflowExecutionPanel';
-import Modal from '../components/ui/Modal';
-import Breadcrumbs from '../components/Breadcrumbs';
-import CardSkeleton from '../components/skeletons/CardSkeleton';
-import TableSkeleton from '../components/skeletons/TableSkeleton';
-import { apiJson, ApiError } from '../services/http';
+import WorkflowExecutionPanel, { ExecStatusChip, normalizeExecution, isActiveState, fmtDuration, fmtCost } from '../components/WorkflowExecutionPanel';
+import { counts } from '../components/WorkflowCard';
+import { relativeTime, absoluteTime } from '../components/ActivityFeed';
+import { Button, IconButton, Chip, DataTable, Modal, Tabs, Tooltip, StatCard, Page, PageHeader, OfflineState, LoadingState } from '../components/ui';
 
-// Tag colors
-const tagColors = {
-  finance: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  research: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  sales: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  devops: 'bg-unicorn-500/20 text-unicorn-400 border-unicorn-500/30',
-  content: 'bg-unicorn-500/20 text-unicorn-400 border-unicorn-500/30',
-  legal: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
-  medical: 'bg-red-500/20 text-red-400 border-red-500/30',
-  investment: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  marketing: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  seo: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
-  incident: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
-  monitoring: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
-  analysis: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
-  documents: 'bg-lime-500/20 text-lime-400 border-lime-500/30',
-  compliance: 'bg-unicorn-500/20 text-unicorn-400 border-unicorn-500/30',
-  outreach: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  documentation: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+const COMPLEXITY = {
+  simple: (c) => c.steps <= 3 && c.checkpoints === 0,
+  moderate: (c) => c.steps >= 4 && c.steps <= 5 && c.checkpoints <= 1,
+  complex: (c) => c.steps >= 6 || c.checkpoints > 1,
 };
 
-// Status colors and icons
-const statusConfig = {
-  pending: { color: 'text-slate-400', bg: 'bg-slate-500/20', icon: Clock },
-  running: { color: 'text-blue-400', bg: 'bg-blue-500/20', icon: Activity },
-  waiting: { color: 'text-amber-400', bg: 'bg-amber-500/20', icon: PauseCircle },
-  completed: { color: 'text-emerald-400', bg: 'bg-emerald-500/20', icon: CheckCircle },
-  failed: { color: 'text-red-400', bg: 'bg-red-500/20', icon: XCircle },
-  cancelled: { color: 'text-slate-400', bg: 'bg-slate-500/20', icon: XCircle },
-};
+function sortTemplates(list, sort) {
+  const by = (fn) => [...list].sort(fn);
+  switch (sort) {
+    case 'name-asc':
+      return by((a, b) => (a.name || '').localeCompare(b.name || ''));
+    case 'name-desc':
+      return by((a, b) => (b.name || '').localeCompare(a.name || ''));
+    case 'steps-asc':
+      return by((a, b) => counts(a).steps - counts(b).steps);
+    case 'steps-desc':
+      return by((a, b) => counts(b).steps - counts(a).steps);
+    default:
+      return list;
+  }
+}
 
-const Workflows = () => {
-  // State for workflow templates
+const shortId = (id) => (id ? `${String(id).slice(0, 8)}…` : '');
+
+export default function Workflows() {
+  const [tab, setTab] = useState('templates');
   const [templates, setTemplates] = useState([]);
-  const [filteredTemplates, setFilteredTemplates] = useState([]);
-  const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [templateDetail, setTemplateDetail] = useState(null);
-  const [selectedWorkflow, setSelectedWorkflow] = useState(null);
-  const [recentExecutions, setRecentExecutions] = useState([]);
-
-  // State for executions
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [templatesError, setTemplatesError] = useState(null);
   const [executions, setExecutions] = useState([]);
-  const [selectedExecution, setSelectedExecution] = useState(null);
-
-  // State for model config
-  // UI State
-  const [loading, setLoading] = useState(true);
   const [executionsLoading, setExecutionsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTag, setSelectedTag] = useState('');
-  const [selectedComplexity, setSelectedComplexity] = useState('');
-  const [activeTab, setActiveTab] = useState('templates'); // templates, executions
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [showExecutionModal, setShowExecutionModal] = useState(false);
-  const [healthStatus, setHealthStatus] = useState(null);
-  const [pollingExecution, setPollingExecution] = useState(null);
-  const [allTags, setAllTags] = useState([]);
-  const [detailViewMode, setDetailViewMode] = useState('diagram'); // 'list' or 'diagram'
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
-  const [sortBy, setSortBy] = useState('newest');
+  const [executionsError, setExecutionsError] = useState(null);
+  const [health, setHealth] = useState(null); // 'connected' | 'error' | null
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  const [query, setQuery] = useState('');
+  const [tag, setTag] = useState('');
+  const [complexity, setComplexity] = useState('');
+  const [sort, setSort] = useState('newest');
+  const [view, setView] = useState('grid');
+  const [detail, setDetail] = useState(null); // template detail in the modal
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailSteps, setDetailSteps] = useState('diagram');
+  const [busyId, setBusyId] = useState(null);
+  const [panel, setPanel] = useState(null); // { workflow, execution }
+  const detailCache = useRef(new Map());
 
-  // Load data on mount
-  useEffect(() => {
-    loadTemplates();
-    loadExecutions();
-    checkHealth();
-  }, []);
-
-  // Apply filters when templates or search/tag/complexity/sort changes
-  useEffect(() => {
-    applyFilters();
-  }, [templates, searchQuery, selectedTag, selectedComplexity, sortBy]);
-
-  // Extract unique tags
-  useEffect(() => {
-    const tags = new Set();
-    templates.forEach(t => {
-      (t.tags || []).forEach(tag => tags.add(tag));
-    });
-    setAllTags(Array.from(tags).sort());
-  }, [templates]);
-
-  // Poll for execution status
-  useEffect(() => {
-    let interval;
-    if (pollingExecution) {
-      interval = setInterval(async () => {
-        try {
-          const data = await apiJson(`/hierarchical/executions/${pollingExecution}`);
-          const execution = data.execution;
-
-          // Update execution in list
-          setExecutions(prev => prev.map(e =>
-            e.id === pollingExecution ? execution : e
-          ));
-
-          // Update selected execution if viewing it
-          if (selectedExecution?.id === pollingExecution) {
-            setSelectedExecution(execution);
-          }
-
-          // Stop polling if completed or failed
-          if (['completed', 'failed', 'cancelled'].includes(execution.state)) {
-            setPollingExecution(null);
-            notify.success(`Workflow ${execution.state}`);
-          }
-        } catch (error) {
-          // Keep polling on transient errors — next tick retries.
-          console.error('Polling error:', error);
-        }
-      }, 2000);
-    }
-    return () => clearInterval(interval);
-  }, [pollingExecution, selectedExecution?.id]);
-
-  const checkHealth = async () => {
+  // ── data ──
+  const checkHealth = useCallback(async () => {
     try {
       const data = await apiJson('/hierarchical/health');
-      setHealthStatus(data.status === 'healthy' ? 'connected' : 'error');
-    } catch (error) {
-      console.error('Health check failed:', error);
-      setHealthStatus('error');
+      setHealth(data?.status === 'healthy' ? 'connected' : 'error');
+    } catch {
+      setHealth('error');
     }
-  };
+  }, []);
 
-  const loadTemplates = async () => {
-    setLoading(true);
+  const loadTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    setTemplatesError(null);
     try {
-      const [data] = await Promise.all([
-        apiJson('/hierarchical/templates'),
-        new Promise(resolve => setTimeout(resolve, 300)),
-      ]);
-      setTemplates(data.workflows || []);
-    } catch (error) {
-      console.error('Failed to load templates:', error);
-      toast.error(error instanceof ApiError
-        ? 'Failed to load workflow templates'
-        : 'Failed to connect to workflow service');
+      const data = await apiJson('/hierarchical/templates');
+      setTemplates(data?.workflows || []);
+    } catch (err) {
+      setTemplatesError(err);
     } finally {
-      setLoading(false);
+      setTemplatesLoading(false);
     }
-  };
+  }, []);
 
-  const loadTemplateDetail = async (templateId) => {
-    try {
-      const data = await apiJson(`/hierarchical/templates/${templateId}`);
-      setTemplateDetail(data.workflow);
-      return data.workflow;
-    } catch (error) {
-      console.error('Failed to load template detail:', error);
-      toast.error('Failed to load workflow details');
-    }
-    return null;
-  };
-
-  const loadExecutions = async () => {
-    setExecutionsLoading(true);
+  const loadExecutions = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setExecutionsLoading(true);
+    setExecutionsError(null);
     try {
       const data = await apiJson('/hierarchical/executions');
-      setExecutions(data.executions || []);
-    } catch (error) {
-      console.error('Failed to load executions:', error);
+      setExecutions((data?.executions || []).map(normalizeExecution));
+    } catch (err) {
+      if (!silent) setExecutionsError(err);
     } finally {
       setExecutionsLoading(false);
     }
+  }, []);
+
+  const reloadAll = useCallback(() => {
+    loadTemplates();
+    loadExecutions();
+    checkHealth();
+  }, [loadTemplates, loadExecutions, checkHealth]);
+
+  useEffect(() => {
+    reloadAll();
+  }, [reloadAll]);
+
+  // Keep the executions table live while anything is running.
+  const anyActive = executions.some((e) => isActiveState(e.state));
+  useEffect(() => {
+    if (!anyActive) return undefined;
+    const t = setInterval(() => loadExecutions({ silent: true }), 5000);
+    return () => clearInterval(t);
+  }, [anyActive, loadExecutions]);
+
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      reloadAll();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [reloadAll]);
+
+  const loadDetail = useCallback(async (id) => {
+    if (detailCache.current.has(id)) return detailCache.current.get(id);
+    const data = await apiJson(`/hierarchical/templates/${id}`);
+    const w = data?.workflow || data;
+    if (w) detailCache.current.set(id, w);
+    return w;
+  }, []);
+
+  // ── derived ──
+  const tags = useMemo(() => [...new Set(templates.flatMap((t) => t.tags || []))].sort(), [templates]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = templates.filter((t) => {
+      if (tag && !(t.tags || []).includes(tag)) return false;
+      if (complexity && !COMPLEXITY[complexity]?.(counts(t))) return false;
+      if (!q) return true;
+      return (t.name || '').toLowerCase().includes(q) || (t.description || '').toLowerCase().includes(q) || (t.tags || []).some((x) => x.toLowerCase().includes(q));
+    });
+    return sortTemplates(list, sort);
+  }, [templates, query, tag, complexity, sort]);
+  const hasFilters = Boolean(query || tag || complexity);
+  const clearFilters = () => {
+    setQuery('');
+    setTag('');
+    setComplexity('');
   };
+  const runningCount = executions.filter((e) => isActiveState(e.state)).length;
 
-  const applyFilters = () => {
-    let filtered = [...templates];
-
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(t =>
-        t.name?.toLowerCase().includes(query) ||
-        t.description?.toLowerCase().includes(query) ||
-        (t.tags || []).some(tag => tag.toLowerCase().includes(query))
-      );
-    }
-
-    // Tag filter
-    if (selectedTag) {
-      filtered = filtered.filter(t => (t.tags || []).includes(selectedTag));
-    }
-
-    // Complexity filter
-    if (selectedComplexity) {
-      filtered = filtered.filter(t => {
-        const stepCount = t.step_count || t.stepCount || (t.steps?.length || 0);
-        const checkpointCount = t.checkpoint_count || t.checkpointCount || 0;
-
-        switch (selectedComplexity) {
-          case 'simple':
-            return stepCount <= 3 && checkpointCount === 0;
-          case 'moderate':
-            return stepCount >= 4 && stepCount <= 5 && checkpointCount <= 1;
-          case 'complex':
-            return stepCount >= 6 || checkpointCount > 1;
-          default:
-            return true;
-        }
-      });
-    }
-
-    // Sorting
-    switch (sortBy) {
-      case 'name-asc':
-        filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        break;
-      case 'name-desc':
-        filtered.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
-        break;
-      case 'steps-asc':
-        filtered.sort((a, b) => {
-          const aSteps = a.step_count || a.stepCount || (a.steps?.length || 0);
-          const bSteps = b.step_count || b.stepCount || (b.steps?.length || 0);
-          return aSteps - bSteps;
-        });
-        break;
-      case 'steps-desc':
-        filtered.sort((a, b) => {
-          const aSteps = a.step_count || a.stepCount || (a.steps?.length || 0);
-          const bSteps = b.step_count || b.stepCount || (b.steps?.length || 0);
-          return bSteps - aSteps;
-        });
-        break;
-      case 'cost-asc':
-      case 'cost-desc':
-        // Cost is same for all templates with default preset, so no sorting needed
-        break;
-      case 'newest':
-      default:
-        // Keep original order (newest first from API)
-        break;
-    }
-
-    setFilteredTemplates(filtered);
-  };
-
-  const handleViewTemplate = async (template) => {
-    setSelectedTemplate(template);
-    const detail = await loadTemplateDetail(template.id);
-    if (detail) {
-      setShowDetailModal(true);
+  // ── actions ──
+  const openDetails = async (template) => {
+    setDetailLoading(true);
+    setDetail({ ...template });
+    try {
+      const w = await loadDetail(template.id);
+      if (w) setDetail(w);
+    } catch (err) {
+      notify.error(humanize(err, { what: 'loading the workflow' }));
+    } finally {
+      setDetailLoading(false);
     }
   };
 
-  const handleExecuteClick = async (template) => {
-    setSelectedTemplate(template);
-    const detail = await loadTemplateDetail(template.id);
-    if (detail) {
-      setSelectedWorkflow(detail);
+  const run = async (template) => {
+    setBusyId(template.id);
+    try {
+      const w = (await loadDetail(template.id)) || template;
+      setDetail(null);
+      setPanel({ workflow: w, execution: null });
+    } catch (err) {
+      notify.error(humanize(err, { what: 'opening the workflow' }));
+    } finally {
+      setBusyId(null);
     }
   };
 
-  const handleViewExecution = async (execution) => {
+  const viewExecution = async (execution) => {
     try {
       const data = await apiJson(`/hierarchical/executions/${execution.id}`);
-      setSelectedExecution(data.execution);
-      setShowExecutionModal(true);
-
-      // Start polling if running
-      if (['running', 'waiting'].includes(data.execution.state)) {
-        setPollingExecution(execution.id);
+      const ex = normalizeExecution(data);
+      let workflow = null;
+      try {
+        workflow = ex.workflowId ? await loadDetail(ex.workflowId) : null;
+      } catch {
+        workflow = null;
       }
-    } catch (error) {
-      console.error('Failed to load execution:', error);
-      toast.error('Failed to load execution details');
+      setPanel({ workflow: workflow || { id: ex.workflowId, name: ex.workflowName || ex.workflowId, tags: [] }, execution: ex });
+    } catch (err) {
+      notify.error(humanize(err, { what: 'opening the run' }));
     }
   };
 
-  const handleCancelExecution = async (executionId) => {
+  const cancelExecution = async (execution) => {
     try {
-      await apiJson(`/hierarchical/executions/${executionId}/cancel`, {
-        method: 'POST',
-      });
-      notify.success('Execution cancelled');
-      setPollingExecution(null);
-      await loadExecutions();
-    } catch (error) {
-      console.error('Failed to cancel:', error);
-      toast.error('Failed to cancel execution');
+      await apiJson(`/hierarchical/executions/${execution.id}/cancel`, { method: 'POST' });
+      notify.success('Run cancelled');
+      loadExecutions({ silent: true });
+    } catch (err) {
+      notify.error(humanize(err, { what: 'cancelling the run' }));
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Unknown';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  const runAgain = (execution) => {
+    const template = templates.find((t) => t.id === execution.workflowId);
+    if (template) run(template);
+    else notify.error('That workflow template is no longer available.');
   };
 
-  const formatDuration = (seconds) => {
-    if (!seconds) return '-';
-    if (seconds < 60) return `${seconds.toFixed(1)}s`;
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}m ${secs.toFixed(0)}s`;
-  };
+  const onExecutionChange = useCallback((ex) => {
+    setExecutions((list) => (list.some((e) => e.id === ex.id) ? list.map((e) => (e.id === ex.id ? { ...e, ...ex } : e)) : [ex, ...list]));
+  }, []);
 
-  const formatCost = (cost) => {
-    if (!cost || cost === 0) return 'Free';
-    return `$${cost.toFixed(4)}`;
-  };
-
-  return (
-    <div className="min-h-screen p-4 md:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <Breadcrumbs />
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
-              Hierarchical Workflows
-            </h1>
-            <p className="text-slate-400 mt-1">
-              3-Tier Agent Orchestration: Orchestrator → Team Leads → Workers
-            </p>
-          </div>
-
-          <div className="flex items-center space-x-4">
-            {/* Health Status */}
-            <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg ${
-              healthStatus === 'connected'
-                ? 'bg-emerald-500/20 text-emerald-400'
-                : healthStatus === 'error'
-                ? 'bg-red-500/20 text-red-400'
-                : 'bg-slate-500/20 text-slate-400'
-            }`}>
-              {healthStatus === 'connected' ? (
-                <CheckCircle className="w-4 h-4" />
-              ) : healthStatus === 'error' ? (
-                <AlertCircle className="w-4 h-4" />
-              ) : (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              )}
-              <span className="text-sm font-medium">
-                {healthStatus === 'connected' ? 'Connected' : healthStatus === 'error' ? 'Disconnected' : 'Checking...'}
-              </span>
-            </div>
-
-            {/* Refresh Button */}
-            <button
-              onClick={() => { loadTemplates(); loadExecutions(); checkHealth(); }}
-              className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
-              title="Refresh"
-              aria-label="Refresh workflows"
-            >
-              <RefreshCw className="w-5 h-5 text-slate-400" />
-            </button>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex space-x-4 border-b border-slate-700">
+  // ── executions table ──
+  const columns = [
+    {
+      key: 'workflow',
+      label: 'Workflow',
+      nowrap: false,
+      render: (e) => (
+        <div className="min-w-0">
           <button
-            onClick={() => setActiveTab('templates')}
-            className={`px-4 py-2 font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === 'templates'
-                ? 'text-unicorn-400 border-unicorn-400'
-                : 'text-slate-400 border-transparent hover:text-slate-200'
-            }`}
+            type="button"
+            onClick={() => viewExecution(e)}
+            className="max-w-[18rem] truncate rounded-chip text-left font-semibold text-fg-strong hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <div className="flex items-center space-x-2">
-              <GitBranch className="w-4 h-4" />
-              <span>Workflow Templates</span>
-              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-xs">
-                {templates.length}
-              </span>
-            </div>
+            {e.workflowName || e.workflowId}
           </button>
-          <button
-            onClick={() => setActiveTab('executions')}
-            className={`px-4 py-2 font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === 'executions'
-                ? 'text-unicorn-400 border-unicorn-400'
-                : 'text-slate-400 border-transparent hover:text-slate-200'
-            }`}
-          >
-            <div className="flex items-center space-x-2">
-              <Activity className="w-4 h-4" />
-              <span>Execution History</span>
-              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-xs">
-                {executions.length}
-              </span>
-            </div>
-          </button>
+          <p className="font-mono text-caption text-muted">{shortId(e.id)}</p>
         </div>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      nowrap: false,
+      render: (e) => (
+        <div className="flex min-w-0 flex-col gap-1">
+          <ExecStatusChip state={e.state} className="w-fit" />
+          {e.state === 'failed' && (
+            <Tooltip content={e.error || 'No reason was recorded'}>
+              <p className="max-w-[60vw] truncate text-caption text-danger md:max-w-[22rem]">{e.error || 'No reason was recorded'}</p>
+            </Tooltip>
+          )}
+          {e.pendingCheckpoint && <p className="max-w-[60vw] truncate text-caption text-warn md:max-w-[22rem]">{e.pendingCheckpoint.prompt || e.pendingCheckpoint.name}</p>}
+        </div>
+      ),
+    },
+    {
+      key: 'started',
+      label: 'Started',
+      render: (e) =>
+        e.startedAt ? (
+          <Tooltip content={absoluteTime(e.startedAt)}>
+            <time dateTime={e.startedAt}>{relativeTime(e.startedAt)}</time>
+          </Tooltip>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+    },
+    { key: 'duration', label: 'Duration', render: (e) => <span className="tabular-nums">{fmtDuration(e.durationSeconds)}</span> },
+    { key: 'cost', label: 'Cost', render: (e) => <span className="tabular-nums">{fmtCost(e.totalCost)}</span> },
+    {
+      key: 'actions',
+      label: 'Actions',
+      align: 'right',
+      render: (e) => (
+        <span className="inline-flex items-center gap-1">
+          <IconButton icon={Eye} label="Open run" size="sm" onClick={() => viewExecution(e)} />
+          {isActiveState(e.state) && <IconButton icon={XCircle} label="Cancel run" size="sm" onClick={() => cancelExecution(e)} className="text-danger hover:text-danger" />}
+          {e.state === 'completed' && <IconButton icon={RotateCcw} label="Run again" size="sm" onClick={() => runAgain(e)} />}
+        </span>
+      ),
+    },
+  ];
 
-        {/* Templates Tab */}
-        {activeTab === 'templates' && (
-          <>
-            {/* Enhanced Filters */}
-            <WorkflowFilters
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              selectedTag={selectedTag}
-              setSelectedTag={setSelectedTag}
-              selectedComplexity={selectedComplexity}
-              setSelectedComplexity={setSelectedComplexity}
-              viewMode={viewMode}
-              setViewMode={setViewMode}
-              sortBy={sortBy}
-              setSortBy={setSortBy}
-              allTags={allTags}
-              resultCount={filteredTemplates.length}
-              totalCount={templates.length}
-            />
+  const totalCost = executions.reduce((s, e) => s + (Number(e.totalCost) || 0), 0);
 
-            {/* Gallery View */}
-            <WorkflowGallery
-              workflows={filteredTemplates}
-              viewMode={viewMode}
-              loading={loading}
-              onViewDetails={handleViewTemplate}
-              onExecute={handleExecuteClick}
-            />
+  // ── render ──
+  const healthChip =
+    health === 'connected' ? (
+      <Chip tone="ok" dot>
+        Engine connected
+      </Chip>
+    ) : health === 'error' ? (
+      <Chip tone="danger" dot>
+        Engine unreachable
+      </Chip>
+    ) : (
+      <Chip dot>Checking engine…</Chip>
+    );
 
-            {recentExecutions.length > 0 && (
-              <div className="mt-8">
-                <h3 className="text-xl font-bold text-white mb-4">Recent Executions</h3>
-                {executionsLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <CardSkeleton count={3} />
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {recentExecutions.map(execution => (
-                      <div
-                        key={execution.id}
-                        className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-4"
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="font-medium text-white">
-                            {execution.workflowName || execution.workflow_name || execution.workflowId || execution.workflow_id}
-                          </span>
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            execution.state === 'completed' ? 'bg-green-500/20 text-green-400' :
-                            execution.state === 'failed' ? 'bg-red-500/20 text-red-400' :
-                            'bg-blue-500/20 text-blue-400'
-                          }`}>
-                            {execution.state}
-                          </span>
-                        </div>
-                        <div className="text-sm text-slate-400">
-                          {execution.startedAt || execution.started_at
-                            ? new Date(execution.startedAt || execution.started_at).toLocaleString()
-                            : 'Just now'}
-                        </div>
-                        {((execution.totalCost ?? execution.total_cost) !== undefined) && (
-                          <div className="text-xs text-green-400 mt-2">
-                            Cost: ${((execution.totalCost ?? execution.total_cost) || 0).toFixed(4)}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
+  let templatesBody;
+  if (offline && !templates.length) templatesBody = <OfflineState onRetry={reloadAll} />;
+  else
+    templatesBody = (
+      <>
+        <WorkflowFilters
+          query={query}
+          onQuery={setQuery}
+          tag={tag}
+          onTag={setTag}
+          complexity={complexity}
+          onComplexity={setComplexity}
+          sort={sort}
+          onSort={setSort}
+          view={view}
+          onView={setView}
+          tags={tags}
+          resultCount={filtered.length}
+          totalCount={templates.length}
+          onClear={clearFilters}
+        />
+        <WorkflowGallery
+          workflows={filtered}
+          viewMode={view}
+          loading={templatesLoading}
+          error={templatesError ? humanize(templatesError, { what: 'loading the templates' }) : null}
+          onRetry={loadTemplates}
+          onViewDetails={openDetails}
+          onExecute={run}
+          busyId={busyId}
+          hasFilters={hasFilters}
+          onClearFilters={clearFilters}
+        />
+      </>
+    );
+
+  let executionsBody;
+  if (offline && !executions.length) executionsBody = <OfflineState onRetry={reloadAll} />;
+  else
+    executionsBody = (
+      <>
+        {!executionsLoading && !executionsError && executions.length > 0 && (
+          <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard icon={Activity} label="Runs" value={executions.length} />
+            <StatCard icon={CheckCircle2} label="Completed" value={executions.filter((e) => e.state === 'completed').length} />
+            <StatCard icon={Play} label="Running now" value={runningCount} />
+            <StatCard icon={DollarSign} label="Spent" value={fmtCost(totalCost)} />
+          </div>
         )}
-
-        {/* Executions Tab */}
-        {activeTab === 'executions' && (
-          <>
-            {/* Execution Stats Summary */}
-            {executionsLoading && (
-              <div className="space-y-4">
-                <TableSkeleton rows={6} columns={6} />
-                <div className="lg:hidden">
-                  <CardSkeleton count={4} />
-                </div>
-              </div>
-            )}
-
-            {!executionsLoading && executions.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-400">Total Executions</span>
-                    <Activity className="w-4 h-4 text-unicorn-400" />
-                  </div>
-                  <p className="text-2xl font-bold text-white mt-1">{executions.length}</p>
-                </div>
-                <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-400">Completed</span>
-                    <CheckCircle className="w-4 h-4 text-emerald-400" />
-                  </div>
-                  <p className="text-2xl font-bold text-emerald-400 mt-1">
-                    {executions.filter(e => e.state === 'completed').length}
-                  </p>
-                </div>
-                <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-400">Running</span>
-                    <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-                  </div>
-                  <p className="text-2xl font-bold text-blue-400 mt-1">
-                    {executions.filter(e => ['running', 'waiting'].includes(e.state)).length}
-                  </p>
-                </div>
-                <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-400">Total Cost</span>
-                    <DollarSign className="w-4 h-4 text-amber-400" />
-                  </div>
-                  <p className="text-2xl font-bold text-amber-400 mt-1">
-                    ${executions.reduce((sum, e) => sum + (e.total_cost || 0), 0).toFixed(4)}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Executions List */}
-            {!executionsLoading && executions.length > 0 ? (
-              <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl overflow-hidden">
-                <div className="hidden lg:block overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-slate-700">
-                        <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Workflow</th>
-                        <th className="text-left px-6 py-4 text-sm font-medium text-slate-400">Status</th>
-                        <th className="text-left px-6 py-4 text-sm font-medium text-slate-400 hidden md:table-cell">Started</th>
-                        <th className="text-left px-6 py-4 text-sm font-medium text-slate-400 hidden lg:table-cell">Duration</th>
-                        <th className="text-left px-6 py-4 text-sm font-medium text-slate-400 hidden lg:table-cell">Cost</th>
-                        <th className="text-right px-6 py-4 text-sm font-medium text-slate-400">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {executions.map(execution => {
-                        const status = statusConfig[execution.state] || statusConfig.pending;
-                        const StatusIcon = status.icon;
-                        const isActive = ['running', 'waiting'].includes(execution.state);
-
-                        return (
-                          <tr
-                            key={execution.id}
-                            className={`border-b border-slate-800 hover:bg-slate-800/50 transition-colors cursor-pointer ${
-                              isActive ? 'bg-blue-500/5' : ''
-                            }`}
-                            onClick={() => handleViewExecution(execution)}
-                          >
-                            <td className="px-6 py-4">
-                              <div>
-                                <p className="font-medium text-white">{execution.workflow_name || execution.workflow_id}</p>
-                                <p className="text-xs text-slate-400 font-mono">{execution.id.slice(0, 8)}...</p>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg ${status.bg}`}>
-                                {isActive ? (
-                                  <Loader2 className={`w-4 h-4 ${status.color} animate-spin`} />
-                                ) : (
-                                  <StatusIcon className={`w-4 h-4 ${status.color}`} />
-                                )}
-                                <span className={`text-sm capitalize ${status.color}`}>{execution.state}</span>
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-slate-400 hidden md:table-cell">
-                              <div>
-                                <p>{formatDate(execution.started_at)}</p>
-                                {execution.completed_at && (
-                                  <p className="text-xs text-slate-400">
-                                    Completed: {formatDate(execution.completed_at)}
-                                  </p>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-sm hidden lg:table-cell">
-                              <span className={`${
-                                execution.duration_seconds > 60 ? 'text-amber-400' :
-                                execution.duration_seconds > 0 ? 'text-emerald-400' :
-                                'text-slate-400'
-                              }`}>
-                                {formatDuration(execution.duration_seconds)}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm hidden lg:table-cell">
-                              <span className={`font-medium ${
-                                (execution.total_cost || 0) === 0 ? 'text-emerald-400' :
-                                (execution.total_cost || 0) < 0.1 ? 'text-slate-300' :
-                                'text-amber-400'
-                              }`}>
-                                {formatCost(execution.total_cost)}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex items-center justify-end space-x-2">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleViewExecution(execution); }}
-                                  className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                                  title="View Details"
-                                  aria-label="View execution details"
-                                >
-                                  <Eye className="w-4 h-4 text-slate-400 hover:text-white" />
-                                </button>
-                                {isActive && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleCancelExecution(execution.id); }}
-                                    className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
-                                    title="Cancel"
-                                    aria-label="Cancel execution"
-                                  >
-                                    <XCircle className="w-4 h-4 text-red-400" />
-                                  </button>
-                                )}
-                                {execution.state === 'completed' && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      // Find template and re-run
-                                      const template = templates.find(t => t.id === execution.workflow_id);
-                                      if (template) handleExecuteClick(template);
-                                    }}
-                                    className="p-2 hover:bg-unicorn-500/20 rounded-lg transition-colors"
-                                    title="Run Again"
-                                    aria-label="Run workflow again"
-                                  >
-                                    <RefreshCw className="w-4 h-4 text-unicorn-400" />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="lg:hidden space-y-4 p-4">
-                  {executions.map((execution) => {
-                    const status = statusConfig[execution.state] || statusConfig.pending;
-                    const StatusIcon = status.icon;
-                    const isActive = ['running', 'waiting'].includes(execution.state);
-
-                    return (
-                      <div
-                        key={execution.id}
-                        className="bg-slate-800/60 border border-slate-700/50 rounded-lg p-4 space-y-3"
-                        onClick={() => handleViewExecution(execution)}
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <p className="font-medium text-white">
-                              {execution.workflow_name || execution.workflow_id}
-                            </p>
-                            <p className="text-xs text-slate-400 font-mono">{execution.id.slice(0, 8)}...</p>
-                          </div>
-                          <span className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg ${status.bg}`}>
-                            {isActive ? (
-                              <Loader2 className={`w-4 h-4 ${status.color} animate-spin`} />
-                            ) : (
-                              <StatusIcon className={`w-4 h-4 ${status.color}`} />
-                            )}
-                            <span className={`text-xs capitalize ${status.color}`}>{execution.state}</span>
-                          </span>
-                        </div>
-
-                        <div className="text-sm text-slate-400">
-                          <span className="font-medium text-slate-300">Started:</span> {formatDate(execution.started_at)}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
-                          <span>
-                            Duration: {formatDuration(execution.duration_seconds)}
-                          </span>
-                          <span>
-                            Cost: {formatCost(execution.total_cost)}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-2 border-t border-slate-700/50">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleViewExecution(execution); }}
-                            className="px-3 py-2 min-h-[44px] bg-slate-700/60 text-slate-200 rounded-lg hover:bg-slate-600 transition-colors"
-                          >
-                            View
-                          </button>
-                          {isActive && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleCancelExecution(execution.id); }}
-                              className="px-3 py-2 min-h-[44px] bg-red-500/20 text-red-300 rounded-lg hover:bg-red-500/30 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          )}
-                          {execution.state === 'completed' && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const template = templates.find(t => t.id === execution.workflow_id);
-                                if (template) handleExecuteClick(template);
-                              }}
-                              className="px-3 py-2 min-h-[44px] bg-unicorn-500/20 text-unicorn-300 rounded-lg hover:bg-unicorn-500/30 transition-colors"
-                            >
-                              Run Again
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : !executionsLoading ? (
-              <div className="text-center py-12">
-                <Activity className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-slate-300 mb-2">No executions yet</h3>
-                <p className="text-slate-400 mb-6">Run a workflow to see its execution history here</p>
-                <button
-                  onClick={() => setActiveTab('templates')}
-                  className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors"
-                >
-                  Browse Workflows
-                </button>
-              </div>
-            ) : (
-              <TableSkeleton rows={5} columns={6} />
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Template Detail Modal */}
-      {showDetailModal && templateDetail && (
-        <Modal
-          onClose={() => setShowDetailModal(false)}
-          ariaLabel={`${templateDetail.name} details`}
-          showClose={false}
-          panelClassName="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-4xl w-full max-h-[85vh] overflow-y-auto focus:outline-none"
-        >
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-unicorn-600 to-unicorn-500 flex items-center justify-center">
-                  <GitBranch className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white">{templateDetail.name}</h2>
-                  <p className="text-slate-400">{templateDetail.description}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowDetailModal(false)}
-                aria-label="Close dialog"
-                className="text-slate-400 hover:text-white p-3 min-h-[44px] min-w-[44px] hover:bg-slate-800 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Tags */}
-            <div className="flex flex-wrap gap-2 mb-6">
-              {(templateDetail.tags || []).map(tag => (
-                <span
-                  key={tag}
-                  className={`px-3 py-1 rounded text-sm border ${tagColors[tag] || 'bg-slate-500/20 text-slate-400 border-slate-500/30'}`}
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-
-            {/* Required Inputs */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-white mb-3">Required Inputs</h3>
-              <div className="flex flex-wrap gap-2">
-              {(templateDetail.required_inputs || templateDetail.requiredInputs || []).map(input => (
-                  <span
-                    key={input}
-                    className="px-3 py-1 bg-slate-800 rounded text-sm text-slate-300 font-mono"
-                  >
-                    {input}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Team Leads */}
-            {templateDetail.team_leads && templateDetail.team_leads.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-white mb-3">Team Leads Involved</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {templateDetail.team_leads.map(lead => (
-                    <div
-                      key={lead.id}
-                      className="p-4 bg-slate-800/50 rounded-lg border border-slate-700"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <Users className="w-5 h-5 text-unicorn-400" />
-                        <div>
-                          <p className="font-medium text-white">{lead.name}</p>
-                          <p className="text-xs text-slate-400">{lead.domain} domain</p>
-                        </div>
-                      </div>
-                      {lead.workers && lead.workers.length > 0 && (
-                        <p className="text-xs text-slate-400 mt-2">
-                          {lead.workers.length} workers available
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Workflow Steps */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold text-white">Workflow Steps</h3>
-                <div className="flex items-center space-x-2 bg-slate-800/50 rounded-lg p-1">
-                  <button
-                    onClick={() => setDetailViewMode('diagram')}
-                    className={`px-3 py-1.5 rounded-md flex items-center space-x-2 transition-colors ${
-                      detailViewMode === 'diagram'
-                        ? 'bg-unicorn-500 text-white'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <Network className="w-4 h-4" />
-                    <span className="text-sm">Diagram</span>
-                  </button>
-                  <button
-                    onClick={() => setDetailViewMode('list')}
-                    className={`px-3 py-1.5 rounded-md flex items-center space-x-2 transition-colors ${
-                      detailViewMode === 'list'
-                        ? 'bg-unicorn-500 text-white'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <List className="w-4 h-4" />
-                    <span className="text-sm">List</span>
-                  </button>
-                </div>
-              </div>
-
-              {detailViewMode === 'diagram' ? (
-                <WorkflowDiagram workflow={templateDetail} />
-              ) : (
-                <div className="space-y-3">
-                  {(templateDetail.steps || []).map((step, idx) => (
-                    <div
-                      key={step.id}
-                      className="flex items-start space-x-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-unicorn-500/20 flex items-center justify-center text-unicorn-400 font-semibold text-sm flex-shrink-0">
-                        {idx + 1}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-medium text-white">{step.name}</h4>
-                          <span className="text-xs text-slate-400 font-mono">{step.executor}</span>
-                        </div>
-                        <p className="text-sm text-slate-400 mt-1">{step.description}</p>
-                        {step.outputs && step.outputs.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {step.outputs.map(output => (
-                              <span
-                                key={output}
-                                className="px-2 py-0.5 bg-slate-700 rounded text-xs text-slate-300"
-                              >
-                                {output}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      {idx < (templateDetail.steps || []).length - 1 && (
-                        <ArrowRight className="w-4 h-4 text-slate-600 flex-shrink-0 mt-2" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Checkpoints */}
-            {templateDetail.checkpoints && templateDetail.checkpoints.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-white mb-3">Human Checkpoints</h3>
-                <div className="space-y-3">
-                  {templateDetail.checkpoints.map(checkpoint => (
-                    <div
-                      key={checkpoint.id}
-                      className="p-4 bg-amber-500/10 rounded-lg border border-amber-500/30"
-                    >
-                      <div className="flex items-center space-x-2 mb-2">
-                        <PauseCircle className="w-5 h-5 text-amber-400" />
-                        <span className="font-medium text-amber-400">{checkpoint.name}</span>
-                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-xs text-amber-400">
-                          {checkpoint.type}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-400">{checkpoint.prompt}</p>
-                      {checkpoint.options && checkpoint.options.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {checkpoint.options.map(option => (
-                            <span
-                              key={option}
-                              className="px-2 py-1 bg-slate-800 rounded text-xs text-slate-300"
-                            >
-                              {option}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex space-x-3 pt-4 border-t border-slate-700">
-              <button
-                onClick={() => { setShowDetailModal(false); handleExecuteClick(selectedTemplate); }}
-                className="flex-1 px-4 py-3 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center justify-center space-x-2"
-              >
-                <Play className="w-5 h-5" />
-                <span>Execute Workflow</span>
-              </button>
-            </div>
-        </Modal>
-      )}
-
-      {/* Execution Detail Modal */}
-      {showExecutionModal && selectedExecution && (
-        <Modal
-          onClose={() => { setShowExecutionModal(false); setPollingExecution(null); }}
-          ariaLabel={`${selectedExecution.workflow_name || selectedExecution.workflow_id} execution`}
-          showClose={false}
-          panelClassName="backdrop-blur-xl bg-slate-900/95 border border-slate-700/50 rounded-xl p-8 max-w-4xl w-full max-h-[85vh] overflow-y-auto focus:outline-none"
-        >
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center space-x-4">
-                <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${statusConfig[selectedExecution.state]?.bg || 'bg-slate-700'}`}>
-                  {(() => {
-                    const StatusIcon = statusConfig[selectedExecution.state]?.icon || Clock;
-                    return <StatusIcon className={`w-6 h-6 ${statusConfig[selectedExecution.state]?.color || 'text-slate-400'}`} />;
-                  })()}
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white">
-                    {selectedExecution.workflow_name || selectedExecution.workflow_id}
-                  </h2>
-                  <p className="text-slate-400 font-mono text-sm">{selectedExecution.id}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => { setShowExecutionModal(false); setPollingExecution(null); }}
-                aria-label="Close dialog"
-                className="text-slate-400 hover:text-white p-3 min-h-[44px] min-w-[44px] hover:bg-slate-800 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Status Banner */}
-            <div className={`p-4 rounded-lg mb-6 ${statusConfig[selectedExecution.state]?.bg || 'bg-slate-800'}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  {(() => {
-                    const StatusIcon = statusConfig[selectedExecution.state]?.icon || Clock;
-                    return <StatusIcon className={`w-5 h-5 ${statusConfig[selectedExecution.state]?.color || 'text-slate-400'}`} />;
-                  })()}
-                  <span className={`font-medium capitalize ${statusConfig[selectedExecution.state]?.color || 'text-slate-400'}`}>
-                    {selectedExecution.state}
-                  </span>
-                  {['running', 'waiting'].includes(selectedExecution.state) && (
-                    <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-                  )}
-                </div>
-                <div className="flex items-center space-x-4 text-sm">
-                  {selectedExecution.duration_seconds && (
-                    <span className="text-slate-400">
-                      <Timer className="w-4 h-4 inline mr-1" />
-                      {formatDuration(selectedExecution.duration_seconds)}
-                    </span>
-                  )}
-                  <span className="text-slate-400">
-                    <DollarSign className="w-4 h-4 inline" />
-                    {formatCost(selectedExecution.total_cost)}
-                  </span>
-                  {selectedExecution.total_tokens && (
-                    <span className="text-slate-400">
-                      <BarChart3 className="w-4 h-4 inline mr-1" />
-                      {selectedExecution.total_tokens.toLocaleString()} tokens
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Step Results */}
-            {selectedExecution.step_results && Object.keys(selectedExecution.step_results).length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-white mb-3">Step Results</h3>
-                <div className="space-y-3">
-                  {Object.entries(selectedExecution.step_results).map(([stepId, result], idx) => (
-                    <div
-                      key={stepId}
-                      className="p-4 bg-slate-800/50 rounded-lg border border-slate-700"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                            <CheckCircle className="w-4 h-4 text-emerald-400" />
-                          </div>
-                          <span className="font-medium text-white">{stepId}</span>
-                        </div>
-                        {result.model_used && (
-                          <span className="text-xs text-slate-400 font-mono">{result.model_used}</span>
-                        )}
-                      </div>
-                      <div className="bg-slate-900 rounded p-3 overflow-x-auto">
-                        <pre className="text-sm text-slate-300 whitespace-pre-wrap">
-                          {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
-                        </pre>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Final Outputs */}
-            {selectedExecution.outputs && Object.keys(selectedExecution.outputs).length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-white mb-3">Final Outputs</h3>
-                <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-4">
-                  <pre className="text-sm text-slate-300 whitespace-pre-wrap overflow-x-auto">
-                    {JSON.stringify(selectedExecution.outputs, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            )}
-
-            {/* Error Message */}
-            {selectedExecution.error && (
-              <div className="mb-6 p-4 bg-red-500/10 rounded-lg border border-red-500/30">
-                <div className="flex items-center space-x-2 mb-2">
-                  <AlertCircle className="w-5 h-5 text-red-400" />
-                  <span className="font-medium text-red-400">Error</span>
-                </div>
-                <p className="text-sm text-red-300">{selectedExecution.error}</p>
-              </div>
-            )}
-
-            {/* Model Config Used */}
-            {selectedExecution.model_config_used && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-white mb-3">Model Configuration</h3>
-                <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-4">
-                  <pre className="text-sm text-slate-300 whitespace-pre-wrap overflow-x-auto">
-                    {JSON.stringify(selectedExecution.model_config_used, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex space-x-3 pt-4 border-t border-slate-700">
-              {['running', 'waiting'].includes(selectedExecution.state) && (
-                <button
-                  onClick={() => handleCancelExecution(selectedExecution.id)}
-                  className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors flex items-center space-x-2"
-                >
-                  <XCircle className="w-4 h-4" />
-                  <span>Cancel Execution</span>
-                </button>
-              )}
-              <button
-                onClick={() => { setShowExecutionModal(false); setPollingExecution(null); }}
-                className="flex-1 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-        </Modal>
-      )}
-
-      {selectedWorkflow && (
-        <WorkflowExecutionPanel
-          workflow={selectedWorkflow}
-          onClose={() => setSelectedWorkflow(null)}
-          onExecutionComplete={(execution) => {
-            setRecentExecutions(prev => [execution, ...prev].slice(0, 10));
-            setSelectedWorkflow(null);
-            loadExecutions();
+        <DataTable
+          columns={columns}
+          rows={executions}
+          rowKey="id"
+          caption="Workflow executions"
+          loading={executionsLoading}
+          error={executionsError && { title: 'Couldn’t load the executions', detail: humanize(executionsError, { what: 'loading the executions' }), onRetry: loadExecutions }}
+          empty={{
+            icon: Activity,
+            title: 'No runs yet',
+            description: 'Run a workflow from the Templates tab and it shows up here with its steps, cost and outcome.',
+            action: (
+              <Button size="sm" icon={GitBranch} onClick={() => setTab('templates')}>
+                Browse templates
+              </Button>
+            ),
           }}
         />
-      )}
-    </div>
-  );
-};
+      </>
+    );
 
-export default Workflows;
+  const detailInputs = detail?.required_inputs || detail?.requiredInputs || [];
+  const detailLeads = detail?.team_leads || detail?.teamLeads || [];
+
+  return (
+    <Page>
+      <PageHeader
+        breadcrumbs={<Breadcrumbs />}
+        eyebrow="Command"
+        title="Workflows"
+        description={
+          templatesLoading
+            ? 'Three-tier runs: The General plans, team leads delegate, workers execute'
+            : `${templates.length} template${templates.length === 1 ? '' : 's'}${runningCount ? ` · ${runningCount} running now` : ''}`
+        }
+        actions={
+          <>
+            {healthChip}
+            <Button variant="secondary" icon={RefreshCw} onClick={reloadAll}>
+              Refresh
+            </Button>
+          </>
+        }
+        tabs={
+          <Tabs
+            value={tab}
+            onChange={setTab}
+            label="Workflow views"
+            idBase="wf-tab"
+            tabs={[
+              { id: 'templates', label: 'Templates', icon: GitBranch, count: templatesLoading ? undefined : templates.length },
+              { id: 'executions', label: 'Executions', icon: Activity, count: executionsLoading ? undefined : executions.length },
+            ]}
+          />
+        }
+      />
+
+      <div role="tabpanel" aria-labelledby={`wf-tab-${tab}`}>
+        {tab === 'templates' ? templatesBody : executionsBody}
+      </div>
+
+      {/* ── template detail ── */}
+      <Modal
+        isOpen={Boolean(detail)}
+        onClose={() => setDetail(null)}
+        size="3xl"
+        title={detail?.name}
+        description={detail?.description}
+        footer={
+          detail && (
+            <>
+              <Button variant="ghost" onClick={() => setDetail(null)}>
+                Close
+              </Button>
+              <Button icon={Play} loading={busyId === detail.id} onClick={() => run(detail)}>
+                Run workflow
+              </Button>
+            </>
+          )
+        }
+      >
+        {detail && (
+          <div className="space-y-6">
+            {(detail.tags || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {detail.tags.map((t) => (
+                  <Chip key={t}>{t}</Chip>
+                ))}
+              </div>
+            )}
+            {detailLoading ? (
+              <LoadingState variant="text" count={4} label="Loading the workflow" />
+            ) : (
+              <>
+                <section>
+                  <h3 className="mb-2 text-body font-semibold text-fg-strong">Inputs it needs</h3>
+                  {detailInputs.length === 0 ? (
+                    <p className="text-body-sm text-muted">None.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {detailInputs.map((i) => (
+                        <Chip key={i} className="font-mono">
+                          {i}
+                        </Chip>
+                      ))}
+                    </div>
+                  )}
+                </section>
+                {detailLeads.length > 0 && (
+                  <section>
+                    <h3 className="mb-2 text-body font-semibold text-fg-strong">Team leads</h3>
+                    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {detailLeads.map((lead) => (
+                        <li key={lead.id} className="flex items-start gap-3 rounded-control border border-border bg-surface/60 p-3">
+                          <Users aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+                          <div className="min-w-0">
+                            <p className="truncate text-body font-medium text-fg-strong">{lead.name}</p>
+                            <p className="text-caption text-muted">
+                              {lead.domain}
+                              {lead.workers?.length ? ` · ${lead.workers.length} worker${lead.workers.length === 1 ? '' : 's'}` : ''}
+                              {lead.model ? ` · ${lead.model}` : ''}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+                <section>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className="text-body font-semibold text-fg-strong">Steps</h3>
+                    <Tabs
+                      variant="segmented"
+                      size="sm"
+                      label="Steps view"
+                      idBase="wf-steps"
+                      value={detailSteps}
+                      onChange={setDetailSteps}
+                      tabs={[
+                        { id: 'diagram', label: 'Diagram', icon: Network },
+                        { id: 'list', label: 'List', icon: List },
+                      ]}
+                    />
+                  </div>
+                  {detailSteps === 'diagram' ? (
+                    <WorkflowDiagram workflow={detail} />
+                  ) : (
+                    <ol className="space-y-2">
+                      {(detail.steps || []).map((step, i) => (
+                        <li key={step.id || i} className="flex items-start gap-3 rounded-control border border-border bg-surface/60 p-3">
+                          <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/10 text-caption font-semibold text-accent">
+                            {i + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-body font-medium text-fg-strong">{step.name}</p>
+                              {step.executor && <code className="font-mono text-caption text-muted">{step.executor}</code>}
+                            </div>
+                            {step.description && <p className="mt-0.5 text-body-sm text-muted">{step.description}</p>}
+                            {step.outputs?.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {step.outputs.map((o) => (
+                                  <Chip key={o} size="xs">
+                                    {o}
+                                  </Chip>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                      {(detail.steps || []).length === 0 && <p className="text-body-sm text-muted">No steps defined.</p>}
+                    </ol>
+                  )}
+                </section>
+                {(detail.checkpoints || []).length > 0 && (
+                  <section>
+                    <h3 className="mb-2 text-body font-semibold text-fg-strong">Human checkpoints</h3>
+                    <ul className="space-y-2">
+                      {detail.checkpoints.map((cp) => (
+                        <li key={cp.id} className="rounded-control border border-warn/25 bg-warn/10 p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <PauseCircle aria-hidden="true" className="h-4 w-4 text-warn" />
+                            <span className="text-body font-medium text-fg-strong">{cp.name}</span>
+                            {cp.type && (
+                              <Chip size="xs" tone="warn">
+                                {cp.type}
+                              </Chip>
+                            )}
+                          </div>
+                          {cp.prompt && <p className="mt-1 text-body-sm text-fg">{cp.prompt}</p>}
+                          {cp.options?.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {cp.options.map((o) => (
+                                <Chip key={o} size="xs">
+                                  {o}
+                                </Chip>
+                              ))}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* ── run / watch ── */}
+      {panel && (
+        <WorkflowExecutionPanel
+          workflow={panel.workflow}
+          execution={panel.execution}
+          onClose={() => setPanel(null)}
+          onExecutionChange={onExecutionChange}
+          onExecutionComplete={() => loadExecutions({ silent: true })}
+        />
+      )}
+    </Page>
+  );
+}

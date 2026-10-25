@@ -1,86 +1,89 @@
-import { useState } from 'react';
-import { X, Plus } from 'lucide-react';
+import { useId, useState } from 'react';
+import { Plus, X } from 'lucide-react';
+import { Button, Chip, Input } from './ui';
 
-const TagInput = ({
+/**
+ * TagInput — a list of short strings (stop sequences, labels) with an input to
+ * add more. Enter adds, Backspace on an empty input removes the last tag, each
+ * tag has its own named remove control.
+ *
+ *   <TagInput tags={stop} onAdd={…} onRemove={…} placeholder="END" maxTags={10} />
+ */
+export default function TagInput({
   tags = [],
   onAdd,
   onRemove,
-  placeholder = 'Add tag...',
+  placeholder = 'Add a tag…',
   maxTags = 10,
-  disabled = false
-}) => {
-  const [inputValue, setInputValue] = useState('');
+  disabled = false,
+  label = 'Add a tag',
+  id: idProp,
+}) {
+  const auto = useId();
+  const id = idProp || auto;
+  const [draft, setDraft] = useState('');
+  const full = tags.length >= maxTags;
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && inputValue.trim()) {
-      e.preventDefault();
-      handleAdd();
-    }
+  const add = () => {
+    const tag = draft.trim();
+    if (!tag || tags.includes(tag) || full) return;
+    onAdd?.(tag);
+    setDraft('');
   };
 
-  const handleAdd = () => {
-    const newTag = inputValue.trim();
-    if (newTag && !tags.includes(newTag) && tags.length < maxTags) {
-      onAdd(newTag);
-      setInputValue('');
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      add();
+    } else if (e.key === 'Backspace' && !draft && tags.length && !disabled) {
+      onRemove?.(tags[tags.length - 1]);
     }
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {tags.map((tag, index) => (
-          <div
-            key={index}
-            className="flex items-center space-x-1 px-3 py-1.5 bg-unicorn-500/20 border border-unicorn-500/30 rounded-lg text-sm text-unicorn-300"
-          >
-            <span className="font-mono">{tag}</span>
-            {!disabled && (
-              <button
-                onClick={() => onRemove(tag)}
-                className="ml-1 hover:bg-unicorn-500/30 rounded p-0.5 transition-colors"
-                title="Remove tag"
-                aria-label={`Remove tag ${tag}`}
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-        ))}
+    <div className="flex flex-col gap-2">
+      {tags.length > 0 ? (
+        <ul className="flex flex-wrap gap-1.5" aria-label="Tags">
+          {tags.map((tag) => (
+            <li key={tag} className="inline-flex">
+              <Chip tone="accent" size="md" className="font-mono">
+                {tag}
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => onRemove?.(tag)}
+                    aria-label={`Remove ${tag}`}
+                    className="-mr-1 ml-0.5 flex h-5 w-5 items-center justify-center rounded-full transition-colors duration-fast hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <X aria-hidden="true" className="h-3 w-3" />
+                  </button>
+                )}
+              </Chip>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-caption text-muted">None yet.</p>
+      )}
 
-        {tags.length === 0 && (
-          <p className="text-sm text-slate-400 italic">No tags added</p>
-        )}
-      </div>
-
-      {!disabled && tags.length < maxTags && (
-        <div className="flex items-center space-x-2">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
+      {!disabled && !full && (
+        <div className="flex items-center gap-2">
+          <Input
+            id={id}
+            size="sm"
+            aria-label={label}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={onKeyDown}
             placeholder={placeholder}
-            className="flex-1 px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent text-sm"
             maxLength={50}
           />
-          <button
-            onClick={handleAdd}
-            disabled={!inputValue.trim()}
-            className="btn-secondary px-3 py-2 flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Add tag"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="text-sm">Add</span>
-          </button>
+          <Button type="button" variant="secondary" size="sm" icon={Plus} onClick={add} disabled={!draft.trim()}>
+            Add
+          </Button>
         </div>
       )}
-
-      {tags.length >= maxTags && !disabled && (
-        <p className="text-xs text-amber-400">Maximum number of tags reached ({maxTags})</p>
-      )}
+      {full && !disabled && <p className="text-caption text-warn">Maximum of {maxTags} reached.</p>}
     </div>
   );
-};
-
-export default TagInput;
+}

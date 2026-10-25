@@ -17,9 +17,37 @@ async function get(endpoint) {
   return res.json();
 }
 
+/**
+ * One shape for a metered event, whichever casing the server used.
+ *
+ * The real API serialises rows with UsageEvent.to_dict() — camelCase
+ * (createdAt, eventType, agentId). The page used to read created_at /
+ * event_type and rendered "—" for every When and Type cell (the 2026-10-24
+ * audit, "When — Type —"). Normalising here keeps every consumer on one shape.
+ */
+export function normalizeUsageEvent(row) {
+  if (!row || typeof row !== 'object') return row;
+  return {
+    ...row,
+    created_at: row.createdAt ?? row.created_at ?? null,
+    event_type: row.eventType ?? row.event_type ?? null,
+    agent_id: row.agentId ?? row.agent_id ?? null,
+    rate_tier: row.rateTier ?? row.rate_tier ?? null,
+    source: row.source ?? null,
+    model: row.model ?? null,
+    tokens: Number(row.tokens ?? 0),
+    cost: Number(row.cost ?? 0),
+  };
+}
+
 export const billingService = {
   // This org's current-period spend + caps + recent events.
-  getUsage: (limit = 50) => get(`/billing/usage?limit=${limit}`),
+  getUsage: async (limit = 50) => {
+    const usage = await get(`/billing/usage?limit=${limit}`);
+    return usage && typeof usage === 'object'
+      ? { ...usage, recent: Array.isArray(usage.recent) ? usage.recent.map(normalizeUsageEvent) : [] }
+      : usage;
+  },
   // Real upgrade info for the UpgradePrompt / 402 interceptor.
   getUpgradeRequirements: (feature) =>
     get(`/billing/upgrade-requirements${feature ? `?feature=${encodeURIComponent(feature)}` : ''}`),

@@ -1,67 +1,48 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
-import { Home, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Activity, AlertTriangle, Home, RefreshCw } from 'lucide-react';
+import { Button, Card } from '../components/ui';
+
+const STEPS = ['Wait a moment and reload the page.', 'Check Monitoring for a service that is down.', 'If it keeps happening, tell an owner of your organization what you were doing.'];
 
 export default function ServerError() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-bg via-red-900/20 to-bg flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full text-center">
-        <div className="flex justify-center mb-6">
-          <div className="p-6 bg-red-500/20 rounded-full">
-            <AlertTriangle className="w-24 h-24 text-red-400" />
-          </div>
-        </div>
-
-        <h1 className="text-4xl font-bold text-fg mb-4">
-          Server Error
-        </h1>
-
-        <p className="text-muted text-lg mb-8">
-          We are experiencing technical difficulties. Our team has been notified and is working to fix the issue.
+    <main className="flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="w-full max-w-2xl text-center">
+        <span aria-hidden="true" className="mx-auto flex h-14 w-14 items-center justify-center rounded-pane border border-danger/30 bg-danger/10 text-danger">
+          <AlertTriangle className="h-7 w-7" />
+        </span>
+        <p aria-hidden="true" className="mt-4 text-hero text-fg-strong">
+          500
         </p>
+        <h1 className="mt-2 text-title text-fg-strong">Something went wrong on our side</h1>
+        <p className="mx-auto mt-2 max-w-md text-body text-muted">The server hit a problem it couldn’t recover from. Nothing you did caused it, and nothing you had saved is lost.</p>
 
-        <div className="bg-elevated/50 backdrop-blur-xl border border-red-500/30 rounded-xl p-6 mb-8">
-          <h3 className="text-lg font-semibold text-fg mb-4">
-            What you can do:
-          </h3>
-          <ul className="text-left space-y-2 text-muted">
-            <li className="flex items-start space-x-2">
-              <span className="text-red-400 mt-1">•</span>
-              <span>Wait a few moments and try again</span>
-            </li>
-            <li className="flex items-start space-x-2">
-              <span className="text-red-400 mt-1">•</span>
-              <span>Clear your browser cache and reload</span>
-            </li>
-            <li className="flex items-start space-x-2">
-              <span className="text-red-400 mt-1">•</span>
-              <span>Check the status page for updates</span>
-            </li>
-            <li className="flex items-start space-x-2">
-              <span className="text-red-400 mt-1">•</span>
-              <span>Contact support if the problem persists</span>
-            </li>
-          </ul>
-        </div>
+        <Card className="mt-8 text-left">
+          <p className="mb-3 text-micro font-semibold uppercase tracking-wider text-muted">What you can do</p>
+          <ol className="space-y-2">
+            {STEPS.map((s, i) => (
+              <li key={s} className="flex items-start gap-3 text-body-sm text-fg">
+                <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-elevated font-mono text-caption text-muted">
+                  {i + 1}
+                </span>
+                {s}
+              </li>
+            ))}
+          </ol>
+        </Card>
 
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <button
-            onClick={() => window.location.reload()}
-            className="px-6 py-3 bg-elevated text-fg rounded-lg hover:bg-elevated transition-colors flex items-center justify-center space-x-2"
-          >
-            <RefreshCw className="w-5 h-5" />
-            <span>Reload Page</span>
-          </button>
-
-          <Link
-            to="/dashboard"
-            className="px-6 py-3 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-colors flex items-center justify-center space-x-2"
-          >
-            <Home className="w-5 h-5" />
-            <span>Go to Dashboard</span>
-          </Link>
+        <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+          <Button variant="secondary" icon={RefreshCw} onClick={() => window.location.reload()}>
+            Reload page
+          </Button>
+          <Button as={Link} to="/monitoring" variant="secondary" icon={Activity}>
+            Check Monitoring
+          </Button>
+          <Button as={Link} to="/dashboard" icon={Home}>
+            Go to Dashboard
+          </Button>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

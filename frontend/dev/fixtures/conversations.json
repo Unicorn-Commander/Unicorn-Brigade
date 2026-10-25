@@ -1,0 +1,1367 @@
+{
+  "conversations": [
+    {
+      "id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+      "agent_id": "col-finance",
+      "user_id": "dev-user-001",
+      "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+      "title": "Q3 cash runway review",
+      "model": "claude-sonnet-4",
+      "status": "active",
+      "message_count": 62,
+      "total_tokens": 13907,
+      "created_at": "$now-6d",
+      "updated_at": "$now-2h",
+      "agent": {
+        "id": "col-finance",
+        "name": "col-finance",
+        "displayName": "Col. Finance",
+        "avatar": "📊"
+      }
+    },
+    {
+      "id": "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d",
+      "agent_id": "maj-devops",
+      "user_id": "dev-user-001",
+      "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+      "title": "Rollback plan for the EO prod deploy",
+      "model": "qwen3.6-35b-a3b",
+      "status": "completed",
+      "message_count": 4,
+      "total_tokens": 1058,
+      "created_at": "$now-3d",
+      "updated_at": "$now-3d",
+      "agent": {
+        "id": "maj-devops",
+        "name": "maj-devops",
+        "displayName": "Maj. DevOps",
+        "avatar": "🚀"
+      }
+    },
+    {
+      "id": "c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f",
+      "agent_id": "the-general",
+      "user_id": "dev-user-001",
+      "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+      "title": "Morning brief: what needs Sam today",
+      "model": "claude-sonnet-4",
+      "status": "active",
+      "message_count": 4,
+      "total_tokens": 742,
+      "created_at": "$now-9h",
+      "updated_at": "$now-8h",
+      "agent": {
+        "id": "the-general",
+        "name": "the-general",
+        "displayName": "The General",
+        "avatar": "🎖️"
+      }
+    },
+    {
+      "id": "d5e6f7a8-9b0c-4d1e-8f2a-3b4c5d6e7f80",
+      "agent_id": "judge-advocate",
+      "user_id": "dev-user-001",
+      "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+      "title": "Doe filing deadline check",
+      "model": "claude-sonnet-4",
+      "status": "completed",
+      "message_count": 2,
+      "total_tokens": 230,
+      "created_at": "$now-5d",
+      "updated_at": "$now-5d",
+      "agent": {
+        "id": "judge-advocate",
+        "name": "judge-advocate",
+        "displayName": "Judge Advocate",
+        "avatar": "⚖️"
+      }
+    },
+    {
+      "id": "e6f7a8b9-0c1d-4e2f-9a3b-4c5d6e7f8091",
+      "agent_id": "prof-datasci",
+      "user_id": "dev-user-001",
+      "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+      "title": "Footage index throughput",
+      "model": "qwen3.6-35b-a3b",
+      "status": "active",
+      "message_count": 4,
+      "total_tokens": 510,
+      "created_at": "$now-26h",
+      "updated_at": "$now-20h",
+      "agent": {
+        "id": "prof-datasci",
+        "name": "prof-datasci",
+        "displayName": "Prof. DataSci",
+        "avatar": "🧬"
+      }
+    },
+    {
+      "id": "f7a8b9c0-1d2e-4f3a-8b4c-5d6e7f809102",
+      "agent_id": "sgt-scribe",
+      "user_id": "dev-user-001",
+      "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+      "title": "Recap: 10-23 overnight orchestration",
+      "model": "qwen3.6-35b-a3b",
+      "status": "archived",
+      "message_count": 2,
+      "total_tokens": 644,
+      "created_at": "$now-1d",
+      "updated_at": "$now-1d",
+      "agent": {
+        "id": "sgt-scribe",
+        "name": "sgt-scribe",
+        "displayName": "Sgt. Scribe",
+        "avatar": "📝"
+      }
+    },
+    {
+      "id": "08b9c0d1-2e3f-4a4b-9c5d-6e7f80910213",
+      "agent_id": "detective-holmes",
+      "user_id": "dev-user-001",
+      "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+      "title": "Who owns the hijacked Maple Tutoring domain?",
+      "model": "claude-sonnet-4",
+      "status": "completed",
+      "message_count": 2,
+      "total_tokens": 651,
+      "created_at": "$now-4d",
+      "updated_at": "$now-4d",
+      "agent": {
+        "id": "detective-holmes",
+        "name": "detective-holmes",
+        "displayName": "Detective Holmes",
+        "avatar": "🔍"
+      }
+    },
+    {
+      "id": "19c0d1e2-3f4a-4b5c-8d6e-7f8091021324",
+      "agent_id": "support-agent",
+      "user_id": "dev-user-001",
+      "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+      "title": "Reset a Northbridge Tax tester invite",
+      "model": "qwen3.6-35b-a3b",
+      "status": "active",
+      "message_count": 2,
+      "total_tokens": 544,
+      "created_at": "$now-50m",
+      "updated_at": "$now-44m",
+      "agent": {
+        "id": "support-agent",
+        "name": "support-agent",
+        "displayName": "Support Specialist",
+        "avatar": "🎧"
+      }
+    }
+  ],
+  "messages": {
+    "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21": [
+      {
+        "id": "3079ede7-6e9d-4035-ad4a-933e616d64c9",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Give me the Q3 cash runway picture. Start with what we know for sure.",
+        "model": null,
+        "tokens_used": 78,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8632m"
+      },
+      {
+        "id": "3d7f66e6-f648-4447-af2b-3cecb5f93e03",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "## What we know for sure\n\n- Cash on hand: **$101,700** (operating account, reconciled this morning)\n- Committed outflows next 30 days: **$19,100**\n- Receivables outstanding: **$27,680** across 4 invoices\n\n> Everything below this line is a model, not a measurement.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 284,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8631m"
+      },
+      {
+        "id": "68bfa32d-a229-4e34-aa0a-739336209f89",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "What is our monthly burn right now, trailing three months?",
+        "model": null,
+        "tokens_used": 66,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8622m"
+      },
+      {
+        "id": "bbc05461-ec38-4391-afd9-56a2e68e6990",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Trailing three-month burn is **$19,970 / month** (Jul $19.0k, Aug $21.8k, Sep $19.0k). August carried the drive replacements.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 148,
+        "tool_calls": [
+          {
+            "id": "call_8da0e7071ff6",
+            "name": "calculator",
+            "arguments": {
+              "expression": "(11900 + 13600 + 11900) / 3"
+            }
+          }
+        ],
+        "tool_results": [
+          {
+            "id": "call_8da0e7071ff6",
+            "name": "calculator",
+            "result": {
+              "value": 12466.67
+            },
+            "error": null,
+            "success": true
+          }
+        ],
+        "metadata": null,
+        "created_at": "$now-8619m"
+      },
+      {
+        "id": "be791e8a-fa3f-4346-a803-b7d6610c343b",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Break the burn down by category.",
+        "model": null,
+        "tokens_used": 15,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8612m"
+      },
+      {
+        "id": "413f0ec0-6053-4cd2-a1e8-bfe616cc5c75",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "| Category | Monthly | Share |\n|---|---|---|\n| Payroll & contractors | $11,040 | 55% |\n| Infrastructure & power | $3,700 | 19% |\n| SaaS & subscriptions | $2,270 | 11% |\n| Legal & filings | $1,570 | 8% |\n| Everything else | $1,390 | 7% |",
+        "model": "claude-sonnet-4",
+        "tokens_used": 536,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8611m"
+      },
+      {
+        "id": "2b4176c2-2a05-4558-afa2-eb3cb4244678",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "How much of that is the GPU power bill after the GPU server incident?",
+        "model": null,
+        "tokens_used": 69,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8604m"
+      },
+      {
+        "id": "105db8b7-1dfb-474c-a159-d11cb5ce074d",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "The power line moved from **$1,020** to **$1,790** a month once both GPUs were under load. The new one-GPU-at-a-time rule should pull that back toward **$1,280**.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 567,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8601m"
+      },
+      {
+        "id": "700043e2-8cbc-4966-a74a-0fd1f5b51837",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "If revenue stays flat, how many months of runway do we have?",
+        "model": null,
+        "tokens_used": 63,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8594m"
+      },
+      {
+        "id": "82e77607-d722-498c-ac06-304083fec168",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Flat revenue: **5.1 months** of runway from today, assuming receivables collect on their current pattern.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 121,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8593m"
+      },
+      {
+        "id": "52824cc6-d988-4645-a592-eda87427145e",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "And if the Northbridge Tax contract closes in November?",
+        "model": null,
+        "tokens_used": 50,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8584m"
+      },
+      {
+        "id": "51cc6c42-abe9-4728-ade9-9378b938b9c5",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Northbridge Tax at the quoted retainer adds **$3,840 / month** from November, which stretches runway to **7.3 months**.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 122,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8582m"
+      },
+      {
+        "id": "473c2f19-27ab-4cbc-ab40-0ff9e8cf1d22",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "What assumptions are you making about collections?",
+        "model": null,
+        "tokens_used": 49,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8578m"
+      },
+      {
+        "id": "bb5ea621-32bb-436d-abaa-d11cb4716f57",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Assumptions I am making:\n\n1. Receivables collect at the trailing 60-day pattern (82% within 45 days)\n2. No new hires\n3. Power cost settles at the one-GPU number\n4. No refunds\n\nChange any of these and I will recompute.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 619,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8576m"
+      },
+      {
+        "id": "473f2dac-598a-4b64-a04b-fe7ac9f1528b",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Which receivables are more than 30 days out?",
+        "model": null,
+        "tokens_used": 27,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8571m"
+      },
+      {
+        "id": "eef9dd5b-4762-4b39-a9dd-5e6266132dee",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Over 30 days: **INV-0231** (Bluewater Labs, $6,720, 41 days) and **INV-0227** (Maple Tutoring rescue, $1,900, 34 days).",
+        "model": "claude-sonnet-4",
+        "tokens_used": 429,
+        "tool_calls": [
+          {
+            "id": "call_d0fc469eb1cc",
+            "name": "database",
+            "arguments": {
+              "query": "SELECT number, customer, amount, age_days FROM invoices WHERE age_days > 30"
+            }
+          }
+        ],
+        "tool_results": [
+          {
+            "id": "call_d0fc469eb1cc",
+            "name": "database",
+            "result": {
+              "rows": 2,
+              "sample": [
+                {
+                  "number": "INV-0231",
+                  "amount": 4200,
+                  "age_days": 41
+                }
+              ]
+            },
+            "error": null,
+            "success": true
+          }
+        ],
+        "metadata": null,
+        "created_at": "$now-8568m"
+      },
+      {
+        "id": "eed65f57-a6df-4cc4-a148-572c8b1b3d0f",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Draft the collections nudge for the oldest one — just the body.",
+        "model": null,
+        "tokens_used": 36,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8562m"
+      },
+      {
+        "id": "016eb004-8fba-4068-ace3-e0be15500ac4",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Hi — a quick note that INV-0231 for $6,720 is now 41 days outstanding. If it has already been scheduled, ignore me; if anything on the invoice is holding it up, tell me and I will fix it today.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 607,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8559m"
+      },
+      {
+        "id": "aa6eeb06-5b55-4ed0-a657-91e8c364363e",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Do we have any subscriptions we could cut this month?",
+        "model": null,
+        "tokens_used": 49,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8555m"
+      },
+      {
+        "id": "2f74ba56-d86e-4db9-a2ef-59241eea17db",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Four candidates: the second search-API vendor ($290), a dormant design seat ($70), the duplicate monitoring plan ($60), and the unused cloud GPU hours reservation ($350).",
+        "model": "claude-sonnet-4",
+        "tokens_used": 332,
+        "tool_calls": [
+          {
+            "id": "call_e2cf97d9d2fa",
+            "name": "http_request",
+            "arguments": {
+              "method": "GET",
+              "url": "https://accounting-ops.internal/api/v1/subscriptions/detected"
+            }
+          }
+        ],
+        "tool_results": [
+          {
+            "id": "call_e2cf97d9d2fa",
+            "name": "http_request",
+            "result": {
+              "status": 200,
+              "count": 4
+            },
+            "error": null,
+            "success": true
+          }
+        ],
+        "metadata": null,
+        "created_at": "$now-8553m"
+      },
+      {
+        "id": "0712042c-4dd4-4882-ad0e-47f39fdc9537",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Rank them by savings and by how much pain cancelling causes.",
+        "model": null,
+        "tokens_used": 48,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8546m"
+      },
+      {
+        "id": "94baef49-2ace-4bd9-a769-fcb0e8a3e587",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "| Subscription | Savings / mo | Pain |\n|---|---|---|\n| Cloud GPU reservation | $350 | low |\n| Second search API | $290 | medium (search is already degraded) |\n| Design seat | $70 | none |\n| Duplicate monitoring | $60 | none |",
+        "model": "claude-sonnet-4",
+        "tokens_used": 303,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8543m"
+      },
+      {
+        "id": "b18ee090-fd99-479d-abf4-3a7ddbf38415",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "What does the S-corp election change about the cash picture?",
+        "model": null,
+        "tokens_used": 51,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8540m"
+      },
+      {
+        "id": "eb4a4dc7-80fe-4985-a544-4a8ec793bd00",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "The election itself does not change cash; it changes **when** cash leaves. Reasonable-salary payroll taxes become monthly, and the distribution side stops carrying SE tax.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 458,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8538m"
+      },
+      {
+        "id": "44579299-c1d4-4eb0-af91-9119fabc7e8f",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Model the estimated tax payment for Q4.",
+        "model": null,
+        "tokens_used": 53,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8531m"
+      },
+      {
+        "id": "b72c3735-3a95-4ed6-ad51-a0167f92d482",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Using the trailing-quarter net and the reasonable-salary split, the Q4 estimate lands at **$6,160**.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 259,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8529m"
+      },
+      {
+        "id": "c1dc628b-9a41-4355-ad33-5a6fbd0b3dee",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Compare that against what we set aside.",
+        "model": null,
+        "tokens_used": 31,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8521m"
+      },
+      {
+        "id": "d3460f3a-62df-47d4-aba9-e3d2268e1256",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Set aside so far: **$4,160**. Shortfall **$2,000**.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 231,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8518m"
+      },
+      {
+        "id": "31ccbd23-c07d-479f-a9a4-85ccbb862496",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Where does the shortfall come from?",
+        "model": null,
+        "tokens_used": 86,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8509m"
+      },
+      {
+        "id": "75f96833-39e5-41c3-ab67-90fa3782dff9",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "The shortfall is entirely the August drive replacements — they were expensed, which lowered the Q3 estimate, and the set-aside was never trued up after.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 613,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8508m"
+      },
+      {
+        "id": "53cc72ee-f6ed-446e-a81f-1fb4d9a636aa",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Show me the three-scenario table: flat, +1 contract, +2 contracts.",
+        "model": null,
+        "tokens_used": 39,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8504m"
+      },
+      {
+        "id": "bc83affd-9c3d-495a-a211-72de383a3310",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "| Scenario | Monthly net | Runway |\n|---|---|---|\n| Flat | -$19,970 | 5.1 mo |\n| +1 contract (Northbridge Tax) | -$16,130 | 7.3 mo |\n| +2 contracts (+ Harbor Health) | -$11,730 | 10.8 mo |",
+        "model": "claude-sonnet-4",
+        "tokens_used": 210,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8501m"
+      },
+      {
+        "id": "befe7056-541b-4bc0-ab46-ac5f6c71d73c",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "What is the break-even monthly revenue?",
+        "model": null,
+        "tokens_used": 58,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8498m"
+      },
+      {
+        "id": "a1d6a157-a676-4e7c-a34c-2553dd86dd22",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Break-even is **$19,970 / month** of collected revenue at the current burn, or **$17,860** with the four cuts above.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 602,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8496m"
+      },
+      {
+        "id": "39ec15ba-eec1-4018-a9de-78e8dda4d9d8",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "How confident are you in the GPU cost line?",
+        "model": null,
+        "tokens_used": 15,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8487m"
+      },
+      {
+        "id": "849545b1-3490-4b6d-a81c-f7422ce51d40",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Medium. The estimate is derived from the utility bill split by rack share, not from measured kWh. I can pull the meter readings.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 390,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8485m"
+      },
+      {
+        "id": "9fd41c28-50b0-4399-a610-7a5accb2c2ae",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Pull the actual kWh numbers if you can.",
+        "model": null,
+        "tokens_used": 71,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8480m"
+      },
+      {
+        "id": "6e15d5b5-036b-497c-a6bd-32a492c5b45b",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "```sql\nSELECT date_trunc('day', ts) AS day, round(sum(kwh), 1) AS kwh\nFROM power_meter\nWHERE circuit = 'rack-a' AND ts > now() - interval '30 days'\nGROUP BY 1 ORDER BY 1;\n```\n\nMeasured: **612 kWh** over 30 days on rack A, which is **$145** at the blended rate — far below the bill-split estimate.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 420,
+        "tool_calls": [
+          {
+            "id": "call_362b840bcb90",
+            "name": "database",
+            "arguments": {
+              "query": "SELECT day, kwh FROM power_meter_daily WHERE circuit = 'rack-a'"
+            }
+          }
+        ],
+        "tool_results": [
+          {
+            "id": "call_362b840bcb90",
+            "name": "database",
+            "result": {
+              "rows": 30,
+              "sample": [
+                {
+                  "day": "2026-10-23",
+                  "kwh": 20.4
+                }
+              ]
+            },
+            "error": null,
+            "success": true
+          }
+        ],
+        "metadata": null,
+        "created_at": "$now-8479m"
+      },
+      {
+        "id": "a0910fd9-b91d-4716-a392-25ef5e164524",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Recompute the runway with the measured number instead of the estimate.",
+        "model": null,
+        "tokens_used": 63,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8471m"
+      },
+      {
+        "id": "19a1c4b6-e32a-46d0-a9c2-8bd1d43c3854",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "With the measured rack-A number the infrastructure line drops to **$2,960**, and flat-revenue runway becomes **5.3 months**.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 130,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8470m"
+      },
+      {
+        "id": "6ce11484-169f-46ca-a3f1-85c8b4d77f26",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "What should go in the Friday brief to Sam?",
+        "model": null,
+        "tokens_used": 50,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8466m"
+      },
+      {
+        "id": "9decb22a-f3f3-4631-a1cb-913f8d59c7ea",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Three things: the runway number with its assumptions, the receivables over 30 days, and the Q4 tax shortfall.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 519,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8464m"
+      },
+      {
+        "id": "df0c05f4-1226-4bcf-aae7-39cf75d7840b",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Write the one-paragraph summary.",
+        "model": null,
+        "tokens_used": 32,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8461m"
+      },
+      {
+        "id": "d78f6eed-f197-43da-aa12-b06aeeefc334",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Q3 close: cash $101.7k, burn $19.2k/mo measured, runway 5.3 months flat or 7.3 with Northbridge Tax. Two receivables over 30 days ($8.6k). Q4 estimated tax is $2,000 short of the set-aside after the August drives.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 234,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8458m"
+      },
+      {
+        "id": "89358b05-cf15-41ac-ae10-ca2fd9316580",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Add the two decisions that are actually his to make.",
+        "model": null,
+        "tokens_used": 70,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8453m"
+      },
+      {
+        "id": "793569fb-f3d6-421e-aff1-99ae448b44e7",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "1. Whether to true-up the tax set-aside now or at the January payment.\n2. Whether to cut the cloud GPU reservation given the one-GPU rule.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 225,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8451m"
+      },
+      {
+        "id": "5e4688cc-c735-4ce5-adaa-6c32199f47dd",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Is there anything in this review you are NOT sure about?",
+        "model": null,
+        "tokens_used": 69,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8442m"
+      },
+      {
+        "id": "59c83010-40a2-4c1c-ab19-c1ac24eb06db",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Yes. The collections pattern is from six invoices, which is a thin sample, and I have not seen the Northbridge Tax contract terms in writing.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 310,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8440m"
+      },
+      {
+        "id": "e589d833-a96e-4e90-a06f-b7226e5d2dd6",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Flag the single biggest risk to the runway number.",
+        "model": null,
+        "tokens_used": 73,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8432m"
+      },
+      {
+        "id": "7036da31-35b5-4634-a38d-20609a2a083b",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Collections. A single 60-day slip on Bluewater Labs moves runway by half a month.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 586,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8430m"
+      },
+      {
+        "id": "02ab2db1-d5a0-45a3-a988-2c6a99866b9f",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "What would you want to re-measure next week?",
+        "model": null,
+        "tokens_used": 62,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8423m"
+      },
+      {
+        "id": "c8d6d452-9370-409f-a061-d2ab935ef549",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "The rack-A meter against the utility bill for a full billing cycle, and the actual payroll-tax cadence once the election is filed.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 391,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8420m"
+      },
+      {
+        "id": "aa3480c8-37d5-4a71-a706-fd883931d068",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Save the three-scenario table to memory under q3-runway.",
+        "model": null,
+        "tokens_used": 61,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8412m"
+      },
+      {
+        "id": "ee92420b-4795-4abd-a02a-117cb37f5afe",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Saved under `q3-runway` with the three scenarios and the assumptions list.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 581,
+        "tool_calls": [
+          {
+            "id": "call_d3681ac9e917",
+            "name": "memory",
+            "arguments": {
+              "action": "store",
+              "key": "q3-runway"
+            }
+          }
+        ],
+        "tool_results": [
+          {
+            "id": "call_d3681ac9e917",
+            "name": "memory",
+            "result": {
+              "ok": true,
+              "key": "q3-runway"
+            },
+            "error": null,
+            "success": true
+          }
+        ],
+        "metadata": null,
+        "created_at": "$now-8409m"
+      },
+      {
+        "id": "e27dd868-f4c3-45f1-a91b-bc6518ac2ee7",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Remind me what we agreed about the Bluewater Labs deposit.",
+        "model": null,
+        "tokens_used": 77,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8406m"
+      },
+      {
+        "id": "b7f61d77-2eac-4971-aa83-f4b25a6c36b4",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "We agreed to hold the Bluewater Labs deposit in the operating account and not count it as revenue until the demo org is converted or returned.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 578,
+        "tool_calls": [
+          {
+            "id": "call_3aa5e79af36a",
+            "name": "memory",
+            "arguments": {
+              "action": "recall",
+              "key": "rivergreen-deposit"
+            }
+          }
+        ],
+        "tool_results": [
+          {
+            "id": "call_3aa5e79af36a",
+            "name": "memory",
+            "result": {
+              "ok": true,
+              "key": "rivergreen-deposit"
+            },
+            "error": null,
+            "success": true
+          }
+        ],
+        "metadata": null,
+        "created_at": "$now-8404m"
+      },
+      {
+        "id": "88f3fc02-e0f2-4ce4-a7a0-2138673a8817",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Last thing: list the receipts you used, one line each.",
+        "model": null,
+        "tokens_used": 41,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8398m"
+      },
+      {
+        "id": "1c748791-e023-4c58-a733-d1e18df7fb74",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "- Operating account statement, reconciled 2026-10-24\n- Invoices INV-0227 through INV-0234\n- Power meter table, rack-a, last 30 days\n- Trailing-quarter P&L from Accounting-Ops\n- Subscription detector run, October",
+        "model": "claude-sonnet-4",
+        "tokens_used": 531,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8396m"
+      },
+      {
+        "id": "f312caef-f9fd-4ddc-afbc-78a6e9b39c7e",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Thanks. Mark this review as complete.",
+        "model": null,
+        "tokens_used": 83,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8387m"
+      },
+      {
+        "id": "8531bf98-5245-47e1-a954-0163ab162dec",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Marked complete. The summary and the two decisions are in the Friday brief draft.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 587,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8384m"
+      },
+      {
+        "id": "08c62bfb-1dd5-4eee-a2b2-d6e13d8c5f41",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Actually one more — what changes if the power cap stays at 300 W?",
+        "model": null,
+        "tokens_used": 15,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8380m"
+      },
+      {
+        "id": "f2d31c01-906f-4396-abae-fd730c479f24",
+        "conversation_id": "3f8e2b7c-5a41-4d9e-b2c6-7e1f0a9d4c21",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "At a 300 W cap the measured draw drops another ~18%, which is about **$25 / month** — immaterial to runway but worth having for the power-path task.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 334,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-8377m"
+      }
+    ],
+    "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d": [
+      {
+        "id": "f6323b1f-9795-4e76-a834-47f1ba7bdf87",
+        "conversation_id": "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Give me a rollback plan for the Email-Ops prod deploy if the checkout fails again.",
+        "model": null,
+        "tokens_used": 15,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-4319m"
+      },
+      {
+        "id": "017a9a29-a4da-4094-a619-86e1d0ebd0cd",
+        "conversation_id": "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "## Rollback plan\n\n1. `deploy.sh` must **stop** when the checkout fails — no partial image build.\n2. Keep the previous image tagged `rollback-<date>`.\n3. `docker compose --env-file .env.prod up -d email-ops@rollback`.\n4. Verify an exact token in the served bundle, not just a 200.",
+        "model": "qwen3.6-35b-a3b",
+        "tokens_used": 407,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-4317m"
+      },
+      {
+        "id": "a9def4bb-0b69-472f-a176-5c4e4d45ede8",
+        "conversation_id": "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "How long does step 3 take?",
+        "model": null,
+        "tokens_used": 76,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-4316m"
+      },
+      {
+        "id": "25c9b663-2310-44d2-ac63-f0941ec8e227",
+        "conversation_id": "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "About **40 seconds** on gpu-01 — the image is already local, so it is a container recreate, not a build.",
+        "model": "qwen3.6-35b-a3b",
+        "tokens_used": 560,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-4314m"
+      }
+    ],
+    "c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f": [
+      {
+        "id": "da8a6c4f-4876-48ac-a6b2-8b6580cdeb9e",
+        "conversation_id": "c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "What needs Sam today? One line each, recommendation attached.",
+        "model": null,
+        "tokens_used": 73,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-536m"
+      },
+      {
+        "id": "5db2f2fd-6b35-40cd-ab7e-94544af770e1",
+        "conversation_id": "c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "1. **Vendor renewal** — recommend renewing the monitoring plan for a year.\n2. **Stale demo org** — recommend archiving it today.\n3. **Search API invoice** — recommend paying; search has been degraded since Monday.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 131,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-533m"
+      },
+      {
+        "id": "9cca1e98-6e7f-4fd1-a856-7e78860f1402",
+        "conversation_id": "c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Delegate the Brave one to Col. Finance.",
+        "model": null,
+        "tokens_used": 38,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-531m"
+      },
+      {
+        "id": "0fdfb58f-8c48-40ae-ab4d-5fc197932dea",
+        "conversation_id": "c4d5e6f7-8a9b-4c0d-9e1f-2a3b4c5d6e7f",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Delegated to Col. Finance with the invoice link and the 10-21 context. She will confirm the amount before anything is paid.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 500,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-528m"
+      }
+    ],
+    "d5e6f7a8-9b0c-4d1e-8f2a-3b4c5d6e7f80": [
+      {
+        "id": "324afc16-897f-4fef-a5c5-1bef108092e8",
+        "conversation_id": "d5e6f7a8-9b0c-4d1e-8f2a-3b4c5d6e7f80",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "When is the response due on the Doe matter, counting from service on the 14th?",
+        "model": null,
+        "tokens_used": 37,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-7198m"
+      },
+      {
+        "id": "a97ed949-d3e3-4c05-aae3-3b83753d3e37",
+        "conversation_id": "d5e6f7a8-9b0c-4d1e-8f2a-3b4c5d6e7f80",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Thirty days from service lands on **November 13**. If that is a Saturday under the local rule it rolls to Monday the 15th — I will confirm the calendar before it goes on the board.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 193,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-7197m"
+      }
+    ],
+    "e6f7a8b9-0c1d-4e2f-9a3b-4c5d6e7f8091": [
+      {
+        "id": "96ff8221-b4a3-4cef-a835-1d7d806774d4",
+        "conversation_id": "e6f7a8b9-0c1d-4e2f-9a3b-4c5d6e7f8091",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "How many clips per hour is the footage index doing on the second GPU alone?",
+        "model": null,
+        "tokens_used": 15,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-1559m"
+      },
+      {
+        "id": "b4683f5a-3ddd-4710-adda-39a5e991f7c2",
+        "conversation_id": "e6f7a8b9-0c1d-4e2f-9a3b-4c5d6e7f8091",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Trailing six hours: **184 clips / hour**, down from 310 when both GPUs were on it. ETA for the remaining 2,140 clips is **11.6 hours**.",
+        "model": "qwen3.6-35b-a3b",
+        "tokens_used": 233,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-1555m"
+      },
+      {
+        "id": "2536c788-2364-434d-a394-8c4733c4d8d5",
+        "conversation_id": "e6f7a8b9-0c1d-4e2f-9a3b-4c5d6e7f8091",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Plot it against power draw.",
+        "model": null,
+        "tokens_used": 55,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-1552m"
+      },
+      {
+        "id": "267c252d-03bf-4305-a476-98f202c3bfac",
+        "conversation_id": "e6f7a8b9-0c1d-4e2f-9a3b-4c5d6e7f8091",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "Correlation is strong (r = 0.91): every 100 clips/hour costs about 95 W on the second GPU. The 300 W cap is what is setting the ceiling, not the model.",
+        "model": "qwen3.6-35b-a3b",
+        "tokens_used": 207,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-1548m"
+      }
+    ],
+    "f7a8b9c0-1d2e-4f3a-8b4c-5d6e7f809102": [
+      {
+        "id": "c1a7ee0d-af30-4371-af52-f131fe441cef",
+        "conversation_id": "f7a8b9c0-1d2e-4f3a-8b4c-5d6e7f809102",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Recap the overnight run in five bullets.",
+        "model": null,
+        "tokens_used": 17,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-1436m"
+      },
+      {
+        "id": "25dbf385-c393-46f8-adcb-85efffa0051c",
+        "conversation_id": "f7a8b9c0-1d2e-4f3a-8b4c-5d6e7f809102",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "- 2 waves, 11 PRs merged\n- 5 staging deploys + 3 held deploys released on the owner's word\n- Morning brief delivered with the private addendum\n- One lane paused after a power cut, resumed on a single GPU\n- Run dir: `reports/overnight`",
+        "model": "qwen3.6-35b-a3b",
+        "tokens_used": 627,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-1434m"
+      }
+    ],
+    "08b9c0d1-2e3f-4a4b-9c5d-6e7f80910213": [
+      {
+        "id": "cc724b8e-cf82-47fb-a7a3-942d752e000b",
+        "conversation_id": "08b9c0d1-2e3f-4a4b-9c5d-6e7f80910213",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "Who owns the Maple Tutoring domain now and when did it change hands?",
+        "model": null,
+        "tokens_used": 39,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-5759m"
+      },
+      {
+        "id": "54f7b22e-cde0-4a4f-ab36-aee0220f348d",
+        "conversation_id": "08b9c0d1-2e3f-4a4b-9c5d-6e7f80910213",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "WHOIS shows a privacy-proxied registrant since **September 2**; the nameservers moved the same day to a host that serves the gambling page. The prior registration lapsed on August 29 — a three-day gap, which is consistent with a drop-catch.",
+        "model": "claude-sonnet-4",
+        "tokens_used": 612,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-5757m"
+      }
+    ],
+    "19c0d1e2-3f4a-4b5c-8d6e-7f8091021324": [
+      {
+        "id": "9b18f884-9719-486b-a18b-4ba69026e2a3",
+        "conversation_id": "19c0d1e2-3f4a-4b5c-8d6e-7f8091021324",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "user",
+        "content": "The Northbridge Tax tester says the invite link expired. What do we do?",
+        "model": null,
+        "tokens_used": 63,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-58m"
+      },
+      {
+        "id": "31925e52-2da4-429a-ad67-b0288f3fec39",
+        "conversation_id": "19c0d1e2-3f4a-4b5c-8d6e-7f8091021324",
+        "org_id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "role": "assistant",
+        "content": "The invites expire 11-21, so it has not expired. Most likely the link was opened in a different browser than the one signed in. I would resend the same invite rather than mint a new one — the tester account already exists.",
+        "model": "qwen3.6-35b-a3b",
+        "tokens_used": 481,
+        "tool_calls": null,
+        "tool_results": null,
+        "metadata": null,
+        "created_at": "$now-54m"
+      }
+    ]
+  }
+}

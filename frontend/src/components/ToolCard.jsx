@@ -1,51 +1,39 @@
-import { Plus, X, Settings } from 'lucide-react';
+import { Plus, Wrench, X } from 'lucide-react';
+import { Button, Chip, IconButton } from './ui';
 
-const ToolCard = ({ tool, action, onAction, onConfigure }) => {
+// Same tone-per-type rule as the Tool Library.
+const TYPE_TONE = { MCP: 'accent', Python: 'info' };
+
+/**
+ * ToolCard — one tool row inside a picker: name, type, description and a
+ * single action (add or remove). Used by ToolSelector.
+ */
+export default function ToolCard({ tool, action = 'add', onAction, busy = false }) {
+  const add = action === 'add';
+  const name = tool.name || tool.displayName || tool.id;
   return (
-    <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-cyan-500/50 transition-colors">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex items-center space-x-2 mb-1">
-            <h4 className="font-medium">{tool.name}</h4>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300">
+    <div className="flex items-start gap-3 rounded-control border border-border bg-surface/60 p-3 transition-colors duration-fast hover:border-border-strong">
+      <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-elevated text-lead">
+        {tool.icon || <Wrench className="h-4 w-4 text-muted" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <h4 className="truncate text-body font-medium text-fg-strong">{name}</h4>
+          {tool.type && (
+            <Chip size="xs" tone={TYPE_TONE[tool.type] || 'neutral'} uppercase>
               {tool.type}
-            </span>
-          </div>
-          <p className="text-sm text-slate-400">{tool.description}</p>
-        </div>
-
-        <div className="flex items-center space-x-2 ml-4">
-          {onConfigure && (
-            <button
-              onClick={onConfigure}
-              className="p-2 rounded-lg hover:bg-slate-700 transition-colors"
-              title="Configure"
-              aria-label="Configure tool"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
+            </Chip>
           )}
-
-          <button
-            onClick={onAction}
-            className={`p-2 rounded-lg transition-colors ${
-              action === 'add'
-                ? 'hover:bg-emerald-500/20 text-emerald-400'
-                : 'hover:bg-red-500/20 text-red-400'
-            }`}
-            title={action === 'add' ? 'Add tool' : 'Remove tool'}
-            aria-label={action === 'add' ? 'Add tool' : 'Remove tool'}
-          >
-            {action === 'add' ? (
-              <Plus className="w-4 h-4" />
-            ) : (
-              <X className="w-4 h-4" />
-            )}
-          </button>
         </div>
+        {tool.description && <p className="mt-0.5 line-clamp-2 text-body-sm text-muted">{tool.description}</p>}
       </div>
+      {add ? (
+        <Button size="sm" variant="secondary" icon={Plus} loading={busy} onClick={onAction} aria-label={`Add ${name}`}>
+          Add
+        </Button>
+      ) : (
+        <IconButton icon={X} label={`Remove ${name}`} size="sm" disabled={busy} onClick={onAction} />
+      )}
     </div>
   );
-};
-
-export default ToolCard;
+}

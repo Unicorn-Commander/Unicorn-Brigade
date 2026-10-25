@@ -1,227 +1,173 @@
 /**
- * WorkflowCard - Visual workflow card with preview diagram
+ * WorkflowCard — one workflow template, in the grid or as a list row.
  *
- * Displays workflow information with:
- * - Miniature workflow diagram
- * - Key stats (steps, inputs, checkpoints, cost)
- * - Domain tags and badges
- * - Quick actions (view details, execute)
+ * The preview draws the real steps when the template carries them; the list
+ * endpoint usually does not, so the card shows the three tiers it runs through
+ * instead of an empty box. Stats are a tidy <dl>, not four tiles.
  */
-
-import {
-  Play,
-  Eye,
-  FileText,
-  PauseCircle,
-  DollarSign,
-  Clock,
-  Users,
-  GitBranch,
-  Zap,
-  TrendingUp,
-  Search,
-  Briefcase,
-  Settings,
-  Scale,
-  Stethoscope,
-  Fingerprint,
-  Workflow,
-} from 'lucide-react';
+import { Play, Eye, FileText, DollarSign, Search, Briefcase, Settings, Scale, Stethoscope, Fingerprint, Workflow, ChevronRight, Crown, Users, Hammer, PauseCircle } from 'lucide-react';
 import MiniWorkflowDiagram from './MiniWorkflowDiagram';
+import { Button, Card, Chip, Tooltip } from './ui';
 
-// Tag colors (same as Workflows.jsx)
-const tagColors = {
-  finance: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  research: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  sales: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  devops: 'bg-unicorn-500/20 text-unicorn-400 border-unicorn-500/30',
-  content: 'bg-unicorn-500/20 text-unicorn-400 border-unicorn-500/30',
-  legal: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
-  medical: 'bg-red-500/20 text-red-400 border-red-500/30',
-  investment: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  marketing: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  seo: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
-  incident: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
-  monitoring: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
-  analysis: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
-  documents: 'bg-lime-500/20 text-lime-400 border-lime-500/30',
-  compliance: 'bg-unicorn-500/20 text-unicorn-400 border-unicorn-500/30',
-  outreach: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  documentation: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
-};
+export const DOMAIN_TAGS = ['research', 'finance', 'content', 'sales', 'devops', 'legal', 'medical', 'investigation'];
+const DOMAIN_ICON = { research: Search, finance: DollarSign, content: FileText, sales: Briefcase, devops: Settings, legal: Scale, medical: Stethoscope, investigation: Fingerprint };
 
-// Domain → lucide mark (replaces the decorative emoji glyphs).
-const domainIcons = {
-  research: Search,
-  finance: DollarSign,
-  content: FileText,
-  sales: Briefcase,
-  devops: Settings,
-  legal: Scale,
-  medical: Stethoscope,
-  investigation: Fingerprint,
-};
+// The default preset is cost-optimized (local models for leads and workers);
+// a real per-workflow estimate comes from POST /hierarchical/config/estimate-cost.
+const DEFAULT_ESTIMATE = { estimate: '$0.02–0.05', note: 'Estimate for the cost-optimized preset: local models for team leads and workers.' };
 
-// Estimated cost per preset
-const presetCostEstimates = {
-  cost_optimized: { estimate: '$0.02-0.05', description: 'Uses local models for team leads/workers' },
-  balanced: { estimate: '$0.10-0.20', description: 'Mix of API and local models' },
-  quality_focused: { estimate: '$0.30-0.50', description: 'Uses premium API models' },
-  speed_focused: { estimate: '$0.15-0.25', description: 'Fast API models' },
-  local_only: { estimate: 'Free', description: 'All local models (slower)' },
-};
+export const counts = (w) => ({
+  steps: w.step_count ?? w.stepCount ?? w.steps?.length ?? 0,
+  checkpoints: w.checkpoint_count ?? w.checkpointCount ?? w.checkpoints?.length ?? 0,
+  inputs: (w.required_inputs || w.requiredInputs || []).length,
+  teamLeads: w.team_leads?.length ?? w.teamLeads?.length ?? w.team_lead_count ?? w.teamLeadCount ?? null,
+});
 
-const WorkflowCard = ({
-  workflow,
-  onViewDetails,
-  onExecute,
-  showDiagram = true,
-  compact = false,
-}) => {
-  if (!workflow) return null;
+export function complexityOf(w) {
+  const { steps, checkpoints } = counts(w);
+  if (steps <= 3 && checkpoints === 0) return { label: 'Simple', tone: 'ok' };
+  if (steps <= 5 && checkpoints <= 1) return { label: 'Moderate', tone: 'info' };
+  return { label: 'Complex', tone: 'warn' };
+}
 
-  // Extract primary domain from tags
-  const primaryDomain = (workflow.tags || []).find(tag =>
-    ['research', 'finance', 'content', 'sales', 'devops', 'legal', 'medical', 'investigation'].includes(tag)
-  );
-  const DomainIcon = primaryDomain ? domainIcons[primaryDomain] || Workflow : Workflow;
-
-  // Get cost estimate (default to cost_optimized)
-  const costInfo = presetCostEstimates['cost_optimized'];
-
-  // Calculate complexity based on steps and checkpoints
-  const stepCount = workflow.step_count || workflow.stepCount || (workflow.steps?.length || 0);
-  const checkpointCount = workflow.checkpoint_count || workflow.checkpointCount || 0;
-  const inputCount = (workflow.required_inputs || workflow.requiredInputs || []).length;
-
-  const getComplexityLabel = () => {
-    if (stepCount <= 3 && checkpointCount === 0) return { label: 'Simple', color: 'text-emerald-400' };
-    if (stepCount <= 5 && checkpointCount <= 1) return { label: 'Moderate', color: 'text-blue-400' };
-    return { label: 'Complex', color: 'text-amber-400' };
-  };
-
-  const complexity = getComplexityLabel();
-
-  // Count unique team leads
-  const teamLeadCount = workflow.team_leads?.length || workflow.teamLeads?.length || 0;
-
+function StageStrip({ w }) {
+  const { steps, checkpoints, teamLeads } = counts(w);
+  const Arrow = () => <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-subtle" />;
   return (
-    <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl overflow-hidden hover:border-unicorn-500/50 transition-all group">
-      {/* Diagram Preview */}
-      {showDiagram && !compact && (
-        <div className="relative">
-          <MiniWorkflowDiagram workflow={workflow} height="140px" />
-          {/* Overlay gradient for depth */}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent pointer-events-none"></div>
+    <div className="flex h-full flex-col items-center justify-center gap-2 px-4" aria-label={`${steps} steps across three tiers`}>
+      <div className="flex flex-wrap items-center justify-center gap-1">
+        <Chip size="xs" tone="accent" icon={Crown}>
+          Orchestrator
+        </Chip>
+        <Arrow />
+        <Chip size="xs" tone="info" icon={Users}>
+          {teamLeads ? `${teamLeads} team lead${teamLeads === 1 ? '' : 's'}` : 'Team leads'}
+        </Chip>
+        <Arrow />
+        <Chip size="xs" tone="ok" icon={Hammer}>
+          Workers
+        </Chip>
+        {checkpoints > 0 && (
+          <>
+            <Arrow />
+            <Chip size="xs" tone="warn" icon={PauseCircle}>
+              {checkpoints} checkpoint{checkpoints === 1 ? '' : 's'}
+            </Chip>
+          </>
+        )}
+      </div>
+      <p className="text-micro text-subtle">
+        {steps} step{steps === 1 ? '' : 's'} · steps load with the details
+      </p>
+    </div>
+  );
+}
+
+function Stats({ w, className = '' }) {
+  const c = counts(w);
+  const cost = w.estimated_cost ?? w.estimatedCost;
+  const rows = [
+    ['Inputs', c.inputs],
+    ['Checkpoints', c.checkpoints],
+    ['Team leads', c.teamLeads == null ? '—' : c.teamLeads],
+  ];
+  return (
+    <dl className={`grid grid-cols-4 gap-2 ${className}`}>
+      {rows.map(([label, value]) => (
+        <div key={label} className="min-w-0">
+          <dt className="truncate text-micro text-subtle">{label}</dt>
+          <dd className="text-body-sm font-semibold tabular-nums text-fg">{value}</dd>
         </div>
-      )}
+      ))}
+      <div className="min-w-0">
+        <Tooltip content={cost != null ? 'Estimated by the engine for this workflow' : DEFAULT_ESTIMATE.note}>
+          <dt className="truncate text-micro text-subtle underline decoration-dotted underline-offset-2">Est. cost</dt>
+        </Tooltip>
+        <dd className="text-body-sm font-semibold tabular-nums text-fg">{cost != null ? `$${Number(cost).toFixed(2)}` : DEFAULT_ESTIMATE.estimate}</dd>
+      </div>
+    </dl>
+  );
+}
 
-      {/* Card Content */}
-      <div className="p-5">
-        {/* Header */}
-        <div className="flex items-start gap-3 mb-3">
-          <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-unicorn-500/20 to-unicorn-500/20 border border-unicorn-500/30 flex items-center justify-center flex-shrink-0">
-            <DomainIcon className="w-6 h-6 text-unicorn-400" aria-hidden="true" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-white group-hover:text-unicorn-400 transition-colors line-clamp-1">
-              {workflow.name}
-            </h3>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-xs text-slate-400 flex items-center gap-1">
-                <GitBranch className="w-3 h-3" />
-                {stepCount} steps
-              </span>
-              <span className={`text-xs ${complexity.color} flex items-center gap-1`}>
-                <TrendingUp className="w-3 h-3" />
-                {complexity.label}
-              </span>
-              {primaryDomain && (
-                <span className={`px-1.5 py-0.5 rounded text-[10px] border ${tagColors[primaryDomain] || 'bg-slate-500/20 text-slate-400 border-slate-500/30'}`}>
-                  {primaryDomain}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+export default function WorkflowCard({ workflow, onViewDetails, onExecute, layout = 'grid', busy = false }) {
+  if (!workflow) return null;
+  const tags = workflow.tags || [];
+  const primaryDomain = tags.find((t) => DOMAIN_TAGS.includes(t));
+  const DomainIcon = (primaryDomain && DOMAIN_ICON[primaryDomain]) || Workflow;
+  const complexity = complexityOf(workflow);
+  const { steps } = counts(workflow);
+  const otherTags = tags.filter((t) => t !== primaryDomain);
+  const hasSteps = Array.isArray(workflow.steps) && workflow.steps.length > 0;
 
-        {/* Description */}
-        <p className="text-sm text-slate-400 mb-4 line-clamp-2 leading-relaxed">
-          {workflow.description}
-        </p>
-
-        {/* Tags */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {(workflow.tags || [])
-            .filter(t => t !== primaryDomain)
-            .slice(0, 3)
-            .map(tag => (
-              <span
-                key={tag}
-                className={`px-2 py-0.5 rounded text-xs border ${tagColors[tag] || 'bg-slate-500/20 text-slate-400 border-slate-500/30'}`}
-              >
-                {tag}
-              </span>
-            ))}
-          {(workflow.tags || []).filter(t => t !== primaryDomain).length > 3 && (
-            <span className="px-2 py-0.5 rounded bg-slate-800 text-xs text-slate-400">
-              +{(workflow.tags || []).filter(t => t !== primaryDomain).length - 3}
-            </span>
+  const title = (
+    <div className="flex min-w-0 items-start gap-3">
+      <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-elevated text-accent">
+        <DomainIcon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate text-body font-semibold text-fg-strong">{workflow.name}</h3>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <Chip size="xs">
+            {steps} step{steps === 1 ? '' : 's'}
+          </Chip>
+          <Chip size="xs" tone={complexity.tone}>
+            {complexity.label}
+          </Chip>
+          {primaryDomain && (
+            <Chip size="xs" tone="accent" className="capitalize">
+              {primaryDomain}
+            </Chip>
           )}
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/40">
-            <FileText className="w-3.5 h-3.5 text-slate-400" />
-            <div>
-              <div className="text-xs text-slate-400">Inputs</div>
-              <div className="text-sm font-medium text-white">{inputCount}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/40">
-            <PauseCircle className="w-3.5 h-3.5 text-slate-400" />
-            <div>
-              <div className="text-xs text-slate-400">Checkpoints</div>
-              <div className="text-sm font-medium text-white">{checkpointCount}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/40">
-            <Users className="w-3.5 h-3.5 text-slate-400" />
-            <div>
-              <div className="text-xs text-slate-400">Team Leads</div>
-              <div className="text-sm font-medium text-white">{teamLeadCount}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/40">
-            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-            <div>
-              <div className="text-xs text-slate-400">Est. Cost</div>
-              <div className="text-sm font-medium text-emerald-400">{costInfo.estimate}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onViewDetails(workflow)}
-            className="flex-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm font-medium"
-          >
-            <Eye className="w-4 h-4" />
-            <span>Details</span>
-          </button>
-          <button
-            onClick={() => onExecute(workflow)}
-            className="flex-1 px-3 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-500 hover:to-unicorn-400 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
-          >
-            <Play className="w-4 h-4" />
-            <span>Run</span>
-          </button>
         </div>
       </div>
     </div>
   );
-};
 
-export default WorkflowCard;
+  const actions = (
+    <div className="flex items-center gap-2">
+      <Button variant="secondary" size="sm" icon={Eye} onClick={() => onViewDetails(workflow)} className="flex-1">
+        Details
+      </Button>
+      <Button size="sm" icon={Play} loading={busy} onClick={() => onExecute(workflow)} className="flex-1">
+        Run
+      </Button>
+    </div>
+  );
+
+  if (layout === 'list') {
+    return (
+      <Card padding="sm" className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="min-w-0 flex-1">
+          {title}
+          <p className="mt-2 line-clamp-2 text-body-sm text-muted">{workflow.description}</p>
+        </div>
+        <Stats w={workflow} className="sm:w-72" />
+        <div className="sm:w-52">{actions}</div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card padding="none" className="flex h-full flex-col overflow-hidden">
+      <div className="h-28 border-b border-border bg-surface/60">
+        {hasSteps ? <MiniWorkflowDiagram workflow={workflow} height={112} /> : <StageStrip w={workflow} />}
+      </div>
+      <div className="flex flex-1 flex-col gap-3 p-4">
+        {title}
+        <p className="line-clamp-2 text-body-sm text-muted">{workflow.description}</p>
+        {otherTags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {otherTags.slice(0, 3).map((t) => (
+              <Chip key={t} size="xs">
+                {t}
+              </Chip>
+            ))}
+            {otherTags.length > 3 && <Chip size="xs">+{otherTags.length - 3}</Chip>}
+          </div>
+        )}
+        <Stats w={workflow} className="mt-auto border-t border-border pt-3" />
+        {actions}
+      </div>
+    </Card>
+  );
+}

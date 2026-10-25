@@ -1,63 +1,48 @@
 /**
- * Unicorn Brigade Logo Components
- * Uses actual logo images from /public for The General and Gunny.
+ * Unicorn Brigade marks — the real logo images from /public.
+ * Agent faces live in components/AgentAvatar (portraits + live expressions);
+ * these two are the brand mark and the two founding characters.
  */
 
-/**
- * Brigade mark — The General logo used as the platform brand.
- */
+/** Brigade mark — The General's logo used as the platform brand. */
 export function BrigadeLogo({ size = 48, className = '' }) {
   return (
     <img
       src="/The_General_Logo.png"
       alt="Unicorn Brigade"
-      className={`rounded-lg ${className}`}
+      width={size}
+      height={size}
+      className={`shrink-0 rounded-control ${className}`}
       style={{ width: size, height: size }}
     />
   );
 }
 
-/**
- * The General — commanding meta-orchestrator avatar.
- */
+/** The General — commanding meta-orchestrator. */
 export function GeneralAvatar({ size = 64, className = '' }) {
   return (
     <img
       src="/The_General_Logo.png"
       alt="The General"
-      className={`rounded-lg shadow-lg shadow-unicorn-500/20 ${className}`}
+      width={size}
+      height={size}
+      className={`shrink-0 rounded-card shadow-e2 ${className}`}
       style={{ width: size, height: size }}
     />
   );
 }
 
-/**
- * Gunny — the agent builder drill sergeant avatar.
- */
+/** Gunny — the agent builder. */
 export function GunnyAvatar({ size = 64, className = '' }) {
   return (
     <img
       src="/Gunny_Logo.png"
       alt="Gunny"
-      className={`rounded-lg shadow-lg shadow-amber-500/20 ${className}`}
+      width={size}
+      height={size}
+      className={`shrink-0 rounded-card shadow-e2 ${className}`}
       style={{ width: size, height: size }}
     />
-  );
-}
-
-/**
- * Generic agent avatar — uses agent's emoji or fallback.
- */
-export function AgentAvatar({ emoji = '🦄', size = 40, className = '' }) {
-  return (
-    <div
-      className={`flex items-center justify-center rounded-lg bg-gradient-to-br from-unicorn-600 to-unicorn-500 ${className}`}
-      style={{ width: size, height: size }}
-    >
-      <span style={{ fontSize: size * 0.55 }} role="img" aria-label="Agent">
-        {emoji}
-      </span>
-    </div>
   );
 }
 

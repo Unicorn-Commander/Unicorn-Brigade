@@ -1,173 +1,96 @@
-import { useState } from 'react';
-import { Play, Square, Eye, Package, CheckCircle, XCircle, Loader2, AlertCircle, Settings } from 'lucide-react';
-import { toast } from 'react-hot-toast';
-import notify from '../utils/notify';
+import { Eye, Play, Settings2, Square } from 'lucide-react';
 import McpServerIcon from '../utils/mcpIcons';
 import { RoleGate } from './auth';
+import { Button, Card, Chip, Tooltip } from './ui';
 
-const MCPServerCard = ({ server, onStart, onStop, onViewTools, onManage, isLoading, statusOverride }) => {
-  const [actionLoading, setActionLoading] = useState(false);
-  const isRunning = statusOverride ? statusOverride === 'running' : (server.status === 'running' || server.running);
+const STATUS = {
+  running: { tone: 'ok', label: 'Running', pulse: true },
+  stopped: { tone: 'neutral', label: 'Stopped', pulse: false },
+  error: { tone: 'danger', label: 'Error', pulse: false },
+};
 
-  const handleStart = async () => {
-    setActionLoading(true);
-    try {
-      await onStart(server.name);
-      notify.success(`${server.display_name} started`);
-    } catch (error) {
-      toast.error(`Failed to start server: ${error.message}`);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleStop = async () => {
-    setActionLoading(true);
-    try {
-      await onStop(server.name);
-      notify.success(`${server.display_name} stopped`);
-    } catch (error) {
-      toast.error(`Failed to stop server: ${error.message}`);
-    } finally {
-      setActionLoading(false);
-    }
-  };
+/**
+ * MCPServerCard — one registered server as the list endpoint describes it
+ * (name, display_name, description, capabilities, transport, enabled,
+ * running). Command, args and env vars live on the detail endpoint and are
+ * shown in the Manage panel. The page owns status, errors and busy state.
+ *
+ *   <MCPServerCard server={s} status="running" reason={…} busy={false}
+ *                  onStart={…} onStop={…} onViewTools={…} onManage={…} />
+ */
+export default function MCPServerCard({ server, status = 'stopped', reason, busy = false, onStart, onStop, onViewTools, onManage }) {
+  const s = STATUS[status] || STATUS.stopped;
+  const running = status === 'running';
+  const declared = Array.isArray(server.capabilities) ? server.capabilities.length : 0;
+  const title = server.display_name || server.name;
 
   return (
-    <div className="card hover:shadow-lg hover:shadow-unicorn-500/10 transition-all group">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center space-x-3">
-          <div className="p-2.5 rounded-lg bg-unicorn-500/15 text-unicorn-400">
-            <McpServerIcon name={server.name} className="w-6 h-6" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-white group-hover:text-unicorn-400 transition-colors">
-              {server.display_name}
-            </h3>
-            <p className="text-xs text-slate-400">{server.name}</p>
-          </div>
+    <Card className="flex h-full flex-col">
+      <div className="flex items-start gap-3">
+        <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-elevated text-accent">
+          <McpServerIcon name={server.name} className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-body font-semibold text-fg-strong">{title}</h3>
+          <p className="truncate font-mono text-caption text-muted">{server.name}</p>
         </div>
-
-        {/* Status Badge */}
-        <div className="flex items-center space-x-2">
-          {isRunning ? (
-            <span className="flex items-center space-x-1 px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
-              <CheckCircle className="w-3 h-3" />
-              <span>Running</span>
-            </span>
-          ) : (
-            <span className="flex items-center space-x-1 px-2 py-1 rounded-full bg-slate-500/20 text-slate-400 text-xs">
-              <XCircle className="w-3 h-3" />
-              <span>Stopped</span>
-            </span>
-          )}
-        </div>
+        <Tooltip content={status === 'error' && reason ? reason : undefined}>
+          <Chip tone={s.tone} size="xs" dot pulse={s.pulse && !busy}>
+            {busy ? 'Working…' : s.label}
+          </Chip>
+        </Tooltip>
       </div>
 
-      {/* Description */}
-      <p className="text-sm text-slate-400 mb-4 line-clamp-2">
-        {server.description}
-      </p>
+      {server.description && <p className="mt-3 line-clamp-2 text-body-sm text-muted">{server.description}</p>}
 
-      {/* Category Tags */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {server.category && (
-          <span className="px-2 py-1 rounded bg-unicorn-500/20 text-unicorn-400 text-xs">
-            {server.category}
-          </span>
-        )}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5 text-caption text-muted">
         {server.transport && (
-          <span className="px-2 py-1 rounded bg-cyan-500/20 text-cyan-400 text-xs">
-            {server.transport.toUpperCase()}
-          </span>
+          <Chip size="xs" tone="info" uppercase>
+            {server.transport}
+          </Chip>
+        )}
+        <span>
+          {declared} declared tool{declared === 1 ? '' : 's'}
+        </span>
+        {server.enabled === false && (
+          <Chip size="xs" tone="warn">
+            Disabled in registry
+          </Chip>
         )}
       </div>
 
-      {/* Declared tool count (from the registry; discovered live once started) */}
-      <div className="flex items-center space-x-2 mb-4 text-slate-400 text-sm">
-        <Package className="w-4 h-4" />
-        <span>{server.capabilities?.length || 0} declared tools</span>
-      </div>
-
-      {/* Config Requirements */}
-      {server.env_vars && server.env_vars.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center space-x-2 text-xs text-amber-400 mb-1">
-            <AlertCircle className="w-3 h-3" />
-            <span>Requires configuration</span>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {server.env_vars.slice(0, 3).map((env, idx) => (
-              <span key={idx} className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-400 text-xs font-mono">
-                {env}
-              </span>
-            ))}
-            {server.env_vars.length > 3 && (
-              <span className="px-2 py-0.5 rounded bg-slate-800/50 text-slate-400 text-xs">
-                +{server.env_vars.length - 3}
-              </span>
-            )}
-          </div>
-        </div>
+      {status === 'error' && reason && (
+        <p role="alert" className="mt-2 text-caption text-danger">
+          {reason}
+        </p>
       )}
 
-      {/* Actions.
-          Start/Stop and Manage drive admin-only backend routes (require_admin);
-          gate them so non-admins don't see dead controls (BR-2.3). Viewing tools
-          is read-only and stays available to everyone. */}
-      <div className="flex space-x-2">
+      <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-4">
+        {/* Start/Stop and Manage hit admin-only routes (require_admin); hide
+            them from everyone else so there are no dead controls. Viewing the
+            tool list is read-only. */}
         <RoleGate role="admin" showUpgradePrompt={false}>
-          {isRunning ? (
-            <button
-              onClick={handleStop}
-              disabled={actionLoading || isLoading}
-              className="flex-1 px-3 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              {actionLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Square className="w-4 h-4" />
-              )}
-              <span>Stop</span>
-            </button>
+          {running ? (
+            <Button variant="secondary" size="sm" icon={Square} loading={busy} onClick={() => onStop?.(server)} aria-label={`Stop ${title}`}>
+              Stop
+            </Button>
           ) : (
-            <button
-              onClick={handleStart}
-              disabled={actionLoading || isLoading}
-              className="flex-1 px-3 py-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-lg transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              {actionLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4" />
-              )}
-              <span>Start</span>
-            </button>
+            <Button variant="secondary" size="sm" icon={Play} loading={busy} onClick={() => onStart?.(server)} aria-label={`Start ${title}`} disabled={server.enabled === false}>
+              Start
+            </Button>
           )}
         </RoleGate>
-
-        <button
-          onClick={() => onViewTools(server)}
-          className="px-3 py-2 bg-unicorn-500/20 text-unicorn-400 hover:bg-unicorn-500/30 rounded-lg transition-colors flex items-center justify-center space-x-2"
-        >
-          <Eye className="w-4 h-4" />
-          <span>Tools</span>
-        </button>
-
+        <Button variant="ghost" size="sm" icon={Eye} onClick={() => onViewTools?.(server)} aria-label={`Tools of ${title}`}>
+          Tools
+        </Button>
         {onManage && (
           <RoleGate role="admin" showUpgradePrompt={false}>
-            <button
-              onClick={() => onManage(server)}
-              className="px-3 py-2 bg-slate-700/60 text-slate-200 hover:bg-slate-600 rounded-lg transition-colors flex items-center justify-center space-x-2"
-            >
-              <Settings className="w-4 h-4" />
-              <span>Manage</span>
-            </button>
+            <Button variant="ghost" size="sm" icon={Settings2} onClick={() => onManage(server)} aria-label={`Manage ${title}`} className="ml-auto">
+              Manage
+            </Button>
           </RoleGate>
         )}
       </div>
-    </div>
+    </Card>
   );
-};
-
-export default MCPServerCard;
+}

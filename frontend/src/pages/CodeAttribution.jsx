@@ -1,585 +1,394 @@
-import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  FileCode,
-  Search,
-  Filter,
-  Calendar,
-  Download,
-  RefreshCw,
-  User,
-  BarChart3,
-  Clock,
-  Loader2,
-  X,
-  ChevronDown
-} from 'lucide-react';
-import { toast } from 'react-hot-toast';
+/**
+ * Code attribution — which agent wrote which code, for audit trails.
+ *
+ * Data: GET /trace/recent?days=N (one window, shared by every tab) and
+ * GET /trace/stats. The trace API answers an EMPTY window with 404 + "No
+ * attributions found …"; traceService turns that into [] so this page shows an
+ * honest empty state, and only a missing route becomes an error.
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BarChart3, Clock, Download, FileCode, RefreshCw, Search, User, X } from 'lucide-react';
 import notify from '../utils/notify';
+import { humanize } from '../utils/errors';
 import traceService from '../services/traceService';
 import CodeAttributionCard from '../components/CodeAttributionCard';
 import AttributionTimeline from '../components/AttributionTimeline';
 import FileAttributionViewer from '../components/FileAttributionViewer';
 import AttributionStats from '../components/AttributionStats';
 import Breadcrumbs from '../components/Breadcrumbs';
-import TableSkeleton from '../components/skeletons/TableSkeleton';
-import ListSkeleton from '../components/skeletons/ListSkeleton';
+import {
+  Button,
+  Card,
+  Chip,
+  EmptyState,
+  ErrorState,
+  Input,
+  LoadingState,
+  OfflineState,
+  Page,
+  PageHeader,
+  Select,
+  Tabs,
+  Toggle,
+} from '../components/ui';
 
-// Map the UI date-range picker to the trace API's `days` lookback param
-// (1-90). "All time" is capped at the API maximum of 90 days.
-const DATE_RANGE_DAYS = { '24h': 1, '7d': 7, '30d': 30, all: 90 };
+// The UI date-range picker → the trace API's `days` lookback (1-90).
+const RANGES = [
+  { id: '24h', label: 'Last 24 hours', days: 1 },
+  { id: '7d', label: 'Last 7 days', days: 7 },
+  { id: '30d', label: 'Last 30 days', days: 30 },
+  { id: '90d', label: 'Last 90 days', days: 90 },
+];
+const daysFor = (id) => RANGES.find((r) => r.id === id)?.days || 7;
 
-const CodeAttribution = () => {
-  const [activeTab, setActiveTab] = useState('by-file');
-  const [searchQuery, setSearchQuery] = useState('');
+const TABS = [
+  { id: 'by-file', label: 'By file', icon: FileCode },
+  { id: 'by-agent', label: 'By agent', icon: User },
+  { id: 'recent', label: 'Recent', icon: Clock },
+  { id: 'statistics', label: 'Statistics', icon: BarChart3 },
+];
+
+const fileName = (p = '') => p.split('/').pop() || p;
+
+export default function CodeAttribution() {
+  const [tab, setTab] = useState('by-file');
+  const [query, setQuery] = useState('');
+  const [range, setRange] = useState('7d');
+  const [agent, setAgent] = useState('');
+
+  const [attributions, setAttributions] = useState([]);
+  const [statistics, setStatistics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Data
-  const [attributions, setAttributions] = useState([]);
-  const [fileTree, setFileTree] = useState([]);
-  const [agentList, setAgentList] = useState([]);
-  const [statistics, setStatistics] = useState(null);
-  const [recentActivity, setRecentActivity] = useState([]);
-
-  // Filters
-  const [dateRange, setDateRange] = useState('7d'); // 24h, 7d, 30d, all
-  const [selectedAgent, setSelectedAgent] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Viewer
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerData, setViewerData] = useState(null);
-
-  // Auto-refresh for recent activity
+  const [error, setError] = useState(null);
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
-  // Load initial data (agent filter is applied client-side, no refetch needed)
-  useEffect(() => {
-    loadData();
-  }, [dateRange]);
+  const [viewer, setViewer] = useState(null); // { filePath, attributions, code }
+  const [viewerLoading, setViewerLoading] = useState(null); // filePath being opened
 
-  // Auto-refresh recent activity every 10 seconds
-  useEffect(() => {
-    if (activeTab === 'recent' && autoRefresh) {
-      const interval = setInterval(() => {
-        loadRecentActivity();
-      }, 10000);
-
-      return () => clearInterval(interval);
-    }
-  }, [activeTab, autoRefresh]);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      // Date range filter — the trace API filters by a `days` lookback
-      const filters = { days: DATE_RANGE_DAYS[dateRange] || 7 };
-
-      // Load all data in parallel (stats endpoint takes no filters)
-      const [attributionsData, fileTreeData, statsData] = await Promise.all([
-        traceService.getAttributions(filters),
-        traceService.getFileTree(),
-        traceService.getStatistics(),
-        new Promise(resolve => setTimeout(resolve, 300)),
-      ]);
-
-      setAttributions(attributionsData || []);
-      setFileTree(fileTreeData || []);
-      setStatistics(statsData || null);
-
-      // Extract unique agents from attributions (deduped by id)
-      const agents = [...new Map(
-        (attributionsData || []).map(a => [
-          a.agent_id,
-          { id: a.agent_id, name: a.agent_name || a.agent_id }
-        ])
-      ).values()].filter(a => a.id);
-      setAgentList(agents);
-
-    } catch (error) {
-      console.error('Failed to load attribution data:', error);
-      toast.error('Failed to load attribution data');
-    } finally {
+  const load = useCallback(
+    async ({ silent = false } = {}) => {
+      if (silent) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+      const [a, s] = await Promise.allSettled([traceService.getAttributions({ days: daysFor(range) }), traceService.getStatistics()]);
+      if (a.status === 'fulfilled') setAttributions(a.value || []);
+      else setError(a.reason);
+      if (s.status === 'fulfilled') setStatistics(s.value || null);
       setLoading(false);
-    }
-  };
-
-  const loadRecentActivity = async () => {
-    setRefreshing(true);
-    try {
-      // getRecentActivity takes DAYS, not hours ("Last 7 days" → days=7)
-      const data = await traceService.getRecentActivity(DATE_RANGE_DAYS[dateRange] || 7);
-      setRecentActivity(data || []);
-    } catch (error) {
-      console.error('Failed to load recent activity:', error);
-    } finally {
       setRefreshing(false);
+    },
+    [range]
+  );
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // The Recent tab keeps itself fresh.
+  useEffect(() => {
+    if (tab !== 'recent' || !autoRefresh) return undefined;
+    const t = setInterval(() => load({ silent: true }), 10000);
+    return () => clearInterval(t);
+  }, [tab, autoRefresh, load]);
+
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      load();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [load]);
+
+  const agents = useMemo(
+    () => [...new Map(attributions.filter((a) => a.agent_id).map((a) => [a.agent_id, { id: a.agent_id, name: a.agent_name || a.agent_id }])).values()],
+    [attributions]
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return attributions.filter((a) => {
+      if (agent && a.agent_id !== agent) return false;
+      if (!q) return true;
+      return [a.file_path, a.agent_name, a.agent_id, a.model, a.prompt].some((f) => (f || '').toLowerCase().includes(q));
+    });
+  }, [attributions, query, agent]);
+
+  const byFile = useMemo(() => {
+    const m = new Map();
+    for (const a of filtered) {
+      if (!m.has(a.file_path)) m.set(a.file_path, []);
+      m.get(a.file_path).push(a);
     }
+    return [...m.entries()];
+  }, [filtered]);
+
+  const byAgent = useMemo(() => {
+    const m = new Map();
+    for (const a of filtered) {
+      const k = a.agent_id || a.agent_name || 'unknown';
+      if (!m.has(k)) m.set(k, { id: k, name: a.agent_name || k, items: [] });
+      m.get(k).items.push(a);
+    }
+    return [...m.values()];
+  }, [filtered]);
+
+  const hasFilters = Boolean(query || agent);
+  const clearFilters = () => {
+    setQuery('');
+    setAgent('');
   };
 
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) {
-      loadData();
-      return;
-    }
-
-    setLoading(true);
+  const openFile = async (filePath) => {
+    setViewerLoading(filePath);
     try {
-      const results = await traceService.searchAttributions(searchQuery, {
-        days: DATE_RANGE_DAYS[dateRange] || 7,
-      });
-      setAttributions(results || []);
-    } catch (error) {
-      console.error('Search failed:', error);
-      toast.error('Search failed');
+      const data = await traceService.getFileAttributions(filePath);
+      setViewer({ filePath, attributions: data?.attributions || [], code: data?.code || '' });
+    } catch (err) {
+      notify.error(humanize(err, { what: 'opening the file' }));
     } finally {
-      setLoading(false);
+      setViewerLoading(null);
     }
-  }, [searchQuery, dateRange]);
+  };
 
-  const handleExport = async () => {
+  const exportReport = async () => {
+    setExporting(true);
     try {
-      toast.loading('Generating report...');
-
       const filters = {};
-      if (dateRange !== 'all') {
-        const now = new Date();
-        const start = new Date();
-
-        if (dateRange === '24h') {
-          start.setHours(now.getHours() - 24);
-        } else if (dateRange === '7d') {
-          start.setDate(now.getDate() - 7);
-        } else if (dateRange === '30d') {
-          start.setDate(now.getDate() - 30);
-        }
-
-        filters.startDate = start.toISOString();
-        filters.endDate = now.toISOString();
-      }
-
-      if (selectedAgent) {
-        filters.agentId = selectedAgent;
-      }
-
+      const days = daysFor(range);
+      const end = new Date();
+      const start = new Date(end.getTime() - days * 86400000);
+      filters.startDate = start.toISOString();
+      filters.endDate = end.toISOString();
+      if (agent) filters.agentId = agent;
       const blob = await traceService.exportReport(filters, 'json');
-
-      // Download the file
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `attribution-report-${Date.now()}.json`;
-      document.body.appendChild(a);
-      a.click();
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `attribution-report-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
       window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      toast.dismiss();
       notify.success('Report downloaded');
-    } catch (error) {
-      toast.dismiss();
-      toast.error('Export failed');
-      console.error('Export failed:', error);
+    } catch (err) {
+      notify.error(humanize(err, { what: 'exporting the report' }));
+    } finally {
+      setExporting(false);
     }
   };
 
-  const handleFileClick = async (filePath) => {
-    try {
-      toast.loading('Loading file...');
-      const fileData = await traceService.getFileAttributions(filePath);
-
-      setViewerData({
-        filePath,
-        attributions: fileData.attributions || [],
-        code: fileData.code || ''
-      });
-      setViewerOpen(true);
-      toast.dismiss();
-    } catch (error) {
-      toast.dismiss();
-      toast.error('Failed to load file');
-      console.error('Failed to load file:', error);
-    }
-  };
-
-  const handleAgentClick = async (agentId) => {
-    setSelectedAgent(agentId === selectedAgent ? null : agentId);
-  };
-
-  // Filter attributions based on selected agent + search
-  const filteredAttributions = attributions.filter(attr => {
-    if (selectedAgent && attr.agent_id !== selectedAgent) return false;
-    if (!searchQuery.trim()) return true;
-
-    const query = searchQuery.toLowerCase();
-    return (
-      attr.file_path?.toLowerCase().includes(query) ||
-      attr.agent_name?.toLowerCase().includes(query) ||
-      attr.agent_id?.toLowerCase().includes(query) ||
-      attr.model?.toLowerCase().includes(query) ||
-      attr.prompt?.toLowerCase().includes(query)
+  // ── the four states ────────────────────────────────────────────────────────
+  let body;
+  if (offline && !attributions.length && loading) {
+    body = <OfflineState onRetry={load} />;
+  } else if (loading) {
+    body = tab === 'statistics' ? <LoadingState variant="stats" count={4} label="Loading statistics" /> : tab === 'recent' ? <LoadingState variant="list" count={5} label="Loading activity" /> : <LoadingState variant="cards" count={6} label="Loading attributions" />;
+  } else if (error) {
+    body = (
+      <ErrorState
+        title={error.routeMissing ? 'Attribution isn’t available on this server' : 'Couldn’t load attributions'}
+        detail={
+          error.routeMissing
+            ? 'The trace service (GET /api/v1/trace/recent) didn’t answer on this deployment. Attribution appears here once the service is enabled and an agent has written code through it.'
+            : humanize(error, { what: 'loading attributions' })
+        }
+        onRetry={load}
+      />
     );
-  });
-
-  // Group files for "By File" view
-  const groupedFiles = filteredAttributions.reduce((acc, attr) => {
-    if (!acc[attr.file_path]) {
-      acc[attr.file_path] = [];
-    }
-    acc[attr.file_path].push(attr);
-    return acc;
-  }, {});
-
-  // Group by agent for "By Agent" view
-  const groupedAgents = filteredAttributions.reduce((acc, attr) => {
-    const agentKey = attr.agent_id;
-    if (!acc[agentKey]) {
-      acc[agentKey] = {
-        id: attr.agent_id,
-        name: attr.agent_name || attr.agent_id,
-        attributions: []
-      };
-    }
-    acc[agentKey].attributions.push(attr);
-    return acc;
-  }, {});
+  } else if (tab === 'statistics') {
+    body = <AttributionStats statistics={statistics} />;
+  } else if (!attributions.length) {
+    body = (
+      <EmptyState
+        icon={FileCode}
+        title="No attributed files in this window"
+        description="Attribution is recorded when an agent writes code through the trace service (POST /api/v1/trace/report). Widen the window, or check back after an agent has worked on a file."
+        action={
+          range !== '90d' && (
+            <Button variant="secondary" icon={Clock} onClick={() => setRange('90d')}>
+              Look back 90 days
+            </Button>
+          )
+        }
+      />
+    );
+  } else if (!filtered.length) {
+    body = (
+      <EmptyState
+        compact
+        icon={Search}
+        title="No attributions match"
+        description="Try another word, or clear the agent filter."
+        action={
+          <Button variant="secondary" size="sm" icon={X} onClick={clearFilters}>
+            Clear filters
+          </Button>
+        }
+      />
+    );
+  } else if (tab === 'by-file') {
+    body = (
+      <ul className="space-y-4" aria-label="Attributed files">
+        {byFile.map(([filePath, items]) => (
+          <li key={filePath}>
+            <Card>
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => openFile(filePath)}
+                  className="flex min-w-0 flex-1 items-start gap-2 rounded-chip text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Open attributions for ${filePath}`}
+                >
+                  <FileCode aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+                  <span className="min-w-0">
+                    <span className="block truncate text-body font-semibold text-fg-strong">{fileName(filePath)}</span>
+                    <span className="block truncate font-mono text-caption text-muted">{filePath}</span>
+                  </span>
+                </button>
+                <Chip tone="accent" size="sm" className="shrink-0 tabular-nums">
+                  {items.length} attribution{items.length === 1 ? '' : 's'}
+                </Chip>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {items.slice(0, 3).map((a, i) => (
+                  <CodeAttributionCard key={a.id || i} attribution={a} compact onClick={() => openFile(filePath)} />
+                ))}
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button variant="link" size="sm" loading={viewerLoading === filePath} onClick={() => openFile(filePath)}>
+                  {items.length > 3 ? `View all ${items.length} attributions` : 'View attributed code'}
+                </Button>
+              </div>
+            </Card>
+          </li>
+        ))}
+      </ul>
+    );
+  } else if (tab === 'by-agent') {
+    body = (
+      <ul className="space-y-4" aria-label="Agents">
+        {byAgent.map((g) => {
+          const lines = g.items.reduce((n, a) => n + (a.lines_count || 0), 0);
+          const files = new Set(g.items.map((a) => a.file_path)).size;
+          return (
+            <li key={g.id}>
+              <Card>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-elevated text-accent">
+                      <User className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-lead font-semibold text-fg-strong">{g.name}</h3>
+                      <p className="truncate font-mono text-caption text-muted">{g.id}</p>
+                    </div>
+                  </div>
+                  <dl className="flex items-center gap-5 text-body-sm">
+                    <div className="text-right">
+                      <dt className="text-caption text-muted">Lines</dt>
+                      <dd className="font-semibold tabular-nums text-fg-strong">{lines.toLocaleString()}</dd>
+                    </div>
+                    <div className="text-right">
+                      <dt className="text-caption text-muted">Files</dt>
+                      <dd className="font-semibold tabular-nums text-fg-strong">{files}</dd>
+                    </div>
+                  </dl>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {g.items.slice(0, 4).map((a, i) => (
+                    <CodeAttributionCard key={a.id || i} attribution={a} compact onClick={() => openFile(a.file_path)} />
+                  ))}
+                </div>
+                {g.items.length > 4 && <p className="mt-3 text-center text-caption text-muted">+ {g.items.length - 4} more attributions</p>}
+              </Card>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  } else {
+    body = (
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-body-sm text-muted">{refreshing ? 'Refreshing…' : `${filtered.length} change${filtered.length === 1 ? '' : 's'} in this window`}</p>
+          <label htmlFor="attr-auto-refresh" className="inline-flex items-center gap-2 text-body-sm text-muted">
+            Auto-refresh every 10s
+            <Toggle id="attr-auto-refresh" label="Auto-refresh every 10 seconds" checked={autoRefresh} onChange={setAutoRefresh} />
+          </label>
+        </div>
+        <AttributionTimeline attributions={filtered} onItemClick={(a) => openFile(a.file_path)} />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen p-4 md:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <Breadcrumbs />
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <FileCode className="w-8 h-8 text-unicorn-400" />
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent">
-                Code Attribution
-              </h1>
-            </div>
-            <p className="text-slate-400">
-              Track which AI agents generated which code for audit trails and compliance
-            </p>
+    <Page width="wide">
+      <PageHeader
+        breadcrumbs={<Breadcrumbs />}
+        eyebrow="Audit"
+        title="Code attribution"
+        description={loading ? 'Which agent wrote which code, for audit trails and compliance.' : `${attributions.length} attribution${attributions.length === 1 ? '' : 's'} in the ${RANGES.find((r) => r.id === range)?.label.toLowerCase()}.`}
+        actions={
+          <>
+            <Button variant="secondary" icon={Download} loading={exporting} onClick={exportReport} disabled={!attributions.length}>
+              Export report
+            </Button>
+            <Button variant="secondary" icon={RefreshCw} loading={refreshing} onClick={() => load({ silent: true })}>
+              Refresh
+            </Button>
+          </>
+        }
+        tabs={<Tabs tabs={TABS} value={tab} onChange={setTab} label="Attribution views" idBase="attr-tab" />}
+      />
+
+      <Card padding="sm" className="mb-5">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto]">
+          <div className="relative">
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <Input type="search" aria-label="Search files, agents, models or prompts" placeholder="Search files, agents, models, prompts…" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9" />
           </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleExport}
-              className="btn btn-secondary flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Export Report
-            </button>
-            <button
-              onClick={() => loadData()}
-              className="btn btn-secondary"
-              disabled={loading}
-              aria-label="Refresh attributions"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+          <Select aria-label="Date range" value={range} onChange={(e) => setRange(e.target.value)} className="md:w-44">
+            {RANGES.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+              </option>
+            ))}
+          </Select>
+          <Select aria-label="Filter by agent" value={agent} onChange={(e) => setAgent(e.target.value)} className="md:w-48" disabled={!agents.length}>
+            <option value="">All agents</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        {hasFilters && !loading && (
+          <div className="mt-2 flex items-center gap-2 text-caption text-muted">
+            <span>
+              {filtered.length} match{filtered.length === 1 ? '' : 'es'}
+            </span>
+            <Button variant="link" size="xs" onClick={clearFilters}>
+              Clear
+            </Button>
           </div>
-        </div>
+        )}
+      </Card>
 
-        {/* Search and Filters */}
-        <div className="card">
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search Bar */}
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Search files, agents, models, or prompts..."
-                className="input pl-10 w-full"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    loadData();
-                  }}
-                  aria-label="Clear search"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Date Range Filter */}
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <select
-                aria-label="Date range"
-                value={dateRange}
-                onChange={(e) => setDateRange(e.target.value)}
-                className="input w-40"
-              >
-                <option value="24h">Last 24 hours</option>
-                <option value="7d">Last 7 days</option>
-                <option value="30d">Last 30 days</option>
-                <option value="all">All time</option>
-              </select>
-            </div>
-
-            {/* Agent Filter */}
-            {agentList.length > 0 && (
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-slate-400" />
-                <select
-                  aria-label="Filter by agent"
-                  value={selectedAgent || ''}
-                  onChange={(e) => setSelectedAgent(e.target.value || null)}
-                  className="input w-48"
-                >
-                  <option value="">All agents</option>
-                  {agentList.map(agent => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex items-center gap-2 border-b border-slate-800">
-          {[
-            { id: 'by-file', label: 'By File', icon: FileCode },
-            { id: 'by-agent', label: 'By Agent', icon: User },
-            { id: 'recent', label: 'Recent Activity', icon: Clock },
-            { id: 'statistics', label: 'Statistics', icon: BarChart3 }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                if (tab.id === 'recent') loadRecentActivity();
-              }}
-              className={`
-                flex items-center gap-2 px-4 py-3 border-b-2 transition-all
-                ${activeTab === tab.id
-                  ? 'border-unicorn-500 text-unicorn-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-300'
-                }
-              `}
-            >
-              <tab.icon className="w-4 h-4" />
-              <span className="font-medium">{tab.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
-        <AnimatePresence mode="wait">
-          {loading ? (
-            <motion.div
-              key="loading"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="space-y-6"
-            >
-              {activeTab === 'recent' ? <ListSkeleton rows={6} /> : <TableSkeleton rows={6} columns={4} />}
-            </motion.div>
-          ) : (
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.2 }}
-            >
-              {/* By File View */}
-              {activeTab === 'by-file' && (
-                <div className="space-y-4">
-                  {Object.keys(groupedFiles).length > 0 ? (
-                    Object.entries(groupedFiles).map(([filePath, attrs]) => (
-                      <div key={filePath} className="card">
-                        <button
-                          onClick={() => handleFileClick(filePath)}
-                          className="w-full text-left"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <FileCode className="w-5 h-5 text-unicorn-400 flex-shrink-0" />
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-slate-200 truncate">
-                                  {filePath.split('/').pop()}
-                                </p>
-                                <p className="text-xs text-slate-400 truncate">
-                                  {filePath}
-                                </p>
-                              </div>
-                            </div>
-                            <span className="badge badge-purple ml-4">
-                              {attrs.length} {attrs.length === 1 ? 'attribution' : 'attributions'}
-                            </span>
-                          </div>
-                        </button>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
-                          {attrs.slice(0, 3).map((attr, index) => (
-                            <CodeAttributionCard
-                              key={attr.id || index}
-                              attribution={attr}
-                              compact
-                            />
-                          ))}
-                        </div>
-
-                        {attrs.length > 3 && (
-                          <button
-                            onClick={() => handleFileClick(filePath)}
-                            className="w-full mt-3 py-2 text-xs text-unicorn-400 hover:text-unicorn-300 transition-colors"
-                          >
-                            View all {attrs.length} attributions →
-                          </button>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="card text-center py-12">
-                      <FileCode className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-                      <p className="text-slate-400">No attributed files found</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* By Agent View */}
-              {activeTab === 'by-agent' && (
-                <div className="space-y-4">
-                  {Object.keys(groupedAgents).length > 0 ? (
-                    Object.entries(groupedAgents).map(([agentId, agentData]) => {
-                      const totalLines = agentData.attributions.reduce(
-                        (sum, attr) => sum + (attr.lines_count || 0), 0
-                      );
-                      const uniqueFiles = new Set(agentData.attributions.map(a => a.file_path)).size;
-
-                      return (
-                        <div key={agentId} className="card">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 bg-unicorn-500/20 rounded-lg">
-                                <User className="w-5 h-5 text-unicorn-400" />
-                              </div>
-                              <div>
-                                <h3 className="text-lg font-semibold text-slate-200">
-                                  {agentData.name}
-                                </h3>
-                                <p className="text-xs text-slate-400">{agentId}</p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-4 text-sm">
-                              <div className="text-right">
-                                <p className="text-slate-400">Lines</p>
-                                <p className="font-medium text-unicorn-400">
-                                  {totalLines.toLocaleString()}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-slate-400">Files</p>
-                                <p className="font-medium text-unicorn-400">
-                                  {uniqueFiles}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {agentData.attributions.slice(0, 4).map((attr, index) => (
-                              <CodeAttributionCard
-                                key={attr.id || index}
-                                attribution={attr}
-                                onClick={() => handleFileClick(attr.file_path)}
-                                compact
-                              />
-                            ))}
-                          </div>
-
-                          {agentData.attributions.length > 4 && (
-                            <p className="text-xs text-slate-400 mt-3 text-center">
-                              + {agentData.attributions.length - 4} more attributions
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="card text-center py-12">
-                      <User className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-                      <p className="text-slate-400">No agents found</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Recent Activity View */}
-              {activeTab === 'recent' && (
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <Clock className="w-5 h-5 text-unicorn-400" />
-                      <h2 className="text-lg font-semibold text-slate-200">
-                        Recent Activity
-                      </h2>
-                      {refreshing && (
-                        <Loader2 className="w-4 h-4 text-unicorn-400 animate-spin" />
-                      )}
-                    </div>
-
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={autoRefresh}
-                        onChange={(e) => setAutoRefresh(e.target.checked)}
-                        className="rounded border-slate-700 bg-slate-800 text-unicorn-500 focus:ring-unicorn-500"
-                      />
-                      <span className="text-slate-400">Auto-refresh (10s)</span>
-                    </label>
-                  </div>
-
-                  <AttributionTimeline
-                    attributions={recentActivity.length > 0 ? recentActivity : filteredAttributions}
-                    onItemClick={(attr) => handleFileClick(attr.file_path)}
-                  />
-                </div>
-              )}
-
-              {/* Statistics View */}
-              {activeTab === 'statistics' && (
-                <AttributionStats statistics={statistics} />
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div role="tabpanel" aria-labelledby={`attr-tab-${tab}`}>
+        {body}
       </div>
 
-      {/* File Attribution Viewer Modal */}
-      <AnimatePresence>
-        {viewerOpen && viewerData && (
-          <FileAttributionViewer
-            filePath={viewerData.filePath}
-            attributions={viewerData.attributions}
-            code={viewerData.code}
-            onClose={() => {
-              setViewerOpen(false);
-              setViewerData(null);
-            }}
-          />
-        )}
-      </AnimatePresence>
-    </div>
+      {viewer && <FileAttributionViewer filePath={viewer.filePath} attributions={viewer.attributions} code={viewer.code} onClose={() => setViewer(null)} />}
+    </Page>
   );
-};
-
-export default CodeAttribution;
+}

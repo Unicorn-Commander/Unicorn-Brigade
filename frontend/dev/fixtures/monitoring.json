@@ -1,0 +1,222 @@
+{
+  "services": [
+    {
+      "name": "database",
+      "status": "healthy",
+      "latency_ms": 3,
+      "detail": "PostgreSQL SELECT 1 ok"
+    },
+    {
+      "name": "falkordb",
+      "status": "healthy",
+      "latency_ms": 6,
+      "detail": "falkordb:6379 PING ok, 2 graphs"
+    },
+    {
+      "name": "qdrant",
+      "status": "healthy",
+      "latency_ms": 11,
+      "detail": "http://qdrant:6333/healthz → HTTP 200"
+    },
+    {
+      "name": "ops-center-llm",
+      "status": "healthy",
+      "latency_ms": 142,
+      "detail": "https://ops.unicorncommander.ai/health → HTTP 200"
+    },
+    {
+      "name": "local-llm-router",
+      "status": "healthy",
+      "latency_ms": 88,
+      "detail": "http://llm-router:8000/v1/models → HTTP 200"
+    },
+    {
+      "name": "langfuse",
+      "status": "unhealthy",
+      "latency_ms": 2004,
+      "detail": "http://langfuse:3000/api/public/health → connect ECONNREFUSED"
+    },
+    {
+      "name": "scheduler",
+      "status": "healthy",
+      "latency_ms": 1,
+      "detail": "APScheduler running, 4 scheduled job(s)"
+    }
+  ],
+  "resources_series": [
+    {
+      "cpu_percent": 33.4,
+      "memory_percent": 48.8,
+      "memory_used_gb": 30.65,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.2
+    },
+    {
+      "cpu_percent": 40.5,
+      "memory_percent": 47.7,
+      "memory_used_gb": 29.96,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.2
+    },
+    {
+      "cpu_percent": 39.5,
+      "memory_percent": 49.4,
+      "memory_used_gb": 31.02,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.2
+    },
+    {
+      "cpu_percent": 47.6,
+      "memory_percent": 51,
+      "memory_used_gb": 32.03,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.3
+    },
+    {
+      "cpu_percent": 52.8,
+      "memory_percent": 52.7,
+      "memory_used_gb": 33.1,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.3
+    },
+    {
+      "cpu_percent": 51.2,
+      "memory_percent": 52.2,
+      "memory_used_gb": 32.78,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.3
+    },
+    {
+      "cpu_percent": 45.7,
+      "memory_percent": 52,
+      "memory_used_gb": 32.66,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.3
+    },
+    {
+      "cpu_percent": 44.7,
+      "memory_percent": 52,
+      "memory_used_gb": 32.66,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.3
+    },
+    {
+      "cpu_percent": 39.5,
+      "memory_percent": 54.9,
+      "memory_used_gb": 34.48,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.4
+    },
+    {
+      "cpu_percent": 38.3,
+      "memory_percent": 52.3,
+      "memory_used_gb": 32.84,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.4
+    },
+    {
+      "cpu_percent": 30.3,
+      "memory_percent": 52.1,
+      "memory_used_gb": 32.72,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.4
+    },
+    {
+      "cpu_percent": 29.2,
+      "memory_percent": 52.9,
+      "memory_used_gb": 33.22,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.4
+    },
+    {
+      "cpu_percent": 20.8,
+      "memory_percent": 51.9,
+      "memory_used_gb": 32.59,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.4
+    },
+    {
+      "cpu_percent": 15.9,
+      "memory_percent": 52.6,
+      "memory_used_gb": 33.03,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.5
+    },
+    {
+      "cpu_percent": 16.9,
+      "memory_percent": 50.8,
+      "memory_used_gb": 31.9,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.5
+    },
+    {
+      "cpu_percent": 17.4,
+      "memory_percent": 50.5,
+      "memory_used_gb": 31.71,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.5
+    },
+    {
+      "cpu_percent": 17,
+      "memory_percent": 48.3,
+      "memory_used_gb": 30.33,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.5
+    },
+    {
+      "cpu_percent": 23.5,
+      "memory_percent": 46.6,
+      "memory_used_gb": 29.26,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.5
+    },
+    {
+      "cpu_percent": 25.9,
+      "memory_percent": 45.4,
+      "memory_used_gb": 28.51,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.6
+    },
+    {
+      "cpu_percent": 30.9,
+      "memory_percent": 45.8,
+      "memory_used_gb": 28.76,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.6
+    },
+    {
+      "cpu_percent": 38.6,
+      "memory_percent": 45.1,
+      "memory_used_gb": 28.32,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.6
+    },
+    {
+      "cpu_percent": 40,
+      "memory_percent": 41.9,
+      "memory_used_gb": 26.31,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.6
+    },
+    {
+      "cpu_percent": 49.1,
+      "memory_percent": 42.3,
+      "memory_used_gb": 26.56,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.6
+    },
+    {
+      "cpu_percent": 48.6,
+      "memory_percent": 40.9,
+      "memory_used_gb": 25.69,
+      "memory_total_gb": 62.8,
+      "disk_percent": 71.7
+    }
+  ],
+  "stats": {
+    "version": "1.17.0-mock",
+    "uptime_seconds_base": 274512,
+    "totalModels": 9,
+    "totalTools": 24
+  }
+}

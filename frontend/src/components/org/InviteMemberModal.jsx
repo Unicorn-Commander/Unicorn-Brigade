@@ -1,31 +1,16 @@
-import { useState } from 'react';
-import { Mail, Loader2, Copy, Check, Link2, KeyRound } from 'lucide-react';
-import Modal from '../ui/Modal';
-import Button from '../ui/Button';
+import { useEffect, useState } from 'react';
+import { Copy, Check, Link2, KeyRound, UserPlus } from 'lucide-react';
+import { Button, Field, IconButton, Input, Modal, Select } from '../ui';
 import notify from '../../utils/notify';
+import { humanize } from '../../utils/errors';
 import { createInvitation, ORG_ROLES } from '../../services/orgService';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function copyText(text) {
   try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    /* fall through to the legacy path */
-  }
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-    return ok;
+    await navigator.clipboard.writeText(text);
+    return true;
   } catch {
     return false;
   }
@@ -34,34 +19,23 @@ async function copyText(text) {
 function CopyRow({ icon: Icon, label, value }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
-    const ok = await copyText(value);
-    if (ok) {
+    if (await copyText(value)) {
       setCopied(true);
       notify.success(`${label} copied`);
       setTimeout(() => setCopied(false), 1500);
     } else {
-      notify.error(`Could not copy ${label.toLowerCase()}`);
+      notify.error('Couldn’t copy — your browser blocked clipboard access.');
     }
   };
   return (
     <div>
-      <div className="flex items-center gap-2 text-xs font-medium text-muted mb-1">
-        <Icon className="w-3.5 h-3.5" aria-hidden="true" />
+      <p className="mb-1 flex items-center gap-1.5 text-caption font-medium text-muted">
+        <Icon aria-hidden="true" className="h-3.5 w-3.5" />
         {label}
-      </div>
-      <div className="flex items-stretch gap-2">
-        <code className="flex-1 min-w-0 truncate px-3 py-2 bg-bg/60 border border-border/60 rounded-lg text-xs text-fg font-mono">
-          {value}
-        </code>
-        <button
-          type="button"
-          onClick={onCopy}
-          aria-label={`Copy ${label.toLowerCase()}`}
-          className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg bg-elevated/60 border border-border/60 text-fg hover:bg-elevated/60 transition-colors text-xs font-medium"
-        >
-          {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
+      </p>
+      <div className="flex items-center gap-2">
+        <Input readOnly value={value} aria-label={label} className="font-mono text-body-sm" onFocus={(e) => e.target.select()} />
+        <IconButton icon={copied ? Check : Copy} label={`Copy ${label.toLowerCase()}`} variant="secondary" onClick={onCopy} />
       </div>
     </div>
   );
@@ -69,16 +43,25 @@ function CopyRow({ icon: Icon, label, value }) {
 
 /**
  * Invite a teammate by email into the active org. Email delivery is a backend
- * stub in BR-2.1, so on success we surface the one-time invite token + a link
- * for the manager to hand off out-of-band (the invitee accepts it on the
- * Organization page). `onCreated` refreshes the pending-invites list.
+ * stub, so on success the one-time invite link and token are shown for the
+ * manager to hand off; the invitee accepts on the Organization page.
+ * `initialEmail` / `initialRole` pre-fill it ("Invite again" on a lapsed invite).
  */
-export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated }) {
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState(ORG_ROLES.MEMBER);
+export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated, initialEmail = '', initialRole = ORG_ROLES.MEMBER }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [role, setRole] = useState(initialRole);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [result, setResult] = useState(null); // the created invitation (incl. token)
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setEmail(initialEmail);
+      setRole(initialRole);
+      setError(null);
+      setResult(null);
+    }
+  }, [isOpen, initialEmail, initialRole]);
 
   const valid = EMAIL_RE.test(email.trim());
 
@@ -96,7 +79,7 @@ export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated })
     onClose?.();
   };
 
-  const handleSubmit = async (e) => {
+  const submit = async (e) => {
     e?.preventDefault?.();
     if (!valid || submitting) return;
     setSubmitting(true);
@@ -107,102 +90,72 @@ export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated })
       notify.success('Invitation created');
       onCreated?.(invite);
     } catch (err) {
-      const msg = err?.message || 'Failed to create invitation';
-      setError(msg);
-      notify.error(msg);
+      setError(humanize(err, { what: 'creating the invitation' }));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const inviteLink = result?.token
-    ? `${window.location.origin}/organization?invite=${result.token}`
-    : '';
+  const inviteLink = result?.token ? `${window.location.origin}/organization?invite=${result.token}` : '';
 
   return (
-    <Modal isOpen={isOpen} onClose={close} title="Invite a teammate" size="lg">
-      {!result ? (
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <p className="text-sm text-muted">
-            They'll join this organization once they accept. Owners can't be
-            invited — an org has a single owner.
-          </p>
-
-          <div>
-            <label htmlFor="invite-email" className="block text-sm font-medium text-fg mb-1.5">
-              Email address
-            </label>
-            <div className="relative">
-              <Mail className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
-              <input
-                id="invite-email"
-                data-autofocus
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="teammate@company.com"
-                className="w-full pl-9 pr-3 py-2.5 bg-card/60 border border-border/60 rounded-lg text-sm text-fg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="invite-role" className="block text-sm font-medium text-fg mb-1.5">
-              Role
-            </label>
-            <select
-              id="invite-role"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="w-full px-3 py-2.5 bg-card/60 border border-border/60 rounded-lg text-sm text-fg focus:outline-none focus:ring-2 focus:ring-unicorn-500/50 focus:border-unicorn-500/50"
-            >
-              <option value={ORG_ROLES.MEMBER}>Member — can view</option>
-              <option value={ORG_ROLES.ADMIN}>Admin — can manage members &amp; invites</option>
-            </select>
-          </div>
-
-          {error && (
-            <p className="text-sm text-red-400" role="alert">
-              {error}
-            </p>
-          )}
-
-          <div className="flex items-center justify-end gap-3 pt-1">
-            <Button type="button" variant="secondary" onClick={close} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={!valid || submitting}>
-              {submitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Sending…
-                </>
-              ) : (
-                'Create invite'
-              )}
-            </Button>
-          </div>
-        </form>
-      ) : (
-        <div className="p-6 space-y-5">
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-            Email delivery isn't wired yet — share this invite link or token with{' '}
-            <span className="font-medium text-amber-100">{result.email}</span> directly.
-            It expires in 7 days.
-          </div>
-
-          <CopyRow icon={Link2} label="Invite link" value={inviteLink} />
-          <CopyRow icon={KeyRound} label="Invite token" value={result.token} />
-
-          <div className="flex items-center justify-end gap-3 pt-1">
-            <Button type="button" variant="secondary" onClick={reset}>
+    <Modal
+      isOpen={isOpen}
+      onClose={close}
+      size="lg"
+      title={result ? 'Invitation ready' : 'Invite a teammate'}
+      description={
+        result
+          ? `Share this with ${result.email}. It expires in 7 days.`
+          : 'They join this organization once they accept. An organization has one owner, so invites are member or admin.'
+      }
+      footer={
+        result ? (
+          <>
+            <Button variant="ghost" onClick={reset}>
               Invite another
             </Button>
-            <Button type="button" variant="primary" onClick={close}>
-              Done
+            <Button onClick={close}>Done</Button>
+          </>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={close} disabled={submitting}>
+              Cancel
             </Button>
-          </div>
+            <Button type="submit" form="invite-form" icon={UserPlus} loading={submitting} disabled={!valid}>
+              Create invite
+            </Button>
+          </>
+        )
+      }
+    >
+      {result ? (
+        <div className="space-y-4">
+          <p className="rounded-control border border-warn/30 bg-warn/10 p-3 text-body-sm text-fg">
+            Email delivery isn’t wired yet — hand the link or token to {result.email} directly.
+          </p>
+          <CopyRow icon={Link2} label="Invite link" value={inviteLink} />
+          <CopyRow icon={KeyRound} label="Invite token" value={result.token || ''} />
         </div>
+      ) : (
+        <form id="invite-form" onSubmit={submit} noValidate className="space-y-4">
+          <Field label="Email address" error={error} required>
+            <Input
+              data-autofocus
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="teammate@company.com"
+              autoComplete="email"
+            />
+          </Field>
+          <Field label="Role" help="Members can view; admins can also manage members and invitations.">
+            <Select value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value={ORG_ROLES.MEMBER}>Member</option>
+              <option value={ORG_ROLES.ADMIN}>Admin</option>
+            </Select>
+          </Field>
+        </form>
       )}
     </Modal>
   );

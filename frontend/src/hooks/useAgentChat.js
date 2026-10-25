@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import api from '../services/api';
 import { getPreferences } from '../utils/preferences';
+import { humanize } from '../utils/errors';
 
 /**
  * Headless per-agent streaming chat. One instance owns one conversation with one
@@ -9,7 +10,8 @@ import { getPreferences } from '../utils/preferences';
  *
  * Mirrors the backend SSE protocol: start / tool_call / tool_result / token /
  * complete / error (+ [DONE]). Routes through api.streamAgentChat so it carries
- * auth headers + credentials.
+ * auth headers + credentials. A failed turn ends as an assistant message with
+ * `isError` and a sentence a person can act on — never a raw exception.
  */
 export function useAgentChat(agent, { model, initialMessages } = {}) {
   // Seed from a prior conversation (e.g. promoting a briefing answer). Re-id so
@@ -43,14 +45,7 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
       const userMsg = { id: nextId(), role: 'user', content };
       const assistantId = nextId();
-      const assistantMsg = {
-        id: assistantId,
-        role: 'assistant',
-        content: '',
-        toolCalls: [],
-        model: resolvedModel,
-        isStreaming: true,
-      };
+      const assistantMsg = { id: assistantId, role: 'assistant', content: '', toolCalls: [], model: resolvedModel, isStreaming: true };
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setIsThinking(true);
       setIsStreaming(true);
@@ -60,29 +55,31 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
       abortRef.current = controller;
       let acc = '';
       let gotToken = false;
+      const patch = (fn) => setMessages((prev) => prev.map((m) => (m.id === assistantId ? fn(m) : m)));
 
       try {
         const res = await api.streamAgentChat(
           agent.id,
-          {
-            message: content,
-            stream: true,
-            history,
-            model: resolvedModel,
-            temperature: agent.temperature,
-          },
+          { message: content, stream: true, history, model: resolvedModel, temperature: agent.temperature },
           { signal: controller.signal }
         );
-        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok || !res.body) {
+          const err = new Error(`HTTP ${res.status}`);
+          err.status = res.status;
+          throw err;
+        }
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = '';
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          for (const line of chunk.split('\n')) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
             if (!line.startsWith('data: ')) continue;
             const payload = line.slice(6).trim();
             if (!payload || payload === '[DONE]') continue;
@@ -98,36 +95,23 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
             } else if (ev.type === 'tool_call') {
               setIsThinking(false);
               setCurrentTool(ev.name);
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, toolCalls: [...(m.toolCalls || []), { id: ev.id, name: ev.name, arguments: ev.arguments }] }
-                    : m
-                )
-              );
+              patch((m) => ({ ...m, toolCalls: [...(m.toolCalls || []), { id: ev.id, name: ev.name, arguments: ev.arguments }] }));
             } else if (ev.type === 'tool_result') {
               setCurrentTool(null);
-              setMessages((prev) =>
-                prev.map((m) => {
-                  if (m.id !== assistantId) return m;
-                  // Match the result to its call by id (the backend now carries
-                  // it); fall back to the first unfilled same-name call so two
-                  // calls to the same tool in one turn never cross-attach.
-                  let matched = false;
-                  const calls = (m.toolCalls || []).map((tc) => {
-                    if (matched) return tc;
-                    const isMatch = ev.id
-                      ? tc.id === ev.id
-                      : tc.name === ev.name && tc.result === undefined;
-                    if (isMatch) {
-                      matched = true;
-                      return { ...tc, result: ev.result, error: ev.error };
-                    }
-                    return tc;
-                  });
-                  return { ...m, toolCalls: calls };
-                })
-              );
+              patch((m) => {
+                // Match the result to its call by id (the backend carries it);
+                // fall back to the first unfilled same-name call so two calls
+                // to the same tool in one turn never cross-attach.
+                let matched = false;
+                const calls = (m.toolCalls || []).map((tc) => {
+                  if (matched) return tc;
+                  const isMatch = ev.id ? tc.id === ev.id : tc.name === ev.name && tc.result === undefined;
+                  if (!isMatch) return tc;
+                  matched = true;
+                  return { ...tc, result: ev.result, error: ev.error };
+                });
+                return { ...m, toolCalls: calls };
+              });
             } else if (ev.type === 'token') {
               acc += ev.content || '';
               // When live streaming is off, buffer silently and let the
@@ -138,47 +122,29 @@ export function useAgentChat(agent, { model, initialMessages } = {}) {
                   gotToken = true;
                   setIsThinking(false);
                 }
-                setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: acc } : m)));
+                patch((m) => ({ ...m, content: acc }));
               }
             } else if (ev.type === 'complete') {
               const finalContent = ev.content || acc;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? {
-                        ...m,
-                        content: finalContent,
-                        model: ev.model || m.model,
-                        toolCalls: ev.toolCalls || m.toolCalls || [],
-                        isStreaming: false,
-                      }
-                    : m
-                )
-              );
+              patch((m) => ({ ...m, content: finalContent, model: ev.model || m.model, toolCalls: ev.toolCalls || m.toolCalls || [], isStreaming: false }));
             } else if (ev.type === 'error') {
-              throw new Error(ev.error || 'stream error');
+              const err = new Error(ev.error || 'stream error');
+              err.data = { detail: ev.error };
+              throw err;
             }
           }
         }
         // Flush any buffered content (stream-off path where no `complete`
         // event arrived) and clear the streaming flag.
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, content: m.content || acc, isStreaming: false } : m))
-        );
+        patch((m) => ({ ...m, content: m.content || acc, isStreaming: false }));
       } catch (err) {
         const aborted = controller.signal.aborted;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? {
-                  ...m,
-                  content: m.content || (aborted ? '' : `⚠️ ${err.message}`),
-                  isError: !aborted && !m.content,
-                  isStreaming: false,
-                }
-              : m
-          )
-        );
+        patch((m) => ({
+          ...m,
+          content: m.content || (aborted ? '' : humanize(err, { what: 'sending that message' })),
+          isError: !aborted && !m.content,
+          isStreaming: false,
+        }));
       } finally {
         setIsThinking(false);
         setIsStreaming(false);

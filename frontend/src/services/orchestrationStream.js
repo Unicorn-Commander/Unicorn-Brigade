@@ -11,7 +11,7 @@
  * See app/auth/sse_ticket.py + require_sse_access.
  */
 import { API_BASE } from './apiBase';
-import { buildAuthHeaders } from './authHeaders';
+import { apiFetch } from './http';
 
 /**
  * Mint a single-use SSE ticket. The POST also Set-Cookies it server-side.
@@ -21,10 +21,11 @@ import { buildAuthHeaders } from './authHeaders';
  */
 export async function mintOrchestrationTicket() {
   try {
-    const res = await fetch(`${API_BASE}/orchestration/events/ticket`, {
+    // Unified client: refreshes a lapsed access token and retries, so the live
+    // feed survives the session's token rollover instead of dying with 401.
+    const res = await apiFetch('/orchestration/events/ticket', {
       method: 'POST',
-      headers: buildAuthHeaders(),
-      credentials: 'include',
+      redirectOn401: false,
     });
     if (!res.ok) return null;
     const data = await res.json();

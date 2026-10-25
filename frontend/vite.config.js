@@ -1,8 +1,36 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+// `virtual:avatar-manifest` — the set of portrait basenames in public/avatars
+// (e.g. "the-general", "the-general-thinking"), read at build time. AgentAvatar
+// only requests a conventional /avatars/<id>[-state].webp when the file exists,
+// so agents without a portrait or expression variant never cost a 404.
+function avatarManifest() {
+  const ID = 'virtual:avatar-manifest'
+  const RESOLVED = '\0' + ID
+  return {
+    name: 'avatar-manifest',
+    resolveId: (id) => (id === ID ? RESOLVED : null),
+    load(id) {
+      if (id !== RESOLVED) return null
+      let names = []
+      try {
+        names = fs
+          .readdirSync(fileURLToPath(new URL('./public/avatars', import.meta.url)))
+          .filter((f) => f.endsWith('.webp'))
+          .map((f) => f.slice(0, -5))
+      } catch {
+        /* no avatars folder: every agent uses its fallback */
+      }
+      return `export default new Set(${JSON.stringify(names.sort())});`
+    },
+  }
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), avatarManifest()],
   build: {
     rollupOptions: {
       output: {
@@ -36,7 +64,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8100',
+        // Override to point a dev server at another backend (e.g. a second
+        // mock-API instance running a different scenario on another port).
+        target: process.env.VITE_PROXY_TARGET || 'http://localhost:8100',
         changeOrigin: true,
       },
     },

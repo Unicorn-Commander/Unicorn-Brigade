@@ -735,6 +735,9 @@ class ScheduledRun(Base):
     last_run_at = Column(DateTime, nullable=True)
     last_status = Column(String(32), nullable=True)  # success | error | timeout | skipped
     last_result_summary = Column(Text, nullable=True)
+    # P-00092: what this schedule is responsible for, in one or two plain
+    # sentences. Shown as the ``responsibility`` of its autonomy-catalogue item.
+    description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -760,6 +763,7 @@ class ScheduledRun(Base):
             "lastRunAt": self.last_run_at.isoformat() + "Z" if self.last_run_at else None,
             "lastStatus": self.last_status,
             "lastResultSummary": self.last_result_summary,
+            "description": self.description,
             "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() + "Z" if self.updated_at else None,
         }
@@ -889,6 +893,145 @@ class ScheduledRunHistory(Base):
             "error": self.error,
             "toolCallsCount": self.tool_calls_count,
         }
+
+
+def _iso_z(value):
+    """Naive-UTC timestamp -> ISO 8601 with a trailing Z (the house JSON shape)."""
+    return value.isoformat() + "Z" if value else None
+
+
+class AutonomousJob(Base):
+    """P-00092: an agent job that runs on its own OUTSIDE Brigade's scheduler.
+
+    Cron on bigboy, a systemd timer on commander, a LaunchAgent on the Mac
+    Studio, a Claude Code routine, a continuous watcher. The loop registers
+    itself (``PUT /api/v1/autonomy/jobs/{key}``) and reports every run
+    (``POST /api/v1/autonomy/jobs/{key}/runs``); the ``last_*`` columns mirror
+    its latest report so the catalogue reads one row per job.
+
+    Tenant data, RLS-isolated exactly like ``scheduled_runs``: ``org_id``
+    defaults to the request's bound org and the
+    ``autonomous_jobs_org_isolation`` policy (migration
+    20261024_01_autonomy_catalogue) filters on ``org_id = current_org_id()``.
+    ``key`` is unique per org, not globally.
+    """
+    __tablename__ = "autonomous_jobs"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid,
+                server_default=text("gen_random_uuid()"))
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
+                    nullable=False, server_default=text("current_org_id()"))
+    key = Column(String(120), nullable=False)
+    name = Column(String(255), nullable=False)
+    agent_id = Column(String(255), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    responsibility = Column(Text, nullable=False)
+    host = Column(String(120), nullable=False)
+    # cron | systemd | launchd | claude-routine | continuous | other
+    runner = Column(String(32), nullable=False)
+    schedule = Column(String(120), nullable=True)  # 5-field cron, standard semantics
+    timezone = Column(String(64), nullable=False, default="UTC", server_default="UTC")
+    schedule_note = Column(String(255), nullable=True)
+    command = Column(String(500), nullable=True)  # script path / entry point, never a secret
+    runbook_url = Column(String(500), nullable=True)
+    owner = Column(String(255), nullable=True)
+    # Free-text observations about the job (an audit's "BROKEN: script missing
+    # since ...; found in: bigboy crontab line 7"). Never a secret.
+    notes = Column(Text, nullable=True)
+    enabled = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    last_run_at = Column(DateTime, nullable=True)
+    last_status = Column(String(16), nullable=True)  # running | success | error | timeout | skipped
+    last_summary = Column(Text, nullable=True)
+    last_error = Column(Text, nullable=True)  # cleared on a success
+    last_duration_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow,
+                        server_default=text("timezone('utc', now())"))
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow,
+                        server_default=text("timezone('utc', now())"))
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "key", name="uq_autonomous_jobs_org_key"),
+        Index("ix_autonomous_jobs_org_id", "org_id"),
+        Index("ix_autonomous_jobs_agent_id", "agent_id"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id) if self.id else None,
+            "orgId": str(self.org_id) if self.org_id else None,
+            "key": self.key,
+            "name": self.name,
+            "agentId": self.agent_id,
+            "responsibility": self.responsibility,
+            "host": self.host,
+            "runner": self.runner,
+            "schedule": self.schedule,
+            "timezone": self.timezone,
+            "scheduleNote": self.schedule_note,
+            "command": self.command,
+            "runbookUrl": self.runbook_url,
+            "owner": self.owner,
+            "notes": self.notes,
+            "enabled": self.enabled,
+            "lastRunAt": _iso_z(self.last_run_at),
+            "lastStatus": self.last_status,
+            "lastSummary": self.last_summary,
+            "lastError": self.last_error,
+            "lastDurationMs": self.last_duration_ms,
+            "createdAt": _iso_z(self.created_at),
+            "updatedAt": _iso_z(self.updated_at),
+        }
+
+
+class AutonomousJobRun(Base):
+    """P-00092: one reported run of an ``AutonomousJob`` (at most 200 kept per job).
+
+    ``run_id`` is the CLIENT's idempotency key: a ``running`` report and the
+    terminal report that follows it with the same run_id land on one row.
+    RLS-isolated like ``scheduled_run_history``, including the WITH CHECK that
+    the parent job belongs to the same org.
+    """
+    __tablename__ = "autonomous_job_runs"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid,
+                server_default=text("gen_random_uuid()"))
+    org_id = Column(UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
+                    nullable=False, server_default=text("current_org_id()"))
+    job_id = Column(UUID(as_uuid=False), ForeignKey("autonomous_jobs.id", ondelete="CASCADE"),
+                    nullable=False)
+    run_id = Column(String(120), nullable=True)
+    status = Column(String(16), nullable=False)
+    started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    finished_at = Column(DateTime, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    summary = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow,
+                        server_default=text("timezone('utc', now())"))
+
+    __table_args__ = (
+        Index("ix_autonomous_job_runs_org_id", "org_id"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": str(self.id) if self.id else None,
+            "runId": self.run_id,
+            "status": self.status,
+            "startedAt": _iso_z(self.started_at),
+            "finishedAt": _iso_z(self.finished_at),
+            "durationMs": self.duration_ms,
+            "summary": self.summary,
+            "error": self.error,
+        }
+
+
+# Newest-first run history per job (the runs listing and the prune both walk it).
+# Declared outside __table_args__ because it needs a DESC column expression.
+Index(
+    "ix_autonomous_job_runs_job_started",
+    AutonomousJobRun.job_id,
+    AutonomousJobRun.started_at.desc(),
+)
 
 
 class UsageEvent(Base):

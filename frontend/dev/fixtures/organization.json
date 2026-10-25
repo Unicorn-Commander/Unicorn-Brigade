@@ -1,0 +1,131 @@
+{
+  "orgs": [
+    {
+      "id": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+      "name": "Magic Unicorn",
+      "slug": "magic-unicorn",
+      "planTier": "professional",
+      "apiCallsLimit": 100000,
+      "metadata": {},
+      "createdAt": "$now-210d",
+      "updatedAt": "$now-210d",
+      "role": "owner"
+    },
+    {
+      "id": "b2d9e3f1-0c4a-4f7e-8b6d-1e2f3a4b5c6d",
+      "name": "Dev User's workspace",
+      "slug": "dev-user",
+      "planTier": "free",
+      "apiCallsLimit": 5000,
+      "metadata": {
+        "personal": true
+      },
+      "createdAt": "$now-210d",
+      "updatedAt": "$now-210d",
+      "role": "owner"
+    }
+  ],
+  "members": {
+    "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f": [
+      {
+        "userId": "dev-user-001",
+        "email": "dev@unicorncommander.ai",
+        "name": "Dev User",
+        "role": "owner",
+        "joinedAt": "$now-210d"
+      },
+      {
+        "userId": "u-rook-0002",
+        "email": "rook@unicorncommander.ai",
+        "name": "Rook",
+        "role": "admin",
+        "joinedAt": "$now-180d"
+      },
+      {
+        "userId": "u-majik-0003",
+        "email": "majik@unicorncommander.ai",
+        "name": "Majik Mane",
+        "role": "member",
+        "joinedAt": "$now-150d"
+      },
+      {
+        "userId": "u-gunny-0004",
+        "email": "gunny@unicorncommander.ai",
+        "name": "Gunny",
+        "role": "member",
+        "joinedAt": "$now-120d"
+      },
+      {
+        "userId": "u-perse-0005",
+        "email": "persephone@unicorncommander.ai",
+        "name": "Persephone",
+        "role": "admin",
+        "joinedAt": "$now-52d"
+      }
+    ],
+    "b2d9e3f1-0c4a-4f7e-8b6d-1e2f3a4b5c6d": [
+      {
+        "userId": "dev-user-001",
+        "email": "dev@unicorncommander.ai",
+        "name": "Dev User",
+        "role": "owner",
+        "joinedAt": "$now-210d"
+      }
+    ]
+  },
+  "invitations": {
+    "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f": [
+      {
+        "id": "0ea826b0-266b-4732-a8f5-f29baf58d64a",
+        "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "email": "tester@northbridgetax.example",
+        "role": "member",
+        "status": "pending",
+        "invitedBy": "dev-user-001",
+        "acceptedBy": null,
+        "expiresAt": "$now+26d",
+        "acceptedAt": null,
+        "createdAt": "$now-2d"
+      },
+      {
+        "id": "7bddf93b-e954-49eb-ae78-4b7727efe9f4",
+        "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "email": "colonel@unicorncommander.ai",
+        "role": "member",
+        "status": "pending",
+        "invitedBy": "dev-user-001",
+        "acceptedBy": null,
+        "expiresAt": "$now+28d",
+        "acceptedAt": null,
+        "createdAt": "$now-6h"
+      },
+      {
+        "id": "e9f214e3-b10b-48f9-a6bb-e098291ea7c9",
+        "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "email": "persephone@unicorncommander.ai",
+        "role": "admin",
+        "status": "accepted",
+        "invitedBy": "dev-user-001",
+        "acceptedBy": "u-perse-0005",
+        "expiresAt": "$now-24d",
+        "acceptedAt": "$now-52d",
+        "createdAt": "$now-52d"
+      },
+      {
+        "id": "e26002b5-0626-41f3-a866-4c371e8acf0b",
+        "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+        "email": "old-contractor@example.com",
+        "role": "member",
+        "status": "revoked",
+        "invitedBy": "dev-user-001",
+        "acceptedBy": null,
+        "expiresAt": "$now-12d",
+        "acceptedAt": null,
+        "createdAt": "$now-40d"
+      }
+    ],
+    "b2d9e3f1-0c4a-4f7e-8b6d-1e2f3a4b5c6d": []
+  },
+  "orgId": "7f1c2a40-9b1e-4e6a-9c1d-0a2b3c4d5e6f",
+  "personalOrgId": "b2d9e3f1-0c4a-4f7e-8b6d-1e2f3a4b5c6d"
+}

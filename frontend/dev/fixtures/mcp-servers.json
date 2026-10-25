@@ -1,0 +1,261 @@
+{
+  "servers": [
+    {
+      "name": "github",
+      "display_name": "GitHub",
+      "description": "Repository, issue and pull-request operations via the GitHub API",
+      "capabilities": [
+        "search_repositories",
+        "get_file_contents",
+        "create_issue",
+        "list_pull_requests",
+        "create_pull_request_review"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": true
+    },
+    {
+      "name": "filesystem",
+      "display_name": "Filesystem",
+      "description": "Read, write and search files under the allowed roots",
+      "capabilities": [
+        "read_file",
+        "write_file",
+        "list_directory",
+        "search_files",
+        "get_file_info"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": false
+    }
+  ],
+  "details": {
+    "github": {
+      "name": "github",
+      "display_name": "GitHub",
+      "description": "Repository, issue and pull-request operations via the GitHub API",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "capabilities": [
+        "search_repositories",
+        "get_file_contents",
+        "create_issue",
+        "list_pull_requests",
+        "create_pull_request_review"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": true,
+      "env_vars": [
+        "GITHUB_PERSONAL_ACCESS_TOKEN"
+      ]
+    },
+    "filesystem": {
+      "name": "filesystem",
+      "display_name": "Filesystem",
+      "description": "Read, write and search files under the allowed roots",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/workspace"
+      ],
+      "capabilities": [
+        "read_file",
+        "write_file",
+        "list_directory",
+        "search_files",
+        "get_file_info"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": false,
+      "env_vars": []
+    }
+  },
+  "serversLarge": [
+    {
+      "name": "postgres",
+      "display_name": "PostgreSQL",
+      "description": "Read-only SQL access to the configured database",
+      "capabilities": [
+        "query",
+        "list_tables",
+        "describe_table"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": true
+    },
+    {
+      "name": "playwright",
+      "display_name": "Playwright",
+      "description": "Browser automation: navigate, click, fill, screenshot",
+      "capabilities": [
+        "browser_navigate",
+        "browser_click",
+        "browser_type",
+        "browser_snapshot",
+        "browser_take_screenshot"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": false
+    },
+    {
+      "name": "slack",
+      "display_name": "Slack",
+      "description": "Post and read messages in the workspace",
+      "capabilities": [
+        "list_channels",
+        "post_message",
+        "get_channel_history"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": false
+    },
+    {
+      "name": "memory",
+      "display_name": "Memory",
+      "description": "Knowledge-graph memory across sessions",
+      "capabilities": [
+        "create_entities",
+        "create_relations",
+        "search_nodes",
+        "read_graph"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": true
+    },
+    {
+      "name": "brave-search",
+      "display_name": "Brave Search",
+      "description": "Web and local search through the Brave API",
+      "capabilities": [
+        "brave_web_search",
+        "brave_local_search"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": false
+    }
+  ],
+  "detailsLarge": {
+    "postgres": {
+      "name": "postgres",
+      "display_name": "PostgreSQL",
+      "description": "Read-only SQL access to the configured database",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres"
+      ],
+      "capabilities": [
+        "query",
+        "list_tables",
+        "describe_table"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": true,
+      "env_vars": [
+        "DATABASE_URL"
+      ]
+    },
+    "playwright": {
+      "name": "playwright",
+      "display_name": "Playwright",
+      "description": "Browser automation: navigate, click, fill, screenshot",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest"
+      ],
+      "capabilities": [
+        "browser_navigate",
+        "browser_click",
+        "browser_type",
+        "browser_snapshot",
+        "browser_take_screenshot"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": false,
+      "env_vars": []
+    },
+    "slack": {
+      "name": "slack",
+      "display_name": "Slack",
+      "description": "Post and read messages in the workspace",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-slack"
+      ],
+      "capabilities": [
+        "list_channels",
+        "post_message",
+        "get_channel_history"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": false,
+      "env_vars": [
+        "SLACK_BOT_TOKEN",
+        "SLACK_TEAM_ID"
+      ]
+    },
+    "memory": {
+      "name": "memory",
+      "display_name": "Memory",
+      "description": "Knowledge-graph memory across sessions",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "capabilities": [
+        "create_entities",
+        "create_relations",
+        "search_nodes",
+        "read_graph"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": true,
+      "env_vars": []
+    },
+    "brave-search": {
+      "name": "brave-search",
+      "display_name": "Brave Search",
+      "description": "Web and local search through the Brave API",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ],
+      "capabilities": [
+        "brave_web_search",
+        "brave_local_search"
+      ],
+      "transport": "stdio",
+      "enabled": true,
+      "running": false,
+      "env_vars": [
+        "BRAVE_API_KEY"
+      ]
+    }
+  },
+  "pids": {
+    "github": 48213,
+    "postgres": 48377,
+    "memory": 48402
+  }
+}

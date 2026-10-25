@@ -1,10 +1,19 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Edit, Save, X, MessageSquare, Play, Code, Key, BarChart, Settings, Network, Clock, Wrench, Plus } from 'lucide-react';
-import { toast } from 'react-hot-toast';
-import notify from '../utils/notify';
-import { apiJson } from '../services/http';
+/**
+ * Agent detail — one agent: who it is, how it is built, what it may use, how
+ * to call it. Numbers come only from endpoints that state them (the agent's
+ * own tool list, /agents/:id/api-keys, /conversations); anything the API does
+ * not record is labelled as such instead of shown as zero.
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import { ArrowLeft, Clock, Code, Key, LayoutDashboard, MessageSquare, Network, Pencil, Plus, Radio, Save, Settings, Trash2, Wrench, X } from 'lucide-react';
+import { apiJson } from '../services/http';
+import notify from '../utils/notify';
+import { humanize } from '../utils/errors';
+import { prettyDomain, roleLine } from '../utils/agentClass';
+import AgentAvatar from '../components/AgentAvatar';
+import { AffiliationChip, ModelTierChip, PaidToolsBadge } from '../components/AgentBadges';
 import AgentArchitectureDiagram from '../components/AgentArchitectureDiagram';
 import AgentTimeline from '../components/AgentTimeline';
 import ToolSelector from '../components/ToolSelector';
@@ -12,410 +21,476 @@ import ApiKeyCard from '../components/ApiKeyCard';
 import GenerateApiKeyModal from '../components/GenerateApiKeyModal';
 import KeyRevealModal from '../components/KeyRevealModal';
 import AgentConfigurationTab from '../components/AgentConfigurationTab';
+import AgentEditModal from '../components/AgentEditModal';
+import AgentDeleteConfirmModal from '../components/AgentDeleteConfirmModal';
+import AgentAutonomyCard from '../components/AgentAutonomyCard';
+import { useAutonomy } from '../hooks/useAutonomy';
+import {
+  Button,
+  Card,
+  Chip,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  OfflineState,
+  Page,
+  PageHeader,
+  SectionHeader,
+  Tabs,
+  Textarea,
+} from '../components/ui';
 
-const AgentDetail = () => {
+const TABS = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'architecture', label: 'Architecture', icon: Network },
+  { id: 'build-history', label: 'Build history', icon: Clock },
+  { id: 'tools', label: 'Tools', icon: Wrench },
+  { id: 'configuration', label: 'Configuration', icon: Settings },
+  { id: 'system-prompt', label: 'System prompt', icon: Code },
+  { id: 'api-keys', label: 'API keys', icon: Key },
+];
+
+// ReactMarkdown output styled through the type scale (no typography plugin).
+const MARKDOWN =
+  'text-body text-fg [&_p]:mb-3 [&_p:last-child]:mb-0 [&_h1]:text-heading [&_h1]:text-fg-strong [&_h2]:text-lead [&_h2]:font-semibold [&_h2]:text-fg-strong [&_h3]:text-body [&_h3]:font-semibold [&_h3]:text-fg-strong [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1 [&_code]:rounded-chip [&_code]:bg-elevated [&_code]:px-1 [&_code]:font-mono [&_code]:text-body-sm [&_pre]:mb-3 [&_pre]:overflow-x-auto [&_pre]:rounded-control [&_pre]:border [&_pre]:border-border [&_pre]:bg-surface [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_a]:text-accent [&_a]:underline [&_strong]:text-fg-strong';
+
+const LIFECYCLE = { active: 'ok', draft: 'warn', inactive: 'neutral', archived: 'neutral', busy: 'live' };
+const toolIds = (agent) => (Array.isArray(agent?.tools) ? agent.tools.map((t) => (typeof t === 'string' ? t : t?.id || t?.name)).filter(Boolean) : []);
+
+// A small fact tile; `value` null means the source did not answer.
+function Fact({ label, value, note }) {
+  return (
+    <div className="rounded-control border border-border bg-surface/60 p-3">
+      <dt className="text-caption text-muted">{label}</dt>
+      <dd className={`mt-0.5 tabular-nums ${value == null ? 'text-body text-subtle' : 'text-heading text-fg-strong'}`}>{value == null ? 'Not recorded' : value.toLocaleString()}</dd>
+      {note && <dd className="mt-0.5 text-micro text-subtle">{note}</dd>}
+    </div>
+  );
+}
+
+export default function AgentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.some((t) => t.id === params.get('tab')) ? params.get('tab') : 'overview';
+  const setTab = (next) => setParams(next === 'overview' ? {} : { tab: next }, { replace: true });
+
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [editMode, setEditMode] = useState(false);
-  const [editedAgent, setEditedAgent] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview');
-  const [buildSession, setBuildSession] = useState(null);
-  const [loadingSession, setLoadingSession] = useState(false);
-  const [showKeyModal, setShowKeyModal] = useState(false);
-  const [generatedKey, setGeneratedKey] = useState(null);
+  const [error, setError] = useState(null);
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
 
-  useEffect(() => {
-    loadAgent();
+  const [catalog, setCatalog] = useState([]);
+  const [keys, setKeys] = useState({ state: 'loading', list: [], error: null });
+  const [convos, setConvos] = useState({ state: 'loading', list: [] });
+  const [session, setSession] = useState({ state: 'idle', data: null });
+
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [revealedKey, setRevealedKey] = useState(null);
+  const [promptDraft, setPromptDraft] = useState(null); // null = not editing
+  const [savingPrompt, setSavingPrompt] = useState(false);
+
+  // The jobs this agent runs on its own (one read of the autonomy catalogue).
+  const autonomy = useAutonomy({ refreshMs: 0 });
+  const ownJobs = useMemo(() => autonomy.items.filter((it) => it.agentId === id), [autonomy.items, id]);
+
+  const loadKeys = useCallback(async () => {
+    setKeys((k) => ({ ...k, state: 'loading', error: null }));
+    try {
+      const data = await apiJson(`/agents/${encodeURIComponent(id)}/api-keys`);
+      setKeys({ state: 'ready', list: Array.isArray(data) ? data : data?.keys || [], error: null });
+    } catch (err) {
+      setKeys({ state: 'error', list: [], error: err });
+    }
   }, [id]);
 
-  const loadAgent = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const data = await apiJson(`/agents/${id}`);
+      const data = await apiJson(`/agents/${encodeURIComponent(id)}`);
       setAgent(data);
-      setEditedAgent(data);
-
-      // Try to load build session if sessionId exists
-      if (data.sessionId) {
-        loadBuildSession(data.sessionId);
+      if (data?.sessionId) {
+        setSession({ state: 'loading', data: null });
+        apiJson(`/agent-builder/session/${data.sessionId}`)
+          .then((s) => setSession({ state: 'ready', data: s }))
+          .catch(() => setSession({ state: 'ready', data: null }));
+      } else {
+        setSession({ state: 'ready', data: null });
       }
-    } catch (error) {
-      console.error('Failed to load agent:', error);
-      toast.error('Failed to load agent');
-      navigate('/library');
+    } catch (err) {
+      setError(err);
     } finally {
       setLoading(false);
     }
+    // Side facts: each answers on its own and fails on its own.
+    loadKeys();
+    apiJson('/tools')
+      .then((d) => setCatalog(Array.isArray(d) ? d : d?.tools || []))
+      .catch(() => setCatalog([]));
+    apiJson('/conversations', { params: { limit: 200 } })
+      .then((d) => {
+        const list = (Array.isArray(d) ? d : d?.conversations || []).filter((c) => c.agent_id === id || c.agentId === id || c.agent?.id === id);
+        setConvos({ state: 'ready', list });
+      })
+      .catch(() => setConvos({ state: 'error', list: [] }));
+  }, [id, loadKeys]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      load();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [load]);
+
+  const saveAgent = async (patch) => {
+    const updated = await apiJson(`/agents/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) });
+    setAgent((a) => ({ ...a, ...patch, ...(updated || {}) }));
+    notify.success('Agent updated');
   };
 
-  const loadBuildSession = async (sessionId) => {
-    setLoadingSession(true);
+  const savePrompt = async () => {
+    setSavingPrompt(true);
     try {
-      const data = await apiJson(`/agent-builder/session/${sessionId}`);
-      setBuildSession(data);
-    } catch (error) {
-      console.error('Failed to load build session:', error);
-      // Don't show error toast - it's okay if session doesn't exist
-      setBuildSession(null);
+      await saveAgent({ systemPrompt: promptDraft });
+      setPromptDraft(null);
+    } catch (err) {
+      notify.error(humanize(err, { what: 'saving the system prompt' }));
     } finally {
-      setLoadingSession(false);
+      setSavingPrompt(false);
     }
   };
 
-  const saveChanges = async () => {
+  const revokeKey = async (key) => {
     try {
-      await apiJson(`/agents/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(editedAgent)
-      });
-      notify.success('Agent updated successfully');
-      setAgent(editedAgent);
-      setEditMode(false);
-    } catch (error) {
-      console.error('Failed to update agent:', error);
-      toast.error('Failed to update agent');
-    }
-  };
-
-  const cancelEdit = () => {
-    setEditedAgent(agent);
-    setEditMode(false);
-  };
-
-  const handleKeyGenerated = (newKey) => {
-    setGeneratedKey(newKey);
-    setShowKeyModal(false);
-    loadAgent(); // Reload agent to update API keys list
-  };
-
-  const handleRevokeKey = async (apiKey) => {
-    try {
-      await apiJson(`/agents/${id}/api-keys/${apiKey.id}`, { method: 'DELETE' });
+      await apiJson(`/agents/${encodeURIComponent(id)}/api-keys/${encodeURIComponent(key.id)}`, { method: 'DELETE' });
       notify.success('API key revoked');
-      loadAgent(); // Reload agent to update API keys list
-    } catch (error) {
-      console.error('Failed to revoke API key:', error);
-      toast.error('Failed to revoke API key');
+      loadKeys();
+    } catch (err) {
+      notify.error(humanize(err, { what: 'revoking the key' }));
+      throw err;
     }
   };
 
-  if (loading) {
+  const attached = useMemo(() => {
+    const byId = new Map(catalog.map((t) => [t.id || t.name, t]));
+    return toolIds(agent).map((tid) => byId.get(tid) || { id: tid, name: tid.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) });
+  }, [agent, catalog]);
+
+  // ── page states ──────────────────────────────────────────────────────────
+  if (offline && !agent) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-unicorn-500"></div>
-          <p className="text-slate-400 mt-4">Loading agent...</p>
+      <Page>
+        <OfflineState onRetry={load} />
+      </Page>
+    );
+  }
+  if (loading && !agent) {
+    return (
+      <Page>
+        <LoadingState variant="list" count={1} label="Loading agent" className="mb-6" />
+        <LoadingState variant="text" count={6} />
+      </Page>
+    );
+  }
+  if (error && !agent) {
+    const gone = error.status === 404;
+    return (
+      <Page>
+        <ErrorState
+          title={gone ? 'That agent isn’t here' : 'Couldn’t load the agent'}
+          detail={gone ? 'It may have been deleted or renamed.' : humanize(error, { what: 'loading the agent' })}
+          onRetry={gone ? undefined : load}
+        />
+        <div className="flex justify-center">
+          <Button variant="secondary" icon={ArrowLeft} onClick={() => navigate('/library')}>
+            Back to the library
+          </Button>
         </div>
+      </Page>
+    );
+  }
+  if (!agent) return null;
+
+  const name = agent.displayName || agent.name;
+  const messageTotal = convos.state === 'ready' ? convos.list.reduce((n, c) => n + (Number(c.message_count) || 0), 0) : null;
+  const recordedMessages = Number(agent?._count?.messages) > 0 ? Number(agent._count.messages) : null;
+
+  // ── tab panels ───────────────────────────────────────────────────────────
+  let panel;
+  if (tab === 'overview') {
+    panel = (
+      <div className="space-y-6">
+        {agent.bio && <p className="max-w-3xl text-body text-fg">{agent.bio}</p>}
+        <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Fact label="Tools attached" value={attached.length} />
+          <Fact label="API keys" value={keys.state === 'ready' ? keys.list.length : null} note={keys.state === 'error' ? 'couldn’t load' : undefined} />
+          <Fact label="Conversations" value={convos.state === 'ready' ? convos.list.length : null} note={convos.state === 'ready' ? 'in your history' : convos.state === 'error' ? 'couldn’t load' : undefined} />
+          <Fact
+            label="Messages"
+            value={messageTotal != null && messageTotal > 0 ? messageTotal : recordedMessages}
+            note={messageTotal != null && messageTotal > 0 ? 'in your conversations' : recordedMessages != null ? 'recorded by the API' : undefined}
+          />
+        </dl>
+        <AgentAutonomyCard agentId={agent.id} items={ownJobs} />
+        <div>
+          <SectionHeader title="Capabilities" />
+          {Array.isArray(agent.capabilities) && agent.capabilities.length ? (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Capabilities">
+              {agent.capabilities.map((cap) => (
+                <li key={cap}>
+                  <Chip>{cap}</Chip>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-body-sm text-muted">No capabilities listed. Edit the agent to add some.</p>
+          )}
+        </div>
+        <div>
+          <SectionHeader
+            title="Tools"
+            description={attached.length ? `${attached.length} attached` : undefined}
+            actions={
+              <Button variant="ghost" size="sm" icon={Wrench} onClick={() => setTab('tools')}>
+                Manage tools
+              </Button>
+            }
+          />
+          {attached.length ? (
+            <ul className="grid grid-cols-1 gap-2 md:grid-cols-2" aria-label="Attached tools">
+              {attached.map((t) => (
+                <li key={t.id || t.name} className="flex items-start gap-3 rounded-control border border-border bg-surface/60 p-3">
+                  <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-elevated text-body">
+                    {t.icon || <Wrench className="h-4 w-4 text-muted" />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-body font-medium text-fg-strong">{t.name}</span>
+                    {t.description && <span className="block line-clamp-1 text-caption text-muted">{t.description}</span>}
+                  </span>
+                  {t.type && (
+                    <Chip size="xs" className="ml-auto" uppercase>
+                      {t.type}
+                    </Chip>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState
+              compact
+              icon={Wrench}
+              title="No tools attached"
+              description="This agent can only talk. Attach tools to let it act."
+              action={
+                <Button size="sm" variant="secondary" onClick={() => setTab('tools')}>
+                  Attach a tool
+                </Button>
+              }
+            />
+          )}
+        </div>
+      </div>
+    );
+  } else if (tab === 'architecture') {
+    panel = <AgentArchitectureDiagram agent={{ ...agent, toolDetails: attached.map((t) => ({ name: t.id, displayName: t.name })) }} />;
+  } else if (tab === 'build-history') {
+    panel = session.state === 'loading' ? <LoadingState variant="list" count={3} label="Loading build history" /> : <AgentTimeline session={session.data} agentName={name} />;
+  } else if (tab === 'tools') {
+    panel = (
+      <div className="space-y-5">
+        <SectionHeader title="Tools" description="What this agent may use. Changes apply immediately." />
+        <ToolSelector agentId={id} assignedTools={toolIds(agent)} onUpdate={load} />
+      </div>
+    );
+  } else if (tab === 'configuration') {
+    panel = <AgentConfigurationTab agent={agent} onSave={saveAgent} />;
+  } else if (tab === 'system-prompt') {
+    const isEditing = promptDraft != null;
+    panel = (
+      <div className="space-y-4">
+        <SectionHeader
+          title="System prompt"
+          description="The standing instructions sent with every request."
+          actions={
+            isEditing ? (
+              <>
+                <Button variant="ghost" size="sm" icon={X} onClick={() => setPromptDraft(null)} disabled={savingPrompt}>
+                  Cancel
+                </Button>
+                <Button size="sm" icon={Save} loading={savingPrompt} onClick={savePrompt}>
+                  Save
+                </Button>
+              </>
+            ) : (
+              <Button variant="secondary" size="sm" icon={Pencil} onClick={() => setPromptDraft(agent.systemPrompt || '')}>
+                Edit prompt
+              </Button>
+            )
+          }
+        />
+        {isEditing ? (
+          <Textarea aria-label="System prompt" rows={18} value={promptDraft} onChange={(e) => setPromptDraft(e.target.value)} disabled={savingPrompt} className="font-mono text-body-sm" />
+        ) : agent.systemPrompt ? (
+          <div className={`rounded-control border border-border bg-surface/60 p-4 ${MARKDOWN}`}>
+            <ReactMarkdown>{agent.systemPrompt}</ReactMarkdown>
+          </div>
+        ) : (
+          <EmptyState compact icon={Code} title="No system prompt" description="The agent runs on its persona alone. Add standing instructions to shape every reply." action={<Button size="sm" variant="secondary" onClick={() => setPromptDraft('')}>Write one</Button>} />
+        )}
+      </div>
+    );
+  } else if (tab === 'api-keys') {
+    let list;
+    if (keys.state === 'loading') list = <LoadingState variant="list" count={2} label="Loading API keys" />;
+    else if (keys.state === 'error') list = <ErrorState compact title="Couldn’t load the keys" detail={humanize(keys.error, { what: 'loading API keys' })} onRetry={loadKeys} />;
+    else if (!keys.list.length)
+      list = (
+        <EmptyState
+          compact
+          icon={Key}
+          title="No API keys yet"
+          description="Generate one to let an external system call this agent. The full key is shown once."
+          action={
+            <Button size="sm" icon={Plus} onClick={() => setShowKeyModal(true)}>
+              Generate a key
+            </Button>
+          }
+        />
+      );
+    else
+      list = (
+        <ul className="space-y-2" aria-label="API keys">
+          {keys.list.map((key) => (
+            <li key={key.id}>
+              <ApiKeyCard apiKey={key} onRevoke={revokeKey} />
+            </li>
+          ))}
+        </ul>
+      );
+    panel = (
+      <div className="space-y-4">
+        <SectionHeader
+          title="API keys"
+          description="Credentials that let other systems call this agent directly."
+          actions={
+            <Button size="sm" icon={Plus} onClick={() => setShowKeyModal(true)}>
+              Generate key
+            </Button>
+          }
+        />
+        {list}
       </div>
     );
   }
 
-  if (!agent) return null;
-
-  const currentAgent = editMode ? editedAgent : agent;
-
   return (
-    <div className="min-h-screen p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => navigate('/library')}
-            className="btn-secondary flex items-center space-x-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back to Library</span>
-          </button>
-
-          <div className="flex items-center space-x-3">
-            {editMode ? (
-              <>
-                <button onClick={cancelEdit} className="btn-secondary flex items-center space-x-2">
-                  <X className="w-4 h-4" />
-                  <span>Cancel</span>
-                </button>
-                <button onClick={saveChanges} className="btn-primary flex items-center space-x-2">
-                  <Save className="w-4 h-4" />
-                  <span>Save Changes</span>
-                </button>
-              </>
-            ) : (
-              <button onClick={() => setEditMode(true)} className="btn-primary flex items-center space-x-2">
-                <Edit className="w-4 h-4" />
-                <span>Edit Agent</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Agent Header Card */}
-        <div className="card">
-          <div className="flex items-start space-x-6">
-            <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-unicorn-500 to-cyan-500 flex items-center justify-center text-4xl">
-              {currentAgent.avatar || '🦄'}
-            </div>
-            <div className="flex-1">
-              {editMode ? (
-                <input
-                  type="text"
-                  value={editedAgent.displayName || editedAgent.name}
-                  onChange={(e) => setEditedAgent({ ...editedAgent, displayName: e.target.value })}
-                  className="text-3xl font-bold bg-transparent border-b border-slate-600 focus:border-unicorn-500 outline-none mb-2 w-full"
-                />
-              ) : (
-                <h1 className="text-3xl font-bold text-gradient mb-2">
-                  {currentAgent.displayName || currentAgent.name}
-                </h1>
-              )}
-
-              {editMode ? (
-                <input
-                  type="text"
-                  value={editedAgent.title || ''}
-                  onChange={(e) => setEditedAgent({ ...editedAgent, title: e.target.value })}
-                  className="text-lg bg-transparent border-b border-slate-600 focus:border-unicorn-500 outline-none mb-3 w-full"
-                  placeholder="Agent title..."
-                />
-              ) : (
-                currentAgent.title && <p className="text-lg text-slate-300 mb-3">{currentAgent.title}</p>
-              )}
-
-              <div className="flex items-center space-x-4 text-sm">
-                <span className="px-3 py-1 rounded-full bg-unicorn-500/20 text-unicorn-300">
-                  {currentAgent.rank || 'Agent'}
-                </span>
-                <span className="px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300">
-                  {currentAgent.domain || 'General'}
-                </span>
-                <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300">
-                  {currentAgent.status || 'active'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {editMode ? (
-            <textarea
-              value={editedAgent.bio || ''}
-              onChange={(e) => setEditedAgent({ ...editedAgent, bio: e.target.value })}
-              className="w-full mt-4 p-3 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent resize-none"
-              rows={3}
-              placeholder="Agent bio..."
-            />
-          ) : (
-            currentAgent.bio && (
-              <p className="mt-4 text-slate-300 leading-relaxed">{currentAgent.bio}</p>
-            )
-          )}
-        </div>
-
-        {/* Tabs */}
-        <div className="card">
-          <div className="flex border-b border-slate-700 mb-6 overflow-x-auto">
-            {[
-              { id: 'overview', label: 'Overview', icon: BarChart },
-              { id: 'architecture', label: 'Architecture', icon: Network },
-              { id: 'build-history', label: 'Build History', icon: Clock },
-              { id: 'tools', label: 'Tools', icon: Wrench },
-              { id: 'configuration', label: 'Configuration', icon: Settings },
-              { id: 'system-prompt', label: 'System Prompt', icon: Code },
-              { id: 'api-keys', label: 'API Keys', icon: Key }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center space-x-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'border-unicorn-500 text-unicorn-400'
-                    : 'border-transparent text-slate-400 hover:text-slate-300'
-                }`}
-              >
-                <tab.icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Tab Content */}
-          {activeTab === 'overview' && (
-            <div className="space-y-6">
-              {/* Capabilities */}
-              <div>
-                <h3 className="text-lg font-semibold mb-3">Capabilities</h3>
-                <div className="flex flex-wrap gap-2">
-                  {(currentAgent.capabilities || []).map((cap, idx) => (
-                    <span key={idx} className="px-3 py-1 rounded-full bg-unicorn-500/20 text-unicorn-300 text-sm">
-                      {cap}
-                    </span>
-                  ))}
-                  {(!currentAgent.capabilities || currentAgent.capabilities.length === 0) && (
-                    <p className="text-slate-400">No capabilities defined</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Tools */}
-              <div>
-                <h3 className="text-lg font-semibold mb-3">Tools</h3>
-                <div className="space-y-2">
-                  {(currentAgent.agentTools || []).map(at => (
-                    <div key={at.id} className="p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-medium">{at.tool.name}</h4>
-                          <p className="text-sm text-slate-400">{at.tool.description}</p>
-                        </div>
-                        <span className="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300">
-                          {at.tool.type}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                  {(!currentAgent.agentTools || currentAgent.agentTools.length === 0) && (
-                    <p className="text-slate-400">No tools assigned</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="p-4 rounded-lg bg-slate-800/50">
-                  <p className="text-sm text-slate-400">Messages</p>
-                  <p className="text-2xl font-bold">{currentAgent._count?.messages || 0}</p>
-                </div>
-                <div className="p-4 rounded-lg bg-slate-800/50">
-                  <p className="text-sm text-slate-400">Tasks</p>
-                  <p className="text-2xl font-bold">{currentAgent._count?.tasks || 0}</p>
-                </div>
-                <div className="p-4 rounded-lg bg-slate-800/50">
-                  <p className="text-sm text-slate-400">API Keys</p>
-                  <p className="text-2xl font-bold">{currentAgent._count?.apiKeys || 0}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'architecture' && (
-            <AgentArchitectureDiagram agent={currentAgent} />
-          )}
-
-          {activeTab === 'build-history' && (
-            <div>
-              {loadingSession ? (
-                <div className="text-center py-12">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-unicorn-500"></div>
-                  <p className="text-slate-400 mt-4">Loading build history...</p>
-                </div>
-              ) : (
-                <AgentTimeline
-                  session={buildSession}
-                  agentName={currentAgent.displayName || currentAgent.name}
-                />
-              )}
-            </div>
-          )}
-
-          {activeTab === 'tools' && (
-            <div>
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold mb-2">Tool Management</h3>
-                <p className="text-sm text-slate-400">
-                  Configure the tools available to this agent. Tools extend the agent's capabilities with specialized functions.
-                </p>
-              </div>
-              <ToolSelector
-                agentId={id}
-                assignedTools={currentAgent.agentTools?.map(at => at.tool) || []}
-                onUpdate={loadAgent}
-              />
-            </div>
-          )}
-
-          {activeTab === 'configuration' && (
-            <AgentConfigurationTab
-              agent={currentAgent}
-              editMode={editMode}
-              onUpdate={(updatedAgent) => setEditedAgent(updatedAgent)}
-            />
-          )}
-
-          {activeTab === 'system-prompt' && (
-            <div>
-              {editMode ? (
-                <textarea
-                  value={editedAgent.systemPrompt || ''}
-                  onChange={(e) => setEditedAgent({ ...editedAgent, systemPrompt: e.target.value })}
-                  className="w-full h-96 p-4 bg-slate-800/50 border border-slate-700 rounded-lg focus:ring-2 focus:ring-unicorn-500 focus:border-transparent font-mono text-sm resize-none"
-                />
-              ) : (
-                <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown>{currentAgent.systemPrompt || '*No system prompt defined*'}</ReactMarkdown>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'api-keys' && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">API Keys</h3>
-                  <p className="text-sm text-slate-400">
-                    API keys allow external applications to invoke this agent. Keep them secure!
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowKeyModal(true)}
-                  className="btn-primary flex items-center space-x-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Generate New Key</span>
-                </button>
-              </div>
-
-              {(currentAgent.apiKeys || []).map(key => (
-                <ApiKeyCard
-                  key={key.id}
-                  apiKey={key}
-                  onRevoke={handleRevokeKey}
-                />
-              ))}
-
-              {(!currentAgent.apiKeys || currentAgent.apiKeys.length === 0) && (
-                <div className="text-center py-12">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-800/50 mb-4">
-                    <Key className="w-8 h-8 text-slate-600" />
-                  </div>
-                  <p className="text-slate-400 mb-2">No API keys generated yet</p>
-                  <p className="text-sm text-slate-400">Create your first API key to get started</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Modals */}
-        {showKeyModal && (
-          <GenerateApiKeyModal
-            agentId={id}
-            onSuccess={handleKeyGenerated}
-            onClose={() => setShowKeyModal(false)}
-          />
-        )}
-
-        {generatedKey && (
-          <KeyRevealModal
-            apiKey={generatedKey}
-            onClose={() => setGeneratedKey(null)}
-          />
-        )}
+    <Page>
+      <div className="mb-3">
+        <Button variant="link" size="xs" icon={ArrowLeft} onClick={() => navigate('/library')}>
+          Agent Library
+        </Button>
       </div>
-    </div>
-  );
-};
+      <PageHeader
+        eyebrow="Agents"
+        title={
+          <span className="flex items-center gap-3">
+            <AgentAvatar agent={agent} size={56} rounded="rounded-card" />
+            <span>{name}</span>
+          </span>
+        }
+        description={
+          <>
+            <span className="block">{roleLine(agent)}</span>
+            <span className="mt-2 flex flex-wrap items-center gap-1.5">
+              {agent.rank && <Chip size="xs">{agent.rank}</Chip>}
+              <Chip size="xs">{prettyDomain(agent.domain)}</Chip>
+              {agent.status && (
+                <Chip size="xs" dot tone={LIFECYCLE[agent.status] || 'neutral'}>
+                  {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
+                </Chip>
+              )}
+              <AffiliationChip agent={agent} size="xs" />
+              <ModelTierChip agent={agent} size="xs" />
+              <PaidToolsBadge agent={agent} size="xs" />
+            </span>
+          </>
+        }
+        actions={
+          <>
+            <Button icon={MessageSquare} onClick={() => navigate(`/chat?agent=${encodeURIComponent(agent.id)}`)}>
+              Open chat
+            </Button>
+            <Button variant="secondary" icon={Radio} onClick={() => navigate('/command')}>
+              Open comms
+            </Button>
+            <Button variant="secondary" icon={Pencil} onClick={() => setEditing(true)}>
+              Edit
+            </Button>
+            <Button variant="ghost" icon={Trash2} onClick={() => setDeleting(true)}>
+              Delete
+            </Button>
+          </>
+        }
+        tabs={
+          // w-0 + min-w-full keeps the non-wrapping strip from widening the
+          // page on phones; the strip itself scrolls sideways.
+          <div className="w-0 min-w-full">
+            <Tabs tabs={TABS} value={tab} onChange={setTab} label="Agent sections" idBase="agent-tab" />
+          </div>
+        }
+      />
 
-export default AgentDetail;
+      <Card role="tabpanel" aria-labelledby={`agent-tab-${tab}`}>
+        {panel}
+      </Card>
+
+      {editing && (
+        <AgentEditModal
+          agent={agent}
+          onClose={() => setEditing(false)}
+          onSave={(updated, meta) => {
+            const snapshot = agent;
+            setAgent((a) => ({ ...a, ...updated }));
+            return () => setAgent(snapshot);
+          }}
+        />
+      )}
+      {deleting && (
+        <AgentDeleteConfirmModal
+          agent={agent}
+          onClose={() => setDeleting(false)}
+          onDelete={(_, meta) => {
+            if (!meta?.optimistic) navigate('/library');
+            return () => {};
+          }}
+        />
+      )}
+      {showKeyModal && (
+        <GenerateApiKeyModal
+          agentId={id}
+          onClose={() => setShowKeyModal(false)}
+          onSuccess={(key) => {
+            setShowKeyModal(false);
+            setRevealedKey({ ...key, agentId: key?.agentId || id });
+            loadKeys();
+          }}
+        />
+      )}
+      {revealedKey && <KeyRevealModal apiKey={revealedKey} onClose={() => setRevealedKey(null)} />}
+    </Page>
+  );
+}

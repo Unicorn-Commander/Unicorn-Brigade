@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster, toast } from 'react-hot-toast';
+import { Toaster } from 'react-hot-toast';
 import { useEffect, useState, lazy, Suspense } from 'react';
 // Shell stays eager (rendered on every authenticated view); everything routable
 // is lazy so the initial bundle is just the app frame, not all ~25 pages.
@@ -8,16 +8,18 @@ import Navigation from './components/Navigation';
 import CommandPalette from './components/CommandPalette';
 import PaymentRequiredModal from './components/billing/PaymentRequiredModal';
 import useAuth from './hooks/useAuth';
-import { Loader2 } from 'lucide-react';
 import GettingStartedWizard from './components/GettingStartedWizard';
 import ErrorBoundary from './components/ErrorBoundary';
+import { TooltipHost } from './components/ui/Tooltip';
+import { LoadingState, OfflineState, Page } from './components/ui';
+import notify from './utils/notify';
 
 // .catch() provides a fallback if WebGL module evaluation crashes.
 const WebGLFallbackPage = () => (
-  <div className="min-h-screen flex items-center justify-center bg-slate-900">
-    <div className="text-center p-8">
-      <p className="text-xl text-slate-300 font-medium mb-2">3D Visualization Unavailable</p>
-      <p className="text-slate-400">This page requires WebGL support in your browser.</p>
+  <div className="flex min-h-screen items-center justify-center bg-bg">
+    <div className="p-8 text-center">
+      <p className="mb-2 text-heading text-fg-strong">3D visualization unavailable</p>
+      <p className="text-body text-muted">This page needs WebGL, which your browser has turned off.</p>
     </div>
   </div>
 );
@@ -48,21 +50,57 @@ const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ServerError = lazy(() => import('./pages/ServerError'));
 // WebGL / Three.js-heavy pages (extra crash fallback).
-const Orchestration = lazy(() => import('./pages/Orchestration').catch(() => ({ default: WebGLFallbackPage })));
-const OrchestrationDemo = lazy(() => import('./pages/OrchestrationDemo').catch(() => ({ default: WebGLFallbackPage })));
 const KnowledgeGraph = lazy(() => import('./pages/KnowledgeGraph').catch(() => ({ default: WebGLFallbackPage })));
 const CommandCenter = lazy(() => import('./pages/CommandCenter'));
 
 const queryClient = new QueryClient();
 
-const LazyFallback = () => (
-  <div className="min-h-screen flex items-center justify-center bg-slate-900">
-    <div className="text-center">
-      <Loader2 className="w-12 h-12 text-unicorn-400 animate-spin mx-auto mb-4" />
-      <p className="text-slate-400">Loading...</p>
+/**
+ * Shell skeleton — what a lazy page (or the auth check) shows while it loads:
+ * the sidebar and header blocks at their final sizes, then a stats strip and
+ * cards. The real page lands in the same frame, so nothing jumps.
+ */
+const LazyFallback = ({ shell = false }) => {
+  const page = (
+    <Page>
+      <div className="mb-5 flex items-end justify-between gap-3">
+        <LoadingState variant="text" count={2} label="Loading page" className="w-full max-w-sm" />
+        <div aria-hidden="true" className="h-9 w-28 shrink-0 animate-pulse rounded-control bg-elevated/80" />
+      </div>
+      <LoadingState variant="stats" label="Loading page" />
+      <div className="mt-5">
+        <LoadingState variant="cards" count={3} label="Loading page" />
+      </div>
+    </Page>
+  );
+  if (!shell) return page;
+  return (
+    <div className="flex min-h-screen">
+      <div aria-hidden="true" className="fixed inset-y-0 left-0 hidden w-64 border-r border-border bg-surface/80 lg:block" />
+      <div aria-hidden="true" className="fixed inset-x-0 top-0 h-14 border-b border-border bg-surface/90 lg:hidden" />
+      <main className="min-w-0 flex-1 pt-14 lg:ml-64 lg:pt-0">{page}</main>
     </div>
-  </div>
-);
+  );
+};
+
+/** Online/offline as a state of the shell, not a toast. */
+function useOffline() {
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  useEffect(() => {
+    const off = () => setOffline(true);
+    const on = () => {
+      setOffline(false);
+      notify.success('Back online');
+    };
+    window.addEventListener('offline', off);
+    window.addEventListener('online', on);
+    return () => {
+      window.removeEventListener('offline', off);
+      window.removeEventListener('online', on);
+    };
+  }, []);
+  return offline;
+}
 
 /**
  * Protected Route Component
@@ -72,14 +110,7 @@ function ProtectedRoute({ children }) {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-unicorn-400 animate-spin mx-auto mb-4" />
-          <p className="text-slate-400">Loading Brigade...</p>
-        </div>
-      </div>
-    );
+    return <LazyFallback shell />;
   }
 
   if (!isAuthenticated) {
@@ -94,10 +125,16 @@ function ProtectedRoute({ children }) {
  * Only shown for authenticated routes
  */
 function AppLayout({ children }) {
+  const offline = useOffline();
   return (
-    <div className="min-h-screen flex">
+    <div className="flex min-h-screen">
       <Navigation />
-      <main className="flex-1 pt-16 lg:pt-0 lg:ml-64">
+      <main id="main" className="min-w-0 flex-1 pt-14 lg:ml-64 lg:pt-0">
+        {offline && (
+          <div className="border-b border-warn/30 bg-warn/10">
+            <OfflineState compact />
+          </div>
+        )}
         {children}
       </main>
     </div>
@@ -121,33 +158,19 @@ function App() {
     return undefined;
   }, [isAuthenticated]);
 
+  // The sidebar's "Getting started" button (and the palette) re-open the tour
+  // in place — no localStorage reset, no reload.
   useEffect(() => {
-    const handleOffline = () => {
-      toast.error('You are offline. Please check your internet connection.', {
-        id: 'offline',
-        duration: Infinity,
-      });
-    };
-
-    const handleOnline = () => {
-      toast.dismiss('offline');
-      toast.success('You are back online!', { id: 'online' });
-    };
-
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('online', handleOnline);
-
-    return () => {
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('online', handleOnline);
-    };
+    const reopen = () => setShowWizard(true);
+    window.addEventListener('brigade:getting-started', reopen);
+    return () => window.removeEventListener('brigade:getting-started', reopen);
   }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
         <ErrorBoundary>
-          <Suspense fallback={<LazyFallback />}>
+          <Suspense fallback={<LazyFallback shell />}>
           <Routes>
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />
@@ -179,25 +202,8 @@ function App() {
               </ProtectedRoute>
             } />
 
-            <Route path="/orchestration" element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <Suspense fallback={<LazyFallback />}>
-                    <Orchestration />
-                  </Suspense>
-                </AppLayout>
-              </ProtectedRoute>
-            } />
-
-            <Route path="/orchestration/demo" element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <Suspense fallback={<LazyFallback />}>
-                    <OrchestrationDemo />
-                  </Suspense>
-                </AppLayout>
-              </ProtectedRoute>
-            } />
+            {/* Orchestration folded into the Command Center (Missions view), 2026-10-24. */}
+            <Route path="/orchestration" element={<Navigate to="/command?view=missions" replace />} />
 
             <Route path="/command" element={
               <ProtectedRoute>
@@ -366,17 +372,20 @@ function App() {
         {/* BR-3.7: root-level 402 → upgrade-path modal (listens for brigade:payment-required) */}
         <PaymentRequiredModal />
 
+        {/* One toaster, one tooltip host — both themed by the token layer (index.css). */}
         <Toaster
-          position="top-right"
+          position="bottom-right"
+          gutter={8}
+          containerClassName="ub-toaster"
           toastOptions={{
-            className: 'glass',
-            style: {
-              background: 'rgba(15, 23, 42, 0.9)',
-              color: '#e2e8f0',
-              border: '1px solid rgba(100, 116, 139, 0.3)',
-            },
+            className: 'ub-toast',
+            duration: 4000,
+            success: { className: 'ub-toast ub-toast-ok', iconTheme: { primary: 'hsl(var(--ok))', secondary: 'hsl(var(--overlay))' } },
+            error: { className: 'ub-toast ub-toast-danger', duration: 6000, iconTheme: { primary: 'hsl(var(--danger))', secondary: 'hsl(var(--overlay))' } },
+            loading: { className: 'ub-toast' },
           }}
         />
+        <TooltipHost />
       </Router>
     </QueryClientProvider>
   );

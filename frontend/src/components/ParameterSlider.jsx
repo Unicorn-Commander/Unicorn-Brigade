@@ -1,46 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useId } from 'react';
 
-const sliderStylesInjected = { current: false };
-
-function injectSliderStyles() {
-  if (sliderStylesInjected.current) return;
-  sliderStylesInjected.current = true;
-
-  const style = document.createElement('style');
-  style.setAttribute('data-parameter-slider', '');
-  style.textContent = `
-    .parameter-slider-thumb::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, rgb(139, 92, 246), rgb(6, 182, 212));
-      cursor: pointer;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-      transition: transform 0.2s;
-    }
-    .parameter-slider-thumb::-webkit-slider-thumb:hover {
-      transform: scale(1.1);
-    }
-    .parameter-slider-thumb::-moz-range-thumb {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, rgb(139, 92, 246), rgb(6, 182, 212));
-      cursor: pointer;
-      border: none;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-      transition: transform 0.2s;
-    }
-    .parameter-slider-thumb::-moz-range-thumb:hover {
-      transform: scale(1.1);
-    }
-  `;
-  document.head.appendChild(style);
-}
-
-const ParameterSlider = ({
+/**
+ * ParameterSlider — a labelled range whose value is always visible.
+ *
+ * A native <input type="range"> so arrow keys, Home/End, Page Up/Down and
+ * screen readers work without any custom code; the thumb and track take the
+ * accent through `accent-color`. The value sits in an <output> bound to the
+ * input so assistive tech announces it as it changes.
+ *
+ *   <ParameterSlider label="Temperature" value={0.7} onChange={…} min={0} max={2} step={0.1}
+ *                    leftLabel="Focused" rightLabel="Creative" description="…" />
+ */
+export default function ParameterSlider({
   label,
   value,
   onChange,
@@ -50,54 +21,44 @@ const ParameterSlider = ({
   description,
   leftLabel,
   rightLabel,
-  disabled = false
-}) => {
-  const [showTooltip, setShowTooltip] = useState(false);
-
-  useEffect(() => {
-    injectSliderStyles();
-  }, []);
-
-  const safeValue = value !== undefined && value !== null ? value : min;
-  const percentage = ((safeValue - min) / (max - min)) * 100;
+  disabled = false,
+  id: idProp,
+}) {
+  const auto = useId();
+  const id = idProp || auto;
+  const safe = typeof value === 'number' && !Number.isNaN(value) ? value : min;
+  const decimals = step < 1 ? (String(step).split('.')[1] || '').length || 1 : 0;
+  const shown = safe.toFixed(decimals);
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-slate-300">{label}</label>
-        <span className="text-sm font-mono text-unicorn-400">{safeValue.toFixed(step < 1 ? 1 : 0)}</span>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={id} className="text-body-sm font-medium text-fg">
+          {label}
+        </label>
+        <output htmlFor={id} className="font-mono text-body-sm tabular-nums text-accent">
+          {shown}
+        </output>
       </div>
-
-      <div className="relative">
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={safeValue}
-          onChange={(e) => onChange(parseFloat(e.target.value))}
-          onMouseEnter={() => setShowTooltip(true)}
-          onMouseLeave={() => setShowTooltip(false)}
-          disabled={disabled}
-          className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer parameter-slider-thumb disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            background: `linear-gradient(to right, rgb(139, 92, 246) 0%, rgb(139, 92, 246) ${percentage}%, rgb(51, 65, 85) ${percentage}%, rgb(51, 65, 85) 100%)`
-          }}
-        />
-      </div>
-
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={safe}
+        disabled={disabled}
+        aria-valuetext={shown}
+        onChange={(e) => onChange?.(parseFloat(e.target.value))}
+        className="h-2 w-full cursor-pointer rounded-full accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50"
+      />
       {(leftLabel || rightLabel) && (
-        <div className="flex items-center justify-between text-xs text-slate-400">
+        <div className="flex items-center justify-between text-caption text-muted">
           <span>{leftLabel}</span>
           <span>{rightLabel}</span>
         </div>
       )}
-
-      {description && (
-        <p className="text-xs text-slate-400 leading-relaxed">{description}</p>
-      )}
+      {description && <p className="text-caption text-muted">{description}</p>}
     </div>
   );
-};
-
-export default ParameterSlider;
+}

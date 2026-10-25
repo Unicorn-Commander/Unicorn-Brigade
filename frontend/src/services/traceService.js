@@ -71,9 +71,19 @@ function normalizeStats(stats) {
   };
 }
 
-/** The trace endpoints 404 an empty window — treat that as "no data". */
+/**
+ * The trace handlers answer an EMPTY window with 404 + "No attributions found
+ * …" — that is "no data", not a failure. A bare FastAPI "Not Found" means the
+ * route itself is missing on this server, which the UI must say out loud.
+ */
 function emptyOn404(error) {
-  if (error instanceof ApiError && error.status === 404) return [];
+  if (error instanceof ApiError && error.status === 404) {
+    const detail = error.data?.detail;
+    if (typeof detail === 'string' && /attribution/i.test(detail)) return [];
+    const missing = new ApiError(404, error.data, 'The trace service isn’t available on this server.');
+    missing.routeMissing = true;
+    throw missing;
+  }
   throw error;
 }
 

@@ -1,92 +1,52 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
-import { Home, Search, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Bot, Home, Server, Workflow } from 'lucide-react';
+import { Button, Card } from '../components/ui';
+
+const SUGGESTIONS = [
+  { to: '/dashboard', icon: Home, title: 'Dashboard', text: 'The overview' },
+  { to: '/library', icon: Bot, title: 'Agent Library', text: 'Browse and build agents' },
+  { to: '/workflows', icon: Workflow, title: 'Workflows', text: 'Run multi-agent workflows' },
+  { to: '/mcp-servers', icon: Server, title: 'MCP Servers', text: 'Tools your agents can use' },
+];
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-bg via-unicorn-900/20 to-bg flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full text-center">
-        <h1 className="text-9xl font-bold bg-gradient-to-r from-unicorn-500 to-unicorn-400 bg-clip-text text-transparent mb-4">
+    <main className="flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="w-full max-w-2xl text-center">
+        <p aria-hidden="true" className="text-hero text-gradient">
           404
-        </h1>
-
-        <h2 className="text-3xl font-bold text-fg mb-4">
-          Page Not Found
-        </h2>
-
-        <p className="text-muted text-lg mb-8">
-          The page you are looking for does not exist or has been moved.
         </p>
+        <h1 className="mt-2 text-title text-fg-strong">Page not found</h1>
+        <p className="mx-auto mt-2 max-w-md text-body text-muted">That address doesn’t exist or has moved. The pages below are the usual places to start.</p>
 
-        <div className="bg-elevated/50 backdrop-blur-xl border border-border/50 rounded-xl p-6 mb-8">
-          <h3 className="text-lg font-semibold text-fg mb-4">
-            Try these instead:
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-            <Link
-              to="/dashboard"
-              className="flex items-center space-x-3 p-3 bg-elevated/30 hover:bg-elevated/50 rounded-lg transition-colors group"
-            >
-              <Home className="w-5 h-5 text-unicorn-400" />
-              <div>
-                <div className="text-fg font-medium group-hover:text-unicorn-400 transition-colors">Dashboard</div>
-                <div className="text-xs text-muted">View overview</div>
-              </div>
-            </Link>
+        <Card className="mt-8 text-left">
+          <p className="mb-3 text-micro font-semibold uppercase tracking-wider text-muted">Try these instead</p>
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {SUGGESTIONS.map((s) => (
+              <li key={s.to}>
+                <Card as={Link} to={s.to} variant="elevated" padding="sm" interactive className="flex h-full items-center gap-3">
+                  <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-accent/10 text-accent">
+                    <s.icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-body font-medium text-fg-strong">{s.title}</span>
+                    <span className="block text-caption text-muted">{s.text}</span>
+                  </span>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </Card>
 
-            <Link
-              to="/library"
-              className="flex items-center space-x-3 p-3 bg-elevated/30 hover:bg-elevated/50 rounded-lg transition-colors group"
-            >
-              <Search className="w-5 h-5 text-unicorn-400" />
-              <div>
-                <div className="text-fg font-medium group-hover:text-unicorn-400 transition-colors">Agent Library</div>
-                <div className="text-xs text-muted">Browse agents</div>
-              </div>
-            </Link>
-
-            <Link
-              to="/workflows"
-              className="flex items-center space-x-3 p-3 bg-elevated/30 hover:bg-elevated/50 rounded-lg transition-colors group"
-            >
-              <Search className="w-5 h-5 text-unicorn-400" />
-              <div>
-                <div className="text-fg font-medium group-hover:text-unicorn-400 transition-colors">Workflows</div>
-                <div className="text-xs text-muted">Execute workflows</div>
-              </div>
-            </Link>
-
-            <Link
-              to="/mcp-servers"
-              className="flex items-center space-x-3 p-3 bg-elevated/30 hover:bg-elevated/50 rounded-lg transition-colors group"
-            >
-              <Search className="w-5 h-5 text-unicorn-400" />
-              <div>
-                <div className="text-fg font-medium group-hover:text-unicorn-400 transition-colors">MCP Servers</div>
-                <div className="text-xs text-muted">Manage servers</div>
-              </div>
-            </Link>
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <button
-            onClick={() => window.history.back()}
-            className="px-6 py-3 bg-elevated text-fg rounded-lg hover:bg-elevated transition-colors flex items-center justify-center space-x-2"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            <span>Go Back</span>
-          </button>
-
-          <Link
-            to="/dashboard"
-            className="px-6 py-3 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-colors flex items-center justify-center space-x-2"
-          >
-            <Home className="w-5 h-5" />
-            <span>Go to Dashboard</span>
-          </Link>
+        <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+          <Button variant="secondary" icon={ArrowLeft} onClick={() => window.history.back()}>
+            Go back
+          </Button>
+          <Button as={Link} to="/dashboard" icon={Home}>
+            Go to Dashboard
+          </Button>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

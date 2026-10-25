@@ -1,753 +1,478 @@
 /**
- * Knowledge Graph Browser Page
+ * Knowledge graph — what the agents have learned, in FalkorDB.
  *
- * 3D visualization of the FalkorDB knowledge graph.
- * Shows entities as nodes, relationships as edges, with filtering and search.
+ * Frame → honest stat cards → a labelled search + type filter → the graph
+ * pane framed in a Card (fullscreen through the real Fullscreen API) → entity
+ * detail in a Card (a Sheet on phones) → relationship types as chips → the
+ * four states, including "FalkorDB unreachable" with the reason.
  */
-
 import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Network,
-  Search,
-  Filter,
-  RefreshCw,
-  Database,
-  Share2,
-  Circle,
-  ChevronRight,
-  X,
-  Maximize2,
-  Minimize2,
-  Box,
-  Grid3X3,
-  Play,
-  Pause,
-  Layers,
-  Zap,
-  AlertCircle,
-  CheckCircle2,
-  Info
-} from 'lucide-react';
-import Breadcrumbs from '../components/Breadcrumbs';
+import { Network, Search, RefreshCw, Database, Share2, Layers, Zap, Box, Grid3X3, Play, Pause, Maximize2, Minimize2, RotateCcw, Circle, X } from 'lucide-react';
 import { apiJson } from '../services/http';
+import { humanize } from '../utils/errors';
+import { tokenHsl } from '../utils/tokens';
+import Breadcrumbs from '../components/Breadcrumbs';
+import { absoluteTime } from '../components/ActivityFeed';
+import { Button, IconButton, Card, CardHeader, Chip, Input, Select, Sheet, StatCard, Page, PageHeader, EmptyState, ErrorState, OfflineState, LoadingState } from '../components/ui';
 
-// Lazy load ForceGraph3D to gracefully handle WebGL failures
 const ForceGraph3D = lazy(() =>
-  import('react-force-graph-3d').then(mod => ({ default: mod.default })).catch(() => ({
-    default: () => (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center p-8">
-          <AlertCircle className="w-12 h-12 text-amber-400 mx-auto mb-3" />
-          <p className="text-slate-300 font-medium">3D graph unavailable</p>
-          <p className="text-sm text-slate-400 mt-1">WebGL required for knowledge graph visualization</p>
-        </div>
-      </div>
-    ),
-  }))
+  import('react-force-graph-3d')
+    .then((mod) => ({ default: mod.default }))
+    .catch(() => ({
+      default: () => <EmptyState compact icon={Box} title="3D graph unavailable" description="This browser has no WebGL, which the graph needs." className="h-full" />,
+    }))
 );
 
-// Entity type colors
-const entityTypeColors = {
-  Person: '#10b981',      // emerald
-  Company: '#3b82f6',     // blue
-  Concept: '#8b5cf6',     // purple
-  Location: '#f59e0b',    // amber
-  Product: '#ec4899',     // pink
-  Event: '#06b6d4',       // cyan
-  Organization: '#ef4444', // red
-  default: '#6b7280'      // gray
-};
+// Entity types get a tone each, in order, cycling — the same tone drives the
+// legend chip and the node colour, so the legend is always true.
+const TONES = ['accent', 'info', 'ok', 'warn', 'live', 'danger', 'neutral'];
+const TONE_TOKEN = { accent: '--accent', info: '--info', ok: '--ok', warn: '--warn', live: '--live', danger: '--danger', neutral: '--subtle' };
+const LIMIT = 200;
 
-// Get color for entity type
-const getEntityColor = (type) => entityTypeColors[type] || entityTypeColors.default;
-
-const KnowledgeGraph = () => {
-  // State
-  const [graphData, setGraphData] = useState({ nodes: [], links: [] });
-  const [stats, setStats] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState('all');
-  const [selectedNode, setSelectedNode] = useState(null);
-  const [nodeDetails, setNodeDetails] = useState(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [viewMode, setViewMode] = useState('3d');
-  const [isAnimating, setIsAnimating] = useState(true);
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-
-  // Refs
-  const fgRef = useRef();
-  const containerRef = useRef();
-
-  // Fetch graph data
-  const fetchGraphData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await apiJson('/knowledge/graph', {
-        params: {
-          entity_type: filterType !== 'all' ? filterType : undefined,
-          name_pattern: searchQuery || undefined,
-          limit: 200,
-        },
-      });
-
-      if (data.success) {
-        // Transform nodes with colors based on type
-        const coloredNodes = data.nodes.map(node => ({
-          ...node,
-          color: getEntityColor(node.type),
-          val: 10
-        }));
-
-        // Transform links with colors
-        const coloredLinks = data.links.map(link => ({
-          ...link,
-          color: 'rgba(139, 92, 246, 0.4)'
-        }));
-
-        setGraphData({ nodes: coloredNodes, links: coloredLinks });
-      } else {
-        setError(data.error || 'Failed to load graph data');
-        setGraphData({ nodes: [], links: [] });
-      }
-    } catch (err) {
-      console.error('Failed to fetch graph data:', err);
-      setError('Failed to connect to knowledge graph service');
-      setGraphData({ nodes: [], links: [] });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filterType, searchQuery]);
-
-  // Fetch stats
-  const fetchStats = useCallback(async () => {
-    try {
-      const data = await apiJson('/knowledge/stats');
-      if (data.success) {
-        setStats(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch stats:', err);
-    }
-  }, []);
-
-  // Fetch entity details
-  const fetchEntityDetails = useCallback(async (entityName) => {
-    try {
-      const data = await apiJson(`/knowledge/entity/${encodeURIComponent(entityName)}`);
-      if (data.success) {
-        setNodeDetails(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch entity details:', err);
-    }
-  }, []);
-
-  // Initial load
+function useMediaQuery(q) {
+  const [match, setMatch] = useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches);
   useEffect(() => {
-    fetchGraphData();
-    fetchStats();
-  }, [fetchGraphData, fetchStats]);
+    const m = window.matchMedia(q);
+    const on = () => setMatch(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, [q]);
+  return match;
+}
 
-  // Update dimensions on resize
-  useEffect(() => {
-    const updateDimensions = () => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        setDimensions({
-          width: rect.width || 800,
-          height: isFullscreen ? window.innerHeight : 600
-        });
-      }
-    };
-
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, [isFullscreen]);
-
-  // Handle node click
-  const handleNodeClick = useCallback((node) => {
-    setSelectedNode(node);
-    fetchEntityDetails(node.name);
-
-    // Focus on node in 3D
-    if (fgRef.current && viewMode === '3d') {
-      const distance = 200;
-      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
-      fgRef.current.cameraPosition(
-        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-        node,
-        1000
-      );
-    }
-  }, [fetchEntityDetails, viewMode]);
-
-  // Handle link click
-  const handleLinkClick = useCallback((link) => {
-    console.log('Relationship clicked:', link);
-  }, []);
-
-  // Toggle view mode
-  const toggleViewMode = () => {
-    setViewMode(viewMode === '3d' ? '2d' : '3d');
-  };
-
-  // Reset camera
-  const resetCamera = () => {
-    if (fgRef.current) {
-      fgRef.current.cameraPosition({ x: 0, y: 0, z: 500 }, { x: 0, y: 0, z: 0 }, 1000);
-    }
-  };
-
-  // Toggle animation
-  const toggleAnimation = () => {
-    setIsAnimating(!isAnimating);
-    if (fgRef.current) {
-      if (isAnimating) {
-        fgRef.current.pauseAnimation();
-      } else {
-        fgRef.current.resumeAnimation();
-      }
-    }
-  };
-
-  // Node label HTML
-  const nodeLabel = useCallback((node) => {
-    return `<div style="background: rgba(15, 23, 42, 0.95); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(139, 92, 246, 0.3); font-family: system-ui, sans-serif;">
-      <div style="font-size: 14px; font-weight: 600; color: #f8fafc;">${node.name}</div>
-      <div style="font-size: 11px; color: ${node.color}; text-transform: capitalize;">${node.type}</div>
-    </div>`;
-  }, []);
-
-  // Get unique entity types for filter
-  const entityTypes = useMemo(() => {
-    if (!stats?.entity_types?.length) {
-      // Fallback to types from current data
-      const types = new Set(graphData.nodes.map(n => n.type));
-      return ['all', ...Array.from(types)];
-    }
-    return ['all', ...stats.entity_types];
-  }, [stats, graphData.nodes]);
-
-  // Handle search submit
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    fetchGraphData();
-  };
-
-  // Loading state
-  if (isLoading && !graphData.nodes.length) {
-    return (
-      <div className="min-h-screen p-8 flex items-center justify-center">
-        <div className="text-center">
-          <Network className="w-16 h-16 text-unicorn-500 animate-pulse mx-auto mb-4" />
-          <p className="text-slate-400">Loading Knowledge Graph...</p>
-        </div>
-      </div>
-    );
-  }
-
+function EntityDetail({ node, details, error, onClear, toneOf }) {
+  if (!node) return <EmptyState compact icon={Circle} title="Pick an entity" description="Click a node in the graph to see where it came from and what it is linked to." />;
+  const rels = details?.relationships || [];
+  const entity = details?.entity || {};
   return (
-    <div className={`min-h-screen ${isFullscreen ? 'p-0' : 'p-4 md:p-6 lg:p-8'}`}>
-      {!isFullscreen && (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-lead font-semibold text-fg-strong">{node.name}</p>
+          <Chip tone={toneOf(node.type)} size="xs" dot className="mt-1">
+            {node.type}
+          </Chip>
+        </div>
+        <IconButton icon={X} label="Clear selection" size="sm" onClick={onClear} />
+      </div>
+      {error ? (
+        <p className="text-caption text-warn">Couldn’t load the details: {humanize(error, { what: 'loading the entity' })}</p>
+      ) : !details ? (
+        <LoadingState variant="text" count={3} label="Loading entity" />
+      ) : (
         <>
-          {/* Header */}
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-8"
-          >
-            <Breadcrumbs />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="p-3 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-500/30">
-                  <Network className="w-8 h-8 text-cyan-400" />
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
-                    Knowledge Graph
-                  </h1>
-                  <p className="text-slate-400">
-                    Explore entities and relationships in FalkorDB
-                  </p>
-                </div>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+            {entity.created_at && (
+              <div>
+                <dt className="text-caption text-muted">Learned</dt>
+                <dd className="text-body-sm text-fg">{absoluteTime(entity.created_at)}</dd>
               </div>
-
-              <div className="flex items-center space-x-3">
-                {stats && (
-                  <span className={`flex items-center space-x-1 text-xs ${
-                    stats.status === 'connected' ? 'text-green-400' : 'text-yellow-400'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${
-                      stats.status === 'connected' ? 'bg-green-400' : 'bg-yellow-400'
-                    } animate-pulse`}></span>
-                    <span>{stats.status === 'connected' ? 'Connected' : 'Disconnected'}</span>
-                  </span>
-                )}
-                <button
-                  onClick={() => { fetchGraphData(); fetchStats(); }}
-                  className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 hover:border-cyan-500/50 transition-all"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-                  <span>Refresh</span>
-                </button>
+            )}
+            {entity.created_by && (
+              <div>
+                <dt className="text-caption text-muted">By</dt>
+                <dd className="truncate text-body-sm text-fg">{entity.created_by}</dd>
               </div>
-            </div>
-          </motion.div>
-
-          {/* Stats Bar */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="grid grid-cols-4 gap-4 mb-6"
-          >
-            {[
-              { label: 'Entities', value: stats?.total_entities || graphData.nodes.length, icon: Circle, color: 'cyan' },
-              { label: 'Relationships', value: stats?.total_relationships || graphData.links.length, icon: Share2, color: 'purple' },
-              { label: 'Entity Types', value: stats?.entity_types?.length || entityTypes.length - 1, icon: Layers, color: 'blue' },
-              { label: 'Rel. Types', value: stats?.relationship_types?.length || 0, icon: Zap, color: 'pink' },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className="card glass hover:border-slate-600 transition-all"
-              >
-                <div className="flex items-center space-x-3">
-                  <div className={`p-2 rounded-lg bg-${stat.color}-500/20`}>
-                    <stat.icon className={`w-5 h-5 text-${stat.color}-400`} />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-white">{stat.value}</p>
-                    <p className="text-xs text-slate-400">{stat.label}</p>
-                  </div>
-                </div>
+            )}
+            {entity.properties?.source && (
+              <div className="col-span-2">
+                <dt className="text-caption text-muted">Source</dt>
+                <dd className="truncate font-mono text-caption text-fg">{entity.properties.source}</dd>
               </div>
-            ))}
-          </motion.div>
-
-          {/* Search and Filter */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="flex items-center space-x-4 mb-6"
-          >
-            <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search entities..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-              />
-            </form>
-
-            <div className="flex items-center space-x-2">
-              <Filter className="w-4 h-4 text-slate-400" />
-              <select
-                aria-label="Filter by node type"
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-200 focus:outline-none focus:border-cyan-500"
-              >
-                {entityTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type === 'all' ? 'All Types' : type}
-                  </option>
+            )}
+          </dl>
+          <div>
+            <p className="mb-1.5 text-caption text-muted">
+              Relationships{rels.length ? ` (${rels.length})` : ''}
+            </p>
+            {rels.length === 0 ? (
+              <p className="text-body-sm text-muted">No relationships recorded yet.</p>
+            ) : (
+              <ul className="max-h-56 space-y-1 overflow-y-auto">
+                {rels.slice(0, 20).map((r, i) => (
+                  <li key={i} className="rounded-control border border-border bg-surface/60 px-2 py-1.5 text-caption text-fg">
+                    <span className="font-medium">{r.from?.name}</span> <Chip size="xs" tone="accent" className="mx-1 align-middle">{r.relationship}</Chip> <span className="font-medium">{r.to?.name}</span>
+                    {r.confidence != null && <span className="ml-1 text-subtle">· {Math.round(r.confidence * 100)}%</span>}
+                  </li>
                 ))}
-              </select>
-            </div>
-          </motion.div>
-
-          {/* Error message */}
-          {error && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center space-x-3"
-            >
-              <AlertCircle className="w-5 h-5 text-red-400" />
-              <p className="text-red-400">{error}</p>
-            </motion.div>
-          )}
+              </ul>
+            )}
+          </div>
         </>
       )}
-
-      {/* Main Content Grid */}
-      <div className={`grid ${isFullscreen ? '' : 'grid-cols-4 gap-6'}`}>
-        {/* 3D Visualization */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          className={isFullscreen ? 'fixed inset-0 z-50' : 'col-span-3'}
-        >
-          <div
-            ref={containerRef}
-            className={`relative ${isFullscreen ? 'fixed inset-0 z-50' : 'w-full h-[600px]'} bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl overflow-hidden border border-slate-700/50`}
-          >
-            {/* Background grid effect */}
-            <div className="absolute inset-0 opacity-10 pointer-events-none">
-              <div className="absolute inset-0" style={{
-                backgroundImage: `
-                  linear-gradient(rgba(6, 182, 212, 0.1) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(6, 182, 212, 0.1) 1px, transparent 1px)
-                `,
-                backgroundSize: '50px 50px',
-              }} />
-            </div>
-
-            {/* Control panel */}
-            <div className="absolute top-4 left-4 z-10 flex flex-col space-y-2">
-              <div className="flex items-center space-x-2 p-2 rounded-lg bg-slate-800/80 backdrop-blur-sm border border-slate-700/50">
-                <button
-                  onClick={toggleViewMode}
-                  className={`p-2 rounded-lg transition-all ${
-                    viewMode === '3d'
-                      ? 'bg-cyan-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
-                  title={viewMode === '3d' ? 'Switch to 2D' : 'Switch to 3D'}
-                  aria-label={viewMode === '3d' ? 'Switch to 2D view' : 'Switch to 3D view'}
-                >
-                  {viewMode === '3d' ? <Box className="w-4 h-4" /> : <Grid3X3 className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={toggleAnimation}
-                  className={`p-2 rounded-lg transition-all ${
-                    isAnimating
-                      ? 'bg-green-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                  }`}
-                  title={isAnimating ? 'Pause animation' : 'Resume animation'}
-                  aria-label={isAnimating ? 'Pause animation' : 'Resume animation'}
-                >
-                  {isAnimating ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={resetCamera}
-                  className="p-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-all"
-                  title="Reset camera"
-                  aria-label="Reset camera"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="p-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-all"
-                  title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-                  aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-                  aria-pressed={isFullscreen}
-                >
-                  {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Stats panel */}
-            <div className="absolute top-4 right-4 z-10 p-3 rounded-lg bg-slate-800/80 backdrop-blur-sm border border-slate-700/50">
-              <div className="flex items-center space-x-4 text-xs">
-                <div className="flex items-center space-x-1.5">
-                  <div className="w-2 h-2 rounded-full bg-cyan-500" />
-                  <span className="text-slate-400">Nodes:</span>
-                  <span className="text-white font-semibold">{graphData.nodes.length}</span>
-                </div>
-                <div className="flex items-center space-x-1.5">
-                  <div className="w-2 h-2 rounded-full bg-unicorn-500" />
-                  <span className="text-slate-400">Links:</span>
-                  <span className="text-white font-semibold">{graphData.links.length}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Entity type legend */}
-            <div className="absolute bottom-4 left-4 z-10 p-3 rounded-lg bg-slate-800/80 backdrop-blur-sm border border-slate-700/50">
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Entity Types</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                {Object.entries(entityTypeColors).slice(0, 6).map(([type, color]) => (
-                  <div key={type} className="flex items-center space-x-1.5">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                    <span className="text-[10px] text-slate-400">{type}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Graph Canvas */}
-            <div className="absolute inset-0">
-              {graphData.nodes.length > 0 ? (
-                <Suspense fallback={<div className="h-full flex items-center justify-center"><Network className="w-8 h-8 text-unicorn-400 animate-pulse" /></div>}>
-                  <ForceGraph3D
-                    ref={fgRef}
-                    graphData={graphData}
-                    width={dimensions.width}
-                    height={dimensions.height}
-                    backgroundColor="rgba(0,0,0,0)"
-                    nodeLabel={nodeLabel}
-                    nodeColor={node => node.color}
-                    nodeVal={node => node.val}
-                    nodeOpacity={0.9}
-                    linkColor={link => link.color || 'rgba(139, 92, 246, 0.4)'}
-                    linkWidth={1.5}
-                    linkOpacity={0.6}
-                    linkLabel={link => link.label}
-                    linkDirectionalParticles={2}
-                    linkDirectionalParticleSpeed={0.005}
-                    linkDirectionalParticleWidth={2}
-                    linkDirectionalParticleColor={() => '#06b6d4'}
-                    onNodeClick={handleNodeClick}
-                    onLinkClick={handleLinkClick}
-                    enableNodeDrag={true}
-                    enableNavigationControls={true}
-                    showNavInfo={false}
-                    warmupTicks={100}
-                    cooldownTicks={50}
-                    d3AlphaDecay={0.02}
-                    d3VelocityDecay={0.3}
-                    numDimensions={viewMode === '3d' ? 3 : 2}
-                  />
-                </Suspense>
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    {stats?.status === 'disconnected' ? (
-                      <>
-                        <Database className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-                        <p className="text-slate-400">FalkorDB not connected</p>
-                        <p className="text-sm text-slate-400 mt-2">
-                          Enable FalkorDB in your environment to use the knowledge graph
-                        </p>
-                        <p className="text-xs text-slate-600 mt-1">
-                          Set FALKORDB_ENABLED=true and configure connection
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <Layers className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-                        <p className="text-slate-400">No entities in knowledge graph</p>
-                        <p className="text-sm text-slate-400 mt-2">
-                          Use agents with knowledge tools to populate the graph
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Title overlay */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
-              <div className="px-4 py-2 rounded-full bg-slate-800/80 backdrop-blur-sm border border-slate-700/50">
-                <p className="text-xs text-slate-400 flex items-center space-x-2">
-                  <Database className="w-3 h-3" />
-                  <span>Knowledge Graph Browser</span>
-                  <span className="text-cyan-400">|</span>
-                  <span className="text-cyan-400">{viewMode.toUpperCase()}</span>
-                </p>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Sidebar */}
-        {!isFullscreen && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.4 }}
-            className="space-y-6"
-          >
-            {/* Selected Entity Details */}
-            <div className="card glass">
-              <h3 className="flex items-center space-x-2 text-sm font-semibold text-white mb-4">
-                <Info className="w-4 h-4 text-cyan-400" />
-                <span>Entity Details</span>
-              </h3>
-
-              {selectedNode && nodeDetails ? (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-lg font-semibold text-white">{selectedNode.name}</p>
-                    <p className="text-sm text-cyan-400">{selectedNode.type}</p>
-                  </div>
-
-                  {nodeDetails.entity?.created_at && (
-                    <div>
-                      <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Created</p>
-                      <p className="text-sm text-slate-300">
-                        {new Date(nodeDetails.entity.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  )}
-
-                  {nodeDetails.entity?.created_by && (
-                    <div>
-                      <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Created By</p>
-                      <p className="text-sm text-slate-300">{nodeDetails.entity.created_by}</p>
-                    </div>
-                  )}
-
-                  {nodeDetails.relationships?.length > 0 && (
-                    <div>
-                      <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">
-                        Relationships ({nodeDetails.relationships.length})
-                      </p>
-                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {nodeDetails.relationships.slice(0, 10).map((rel, idx) => (
-                          <div
-                            key={idx}
-                            className="p-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-xs"
-                          >
-                            <div className="flex items-center space-x-1 text-slate-300">
-                              <span className="text-cyan-400">{rel.from?.name}</span>
-                              <ChevronRight className="w-3 h-3 text-unicorn-400" />
-                              <span className="text-unicorn-400">{rel.relationship}</span>
-                              <ChevronRight className="w-3 h-3 text-unicorn-400" />
-                              <span className="text-cyan-400">{rel.to?.name}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => { setSelectedNode(null); setNodeDetails(null); }}
-                    className="w-full mt-2 px-3 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-all text-sm"
-                  >
-                    Clear Selection
-                  </button>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-400 text-center py-4">
-                  Click on a node to view details
-                </p>
-              )}
-            </div>
-
-            {/* Relationship Types */}
-            {stats?.relationship_types?.length > 0 && (
-              <div className="card glass">
-                <h3 className="flex items-center space-x-2 text-sm font-semibold text-white mb-4">
-                  <Share2 className="w-4 h-4 text-unicorn-400" />
-                  <span>Relationship Types</span>
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {stats.relationship_types.map((type) => (
-                    <span
-                      key={type}
-                      className="px-2 py-1 text-xs rounded-full bg-unicorn-500/20 text-unicorn-300"
-                    >
-                      {type}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Connection Status */}
-            <div className="card glass">
-              <h3 className="flex items-center space-x-2 text-sm font-semibold text-white mb-4">
-                <Database className="w-4 h-4 text-emerald-400" />
-                <span>FalkorDB Status</span>
-              </h3>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-300">Status</span>
-                  <span className={`flex items-center space-x-1 text-sm ${
-                    stats?.status === 'connected' ? 'text-emerald-400' : 'text-yellow-400'
-                  }`}>
-                    {stats?.status === 'connected' ? (
-                      <CheckCircle2 className="w-4 h-4" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4" />
-                    )}
-                    <span>{stats?.status || 'Unknown'}</span>
-                  </span>
-                </div>
-
-                {stats?.host && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-300">Host</span>
-                    <span className="text-sm text-slate-400">{stats.host}:{stats.port}</span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-slate-300">Enabled</span>
-                  <span className={`text-sm ${stats?.enabled ? 'text-emerald-400' : 'text-slate-400'}`}>
-                    {stats?.enabled ? 'Yes' : 'No'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Tips */}
-            <div className="card glass bg-slate-800/30">
-              <h3 className="flex items-center space-x-2 text-sm font-semibold text-white mb-3">
-                <Zap className="w-4 h-4 text-yellow-400" />
-                <span>Tips</span>
-              </h3>
-              <ul className="space-y-2 text-xs text-slate-400">
-                <li>Click on nodes to view entity details</li>
-                <li>Drag nodes to rearrange the graph</li>
-                <li>Use scroll to zoom in/out</li>
-                <li>Toggle between 2D/3D views</li>
-                <li>Use search to filter entities</li>
-              </ul>
-            </div>
-          </motion.div>
-        )}
-      </div>
-
-      {/* Selected Node Panel (Fullscreen mode) */}
-      <AnimatePresence>
-        {selectedNode && isFullscreen && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="fixed bottom-4 right-4 z-50 w-80 p-4 rounded-lg bg-slate-800/90 backdrop-blur-sm border border-slate-700/50"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-white">{selectedNode.name}</h3>
-                <p className="text-xs text-cyan-400">{selectedNode.type}</p>
-              </div>
-              <button
-                onClick={() => { setSelectedNode(null); setNodeDetails(null); }}
-                aria-label="Close node details"
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {nodeDetails?.relationships?.length > 0 && (
-              <div className="mt-3">
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">
-                  Relationships ({nodeDetails.relationships.length})
-                </p>
-                <div className="space-y-1 max-h-32 overflow-y-auto">
-                  {nodeDetails.relationships.slice(0, 5).map((rel, idx) => (
-                    <div key={idx} className="text-[10px] text-slate-400">
-                      {rel.from?.name} <span className="text-unicorn-400">{rel.relationship}</span> {rel.to?.name}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
-};
+}
 
-export default KnowledgeGraph;
+export default function KnowledgeGraph() {
+  const [graph, setGraph] = useState({ nodes: [], links: [] });
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  const [draft, setDraft] = useState('');
+  const [query, setQuery] = useState('');
+  const [type, setType] = useState('');
+  const [selected, setSelected] = useState(null);
+  const [details, setDetails] = useState(null);
+  const [detailsError, setDetailsError] = useState(null);
+  const [viewMode, setViewMode] = useState('3d');
+  const [animating, setAnimating] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [size, setSize] = useState({ width: 800, height: 600 });
+  const fgRef = useRef();
+  const paneRef = useRef();
+  const narrow = useMediaQuery('(max-width: 1279px)');
+
+  const colors = useMemo(() => {
+    const m = {};
+    TONES.forEach((t) => {
+      m[t] = tokenHsl(TONE_TOKEN[t]);
+    });
+    return { ...m, link: tokenHsl('--accent', 0.35), particle: tokenHsl('--info') };
+  }, []);
+
+  // ── data ──
+  const loadGraph = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiJson('/knowledge/graph', { params: { entity_type: type || undefined, name_pattern: query || undefined, limit: LIMIT } });
+      if (data?.success === false) throw new Error(data.error || 'The knowledge graph could not be read.');
+      setGraph({ nodes: (data?.nodes || []).map((n) => ({ ...n, val: n.val ?? 10 })), links: data?.links || [] });
+    } catch (err) {
+      setError(err);
+      setGraph({ nodes: [], links: [] });
+    } finally {
+      setLoading(false);
+    }
+  }, [type, query]);
+
+  const loadStats = useCallback(async () => {
+    try {
+      const data = await apiJson('/knowledge/stats');
+      setStats(data || null);
+    } catch {
+      setStats(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadGraph();
+  }, [loadGraph]);
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      loadGraph();
+      loadStats();
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [loadGraph, loadStats]);
+
+  // ── pane size + fullscreen ──
+  useEffect(() => {
+    const el = paneRef.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setSize({ width: Math.max(200, Math.round(r.width)), height: Math.max(200, Math.round(r.height)) });
+    };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [loading, error]);
+
+  useEffect(() => {
+    const on = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else paneRef.current?.requestFullscreen?.().catch(() => {});
+  };
+
+  // ── derived ──
+  const entityTypes = useMemo(() => {
+    const fromStats = stats?.entity_types || [];
+    const fromData = [...new Set(graph.nodes.map((n) => n.type).filter(Boolean))];
+    return [...new Set([...fromStats, ...fromData])];
+  }, [stats, graph.nodes]);
+  const toneOf = useCallback((t) => TONES[Math.max(0, entityTypes.indexOf(t)) % TONES.length], [entityTypes]);
+  const disconnected = stats && stats.status && stats.status !== 'connected';
+  const hasFilters = Boolean(query || type);
+
+  // ── interactions ──
+  const selectNode = useCallback(async (node) => {
+    setSelected(node);
+    setDetails(null);
+    setDetailsError(null);
+    if (fgRef.current && node && Number.isFinite(node.x)) {
+      const dist = 200;
+      const ratio = 1 + dist / Math.max(1, Math.hypot(node.x, node.y, node.z || 0));
+      fgRef.current.cameraPosition({ x: node.x * ratio, y: node.y * ratio, z: (node.z || 0) * ratio }, node, 1000);
+    }
+    try {
+      const data = await apiJson(`/knowledge/entity/${encodeURIComponent(node.name)}`);
+      setDetails(data);
+    } catch (err) {
+      setDetailsError(err);
+    }
+  }, []);
+  const clearSelection = () => {
+    setSelected(null);
+    setDetails(null);
+  };
+  const resetCamera = () => fgRef.current?.cameraPosition({ x: 0, y: 0, z: 500 }, { x: 0, y: 0, z: 0 }, 1000);
+  const toggleAnimation = () => {
+    if (animating) fgRef.current?.pauseAnimation();
+    else fgRef.current?.resumeAnimation();
+    setAnimating((a) => !a);
+  };
+  const nodeLabel = useCallback(
+    (n) =>
+      `<div style="background:hsl(var(--overlay));border:1px solid hsl(var(--border));border-radius:8px;padding:6px 10px;font-family:system-ui,sans-serif"><div style="font-size:13px;font-weight:600;color:hsl(var(--fg-strong))">${n.name}</div><div style="font-size:11px;color:hsl(var(--muted))">${n.type || ''}</div></div>`,
+    []
+  );
+
+  // ── the pane body (four states) ──
+  let pane;
+  if (offline && !graph.nodes.length) pane = <OfflineState onRetry={loadGraph} className="h-full" />;
+  else if (loading) pane = <LoadingState variant="chart" label="Loading the knowledge graph" className="h-full p-4" />;
+  else if (disconnected)
+    pane = (
+      <ErrorState
+        title="FalkorDB isn’t reachable"
+        detail={stats?.error || stats?.detail || (stats?.enabled === false ? 'The knowledge graph is turned off for this deployment (FALKORDB_ENABLED).' : `Brigade could not connect to ${stats?.host || 'the graph database'}${stats?.port ? `:${stats.port}` : ''}.`)}
+        onRetry={() => {
+          loadStats();
+          loadGraph();
+        }}
+        className="h-full"
+      />
+    );
+  else if (error) pane = <ErrorState title="Couldn’t read the knowledge graph" detail={humanize(error, { what: 'loading the graph' })} onRetry={loadGraph} className="h-full" />;
+  else if (!graph.nodes.length)
+    pane = hasFilters ? (
+      <EmptyState compact icon={Search} title="No entities match" description="Try another name or type." action={<Button variant="secondary" size="sm" onClick={() => { setDraft(''); setQuery(''); setType(''); }}>Clear filters</Button>} className="h-full" />
+    ) : (
+      <EmptyState icon={Layers} title="Nothing learned yet" description="Agents with knowledge tools add entities and relationships as they work. The graph fills in on its own." className="h-full" />
+    );
+  else
+    pane = (
+      <Suspense fallback={<LoadingState variant="chart" label="Loading the graph" className="h-full p-4" />}>
+        <ForceGraph3D
+          ref={fgRef}
+          graphData={graph}
+          width={size.width}
+          height={size.height}
+          backgroundColor="rgba(0,0,0,0)"
+          nodeLabel={nodeLabel}
+          nodeColor={(n) => colors[toneOf(n.type)]}
+          nodeVal={(n) => n.val}
+          nodeOpacity={0.9}
+          linkColor={() => colors.link}
+          linkWidth={1.5}
+          linkOpacity={0.6}
+          linkLabel={(l) => l.label}
+          linkDirectionalParticles={animating ? 2 : 0}
+          linkDirectionalParticleSpeed={0.005}
+          linkDirectionalParticleWidth={2}
+          linkDirectionalParticleColor={() => colors.particle}
+          onNodeClick={selectNode}
+          enableNodeDrag
+          enableNavigationControls
+          showNavInfo={false}
+          warmupTicks={100}
+          cooldownTicks={50}
+          d3AlphaDecay={0.02}
+          d3VelocityDecay={0.3}
+          numDimensions={viewMode === '3d' ? 3 : 2}
+        />
+      </Suspense>
+    );
+
+  const statusChip = !stats ? (
+    <Chip dot>Checking FalkorDB…</Chip>
+  ) : disconnected ? (
+    <Chip tone="danger" dot>
+      FalkorDB unreachable
+    </Chip>
+  ) : (
+    <Chip tone="ok" dot>
+      FalkorDB connected
+    </Chip>
+  );
+  const n = (v) => (v == null ? '—' : Number(v).toLocaleString());
+
+  return (
+    <Page>
+      <PageHeader
+        breadcrumbs={<Breadcrumbs />}
+        eyebrow="Knowledge"
+        title="Knowledge graph"
+        description="Entities and relationships your agents have learned, stored in FalkorDB."
+        actions={
+          <>
+            {statusChip}
+            <Button variant="secondary" icon={RefreshCw} onClick={() => { loadStats(); loadGraph(); }}>
+              Refresh
+            </Button>
+          </>
+        }
+      />
+
+      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard icon={Circle} label="Entities" value={n(stats?.total_entities)} />
+        <StatCard icon={Share2} label="Relationships" value={n(stats?.total_relationships)} />
+        <StatCard icon={Layers} label="Entity types" value={n(stats?.entity_types?.length)} />
+        <StatCard icon={Zap} label="Relationship types" value={n(stats?.relationship_types?.length)} />
+      </div>
+
+      <Card padding="sm" className="mb-5">
+        <form
+          className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setQuery(draft.trim());
+          }}
+        >
+          <div className="relative">
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <Input type="search" aria-label="Search entities by name" placeholder="Search entities by name, then press Enter" value={draft} onChange={(e) => setDraft(e.target.value)} className="pl-9" />
+          </div>
+          <Select aria-label="Filter by entity type" value={type} onChange={(e) => setType(e.target.value)} className="md:w-48">
+            <option value="">All types</option>
+            {entityTypes.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </Select>
+          <Button type="submit" variant="secondary" icon={Search}>
+            Search
+          </Button>
+        </form>
+        {hasFilters && !loading && (
+          <div className="mt-2 flex items-center gap-2 text-caption text-muted">
+            <span>
+              {graph.nodes.length} entit{graph.nodes.length === 1 ? 'y' : 'ies'}{query ? ` matching “${query}”` : ''}{type ? ` of type ${type}` : ''}
+            </span>
+            <Button variant="link" size="xs" onClick={() => { setDraft(''); setQuery(''); setType(''); }}>
+              Clear
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Card padding="none" className="flex flex-col overflow-hidden">
+          <div ref={paneRef} className={`relative h-[480px] lg:h-[560px] xl:h-[640px] ${isFullscreen ? 'bg-surface' : ''}`}>
+            {pane}
+            {!loading && !error && !disconnected && graph.nodes.length > 0 && (
+              <>
+                <div className="absolute left-3 top-3 z-raised flex items-center gap-0.5 rounded-control border border-border bg-overlay/90 p-0.5 shadow-e2 backdrop-blur">
+                  <IconButton icon={viewMode === '3d' ? Grid3X3 : Box} label={viewMode === '3d' ? 'Switch to 2D' : 'Switch to 3D'} size="sm" onClick={() => setViewMode((v) => (v === '3d' ? '2d' : '3d'))} />
+                  <IconButton icon={animating ? Pause : Play} label={animating ? 'Pause motion' : 'Resume motion'} size="sm" onClick={toggleAnimation} />
+                  <IconButton icon={RotateCcw} label="Reset camera" size="sm" onClick={resetCamera} />
+                  <IconButton icon={isFullscreen ? Minimize2 : Maximize2} label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} size="sm" onClick={toggleFullscreen} />
+                </div>
+                <div className="absolute right-3 top-3 z-raised">
+                  <Chip size="xs">
+                    {graph.nodes.length} nodes · {graph.links.length} links{graph.nodes.length >= LIMIT ? ` · first ${LIMIT}` : ''}
+                  </Chip>
+                </div>
+                {isFullscreen && selected && (
+                  <div className="absolute bottom-4 right-4 z-raised w-80 max-w-[calc(100%-2rem)]">
+                    <Card variant="glass" padding="sm">
+                      <EntityDetail node={selected} details={details} error={detailsError} onClear={clearSelection} toneOf={toneOf} />
+                    </Card>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-border px-3 py-2">
+            {entityTypes.length === 0 ? (
+              <span className="text-caption text-muted">Entity types appear here as the graph fills.</span>
+            ) : (
+              entityTypes.map((t) => (
+                <Chip key={t} size="xs" tone={toneOf(t)} dot selected={type === t} onClick={() => setType(type === t ? '' : t)} aria-label={`${type === t ? 'Show all types' : `Show only ${t}`}`}>
+                  {t}
+                </Chip>
+              ))
+            )}
+            <span className="ml-auto hidden text-caption text-muted sm:inline">Click a node for details · drag to rearrange · scroll to zoom</span>
+          </div>
+        </Card>
+
+        <div className="space-y-5">
+          <Card className="hidden xl:block">
+            <CardHeader title="Entity" description={selected ? 'Selected in the graph' : 'Nothing selected'} />
+            <EntityDetail node={selected} details={details} error={detailsError} onClear={clearSelection} toneOf={toneOf} />
+          </Card>
+
+          <Card>
+            <CardHeader title="Relationship types" description={stats?.relationship_types?.length ? `${stats.relationship_types.length} kinds of link` : 'How entities connect'} />
+            {stats?.relationship_types?.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {stats.relationship_types.map((t) => (
+                  <Chip key={t} size="xs" tone="accent" className="font-mono">
+                    {t}
+                  </Chip>
+                ))}
+              </div>
+            ) : (
+              <p className="text-body-sm text-muted">{disconnected ? 'Unavailable while FalkorDB is unreachable.' : 'None recorded yet.'}</p>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader icon={Database} title="FalkorDB" description={stats?.host ? `${stats.host}${stats.port ? `:${stats.port}` : ''}` : 'Graph database'} />
+            <dl className="space-y-2 text-body-sm">
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">Status</dt>
+                <dd>{statusChip}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">Enabled</dt>
+                <dd className="text-fg">{stats ? (stats.enabled ? 'Yes' : 'No') : '—'}</dd>
+              </div>
+              {stats?.graphs &&
+                Object.entries(stats.graphs).map(([name, g]) => (
+                  <div key={name} className="flex items-center justify-between gap-2">
+                    <dt className="truncate font-mono text-caption text-muted">{name}</dt>
+                    <dd className="whitespace-nowrap tabular-nums text-fg">
+                      {n(g.nodes)} nodes · {n(g.relationships)} links
+                    </dd>
+                  </div>
+                ))}
+            </dl>
+          </Card>
+        </div>
+      </div>
+
+      <Sheet isOpen={Boolean(selected) && narrow && !isFullscreen} onClose={clearSelection} title={selected?.name}>
+        <div className="pt-1">
+          <EntityDetail node={selected} details={details} error={detailsError} onClear={clearSelection} toneOf={toneOf} />
+        </div>
+      </Sheet>
+    </Page>
+  );
+}

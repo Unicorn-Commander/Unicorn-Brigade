@@ -27,9 +27,13 @@ from sqlalchemy.exc import IntegrityError
 from app.db.database import get_session, _clear_org_context
 from app.db.models import ApiKey, UserApiKey, User, Organization
 from app.auth.roles import (
+    AUTONOMY_REPORT_PERMISSION,
     UserRole,
+    has_autonomy_report_scope,
     is_admin_path,
+    is_autonomy_report_request,
     is_public_path,
+    is_reporter_only_credential,
     get_minimum_role_for_method,
     map_keycloak_roles,
     role_from_permissions,
@@ -769,6 +773,25 @@ async def _clear_org_context_safe(session: AsyncSession) -> None:
         )
 
 
+REPORTER_KEY_CONFINED_DETAIL = (
+    f"This key carries only the {AUTONOMY_REPORT_PERMISSION} permission. It can register "
+    "a job (PUT /api/v1/autonomy/jobs/{key}) and report its runs "
+    "(POST /api/v1/autonomy/jobs/{key}/runs), nothing else."
+)
+
+
+def _reporter_key_is_off_its_path(user: Optional[AuthUser], path: str, method: str) -> bool:
+    """P-00092: a credential whose ONLY scope is ``autonomy:report`` exists to report
+    autonomous runs from an unattended script. Anywhere else it carries no rights —
+    it must not read the roster, the knowledge graph or the event stream with the
+    VIEWER role every authenticated key otherwise gets."""
+    return (
+        user is not None
+        and is_reporter_only_credential(user.permissions)
+        and not is_autonomy_report_request(path, method)
+    )
+
+
 async def get_current_user(
     request: Request,
     api_key: Annotated[Optional[str], Depends(api_key_header)],
@@ -808,6 +831,16 @@ async def get_current_user(
         )
 
     _enforce_early_access(user, path)
+    if _reporter_key_is_off_its_path(user, path, method):
+        logger.warning(
+            "Reporter key %s refused off its reporting path: %s %s", user.id, method, path
+        )
+        # No org is bound for a refused request — positively clear the GUC (B1).
+        await _clear_org_context_safe(session)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=REPORTER_KEY_CONFINED_DETAIL,
+        )
     await _bind_org_context(user, session, _extract_requested_org_id(request))
 
     # Check role authorization
@@ -848,6 +881,9 @@ async def get_current_user_optional(
         logger.error("❌ AUTH_BYPASS=true but ENVIRONMENT!=development - IGNORING")
 
     user = await _resolve_user(request, api_key, creds, session)
+    if _reporter_key_is_off_its_path(user, request.url.path, request.method):
+        # P-00092: a reporter key is anonymous everywhere but its two endpoints.
+        user = None
     if user is not None:
         await _bind_org_context(user, session, _extract_requested_org_id(request))
     else:
@@ -886,6 +922,30 @@ def require_operator(
             detail="Operator access required",
         )
     return user
+
+
+def require_autonomy_reporter(
+    user: Annotated[AuthUser, Depends(get_current_user)]
+) -> AuthUser:
+    """P-00092: who may register an outside job and report its runs.
+
+    An operator or admin, OR any credential carrying the ``autonomy:report``
+    permission. That permission grants nothing else: it leaves the key at the
+    VIEWER role (``role_from_permissions``), so it never passes
+    ``require_operator``, and a key with only that scope is confined to the two
+    reporting endpoints by ``get_current_user``.
+    """
+    if user.role in (UserRole.ADMIN, UserRole.OPERATOR):
+        return user
+    if has_autonomy_report_scope(user.permissions):
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=(
+            "Reporting an autonomous job needs operator access or a key with the "
+            f"{AUTONOMY_REPORT_PERMISSION} permission"
+        ),
+    )
 
 
 async def require_sse_access(

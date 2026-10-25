@@ -1,259 +1,206 @@
-import React, { useState } from 'react';
-import {
-  X,
-  ChevronRight,
-  ChevronLeft,
-  CheckCircle,
-  Lightbulb,
-  MessageSquare,
-  Bot,
-  Workflow,
-  Sparkles
-} from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Modal from './ui/Modal';
+import { ChevronRight, ChevronLeft, CheckCircle, Lightbulb, MessageSquare, Bot, Workflow, Sparkles } from 'lucide-react';
+import { Button, Card, Modal, LoadingState } from './ui';
+import AgentAvatar from './AgentAvatar';
+import { roleLine } from '../utils/agentClass';
+import { apiJson } from '../services/http';
 
-const WIZARD_STEPS = [
+const WIZARD_KEY = 'wizard-completed';
+
+const Check = ({ children }) => (
+  <li className="flex items-start gap-2 text-body-sm text-muted">
+    <CheckCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-ok" />
+    <span>{children}</span>
+  </li>
+);
+
+const STEPS = [
   {
+    id: 'welcome',
     title: 'Welcome to Unicorn Brigade',
     icon: Sparkles,
-    description: 'Your AI Agent Factory for building, deploying, and orchestrating intelligent agents.',
-    content: (
-      <div className="space-y-4">
-        <p className="text-muted">
-          Unicorn Brigade is a production-ready platform with:
-        </p>
-        <ul className="space-y-2 text-sm text-muted">
-          <li className="flex items-start space-x-2">
-            <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-fg">Production-ready agents</strong> across multiple domains</span>
-          </li>
-          <li className="flex items-start space-x-2">
-            <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-fg">Hierarchical multi-agent workflows</strong> with real-time tracking</span>
-          </li>
-          <li className="flex items-start space-x-2">
-            <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-fg">MCP server integrations</strong> with a growing tool catalog</span>
-          </li>
-          <li className="flex items-start space-x-2">
-            <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <span><strong className="text-fg">Built-in working tools</strong> (search, email, memory, browser, and more)</span>
-          </li>
-        </ul>
-      </div>
+    description: 'The AI Agent Factory: build, deploy and orchestrate agents, then watch them work.',
+    content: () => (
+      <ul className="space-y-2">
+        <Check>
+          <strong className="text-fg">A roster of production agents</strong> across finance, legal, engineering and more
+        </Check>
+        <Check>
+          <strong className="text-fg">Hierarchical multi-agent workflows</strong> with live tracking
+        </Check>
+        <Check>
+          <strong className="text-fg">MCP server integrations</strong> and a growing tool catalog
+        </Check>
+        <Check>
+          <strong className="text-fg">Built-in working tools</strong>: search, email, memory, browser and more
+        </Check>
+      </ul>
     ),
-    action: null,
   },
   {
-    title: 'Chat with an Agent',
+    id: 'chat',
+    title: 'Chat with an agent',
     icon: MessageSquare,
-    description: 'Start a conversation with any of your agents.',
-    content: (
-      <div className="space-y-4">
-        <p className="text-muted">
-          Try chatting with one of our specialized agents:
-        </p>
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
-            <div className="text-sm font-medium text-fg">LtCol Sterling</div>
-            <div className="text-xs text-muted mt-1">Financial Analysis</div>
-          </div>
-          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
-            <div className="text-sm font-medium text-fg">Maj CodeCraft</div>
-            <div className="text-xs text-muted mt-1">Software Engineering</div>
-          </div>
-          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
-            <div className="text-sm font-medium text-fg">Cpl Scout</div>
-            <div className="text-xs text-muted mt-1">Research & Intelligence</div>
-          </div>
-          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
-            <div className="text-sm font-medium text-fg">Sgt Scribe</div>
-            <div className="text-xs text-muted mt-1">Meeting Notes & Summaries</div>
-          </div>
-        </div>
+    description: 'Every agent has a job. Pick one and start a conversation.',
+    content: ({ agents }) => (
+      <div className="space-y-3">
+        {agents == null ? (
+          <LoadingState variant="list" count={4} label="Loading agents" />
+        ) : agents.length === 0 ? (
+          <p className="text-body-sm text-muted">Your roster is empty for now. Build an agent in the next step and it appears here.</p>
+        ) : (
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {agents.map((a) => (
+              <li key={a.id}>
+                <Card variant="elevated" padding="sm" className="flex items-center gap-3">
+                  <AgentAvatar agent={a} size={36} rounded="rounded-control" />
+                  <span className="min-w-0">
+                    <span className="block truncate text-body-sm font-medium text-fg">{a.displayName || a.name}</span>
+                    <span className="block truncate text-caption text-muted">{roleLine(a)}</span>
+                  </span>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     ),
-    action: { label: 'Go to Agent Library', path: '/library' },
+    action: { label: 'Open the Agent Library', path: '/library' },
   },
   {
-    title: 'Build Custom Agents',
+    id: 'build',
+    title: 'Build your own agents',
     icon: Bot,
-    description: 'Create your own agents with custom personalities and tools.',
-    content: (
+    description: 'Gunny builds agents in conversation: personality, tools, model, deploy.',
+    content: () => (
       <div className="space-y-4">
-        <p className="text-muted">
-          Build agents tailored to your needs:
+        <ol className="space-y-2 text-body-sm text-muted">
+          {['Describe the job and the personality', 'Pick tools from the Tool Library', 'Choose the model and parameters', 'Deploy and start chatting'].map((s, i) => (
+            <li key={s} className="flex items-start gap-2">
+              <span aria-hidden="true" className="w-5 shrink-0 font-semibold text-accent">
+                {i + 1}.
+              </span>
+              <span>{s}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="flex items-start gap-2 rounded-control border border-accent/25 bg-accent/10 p-3 text-body-sm text-fg">
+          <Lightbulb aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+          <span>Tip: existing agents can be edited in the Agent Library; Gunny is for new ones.</span>
         </p>
-        <ul className="space-y-2 text-sm text-muted">
-          <li className="flex items-start space-x-2">
-            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-unicorn-400">1.</div>
-            <span>Define personality and behavior</span>
-          </li>
-          <li className="flex items-start space-x-2">
-            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-unicorn-400">2.</div>
-            <span>Select tools from the Tool Library</span>
-          </li>
-          <li className="flex items-start space-x-2">
-            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-unicorn-400">3.</div>
-            <span>Configure model and parameters</span>
-          </li>
-          <li className="flex items-start space-x-2">
-            <div className="w-5 h-5 flex-shrink-0 mt-0.5 text-unicorn-400">4.</div>
-            <span>Deploy and start chatting</span>
-          </li>
-        </ul>
-        <div className="bg-unicorn-500/10 border border-unicorn-500/30 rounded-lg p-3 mt-4">
-          <p className="text-sm text-unicorn-300 flex items-start gap-2">
-            <Lightbulb className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden="true" />
-            <span>Tip: Use the Agent Library to edit existing agents or create new ones from scratch.</span>
-          </p>
-        </div>
       </div>
     ),
-    action: { label: 'Create an Agent', path: '/library' },
+    action: { label: 'Build an agent', path: '/builder-chat' },
   },
   {
-    title: 'Execute Workflows',
+    id: 'workflows',
+    title: 'Run a workflow',
     icon: Workflow,
-    description: 'Run automated multi-agent workflows with real-time tracking.',
-    content: (
-      <div className="space-y-4">
-        <p className="text-muted">
-          Choose from a library of ready-made workflow templates:
-        </p>
-        <div className="space-y-2 text-sm">
-          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
-            <div className="font-medium text-fg">Investment Due Diligence</div>
-            <div className="text-xs text-muted mt-1">Finance, Research, Investment</div>
-          </div>
-          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
-            <div className="font-medium text-fg">Content Production Factory</div>
-            <div className="text-xs text-muted mt-1">Research, Content, SEO</div>
-          </div>
-          <div className="bg-elevated/30 border border-border/50 rounded-lg p-3">
-            <div className="font-medium text-fg">Incident Response & Resolution</div>
-            <div className="text-xs text-muted mt-1">DevOps, Monitoring, Investigation</div>
-          </div>
-        </div>
-        <p className="text-sm text-muted mt-4">
-          Each workflow coordinates multiple specialized agents working together.
-        </p>
+    description: 'Templates coordinate several agents on one job, with live progress.',
+    content: () => (
+      <div className="space-y-2">
+        {[
+          ['Investment Due Diligence', 'Finance · Research · Investment'],
+          ['Content Production Factory', 'Research · Content · SEO'],
+          ['Incident Response & Resolution', 'DevOps · Monitoring · Investigation'],
+        ].map(([name, tags]) => (
+          <Card key={name} variant="elevated" padding="sm">
+            <p className="text-body-sm font-medium text-fg">{name}</p>
+            <p className="text-caption text-muted">{tags}</p>
+          </Card>
+        ))}
       </div>
     ),
-    action: { label: 'Browse Workflows', path: '/workflows' },
+    action: { label: 'Browse workflows', path: '/workflows' },
   },
 ];
 
+/**
+ * GettingStartedWizard — the four-step tour on the ui Modal. Marks itself
+ * complete in localStorage on finish or on jumping to a step's page; the
+ * sidebar's "Getting started" button re-opens it any time.
+ */
 export default function GettingStartedWizard({ onClose }) {
-  const [currentStep, setCurrentStep] = useState(0);
+  const [current, setCurrent] = useState(0);
+  const [agents, setAgents] = useState(null);
   const navigate = useNavigate();
+  const step = STEPS[current];
+  const last = current === STEPS.length - 1;
 
-  const step = WIZARD_STEPS[currentStep];
-  const Icon = step.icon;
+  useEffect(() => {
+    let cancelled = false;
+    apiJson('/agents', { redirectOn401: false })
+      .then((d) => {
+        if (cancelled) return;
+        const list = Array.isArray(d?.agents) ? d.agents : [];
+        setAgents(list.filter((a) => a.id !== 'the-general').slice(0, 4));
+      })
+      .catch(() => !cancelled && setAgents([]));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const handleNext = () => {
-    if (currentStep < WIZARD_STEPS.length - 1) {
-      setCurrentStep((prev) => prev + 1);
-    } else {
-      handleFinish();
+  const finish = () => {
+    try {
+      localStorage.setItem(WIZARD_KEY, 'true');
+    } catch {
+      /* storage unavailable */
     }
+    onClose?.();
   };
 
-  const handleBack = () => {
-    if (currentStep > 0) {
-      setCurrentStep((prev) => prev - 1);
-    }
-  };
-
-  const handleFinish = () => {
-    localStorage.setItem('wizard-completed', 'true');
-    onClose();
-  };
-
-  const handleAction = () => {
-    if (step.action) {
-      localStorage.setItem('wizard-completed', 'true');
-      navigate(step.action.path);
-      onClose();
-    }
+  const go = (path) => {
+    finish();
+    navigate(path);
   };
 
   return (
     <Modal
-      onClose={handleFinish}
-      ariaLabel={`Getting started: ${step.title}`}
-      showClose={false}
-      panelClassName="bg-elevated/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl max-w-2xl w-full"
+      isOpen
+      onClose={finish}
+      size="xl"
+      title={step.title}
+      description={step.description}
+      footer={
+        <>
+          {current > 0 && (
+            <Button variant="ghost" icon={ChevronLeft} onClick={() => setCurrent((i) => i - 1)}>
+              Back
+            </Button>
+          )}
+          {step.action && (
+            <Button variant="secondary" onClick={() => go(step.action.path)}>
+              {step.action.label}
+            </Button>
+          )}
+          <Button iconRight={ChevronRight} onClick={() => (last ? finish() : setCurrent((i) => i + 1))}>
+            {last ? 'Get started' : 'Next'}
+          </Button>
+        </>
+      }
     >
-        <div className="flex justify-between items-center p-6 border-b border-border/50">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-unicorn-500/20 rounded-lg">
-              <Icon className="w-6 h-6 text-unicorn-400" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-fg">{step.title}</h2>
-              <p className="text-sm text-muted mt-0.5">{step.description}</p>
-            </div>
-          </div>
-          <button
-            onClick={handleFinish}
-            aria-label="Close getting started"
-            className="p-3 min-h-[44px] min-w-[44px] hover:bg-elevated/50 rounded-lg transition-colors"
+      <ol className="mb-4 flex items-center gap-1.5" aria-label={`Step ${current + 1} of ${STEPS.length}`}>
+        {STEPS.map((s, i) => (
+          <li
+            key={s.id}
+            aria-current={i === current ? 'step' : undefined}
+            className={`h-1.5 rounded-full transition-[width,background-color] duration-base ${
+              i === current ? 'w-6 bg-accent' : i < current ? 'w-1.5 bg-accent/50' : 'w-1.5 bg-border-strong'
+            }`}
           >
-            <X className="w-5 h-5 text-muted" />
-          </button>
-        </div>
-
-        <div className="p-6 min-h-[300px]">
-          {step.content}
-        </div>
-
-        <div className="flex justify-between items-center p-6 border-t border-border/50 bg-elevated/50">
-          <div className="flex space-x-2">
-            {WIZARD_STEPS.map((_, index) => (
-              <div
-                key={index}
-                className={`w-2 h-2 rounded-full transition-colors ${
-                  index === currentStep
-                    ? 'bg-unicorn-500'
-                    : index < currentStep
-                    ? 'bg-unicorn-500/50'
-                    : 'bg-border'
-                }`}
-              />
-            ))}
-          </div>
-
-          <div className="flex gap-3">
-            {currentStep > 0 && (
-              <button
-                onClick={handleBack}
-                className="px-4 py-2 bg-elevated text-fg rounded-lg hover:bg-elevated transition-colors flex items-center space-x-2"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                <span>Back</span>
-              </button>
-            )}
-
-            {step.action && (
-              <button
-                onClick={handleAction}
-                className="px-4 py-2 bg-unicorn-600/20 text-unicorn-400 rounded-lg hover:bg-unicorn-600/30 transition-colors"
-              >
-                {step.action.label}
-              </button>
-            )}
-
-            <button
-              onClick={handleNext}
-              className="px-4 py-2 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-700 hover:to-unicorn-600 transition-colors flex items-center space-x-2"
-            >
-              <span>{currentStep === WIZARD_STEPS.length - 1 ? 'Get Started' : 'Next'}</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+            <span className="sr-only">
+              {s.title}
+              {i === current ? ' (current)' : ''}
+            </span>
+          </li>
+        ))}
+        <li className="ml-2 text-caption text-muted" aria-hidden="true">
+          {current + 1} / {STEPS.length}
+        </li>
+      </ol>
+      <div className="min-h-[200px]">{step.content({ agents })}</div>
     </Modal>
   );
 }

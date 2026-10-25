@@ -1,151 +1,127 @@
 import { useState } from 'react';
-import { Key, Trash2, Eye, EyeOff, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Key, Trash2 } from 'lucide-react';
+import { Button, Card, Chip, Modal } from './ui';
 
-const ApiKeyCard = ({ apiKey, onRevoke, onViewDetails }) => {
-  const [showKey, setShowKey] = useState(false);
+const fmtDate = (s) => (s ? new Date(s).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : null);
+const fmtAgo = (s) => {
+  if (!s) return 'never';
+  const mins = Math.floor((Date.now() - new Date(s).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} d ago`;
+  return fmtDate(s);
+};
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
+/**
+ * ApiKeyCard — one issued key: name, prefix, status, when it was used, what it
+ * may do. The full value is never shown here (only KeyRevealModal, once).
+ * Revoking asks in a danger dialog that spells out the consequence.
+ *
+ *   <ApiKeyCard apiKey={key} onRevoke={async (key) => …} />
+ */
+export default function ApiKeyCard({ apiKey, onRevoke }) {
+  const [confirming, setConfirming] = useState(false);
+  const [revoking, setRevoking] = useState(false);
 
-  const formatLastUsed = (dateString) => {
-    if (!dateString) return 'Never';
+  const expired = Boolean(apiKey.expiresAt) && new Date(apiKey.expiresAt) < new Date();
+  const active = (apiKey.isActive ?? true) && !expired;
+  const statusLabel = active ? 'Active' : expired ? 'Expired' : 'Revoked';
+  const perms = Array.isArray(apiKey.permissions) ? apiKey.permissions : [];
 
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    return formatDate(dateString);
-  };
-
-  const handleRevoke = () => {
-    if (window.confirm(`Are you sure you want to revoke "${apiKey.name}"? This action cannot be undone.`)) {
-      onRevoke(apiKey);
+  const confirm = async () => {
+    setRevoking(true);
+    try {
+      await onRevoke?.(apiKey);
+      setConfirming(false);
+    } finally {
+      setRevoking(false);
     }
   };
 
-  const isExpired = apiKey.expiresAt && new Date(apiKey.expiresAt) < new Date();
-  const isActive = (apiKey.isActive !== undefined ? apiKey.isActive : true) && !isExpired;
-
   return (
-    <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-slate-600 transition-colors">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <div className="flex items-center space-x-2 mb-1">
-            <Key className="w-4 h-4 text-cyan-400" />
-            <h4 className="font-medium text-white">{apiKey.name}</h4>
+    <Card padding="sm">
+      <div className="flex items-start gap-3">
+        <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-elevated text-muted">
+          <Key className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="truncate text-body font-semibold text-fg-strong">{apiKey.name}</h4>
+            <Chip tone={active ? 'ok' : 'neutral'} size="xs" dot>
+              {statusLabel}
+            </Chip>
           </div>
-
-          {/* API Key */}
-          <div className="flex items-center space-x-2 mb-2">
-            <code className="text-sm font-mono text-slate-400">
-              {showKey ? apiKey.key || `${apiKey.keyPrefix}...` : `${apiKey.keyPrefix}...`}
-            </code>
-            {apiKey.key && (
-              <button
-                onClick={() => setShowKey(!showKey)}
-                className="p-1 rounded hover:bg-slate-700 transition-colors"
-                title={showKey ? 'Hide key' : 'Show key'}
-                aria-label={showKey ? 'Hide API key' : 'Show API key'}
-                aria-pressed={showKey}
-              >
-                {showKey ? (
-                  <EyeOff className="w-3 h-3 text-slate-400" />
-                ) : (
-                  <Eye className="w-3 h-3 text-slate-400" />
-                )}
-              </button>
-            )}
-          </div>
-
-          {/* Metadata */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
-            <div className="flex items-center space-x-1">
-              <Clock className="w-3 h-3" />
-              <span>Created {formatDate(apiKey.createdAt)}</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <span>Last used: {formatLastUsed(apiKey.lastUsedAt)}</span>
-            </div>
-            {apiKey.expiresAt && (
-              <div className="flex items-center space-x-1">
-                <span>
-                  {isExpired ? 'Expired' : 'Expires'} {formatDate(apiKey.expiresAt)}
-                </span>
+          <code className="mt-0.5 block font-mono text-body-sm text-muted">{apiKey.keyPrefix || '····'}…</code>
+          <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted">
+            {apiKey.createdAt && (
+              <div>
+                <dt className="inline">Created </dt>
+                <dd className="inline text-fg">{fmtDate(apiKey.createdAt)}</dd>
               </div>
             )}
-          </div>
-
-          {/* Permissions */}
-          {apiKey.permissions && apiKey.permissions.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {apiKey.permissions.map((perm, idx) => (
-                <span
-                  key={idx}
-                  className="px-2 py-0.5 rounded text-xs bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                >
-                  {perm}
-                </span>
-              ))}
+            <div>
+              <dt className="inline">Last used </dt>
+              <dd className="inline text-fg">{fmtAgo(apiKey.lastUsedAt)}</dd>
             </div>
+            {apiKey.expiresAt && (
+              <div>
+                <dt className="inline">{expired ? 'Expired ' : 'Expires '}</dt>
+                <dd className={`inline ${expired ? 'text-danger' : 'text-fg'}`}>{fmtDate(apiKey.expiresAt)}</dd>
+              </div>
+            )}
+            {typeof apiKey.rateLimit === 'number' && (
+              <div>
+                <dt className="inline">Rate limit </dt>
+                <dd className="inline text-fg">{apiKey.rateLimit}/min</dd>
+              </div>
+            )}
+            {typeof apiKey.usageCount === 'number' && (
+              <div>
+                <dt className="inline">Calls </dt>
+                <dd className="inline text-fg tabular-nums">{apiKey.usageCount.toLocaleString()}</dd>
+              </div>
+            )}
+          </dl>
+          {perms.length > 0 && (
+            <ul className="mt-2 flex flex-wrap gap-1" aria-label="Permissions">
+              {perms.map((perm) => (
+                <li key={perm}>
+                  <Chip size="xs" tone="info">
+                    {perm}
+                  </Chip>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
-
-        {/* Status and Actions */}
-        <div className="flex items-start space-x-2 ml-4">
-          <div
-            className={`px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 ${
-              isActive
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                : 'bg-slate-500/20 text-slate-400 border border-slate-500/30'
-            }`}
-          >
-            {isActive ? (
-              <>
-                <CheckCircle className="w-3 h-3" />
-                <span>Active</span>
-              </>
-            ) : (
-              <>
-                <XCircle className="w-3 h-3" />
-                <span>{isExpired ? 'Expired' : 'Inactive'}</span>
-              </>
-            )}
-          </div>
-
-          <button
-            onClick={handleRevoke}
-            className="p-2 rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
-            title="Revoke key"
-            aria-label="Revoke key"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+        {onRevoke && active && (
+          <Button variant="ghost" size="sm" icon={Trash2} onClick={() => setConfirming(true)}>
+            Revoke
+          </Button>
+        )}
       </div>
 
-      {/* Rate Limit Info */}
-      {apiKey.rateLimit && (
-        <div className="pt-3 border-t border-slate-700">
-          <div className="text-xs text-slate-400">
-            Rate limit: <span className="text-slate-300 font-medium">{apiKey.rateLimit}</span> requests/minute
-          </div>
-        </div>
-      )}
-    </div>
+      <Modal
+        isOpen={confirming}
+        onClose={() => !revoking && setConfirming(false)}
+        tone="danger"
+        size="sm"
+        title={`Revoke “${apiKey.name}”?`}
+        description="Anything still calling with this key stops working immediately. This can’t be undone."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirming(false)} disabled={revoking}>
+              Keep it
+            </Button>
+            <Button variant="danger" icon={Trash2} loading={revoking} onClick={confirm}>
+              Revoke key
+            </Button>
+          </>
+        }
+      />
+    </Card>
   );
-};
-
-export default ApiKeyCard;
+}

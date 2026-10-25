@@ -1,133 +1,119 @@
-import React from 'react';
-import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Component } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { AlertTriangle, RefreshCw, RotateCw, Home, Copy } from 'lucide-react';
+import { Button, Card, IconButton } from './ui';
+import notify from '../utils/notify';
 
-class ErrorBoundary extends React.Component {
+/**
+ * ErrorBoundary — when a page throws, say so in human words and give three ways
+ * out (try again, reload, dashboard) plus "Copy details" for support. The raw
+ * error and component stack are never shown on screen outside DEV; they are
+ * logged and copied. Navigating to another route resets the boundary.
+ */
+class Boundary extends Component {
   constructor(props) {
     super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-      errorInfo: null,
-      errorCount: 0,
-    };
+    this.state = { hasError: false, error: null, errorInfo: null, errorCount: 0 };
   }
 
   static getDerivedStateFromError(error) {
-    return {
-      hasError: true,
-      error,
-    };
+    return { hasError: true, error };
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('ErrorBoundary caught error:', {
-      error,
-      errorInfo,
-      componentStack: errorInfo.componentStack,
-    });
-
-    this.setState((prev) => ({
-      errorInfo,
-      errorCount: prev.errorCount + 1,
-    }));
+    console.error('ErrorBoundary caught error:', { error, errorInfo, componentStack: errorInfo?.componentStack });
+    this.setState((prev) => ({ errorInfo, errorCount: prev.errorCount + 1 }));
   }
 
-  handleReset = () => {
-    this.setState({
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    });
+  componentDidUpdate(prevProps) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) this.reset();
+  }
+
+  reset = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null });
   };
 
-  handleReload = () => {
+  reload = () => {
     window.location.reload();
   };
 
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-bg via-unicorn-900/20 to-bg flex items-center justify-center p-4">
-          <div className="max-w-2xl w-full bg-elevated/90 backdrop-blur-xl border border-red-500/30 rounded-xl shadow-2xl p-8">
-            <div className="flex justify-center mb-6">
-              <div className="p-4 bg-red-500/20 rounded-full">
-                <AlertTriangle className="w-16 h-16 text-red-400" />
-              </div>
-            </div>
-
-            <h1 className="text-3xl font-bold text-fg text-center mb-4">
-              Something Went Wrong
-            </h1>
-
-            <p className="text-muted text-center mb-6">
-              We encountered an unexpected error. This has been logged and our team will investigate.
-            </p>
-
-            {import.meta.env.DEV && this.state.error && (
-              <details className="mb-6 bg-card/50 rounded-lg p-4 border border-border">
-                <summary className="cursor-pointer text-sm font-medium text-muted hover:text-fg">
-                  Error Details (Development)
-                </summary>
-                <div className="mt-4 space-y-2">
-                  <div className="text-sm">
-                    <span className="text-red-400 font-medium">Error:</span>
-                    <pre className="mt-2 text-xs text-muted overflow-x-auto whitespace-pre-wrap">
-                      {this.state.error.toString()}
-                    </pre>
-                  </div>
-                  {this.state.errorInfo && (
-                    <div className="text-sm">
-                      <span className="text-red-400 font-medium">Component Stack:</span>
-                      <pre className="mt-2 text-xs text-muted overflow-x-auto whitespace-pre-wrap">
-                        {this.state.errorInfo.componentStack}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              </details>
-            )}
-
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <button
-                onClick={this.handleReset}
-                className="px-6 py-3 bg-unicorn-600 text-white rounded-lg hover:bg-unicorn-700 transition-colors flex items-center justify-center space-x-2"
-              >
-                <RefreshCw className="w-5 h-5" />
-                <span>Try Again</span>
-              </button>
-
-              <button
-                onClick={this.handleReload}
-                className="px-6 py-3 bg-elevated text-fg rounded-lg hover:bg-elevated transition-colors flex items-center justify-center space-x-2"
-              >
-                <RefreshCw className="w-5 h-5" />
-                <span>Reload Page</span>
-              </button>
-
-              <Link
-                to="/dashboard"
-                className="px-6 py-3 bg-elevated text-fg rounded-lg hover:bg-elevated transition-colors flex items-center justify-center space-x-2"
-              >
-                <Home className="w-5 h-5" />
-                <span>Go Home</span>
-              </Link>
-            </div>
-
-            {this.state.errorCount > 2 && (
-              <div className="mt-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                <p className="text-sm text-yellow-300 text-center">
-                  Warning: Multiple errors detected ({this.state.errorCount}). Consider clearing your browser cache or contacting support.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      );
+  copyDetails = async () => {
+    const { error, errorInfo } = this.state;
+    const text = [
+      'Unicorn Brigade — page error',
+      `URL: ${window.location.href}`,
+      `Time: ${new Date().toISOString()}`,
+      '',
+      String(error?.stack || error || 'Unknown error'),
+      '',
+      'Component stack:',
+      errorInfo?.componentStack || '(none)',
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      notify.success('Details copied — paste them into a support message');
+    } catch {
+      notify.error('Couldn’t copy — your browser blocked clipboard access.');
     }
+  };
 
-    return this.props.children;
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    const { error, errorInfo, errorCount } = this.state;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg p-4">
+        <Card className="w-full max-w-lg">
+          <div role="alert" className="flex items-start gap-4">
+            <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-pane border border-danger/30 bg-danger/10 text-danger">
+              <AlertTriangle className="h-6 w-6" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-heading text-fg-strong">Something broke on this page — not your data</h1>
+              <p className="mt-1 text-body text-muted">
+                The rest of Brigade is fine. Try again, reload, or go back to the dashboard. If it keeps happening,
+                copy the details and send them to support.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <Button icon={RefreshCw} onClick={this.reset}>
+              Try again
+            </Button>
+            <Button variant="secondary" icon={RotateCw} onClick={this.reload}>
+              Reload
+            </Button>
+            <Button variant="outline" as={Link} to="/dashboard" icon={Home}>
+              Dashboard
+            </Button>
+            <span className="ml-auto">
+              <IconButton icon={Copy} label="Copy details for support" variant="secondary" onClick={this.copyDetails} />
+            </span>
+          </div>
+
+          {errorCount > 2 && (
+            <p className="mt-4 rounded-control border border-warn/30 bg-warn/10 p-3 text-body-sm text-warn">
+              This page has failed {errorCount} times in a row. Reloading usually clears it; if not, copy the details.
+            </p>
+          )}
+
+          {import.meta.env.DEV && error && (
+            <details className="mt-4 rounded-control border border-border bg-surface p-3">
+              <summary className="cursor-pointer text-body-sm font-medium text-muted hover:text-fg">Error details (development only)</summary>
+              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap font-mono text-caption text-muted">{String(error.stack || error)}</pre>
+              {errorInfo?.componentStack && (
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap font-mono text-caption text-muted">{errorInfo.componentStack}</pre>
+              )}
+            </details>
+          )}
+        </Card>
+      </div>
+    );
   }
 }
 
-export default ErrorBoundary;
+/** Mount inside the Router: a route change resets a caught error. */
+export default function ErrorBoundary({ children }) {
+  const location = useLocation();
+  return <Boundary resetKey={location.pathname}>{children}</Boundary>;
+}

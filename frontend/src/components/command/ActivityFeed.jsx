@@ -1,28 +1,42 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Radio } from 'lucide-react';
 import AgentAvatar from '../AgentAvatar';
+import { normalizeProtocol } from '../../utils/protocol';
+import { Chip, EmptyState, StatusDot } from '../ui';
 
-// Per event-type accent (dot + action text colour).
-const KIND = {
-  agent_invocation: { dot: 'bg-unicorn-400', text: 'text-unicorn-200' },
-  tool_call: { dot: 'bg-cyan-400', text: 'text-cyan-200' },
-  tool_result: { dot: 'bg-cyan-400/70', text: 'text-cyan-200/80' },
-  agent_responding: { dot: 'bg-emerald-400', text: 'text-emerald-200' },
-  agent_completed: { dot: 'bg-emerald-500', text: 'text-emerald-200' },
-  agent_error: { dot: 'bg-red-400', text: 'text-red-200' },
-  agent_started: { dot: 'bg-amber-400', text: 'text-amber-200' },
-  agent_thinking: { dot: 'bg-amber-400', text: 'text-amber-200' },
+// Event type -> the status it means (for the dot on rows without a known agent).
+const STATUS_OF = {
+  agent_invocation: 'thinking',
+  tool_call: 'tool',
+  tool_result: 'tool',
+  agent_responding: 'responding',
+  agent_completed: 'done',
+  agent_error: 'error',
+  agent_started: 'thinking',
+  agent_thinking: 'thinking',
 };
+const PROTOCOL_TONE = { internal: 'accent', a2a: 'info', paid: 'warn', peer: 'live' };
 
-const Tool = ({ name }) => (
-  <code className="rounded bg-slate-800 px-1 py-0.5 text-[11px] text-cyan-300">{name}</code>
-);
+const Tool = ({ name }) => <code className="rounded-chip bg-surface px-1 py-0.5 font-mono text-micro text-live">{name}</code>;
+const Em = ({ children }) => <span className="font-medium text-fg-strong">{children}</span>;
+const Muted = ({ children }) => <span className="text-muted">{children}</span>;
 
-// Human-readable action for an event. Returns a React node.
-function actionText(ev) {
-  const tool = ev.detail || ev.data?.name || ev.data?.tool;
+/** The event as a sentence fragment after the agent's name. */
+function sentence(ev) {
+  const tool = ev.tool || ev.detail;
   switch (ev.type) {
-    case 'agent_invocation':
-      return <>delegated to <span className="text-unicorn-100">{ev.data?.toAgentName || ev.data?.toAgent || 'an agent'}</span></>;
+    case 'agent_invocation': {
+      const protocol = normalizeProtocol(ev.protocol || 'internal');
+      return (
+        <>
+          delegated to <Em>{ev.toAgentName || ev.toAgent || 'an agent'}</Em>{' '}
+          <Chip size="xs" tone={PROTOCOL_TONE[protocol] || 'neutral'}>
+            {protocol}
+          </Chip>
+          {ev.purpose && <Muted> · {ev.purpose}</Muted>}
+        </>
+      );
+    }
     case 'tool_call':
       return tool ? <>called <Tool name={tool} /></> : 'called a tool';
     case 'tool_result':
@@ -30,13 +44,13 @@ function actionText(ev) {
     case 'agent_responding':
       return 'is responding';
     case 'agent_completed':
-      return 'completed';
+      return ev.detail ? <>finished<Muted> · {ev.detail}</Muted></> : 'finished';
     case 'agent_error':
       return 'hit an error';
     case 'agent_started':
-      return 'started working';
+      return ev.detail ? <>started on <Muted>{ev.detail}</Muted></> : 'started working';
     case 'agent_thinking':
-      return 'is thinking…';
+      return ev.detail ? <>is thinking<Muted> · {ev.detail}</Muted></> : 'is thinking…';
     default:
       return (ev.type || '').replace(/_/g, ' ');
   }
@@ -47,24 +61,20 @@ function relTime(ts) {
   const t = typeof ts === 'number' ? ts : Date.parse(ts);
   if (!t || Number.isNaN(t)) return '';
   const s = Math.max(0, Math.round((Date.now() - t) / 1000));
-  if (s < 5) return 'now';
-  if (s < 60) return `${s}s`;
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
   const m = Math.round(s / 60);
-  if (m < 60) return `${m}m`;
-  return `${Math.round(m / 60)}h`;
+  if (m < 60) return `${m}m ago`;
+  return `${Math.round(m / 60)}h ago`;
 }
 
 /**
  * A live, chronological ticker of orchestration events (delegations, tool
- * calls, completions) from the SSE stream — newest first. Complements the
- * status grid, which shows only each agent's *current* state.
+ * calls, completions, failures with their reason) — newest first. Complements
+ * the activity wall, which shows only each agent's *current* state.
  */
-export default function ActivityFeed({ events = [], agents = [], onOpen }) {
-  const byId = useMemo(() => {
-    const m = new Map();
-    for (const a of agents) m.set(a.id, a);
-    return m;
-  }, [agents]);
+export default function ActivityFeed({ events = [], agents = [], connected, onOpen }) {
+  const byId = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
 
   // Refresh relative timestamps while events are present (cheap; small list).
   const [, setTick] = useState(0);
@@ -75,43 +85,58 @@ export default function ActivityFeed({ events = [], agents = [], onOpen }) {
   }, [events.length]);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 px-3 pb-2 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
-        Live feed
+    <section className="flex h-full flex-col" aria-label="Live feed">
+      <div className="flex items-center gap-2 px-3 pb-2 pt-3">
+        <h2 className="text-micro font-semibold uppercase tracking-wider text-muted">Live feed</h2>
+        {connected != null && (
+          <Chip size="xs" tone={connected ? 'ok' : 'warn'} dot pulse={!connected} className="ml-auto">
+            {connected ? 'Live' : 'Reconnecting…'}
+          </Chip>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-3" aria-live="polite">
         {events.length === 0 ? (
-          <p className="px-2 pt-6 text-center text-[12px] text-slate-400">
-            No activity yet — open a chat or run a mission and it streams here.
-          </p>
+          <EmptyState
+            compact
+            icon={Radio}
+            title="Nothing happening yet"
+            description="Open a chat with any agent or run a mission — every delegation, tool call and answer streams here as it happens."
+          />
         ) : (
-          events.map((ev) => {
-            const agent = byId.get(ev.agentId);
-            const kind = KIND[ev.type] || { dot: 'bg-slate-500', text: 'text-slate-300' };
-            const name = agent?.displayName || agent?.name || ev.agentName || ev.agentId;
-            return (
-              <button
-                key={ev.key}
-                onClick={() => agent && onOpen?.(agent)}
-                disabled={!agent}
-                className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-slate-800/60 disabled:cursor-default disabled:hover:bg-transparent"
-              >
-                {agent ? (
-                  <AgentAvatar agent={agent} size={22} rounded="rounded-md" status={null} />
-                ) : (
-                  <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${kind.dot}`} aria-hidden="true" />
-                )}
-                <span className="min-w-0 flex-1 text-[12px] leading-snug text-slate-200">
-                  <span className="font-semibold text-white">{name}</span>{' '}
-                  <span className={kind.text}>{actionText(ev)}</span>
-                </span>
-                <span className="shrink-0 pt-0.5 text-[10px] tabular-nums text-slate-400">{relTime(ev.ts)}</span>
-              </button>
-            );
-          })
+          <ul>
+            {events.map((ev) => {
+              const agent = byId.get(ev.agentId);
+              const name = agent?.displayName || agent?.name || ev.agentName || ev.agentId;
+              const when = relTime(ev.ts);
+              return (
+                <li key={ev.key}>
+                  <button
+                    type="button"
+                    onClick={() => agent && onOpen?.(agent)}
+                    disabled={!agent}
+                    className="flex w-full items-start gap-2 rounded-control px-2 py-1.5 text-left transition-colors duration-fast hover:bg-elevated/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
+                  >
+                    {agent ? (
+                      <AgentAvatar agent={agent} size={24} rounded="rounded-control" status={STATUS_OF[ev.type] || 'idle'} className="mt-0.5" />
+                    ) : (
+                      <StatusDot status={STATUS_OF[ev.type] || 'idle'} className="mt-2" />
+                    )}
+                    <span className="min-w-0 flex-1 text-caption leading-snug text-fg">
+                      <span className="font-semibold text-fg-strong">{name}</span> {sentence(ev)}
+                      {ev.type === 'agent_error' && <span className="mt-0.5 block text-danger">{ev.reason}</span>}
+                    </span>
+                    {when && (
+                      <time dateTime={typeof ev.ts === 'string' ? ev.ts : undefined} className="shrink-0 pt-0.5 text-micro tabular-nums text-subtle">
+                        {when}
+                      </time>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
-    </div>
+    </section>
   );
 }

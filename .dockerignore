@@ -1,0 +1,18 @@
+# Build-context hygiene — the API Dockerfile only COPYs app/ tests/ scripts/
+# requirements-prod.txt pytest.ini, so everything below is dead weight in the
+# context (critical on a network-mounted volume: avoids shipping ~2GB).
+.git
+venv
+.venv
+node_modules
+**/node_modules
+frontend
+logs
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.env
+.env.*
+.DS_Store
+*.log

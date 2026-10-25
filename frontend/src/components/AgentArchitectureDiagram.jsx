@@ -1,364 +1,115 @@
-import { useCallback, useMemo } from 'react';
-import {
-  ReactFlow,
-  MiniMap,
-  Controls,
-  Background,
-  useNodesState,
-  useEdgesState,
-  MarkerType,
-} from '@xyflow/react';
+import { useMemo } from 'react';
+import { ReactFlow, Controls, Background, MarkerType } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import {
-  User,
-  FileText,
-  Cpu,
-  Wrench,
-  Database,
-  MessageSquare,
-  Sparkles,
-} from 'lucide-react';
+import { Database, FileText, MessageSquare, Sparkles, User, Wrench } from 'lucide-react';
+import { tokenHsl } from '../utils/tokens';
+import { SectionHeader } from './ui';
 
-// Custom Node Component
-const CustomNode = ({ data }) => {
+// One tone per stage, drawn from the status tokens so the graph follows the
+// theme like every other surface.
+const TONE = {
+  info: 'bg-info/10 text-info border-info/30',
+  accent: 'bg-accent/10 text-accent border-accent/30',
+  live: 'bg-live/10 text-live border-live/30',
+  ok: 'bg-ok/10 text-ok border-ok/30',
+};
+
+function StageNode({ data }) {
+  const Icon = data.icon;
   return (
-    <div
-      className={`px-6 py-4 rounded-xl shadow-2xl border-2 transition-all hover:scale-105 hover:shadow-unicorn-500/50 backdrop-blur-sm ${data.className}`}
-      style={{
-        minWidth: data.large ? '240px' : '180px',
-        minHeight: data.large ? '160px' : '120px',
-      }}
-    >
-      <div className="flex flex-col items-center justify-center h-full space-y-2">
-        <div
-          className={`p-3 rounded-full bg-white/10 backdrop-blur-md ${
-            data.large ? 'text-4xl' : 'text-2xl'
-          }`}
-        >
-          {data.icon}
+    <div className={`w-56 rounded-card border bg-card p-3 shadow-e2 ${data.large ? 'w-64' : ''}`}>
+      <div className="flex items-start gap-3">
+        <span aria-hidden="true" className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-control border ${TONE[data.tone] || TONE.info}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-body font-semibold text-fg-strong">{data.label}</p>
+          {data.details?.map((d, i) => (
+            <p key={i} className="truncate text-caption text-muted">
+              {d}
+            </p>
+          ))}
         </div>
-        <div className="text-center">
-          <h3
-            className={`font-bold text-white ${
-              data.large ? 'text-xl' : 'text-base'
-            }`}
-          >
-            {data.label}
-          </h3>
-          {data.details && (
-            <div className="mt-2 space-y-1">
-              {data.details.map((detail, idx) => (
-                <p
-                  key={idx}
-                  className="text-xs text-white/80 font-medium"
-                >
-                  {detail}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
-        {data.badge && (
-          <span className="text-xs px-2 py-1 rounded-full bg-white/20 text-white font-medium">
-            {data.badge}
-          </span>
-        )}
       </div>
     </div>
   );
-};
+}
 
-const nodeTypes = {
-  custom: CustomNode,
-};
+const nodeTypes = { stage: StageNode };
 
-const AgentArchitectureDiagram = ({ agent }) => {
-  // Create nodes based on agent data
-  const initialNodes = useMemo(() => {
-    const tools = agent.agentTools || [];
-    const toolsPreview = tools.length > 0
-      ? tools.slice(0, 3).map(t => t.tool.name).join(', ')
-      : 'None';
-    const toolsBadge = tools.length > 3 ? `+${tools.length - 3} more` : null;
+/**
+ * AgentArchitectureDiagram — how a request moves through this agent:
+ * input → system prompt → model → tools / memory → response. Read-only;
+ * pan and zoom with the controls.
+ */
+export default function AgentArchitectureDiagram({ agent }) {
+  const tools = Array.isArray(agent?.toolDetails) && agent.toolDetails.length ? agent.toolDetails.map((t) => t.displayName || t.name) : Array.isArray(agent?.tools) ? agent.tools : [];
 
-    return [
-      {
-        id: '1',
-        type: 'custom',
-        position: { x: 400, y: 50 },
-        data: {
-          label: 'User Input',
-          icon: <User className="w-6 h-6" />,
-          className: 'bg-gradient-to-br from-blue-500 to-cyan-500 border-blue-400',
-        },
-      },
-      {
-        id: '2',
-        type: 'custom',
-        position: { x: 400, y: 200 },
-        data: {
-          label: 'System Prompt',
-          icon: <FileText className="w-6 h-6" />,
-          details: [agent.systemPrompt ? agent.systemPrompt.substring(0, 40) + '...' : 'No prompt set'],
-          className: 'bg-gradient-to-br from-unicorn-500 to-violet-500 border-unicorn-400',
-        },
-      },
-      {
-        id: '3',
-        type: 'custom',
-        position: { x: 360, y: 380 },
-        data: {
-          label: agent.model || 'Model',
-          icon: <Sparkles className="w-8 h-8" />,
-          details: [
-            `Temperature: ${agent.temperature || 0.7}`,
-            `Max Tokens: ${agent.maxTokens || 4096}`,
-          ],
-          large: true,
-          className: 'bg-gradient-to-br from-unicorn-500 to-unicorn-600 border-unicorn-400',
-        },
-      },
-      {
-        id: '4',
-        type: 'custom',
-        position: { x: 150, y: 600 },
-        data: {
-          label: 'Tools',
-          icon: <Wrench className="w-6 h-6" />,
-          details: [toolsPreview],
-          badge: toolsBadge,
-          className: 'bg-gradient-to-br from-cyan-500 to-blue-500 border-cyan-400',
-        },
-      },
-      {
-        id: '5',
-        type: 'custom',
-        position: { x: 650, y: 600 },
-        data: {
-          label: 'Memory',
-          icon: <Database className="w-6 h-6" />,
-          details: ['Contextual', 'Session-based'],
-          className: 'bg-gradient-to-br from-emerald-500 to-green-600 border-emerald-400',
-        },
-      },
-      {
-        id: '6',
-        type: 'custom',
-        position: { x: 400, y: 780 },
-        data: {
-          label: 'Response Output',
-          icon: <MessageSquare className="w-6 h-6" />,
-          className: 'bg-gradient-to-br from-emerald-500 to-teal-500 border-emerald-400',
-        },
-      },
-    ];
-  }, [agent]);
-
-  const initialEdges = useMemo(
+  const nodes = useMemo(
     () => [
+      { id: 'input', type: 'stage', position: { x: 260, y: 0 }, data: { label: 'Request', icon: User, tone: 'info', details: ['From chat, comms or the API'] } },
       {
-        id: 'e1-2',
-        source: '1',
-        target: '2',
-        animated: true,
-        style: { stroke: '#60a5fa', strokeWidth: 2 },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: '#60a5fa',
+        id: 'prompt',
+        type: 'stage',
+        position: { x: 260, y: 120 },
+        data: { label: 'System prompt', icon: FileText, tone: 'accent', details: [agent?.systemPrompt ? `${agent.systemPrompt.slice(0, 48)}…` : 'No prompt set'] },
+      },
+      {
+        id: 'model',
+        type: 'stage',
+        position: { x: 244, y: 240 },
+        data: {
+          label: agent?.model || 'Model',
+          icon: Sparkles,
+          tone: 'accent',
+          large: true,
+          details: [`Temperature ${agent?.temperature ?? 0.7}`, `Max tokens ${(agent?.maxTokens ?? 4096).toLocaleString()}`],
         },
       },
       {
-        id: 'e2-3',
-        source: '2',
-        target: '3',
-        animated: true,
-        style: { stroke: '#a78bfa', strokeWidth: 2 },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: '#a78bfa',
-        },
+        id: 'tools',
+        type: 'stage',
+        position: { x: 40, y: 380 },
+        data: { label: `Tools (${tools.length})`, icon: Wrench, tone: 'live', details: [tools.length ? tools.slice(0, 3).join(', ') + (tools.length > 3 ? ` +${tools.length - 3}` : '') : 'None attached'] },
       },
-      {
-        id: 'e3-4',
-        source: '3',
-        target: '4',
-        animated: true,
-        style: { stroke: '#22d3ee', strokeWidth: 2 },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: '#22d3ee',
-        },
-      },
-      {
-        id: 'e3-5',
-        source: '3',
-        target: '5',
-        animated: true,
-        style: { stroke: '#10b981', strokeWidth: 2 },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: '#10b981',
-        },
-      },
-      {
-        id: 'e4-6',
-        source: '4',
-        target: '6',
-        animated: true,
-        style: { stroke: '#14b8a6', strokeWidth: 2 },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: '#14b8a6',
-        },
-      },
-      {
-        id: 'e5-6',
-        source: '5',
-        target: '6',
-        animated: true,
-        style: { stroke: '#14b8a6', strokeWidth: 2 },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: '#14b8a6',
-        },
-      },
+      { id: 'memory', type: 'stage', position: { x: 480, y: 380 }, data: { label: 'Memory', icon: Database, tone: 'ok', details: ['Conversation context'] } },
+      { id: 'out', type: 'stage', position: { x: 260, y: 500 }, data: { label: 'Response', icon: MessageSquare, tone: 'ok', details: ['Streamed back to the caller'] } },
     ],
-    []
+    [agent, tools]
   );
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const edges = useMemo(() => {
+    const stroke = tokenHsl('--border-strong');
+    const mk = (source, target) => ({
+      id: `${source}-${target}`,
+      source,
+      target,
+      animated: true,
+      style: { stroke, strokeWidth: 1.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
+    });
+    return [mk('input', 'prompt'), mk('prompt', 'model'), mk('model', 'tools'), mk('model', 'memory'), mk('tools', 'out'), mk('memory', 'out')];
+  }, []);
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gradient mb-2">
-            Agent Architecture
-          </h2>
-          <p className="text-slate-400">
-            Visual representation of how {agent.displayName || agent.name} processes requests
-          </p>
-        </div>
-        <div className="flex items-center space-x-2">
-          <span className="px-3 py-1 rounded-full bg-unicorn-500/20 text-unicorn-300 text-sm">
-            Interactive Diagram
-          </span>
-        </div>
-      </div>
-
-      {/* React Flow Diagram */}
-      <div
-        className="rounded-xl border-2 border-slate-700 overflow-hidden"
-        style={{ height: '700px' }}
-      >
+      <SectionHeader title="Architecture" description={`How ${agent?.displayName || agent?.name || 'this agent'} handles a request`} />
+      <div className="h-[520px] overflow-hidden rounded-card border border-border bg-surface">
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
-          className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900"
+          fitViewOptions={{ padding: 0.15 }}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          proOptions={{ hideAttribution: true }}
         >
-          <Background
-            color="#475569"
-            gap={16}
-            size={1}
-            variant="dots"
-          />
-          <Controls
-            className="bg-slate-800 border border-slate-700 rounded-lg"
-            showInteractive={false}
-          />
-          <MiniMap
-            className="bg-slate-800 border border-slate-700 rounded-lg"
-            nodeColor={(node) => {
-              if (node.data.className.includes('blue')) return '#3b82f6';
-              if (node.data.className.includes('purple')) return '#a855f7';
-              if (node.data.className.includes('pink')) return '#ec4899';
-              if (node.data.className.includes('cyan')) return '#06b6d4';
-              if (node.data.className.includes('emerald')) return '#10b981';
-              return '#6366f1';
-            }}
-            maskColor="rgba(0, 0, 0, 0.7)"
-          />
+          <Background color={tokenHsl('--border', 0.7)} gap={18} size={1} variant="dots" />
+          <Controls showInteractive={false} />
         </ReactFlow>
-      </div>
-
-      {/* Legend */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <div className="flex items-center space-x-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500"></div>
-          <div>
-            <p className="text-sm font-medium">User Input</p>
-            <p className="text-xs text-slate-400">Initial request</p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-unicorn-500 to-violet-500"></div>
-          <div>
-            <p className="text-sm font-medium">System Prompt</p>
-            <p className="text-xs text-slate-400">Agent instructions</p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-unicorn-500 to-unicorn-600"></div>
-          <div>
-            <p className="text-sm font-medium">Model</p>
-            <p className="text-xs text-slate-400">AI processing core</p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500"></div>
-          <div>
-            <p className="text-sm font-medium">Tools</p>
-            <p className="text-xs text-slate-400">External capabilities</p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-emerald-500 to-green-600"></div>
-          <div>
-            <p className="text-sm font-medium">Memory</p>
-            <p className="text-xs text-slate-400">Context storage</p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700">
-          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500"></div>
-          <div>
-            <p className="text-sm font-medium">Response</p>
-            <p className="text-xs text-slate-400">Final output</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Info Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700">
-          <h3 className="font-semibold mb-2 flex items-center space-x-2">
-            <Cpu className="w-4 h-4 text-unicorn-400" />
-            <span>Processing Pipeline</span>
-          </h3>
-          <p className="text-sm text-slate-400">
-            Each request flows from user input through the system prompt to the model,
-            which leverages tools and memory to generate contextual responses.
-          </p>
-        </div>
-        <div className="p-4 rounded-lg bg-slate-800/50 border border-slate-700">
-          <h3 className="font-semibold mb-2 flex items-center space-x-2">
-            <Sparkles className="w-4 h-4 text-unicorn-400" />
-            <span>Interactive Features</span>
-          </h3>
-          <p className="text-sm text-slate-400">
-            Zoom, pan, and drag nodes to explore the architecture. Use the minimap
-            for navigation and controls for precise viewing.
-          </p>
-        </div>
       </div>
     </div>
   );
-};
-
-export default AgentArchitectureDiagram;
+}

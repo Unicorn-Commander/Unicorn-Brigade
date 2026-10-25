@@ -1,387 +1,205 @@
-import { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  FileCode,
-  User,
-  Sparkles,
-  Calendar,
-  MessageSquare,
-  X,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  Check
-} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Calendar, Copy, FileCode, MessageSquare, Sparkles, User } from 'lucide-react';
 import PropTypes from 'prop-types';
+import notify from '../utils/notify';
+import { Button, Card, Chip, IconButton, Modal } from './ui';
 
 /**
- * Syntax highlighting for code with attribution overlays
+ * FileAttributionViewer — every attribution recorded for one file, each with
+ * the exact lines the agent generated, in a dialog.
+ *
+ * GET /trace/files/{path} returns the attributions (with generatedCode per
+ * range) but NOT the full file, so the file view is built from the attributed
+ * ranges. When a caller does pass `code` (the whole file), it is rendered with
+ * the attributed lines highlighted. Code is always rendered as text — never
+ * injected as HTML.
  */
-const SyntaxHighlightedCode = ({ code, language = 'javascript' }) => {
-  const lines = code.split('\n');
+const fileName = (p = '') => p.split('/').pop() || p;
+const fmtDateTime = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
 
-  // Basic syntax highlighting (can be enhanced with a library like prism.js)
-  const highlightLine = (line) => {
-    // This is a simplified highlighter - in production, use a proper library
-    let highlighted = line;
+async function copy(text, what) {
+  try {
+    await navigator.clipboard.writeText(text);
+    notify.success(what);
+  } catch {
+    notify.error('Couldn’t copy — your browser blocked clipboard access.');
+  }
+}
 
-    // Keywords
-    const keywords = ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'class', 'import', 'export', 'from', 'async', 'await'];
-    keywords.forEach(keyword => {
-      const regex = new RegExp(`\\b${keyword}\\b`, 'g');
-      highlighted = highlighted.replace(regex, `<span class="text-unicorn-400">${keyword}</span>`);
-    });
-
-    // Strings
-    highlighted = highlighted.replace(/(["'`])(.*?)\1/g, '<span class="text-emerald-400">$1$2$1</span>');
-
-    // Comments
-    highlighted = highlighted.replace(/(\/\/.*$)/g, '<span class="text-slate-400">$1</span>');
-
-    // Numbers
-    highlighted = highlighted.replace(/\b(\d+)\b/g, '<span class="text-amber-400">$1</span>');
-
-    return highlighted;
-  };
-
+function Snippet({ code, startLine = 1, label, copyLabel }) {
+  const lines = (code || '').replace(/\n$/, '').split('\n');
   return (
-    <div className="font-mono text-sm">
-      {lines.map((line, index) => (
-        <div key={index} className="flex hover:bg-slate-800/30">
-          <span className="text-slate-600 select-none w-12 text-right pr-4 flex-shrink-0">
-            {index + 1}
-          </span>
-          <span
-            className="flex-1"
-            dangerouslySetInnerHTML={{ __html: highlightLine(line) || '&nbsp;' }}
-          />
-        </div>
-      ))}
+    <div className="overflow-hidden rounded-control border border-border bg-surface/70">
+      <div className="flex items-center gap-2 border-b border-border bg-elevated/50 py-1 pl-3 pr-1">
+        <span className="min-w-0 flex-1 truncate font-mono text-caption text-muted">{label}</span>
+        <IconButton icon={Copy} label={copyLabel} size="xs" onClick={() => copy(code || '', 'Code copied')} />
+      </div>
+      <pre className="max-h-80 overflow-auto p-3 font-mono text-body-sm leading-5 text-fg">
+        {lines.map((line, i) => (
+          <div key={i} className="flex">
+            <span aria-hidden="true" className="w-10 shrink-0 select-none pr-3 text-right text-subtle">
+              {startLine + i}
+            </span>
+            <code className="min-w-0 flex-1 whitespace-pre">{line || ' '}</code>
+          </div>
+        ))}
+      </pre>
     </div>
   );
-};
+}
 
-SyntaxHighlightedCode.propTypes = {
-  code: PropTypes.string.isRequired,
-  language: PropTypes.string
-};
+export default function FileAttributionViewer({ filePath, attributions, code, onClose }) {
+  const [selectedId, setSelectedId] = useState(attributions[0]?.id || null);
 
-/**
- * FileAttributionViewer - Shows code with line-by-line attribution
- */
-const FileAttributionViewer = ({ filePath, attributions, code, onClose }) => {
-  const [selectedAttribution, setSelectedAttribution] = useState(null);
-  const [copied, setCopied] = useState(false);
-
-  // Full-screen viewer: Escape closes it (kept as a bespoke overlay rather than
-  // the Modal primitive so the edge-to-edge scrollable layout is preserved).
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose?.();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  // Create a map of line numbers to attributions
-  const lineAttributions = useMemo(() => {
-    const map = {};
-    attributions.forEach(attr => {
-      for (let i = attr.start_line; i <= attr.end_line; i++) {
-        map[i] = attr;
-      }
-    });
+  const sorted = useMemo(() => [...attributions].sort((a, b) => (a.start_line || 0) - (b.start_line || 0)), [attributions]);
+  const lineOwner = useMemo(() => {
+    const map = new Map();
+    for (const a of attributions) {
+      if (a.start_line == null || a.end_line == null) continue;
+      for (let i = a.start_line; i <= a.end_line; i += 1) map.set(i, a);
+    }
     return map;
   }, [attributions]);
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const copyCode = async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const getFileName = (path) => {
-    return path.split('/').pop() || path;
-  };
-
-  const codeLines = code.split('\n');
+  const attributedLines = lineOwner.size;
+  const agents = new Set(attributions.map((a) => a.agent_name || a.agent_id)).size;
+  const hasFile = typeof code === 'string' && code.length > 0;
+  const allCode = hasFile ? code : sorted.map((a) => a.generated_code || '').filter(Boolean).join('\n\n');
 
   return (
-    <motion.div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Attributions for ${getFileName(filePath)}`}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-slate-900/95 backdrop-blur-sm overflow-auto"
+    <Modal
+      isOpen
+      onClose={onClose}
+      size="3xl"
+      title={fileName(filePath)}
+      description={filePath}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+          <Button variant="secondary" icon={Copy} onClick={() => copy(allCode, hasFile ? 'File copied' : 'Attributed code copied')} disabled={!allCode}>
+            {hasFile ? 'Copy file' : 'Copy attributed code'}
+          </Button>
+        </>
+      }
     >
-      <div className="min-h-screen p-6">
-        <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="flex items-start justify-between mb-6">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <FileCode className="w-6 h-6 text-unicorn-400" />
-                <h1 className="text-2xl font-bold text-slate-200">
-                  {getFileName(filePath)}
-                </h1>
-              </div>
-              <p className="text-sm text-slate-400">{filePath}</p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={copyCode}
-                className="btn btn-secondary btn-sm flex items-center gap-2"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-4 h-4" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    Copy Code
-                  </>
-                )}
-              </button>
-              <button
-                onClick={onClose}
-                aria-label="Close attribution viewer"
-                className="btn btn-secondary btn-sm"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Code View */}
-            <div className="lg:col-span-2">
-              <div className="card p-0 overflow-hidden">
-                <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700/50">
-                  <p className="text-xs font-medium text-slate-400">Code with Attributions</p>
-                </div>
-
-                <div className="overflow-x-auto custom-scrollbar">
-                  <div className="p-4 bg-slate-900/60">
-                    <div className="font-mono text-sm">
-                      {codeLines.map((line, index) => {
-                        const lineNumber = index + 1;
-                        const attribution = lineAttributions[lineNumber];
-
-                        return (
-                          <div
-                            key={index}
-                            className={`
-                              flex group hover:bg-slate-800/40 cursor-pointer
-                              ${attribution ? 'border-l-2 border-unicorn-500/30' : ''}
-                              ${selectedAttribution && selectedAttribution.id === attribution?.id ? 'bg-unicorn-500/10' : ''}
-                            `}
-                            onClick={() => attribution && setSelectedAttribution(attribution)}
-                          >
-                            <span className="text-slate-600 select-none w-12 text-right pr-4 flex-shrink-0">
-                              {lineNumber}
-                            </span>
-                            <span className="flex-1 text-slate-300">
-                              {line || ' '}
-                            </span>
-                            {attribution && (
-                              <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-unicorn-400 px-2">
-                                {attribution.agent_name || attribution.agent_id}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Attribution Sidebar */}
-            <div className="space-y-4">
-              {/* Summary */}
-              <div className="card">
-                <h3 className="text-sm font-semibold text-slate-200 mb-3">
-                  Attribution Summary
-                </h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Total Lines:</span>
-                    <span className="text-slate-200 font-medium">{codeLines.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">AI-Generated:</span>
-                    <span className="text-unicorn-400 font-medium">
-                      {Object.keys(lineAttributions).length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Agents:</span>
-                    <span className="text-slate-200 font-medium">
-                      {new Set(attributions.map(a => a.agent_id)).size}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Selected Attribution Details */}
-              <AnimatePresence>
-                {selectedAttribution && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    className="card border-unicorn-500/30"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-unicorn-400">
-                        Selected Attribution
-                      </h3>
-                      <button
-                        onClick={() => setSelectedAttribution(null)}
-                        aria-label="Clear selected attribution"
-                        className="text-slate-400 hover:text-slate-300"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-3">
-                      {/* Lines */}
-                      <div>
-                        <p className="text-xs text-slate-400 mb-1">Lines</p>
-                        <p className="text-sm text-slate-200">
-                          {selectedAttribution.start_line}-{selectedAttribution.end_line}
-                          <span className="text-slate-400 ml-2">
-                            ({selectedAttribution.lines_count} lines)
-                          </span>
-                        </p>
-                      </div>
-
-                      {/* Agent */}
-                      <div>
-                        <p className="text-xs text-slate-400 mb-1">Agent</p>
-                        <div className="flex items-center gap-2">
-                          <User className="w-3 h-3 text-unicorn-400" />
-                          <p className="text-sm text-slate-200">
-                            {selectedAttribution.agent_name || selectedAttribution.agent_id}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Model */}
-                      <div>
-                        <p className="text-xs text-slate-400 mb-1">Model</p>
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="w-3 h-3 text-unicorn-400" />
-                          <p className="text-sm text-slate-200">
-                            {selectedAttribution.model}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Date */}
-                      <div>
-                        <p className="text-xs text-slate-400 mb-1">Generated</p>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-3 h-3 text-unicorn-400" />
-                          <p className="text-sm text-slate-200">
-                            {formatDate(selectedAttribution.timestamp)}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Prompt */}
-                      {selectedAttribution.prompt && (
-                        <div>
-                          <p className="text-xs text-slate-400 mb-1">Original Prompt</p>
-                          <div className="flex items-start gap-2">
-                            <MessageSquare className="w-3 h-3 text-unicorn-400 mt-1 flex-shrink-0" />
-                            <p className="text-xs text-slate-300 leading-relaxed">
-                              {selectedAttribution.prompt}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* All Attributions List */}
-              <div className="card">
-                <h3 className="text-sm font-semibold text-slate-200 mb-3">
-                  All Attributions ({attributions.length})
-                </h3>
-                <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
-                  {attributions.map((attr, index) => (
-                    <button
-                      key={attr.id || index}
-                      onClick={() => setSelectedAttribution(attr)}
-                      className={`
-                        w-full text-left p-2.5 rounded-lg border transition-all
-                        ${selectedAttribution?.id === attr.id
-                          ? 'border-unicorn-500/50 bg-unicorn-500/10'
-                          : 'border-slate-700/50 hover:border-slate-600 bg-slate-800/30'
-                        }
-                      `}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-slate-400">
-                          Lines {attr.start_line}-{attr.end_line}
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          {attr.lines_count} lines
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-300 truncate">
-                        {attr.agent_name || attr.agent_id}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Chip tone="accent" size="sm" className="tabular-nums">
+            {attributions.length} attribution{attributions.length === 1 ? '' : 's'}
+          </Chip>
+          <Chip size="sm" className="tabular-nums">
+            {attributedLines.toLocaleString()} lines attributed
+          </Chip>
+          <Chip size="sm" className="tabular-nums">
+            {agents} agent{agents === 1 ? '' : 's'}
+          </Chip>
+          {!hasFile && <span className="text-caption text-muted">Showing the attributed ranges; the trace service doesn’t store the whole file.</span>}
         </div>
+
+        {hasFile && (
+          <div className="overflow-hidden rounded-control border border-border bg-surface/70">
+            <div className="border-b border-border bg-elevated/50 px-3 py-1 font-mono text-caption text-muted">Full file · attributed lines marked</div>
+            <pre className="max-h-96 overflow-auto p-3 font-mono text-body-sm leading-5 text-fg">
+              {code.split('\n').map((line, i) => {
+                const n = i + 1;
+                const owner = lineOwner.get(n);
+                const selected = owner && owner.id === selectedId;
+                return (
+                  <div
+                    key={n}
+                    className={`flex ${owner ? 'border-l-2 border-accent/40' : 'border-l-2 border-transparent'} ${selected ? 'bg-accent/10' : ''}`}
+                    onClick={owner ? () => setSelectedId(owner.id) : undefined}
+                  >
+                    <span aria-hidden="true" className="w-10 shrink-0 select-none pr-3 text-right text-subtle">
+                      {n}
+                    </span>
+                    <code className="min-w-0 flex-1 whitespace-pre">{line || ' '}</code>
+                  </div>
+                );
+              })}
+            </pre>
+          </div>
+        )}
+
+        <ol className="space-y-3" aria-label="Attributions">
+          {sorted.map((a, i) => {
+            const selected = a.id === selectedId;
+            return (
+              <li key={a.id || i}>
+                <Card padding="sm" className={selected ? 'border-accent/50' : ''}>
+                  <button type="button" className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-chip" onClick={() => setSelectedId(a.id)} aria-pressed={selected}>
+                    <Chip tone="accent" size="xs" className="font-mono tabular-nums">
+                      {a.start_line != null ? `${a.start_line}–${a.end_line}` : 'range unknown'}
+                    </Chip>
+                    <span className="inline-flex items-center gap-1 text-body-sm font-medium text-fg-strong">
+                      <User aria-hidden="true" className="h-3.5 w-3.5 text-muted" />
+                      {a.agent_name || a.agent_id}
+                    </span>
+                    {a.model && (
+                      <span className="inline-flex items-center gap-1 text-caption text-muted">
+                        <Sparkles aria-hidden="true" className="h-3 w-3" />
+                        {a.model}
+                      </span>
+                    )}
+                    {a.change_type && (
+                      <Chip size="xs" className="capitalize">
+                        {a.change_type}
+                      </Chip>
+                    )}
+                    {a.timestamp && (
+                      <span className="ml-auto inline-flex items-center gap-1 text-caption text-muted">
+                        <Calendar aria-hidden="true" className="h-3 w-3" />
+                        {fmtDateTime(a.timestamp)}
+                      </span>
+                    )}
+                  </button>
+                  {a.prompt && (
+                    <p className="mt-2 flex items-start gap-1.5 text-caption text-muted">
+                      <MessageSquare aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
+                      {a.prompt}
+                    </p>
+                  )}
+                  {a.generated_code ? (
+                    <div className="mt-2">
+                      <Snippet code={a.generated_code} startLine={a.start_line || 1} label={`${a.lines_count ?? ''} lines by ${a.agent_name || a.agent_id}`} copyLabel={`Copy lines ${a.start_line}–${a.end_line}`} />
+                    </div>
+                  ) : (
+                    <p className="mt-2 inline-flex items-center gap-1.5 text-caption text-subtle">
+                      <FileCode aria-hidden="true" className="h-3 w-3" />
+                      No code snippet was stored for this range.
+                    </p>
+                  )}
+                </Card>
+              </li>
+            );
+          })}
+        </ol>
       </div>
-    </motion.div>
+    </Modal>
   );
-};
+}
 
 FileAttributionViewer.propTypes = {
   filePath: PropTypes.string.isRequired,
   attributions: PropTypes.arrayOf(
     PropTypes.shape({
       id: PropTypes.string,
-      agent_id: PropTypes.string.isRequired,
+      agent_id: PropTypes.string,
       agent_name: PropTypes.string,
-      model: PropTypes.string.isRequired,
-      timestamp: PropTypes.string.isRequired,
-      start_line: PropTypes.number.isRequired,
-      end_line: PropTypes.number.isRequired,
-      lines_count: PropTypes.number.isRequired,
-      prompt: PropTypes.string
+      model: PropTypes.string,
+      timestamp: PropTypes.string,
+      start_line: PropTypes.number,
+      end_line: PropTypes.number,
+      lines_count: PropTypes.number,
+      prompt: PropTypes.string,
+      generated_code: PropTypes.string,
+      change_type: PropTypes.string,
     })
   ).isRequired,
-  code: PropTypes.string.isRequired,
-  onClose: PropTypes.func.isRequired
+  code: PropTypes.string,
+  onClose: PropTypes.func.isRequired,
 };
-
-export default FileAttributionViewer;

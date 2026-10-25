@@ -1,6 +1,5 @@
 // API Service for Unicorn Command & Control
 import { toast } from 'react-hot-toast';
-import { buildAuthHeaders } from './authHeaders';
 import { apiFetch } from './http';
 import { API_BASE } from './apiBase';
 
@@ -18,13 +17,15 @@ class APIService {
   // can read the SSE body. Auth-aware (buildAuthHeaders + credentials), unlike
   // the legacy raw fetch welded into the AgentChat page.
   async streamAgentChat(agentId, body, { signal } = {}) {
-    const url = new URL(`${this.baseURL}/agents/${agentId}/chat`, window.location.origin);
-    return fetch(url.toString(), {
+    // Through the unified client so a lapsed access token is refreshed and the
+    // request retried, exactly like every other call. A raw fetch here is why
+    // the Command Center dock answered "HTTP 401" after the session's access
+    // token aged out while the rest of the page kept working.
+    return apiFetch(`/agents/${agentId}/chat`, {
       method: 'POST',
-      credentials: 'include',
-      headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
       signal,
+      redirectOn401: false,
     });
   }
 

@@ -1,5 +1,16 @@
-import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+/**
+ * ToolCallCard — one tool call an agent made, live.
+ *
+ * Three states, on the shared status vocabulary:
+ *   running  the call is out and no result is back yet (pulsing live dot)
+ *   done     a result arrived; the card collapses, click to read it
+ *   failed   the tool returned an error; the headline is in human words and
+ *            the technical detail sits behind the disclosure, never in the
+ *            person's face
+ *
+ * Also exports getToolIcon / TOOL_ICONS (the Agent Library uses them).
+ */
+import { useMemo, useState } from 'react';
 import {
   Search,
   Calculator,
@@ -18,12 +29,14 @@ import {
   Wrench,
   ChevronRight,
   Check,
-  X,
-  Loader2,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Users,
 } from 'lucide-react';
 import PropTypes from 'prop-types';
+import notify from '../utils/notify';
+import { humanize } from '../utils/errors';
+import { Button, Chip, IconButton, StatusDot } from './ui';
 
 // Tool icon mapping - maps tool names to appropriate Lucide icons
 const TOOL_ICONS = {
@@ -99,356 +112,211 @@ const TOOL_ICONS = {
   qrcode: QrCode,
   qr: QrCode,
 
+  // Delegation
+  delegate: Users,
+  delegate_to_agent: Users,
+
   // Default
-  default: Wrench
+  default: Wrench,
 };
 
 // Get the appropriate icon component for a tool name
 const getToolIcon = (toolName) => {
   if (!toolName) return TOOL_ICONS.default;
-
-  const normalizedName = toolName.toLowerCase().replace(/[-_\s]/g, '_');
-
-  // Check for exact match first
-  if (TOOL_ICONS[normalizedName]) {
-    return TOOL_ICONS[normalizedName];
-  }
-
-  // Check for partial matches
+  const normalizedName = String(toolName).toLowerCase().replace(/[-\s]/g, '_');
+  if (TOOL_ICONS[normalizedName]) return TOOL_ICONS[normalizedName];
   for (const [key, icon] of Object.entries(TOOL_ICONS)) {
-    if (normalizedName.includes(key) || key.includes(normalizedName)) {
-      return icon;
-    }
+    if (key !== 'default' && (normalizedName.includes(key) || key.includes(normalizedName))) return icon;
   }
-
   return TOOL_ICONS.default;
 };
 
-// Simple syntax highlighting for JSON
-const SyntaxHighlightedJSON = ({ data, isError = false }) => {
-  const highlighted = useMemo(() => {
-    if (data === null || data === undefined) {
-      return <span className="text-slate-400">null</span>;
-    }
+// ── JSON, highlighted on the status tokens ───────────────────────────────────
+const TOKEN_RE = /("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+\.?\d*(?:e[+-]?\d+)?)|\b(true|false|null)\b|([{}[\]:,])/gi;
 
-    const jsonString = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-
-    // Split into lines for better formatting
-    const lines = jsonString.split('\n');
-
-    return lines.map((line, lineIndex) => {
-      // Tokenize the line
-      const tokens = [];
-      let remaining = line;
-      let tokenIndex = 0;
-
-      while (remaining.length > 0) {
-        // Match string (key or value)
-        const stringMatch = remaining.match(/^("(?:[^"\\]|\\.)*")/);
-        if (stringMatch) {
-          const str = stringMatch[1];
-          const isKey = remaining.slice(str.length).trimStart().startsWith(':');
-          tokens.push(
-            <span
-              key={`${lineIndex}-${tokenIndex++}`}
-              className={isKey ? 'text-unicorn-400' : isError ? 'text-red-300' : 'text-emerald-400'}
-            >
-              {str}
-            </span>
-          );
-          remaining = remaining.slice(str.length);
-          continue;
+function HighlightedJSON({ data }) {
+  const lines = useMemo(() => {
+    const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    return String(text ?? 'null')
+      .split('\n')
+      .map((line) => {
+        const parts = [];
+        let last = 0;
+        let m;
+        const re = new RegExp(TOKEN_RE.source, 'gi');
+        while ((m = re.exec(line))) {
+          if (m.index > last) parts.push({ t: 'plain', v: line.slice(last, m.index) });
+          if (m[1]) parts.push({ t: m[2] ? 'key' : 'str', v: m[1] + (m[2] || '') });
+          else if (m[3]) parts.push({ t: 'num', v: m[3] });
+          else if (m[4]) parts.push({ t: 'bool', v: m[4] });
+          else parts.push({ t: 'punct', v: m[5] });
+          last = re.lastIndex;
         }
-
-        // Match number
-        const numberMatch = remaining.match(/^(-?\d+\.?\d*(?:e[+-]?\d+)?)/i);
-        if (numberMatch) {
-          tokens.push(
-            <span key={`${lineIndex}-${tokenIndex++}`} className="text-amber-400">
-              {numberMatch[1]}
+        if (last < line.length) parts.push({ t: 'plain', v: line.slice(last) });
+        return parts;
+      });
+  }, [data]);
+  const cls = { key: 'text-accent', str: 'text-ok', num: 'text-warn', bool: 'text-info', punct: 'text-muted', plain: 'text-fg' };
+  return (
+    <pre className="whitespace-pre font-mono text-caption leading-5">
+      {lines.map((parts, i) => (
+        <div key={i}>
+          {parts.map((p, j) => (
+            <span key={j} className={cls[p.t]}>
+              {p.v}
             </span>
-          );
-          remaining = remaining.slice(numberMatch[1].length);
-          continue;
-        }
-
-        // Match boolean/null
-        const boolMatch = remaining.match(/^(true|false|null)/);
-        if (boolMatch) {
-          tokens.push(
-            <span key={`${lineIndex}-${tokenIndex++}`} className="text-cyan-400">
-              {boolMatch[1]}
-            </span>
-          );
-          remaining = remaining.slice(boolMatch[1].length);
-          continue;
-        }
-
-        // Match punctuation
-        const punctMatch = remaining.match(/^([{}\[\]:,])/);
-        if (punctMatch) {
-          tokens.push(
-            <span key={`${lineIndex}-${tokenIndex++}`} className="text-slate-400">
-              {punctMatch[1]}
-            </span>
-          );
-          remaining = remaining.slice(1);
-          continue;
-        }
-
-        // Whitespace or other characters
-        tokens.push(
-          <span key={`${lineIndex}-${tokenIndex++}`} className="text-slate-400">
-            {remaining[0]}
-          </span>
-        );
-        remaining = remaining.slice(1);
-      }
-
-      return (
-        <div key={lineIndex} className="leading-relaxed">
-          {tokens}
+          ))}
         </div>
-      );
-    });
-  }, [data, isError]);
+      ))}
+    </pre>
+  );
+}
 
-  return <div className="font-mono text-[11px]">{highlighted}</div>;
+function previewArgs(args) {
+  if (!args || typeof args !== 'object') return '';
+  const entries = Object.entries(args);
+  const head = entries
+    .slice(0, 2)
+    .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`.slice(0, 48))
+    .join(' · ');
+  return entries.length > 2 ? `${head} · …` : head;
+}
+
+const STATE = {
+  running: { status: 'tool', tone: 'live', label: 'Running', border: 'border-live/30', icon: 'bg-live/10 text-live' },
+  done: { status: 'done', tone: 'ok', label: 'Done', border: 'border-border', icon: 'bg-ok/10 text-ok' },
+  failed: { status: 'error', tone: 'danger', label: 'Failed', border: 'border-danger/30', icon: 'bg-danger/10 text-danger' },
 };
 
-SyntaxHighlightedJSON.propTypes = {
-  data: PropTypes.any,
-  isError: PropTypes.bool
+const errorText = (error) => {
+  if (!error) return '';
+  if (typeof error === 'string') return error;
+  return error.message || error.error || error.detail || JSON.stringify(error);
 };
 
 // Tool Call Card Component
-const ToolCallCard = ({ toolCall, compact = false }) => {
-  const [expanded, setExpanded] = useState(false);
+const ToolCallCard = ({ toolCall, defaultExpanded = false }) => {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
 
-  const hasResult = toolCall.result !== undefined || toolCall.error;
-  const isError = !!toolCall.error;
-  const isLoading = !hasResult;
+  const isError = Boolean(toolCall.error);
+  const hasResult = toolCall.result !== undefined || isError;
+  const state = !hasResult ? 'running' : isError ? 'failed' : 'done';
+  const meta = STATE[state];
+  const Icon = getToolIcon(toolCall.name);
+  const raw = errorText(toolCall.error);
+  const reason = isError ? humanize({ message: raw }, { what: 'running the tool' }) : '';
+  const resultUrl = !isError && toolCall.result && typeof toolCall.result === 'object' ? toolCall.result.url : null;
 
-  const IconComponent = getToolIcon(toolCall.name);
-
-  const copyToClipboard = async (e) => {
+  const copy = async (e) => {
     e.stopPropagation();
-    const content = {
-      name: toolCall.name,
-      arguments: toolCall.arguments,
-      result: isError ? { error: toolCall.error } : toolCall.result
-    };
-    await navigator.clipboard.writeText(JSON.stringify(content, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Status colors and styles
-  const statusConfig = {
-    loading: {
-      border: 'border-yellow-500/30',
-      bg: 'bg-yellow-500/5',
-      iconColor: 'text-yellow-400',
-      badge: 'bg-yellow-500/20 text-yellow-400',
-      badgeText: 'running'
-    },
-    success: {
-      border: 'border-emerald-500/30',
-      bg: 'bg-emerald-500/5',
-      iconColor: 'text-emerald-400',
-      badge: 'bg-emerald-500/20 text-emerald-400',
-      badgeText: 'completed'
-    },
-    error: {
-      border: 'border-red-500/30',
-      bg: 'bg-red-500/5',
-      iconColor: 'text-red-400',
-      badge: 'bg-red-500/20 text-red-400',
-      badgeText: 'failed'
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify({ name: toolCall.name, arguments: toolCall.arguments, result: isError ? { error: toolCall.error } : toolCall.result }, null, 2)
+      );
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      notify.error('Couldn’t copy — your browser blocked clipboard access.');
     }
   };
 
-  const status = isLoading ? 'loading' : isError ? 'error' : 'success';
-  const config = statusConfig[status];
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className={`
-        my-2 rounded-lg border overflow-hidden transition-all duration-200
-        ${config.border} ${config.bg}
-        ${expanded ? 'shadow-lg shadow-black/20' : 'shadow-sm'}
-      `}
-    >
-      {/* Header - Always visible */}
+    <div className={`my-1.5 overflow-hidden rounded-control border bg-card/60 ${meta.border}`}>
       <button
-        onClick={() => setExpanded(!expanded)}
-        className={`
-          w-full flex items-center gap-2.5 px-3 py-2.5 text-left
-          hover:bg-slate-700/20 transition-colors group
-        `}
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="flex min-h-touch w-full items-center gap-2.5 px-2.5 py-1.5 text-left sm:min-h-10 transition-colors duration-fast hover:bg-elevated/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        {/* Tool Icon */}
-        <div className={`
-          flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center
-          ${isLoading ? 'bg-yellow-500/20' : isError ? 'bg-red-500/20' : 'bg-emerald-500/20'}
-        `}>
-          {isLoading ? (
-            <Loader2 className={`w-4 h-4 ${config.iconColor} animate-spin`} />
-          ) : (
-            <IconComponent className={`w-4 h-4 ${config.iconColor}`} />
-          )}
-        </div>
-
-        {/* Tool Name */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-200 truncate">
-              {toolCall.name}
+        <span aria-hidden="true" className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-chip ${meta.icon}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="truncate font-mono text-body-sm font-medium text-fg-strong">{toolCall.name}</span>
+            <Chip tone={meta.tone} size="xs" dot pulse={state === 'running'}>
+              {meta.label}
+            </Chip>
+          </span>
+          {!expanded && (
+            <span className="block truncate text-caption text-muted">
+              {state === 'failed' ? reason : state === 'running' ? 'Waiting for the result…' : previewArgs(toolCall.arguments)}
             </span>
-            <span className={`
-              text-[10px] px-1.5 py-0.5 rounded-full font-medium
-              ${config.badge}
-            `}>
-              {config.badgeText}
-            </span>
-          </div>
-
-          {/* Compact preview of arguments */}
-          {!expanded && toolCall.arguments && (
-            <p className="text-[11px] text-slate-400 truncate mt-0.5">
-              {Object.entries(toolCall.arguments).slice(0, 2).map(([k, v]) =>
-                `${k}: ${typeof v === 'string' ? v.slice(0, 30) : JSON.stringify(v).slice(0, 30)}`
-              ).join(', ')}
-              {Object.keys(toolCall.arguments).length > 2 && '...'}
-            </p>
           )}
-        </div>
-
-        {/* Status Icon */}
-        <div className="flex items-center gap-2">
-          {hasResult && !isError && (
-            <Check className="w-4 h-4 text-emerald-400" />
-          )}
-          {isError && (
-            <X className="w-4 h-4 text-red-400" />
-          )}
-          <ChevronRight
-            className={`
-              w-4 h-4 text-slate-400 transition-transform duration-200
-              ${expanded ? 'rotate-90' : ''}
-            `}
-          />
-        </div>
+        </span>
+        <ChevronRight
+          aria-hidden="true"
+          className={`h-4 w-4 shrink-0 text-muted transition-transform duration-fast ${expanded ? 'rotate-90' : ''}`}
+        />
       </button>
 
-      {/* Expandable Content */}
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-            className="overflow-hidden"
-          >
-            <div className="px-3 pb-3 space-y-3 border-t border-slate-700/30">
-              {/* Arguments Section */}
-              <div className="pt-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Arguments
-                  </span>
-                  <button
-                    onClick={copyToClipboard}
-                    className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-300 transition-colors"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="w-3 h-3" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        Copy
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div className="bg-slate-900/60 rounded-md p-2.5 overflow-x-auto max-h-32 custom-scrollbar">
-                  <SyntaxHighlightedJSON data={toolCall.arguments} />
-                </div>
+      {expanded && (
+        <div className="space-y-3 border-t border-border px-3 pb-3 pt-2.5">
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-micro font-semibold uppercase tracking-wider text-muted">Arguments</span>
+              <IconButton icon={copied ? Check : Copy} label={copied ? 'Copied' : 'Copy tool call'} size="xs" onClick={copy} />
+            </div>
+            <div className="max-h-40 overflow-auto rounded-chip bg-surface p-2.5">
+              <HighlightedJSON data={toolCall.arguments ?? {}} />
+            </div>
+          </div>
+
+          {state === 'running' && (
+            <p className="flex items-center gap-2 text-caption text-muted" role="status">
+              <StatusDot status="tool" size="sm" />
+              Running {toolCall.name}…
+            </p>
+          )}
+
+          {state === 'done' && (
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-micro font-semibold uppercase tracking-wider text-muted">Result</span>
+                {resultUrl && (
+                  <Button as="a" href={resultUrl} target="_blank" rel="noopener noreferrer" variant="link" size="xs" icon={ExternalLink}>
+                    Open
+                  </Button>
+                )}
               </div>
+              <div className="max-h-56 overflow-auto rounded-chip bg-surface p-2.5">
+                {typeof toolCall.result === 'string' ? (
+                  <p className="whitespace-pre-wrap font-mono text-caption leading-5 text-fg">{toolCall.result}</p>
+                ) : (
+                  <HighlightedJSON data={toolCall.result} />
+                )}
+              </div>
+            </div>
+          )}
 
-              {/* Result Section */}
-              {hasResult && (
-                <div>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className={`
-                      text-[10px] font-semibold uppercase tracking-wider
-                      ${isError ? 'text-red-500' : 'text-slate-400'}
-                    `}>
-                      {isError ? 'Error' : 'Result'}
-                    </span>
-                    {!isError && toolCall.result?.url && (
-                      <a
-                        href={toolCall.result.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-[10px] text-unicorn-400 hover:text-unicorn-300 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Open
-                      </a>
-                    )}
-                  </div>
-                  <div className={`
-                    bg-slate-900/60 rounded-md p-2.5 overflow-x-auto max-h-48 custom-scrollbar
-                    ${isError ? 'border border-red-500/20' : ''}
-                  `}>
-                    {isError ? (
-                      <p className="text-[11px] text-red-400 font-mono whitespace-pre-wrap">
-                        {toolCall.error}
-                      </p>
-                    ) : (
-                      <SyntaxHighlightedJSON data={toolCall.result} />
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Loading indicator for result */}
-              {isLoading && (
-                <div className="flex items-center gap-2 py-2 text-slate-400">
-                  <div className="flex gap-1">
-                    <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
-                  <span className="text-[11px]">Waiting for result...</span>
-                </div>
+          {state === 'failed' && (
+            <div className="rounded-chip border border-danger/30 bg-danger/5 p-2.5">
+              <p className="text-body-sm font-medium text-danger">{toolCall.name} couldn’t finish</p>
+              <p className="mt-0.5 text-caption text-fg">{reason}</p>
+              {raw && raw !== reason && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-micro font-semibold uppercase tracking-wider text-muted">Technical details</summary>
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-caption leading-5 text-muted">{raw}</pre>
+                </details>
               )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 
 ToolCallCard.propTypes = {
   toolCall: PropTypes.shape({
+    id: PropTypes.string,
     name: PropTypes.string.isRequired,
     arguments: PropTypes.object,
     result: PropTypes.any,
-    error: PropTypes.string
+    error: PropTypes.any,
   }).isRequired,
-  compact: PropTypes.bool
+  defaultExpanded: PropTypes.bool,
 };
 
 // Export both the component and the icon getter for reuse

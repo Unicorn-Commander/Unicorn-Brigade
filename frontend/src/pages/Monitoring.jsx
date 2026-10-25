@@ -1,437 +1,469 @@
-import { useState, useEffect } from 'react';
+/**
+ * Monitoring — service health, resources and scheduled runs, polled every 15s.
+ * The banner is COMPUTED from the service checks (any unhealthy service → the
+ * banner says so, by name); it can never read "operational" above a failing
+ * service. Every failure carries its reason in human words.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Activity,
   Server,
   Database,
   Zap,
-  AlertCircle,
   CheckCircle,
+  AlertTriangle,
   Clock,
   Cpu,
   HardDrive,
   Network,
-  BarChart3,
-  RefreshCw
+  Wrench,
+  RefreshCw,
+  Bot,
+  CalendarClock,
+  Timer,
+  MemoryStick,
 } from 'lucide-react';
 import { apiJson } from '../services/http';
+import { humanize } from '../utils/errors';
 import Breadcrumbs from '../components/Breadcrumbs';
+import StatCard from '../components/ui/StatCard';
 import TimeSeriesChart from '../components/ui/TimeSeriesChart';
+import {
+  Button,
+  Card,
+  CardHeader,
+  Chip,
+  DataTable,
+  Page,
+  PageHeader,
+  SectionHeader,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  OfflineState,
+  Tooltip,
+} from '../components/ui';
 
-// Rolling window of live resource samples (~10 min at the 15s poll interval).
-const MAX_HISTORY = 40;
-const sampleTime = () =>
-  new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const POLL_MS = 15000;
+const MAX_HISTORY = 40; // ~10 minutes at the 15s interval
+const sampleTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-// Icons + display names for the backend's /monitoring/services entries.
-const SERVICE_ICONS = {
-  database: Database,
-  falkordb: Network,
-  qdrant: Database,
-  'ops-center-llm': Zap,
-  'local-llm-router': Cpu,
-  langfuse: Activity,
-  scheduler: Clock,
+// The backend's /monitoring/services names → how people know them.
+const SERVICE_META = {
+  database: { label: 'PostgreSQL', icon: Database },
+  falkordb: { label: 'FalkorDB graph', icon: Network },
+  qdrant: { label: 'Qdrant vectors', icon: Database },
+  'ops-center-llm': { label: 'Ops-Center LLM', icon: Zap },
+  'local-llm-router': { label: 'Local LLM router', icon: Cpu },
+  langfuse: { label: 'Langfuse tracing', icon: Activity },
+  scheduler: { label: 'Scheduler', icon: Clock },
 };
 
-const SERVICE_LABELS = {
-  database: 'PostgreSQL',
-  falkordb: 'FalkorDB Graph',
-  qdrant: 'Qdrant Vectors',
-  'ops-center-llm': 'Ops-Center LLM',
-  'local-llm-router': 'Local LLM Router',
-  langfuse: 'Langfuse Tracing',
-  scheduler: 'Scheduler (APScheduler)',
+const STATUS_CHIP = {
+  healthy: { tone: 'ok', label: 'Healthy' },
+  unhealthy: { tone: 'danger', label: 'Unhealthy' },
+  degraded: { tone: 'warn', label: 'Degraded' },
+  unknown: { tone: 'neutral', label: 'Unknown' },
 };
 
-const statusColors = (status) => {
-  if (status === 'healthy') return { text: 'text-emerald-400', dot: 'bg-emerald-400' };
-  if (status === 'unhealthy') return { text: 'text-red-400', dot: 'bg-red-400' };
-  return { text: 'text-orange-400', dot: 'bg-orange-400' };
+const RUN_CHIP = {
+  success: { tone: 'ok', label: 'Succeeded' },
+  error: { tone: 'danger', label: 'Failed' },
+  timeout: { tone: 'danger', label: 'Timed out' },
+  running: { tone: 'live', label: 'Running' },
 };
 
-const runStatusBadge = (status) => {
-  if (status === 'success') return 'bg-emerald-500/20 text-emerald-400';
-  if (status === 'error' || status === 'timeout') return 'bg-red-500/20 text-red-400';
-  if (status === 'running') return 'bg-blue-500/20 text-blue-400';
-  return 'bg-slate-500/20 text-slate-400';
-};
+function formatUptime(seconds) {
+  if (!seconds || seconds < 60) return `${Math.round(seconds || 0)}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  if (seconds < 86400) return `${(seconds / 3600).toFixed(1)}h`;
+  return `${(seconds / 86400).toFixed(1)}d`;
+}
 
-const Monitoring = () => {
-  const [systemHealth, setSystemHealth] = useState({
-    status: 'healthy',
-    uptime: '0s',
-    lastCheck: new Date().toISOString()
-  });
-  const [metrics, setMetrics] = useState({
-    totalAgents: 0,
-    activeAgents: 0,
-    totalModels: 0,
-    totalTools: 0
-  });
-  const [resources, setResources] = useState({
-    cpu_percent: 0,
-    memory_percent: 0,
-    memory_used_gb: 0,
-    memory_total_gb: 0,
-    disk_percent: 0
-  });
-  const [serviceChecks, setServiceChecks] = useState([]);
-  // Live time-series accumulated from real /stats resource samples (no mock data).
-  const [resourceHistory, setResourceHistory] = useState([]);
-  const [scheduledRuns, setScheduledRuns] = useState([]);
+/** The backend's check detail, in words a person can act on. */
+function describeCheck(svc) {
+  const d = String(svc.detail || '');
+  if (svc.status === 'healthy') return d || 'Responding normally.';
+  const http = d.match(/HTTP\s+(\d{3})/);
+  if (/ECONNREFUSED|connection refused/i.test(d)) return 'Not accepting connections — the service may be down or still starting.';
+  if (/ETIMEDOUT|timed? ?out/i.test(d)) return 'Timed out — the service is up but not answering in time.';
+  if (/ENOTFOUND|getaddrinfo|name resolution/i.test(d)) return 'Hostname can’t be resolved — check the service name in the deployment.';
+  if (/ECONNRESET/i.test(d)) return 'The connection was dropped mid-check.';
+  if (http && http[1][0] === '5') return `Answered with a server error (HTTP ${http[1]}).`;
+  if (http && http[1][0] === '4') return `Rejected the health check (HTTP ${http[1]}) — likely an auth or path problem.`;
+  if (/unauthori[sz]ed|forbidden|auth/i.test(d)) return 'Rejected the health check — credentials or permissions.';
+  return d ? 'Failing its health check.' : 'No details reported.';
+}
+
+/** The API's own failure, in words that help on THIS page ("check Monitoring" is no help here). */
+function apiFailure(err) {
+  if (err?.status >= 500) {
+    return {
+      title: 'The API is answering with errors',
+      detail: `It responded ${err.status} to the health checks. Try again in a moment; if it keeps happening, look at the API container’s logs.`,
+    };
+  }
+  if (err?.status) return { title: 'The API rejected the health checks', detail: humanize(err, { what: 'reaching the API' }) };
+  return { title: 'Couldn’t reach the API', detail: 'Nothing is answering at the API address. Check that the API container is running, then try again.' };
+}
+
+const pct = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+const gaugeTone = (v) => (v >= 90 ? 'bg-danger' : v >= 70 ? 'bg-warn' : 'bg-ok');
+
+function Gauge({ icon: Icon, label, value, detail }) {
+  const v = pct(value);
+  return (
+    <Card variant="elevated" padding="sm">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-body-sm font-medium text-fg">
+          <Icon aria-hidden="true" className="h-4 w-4 text-muted" />
+          {label}
+        </span>
+        <span className="text-body font-semibold tabular-nums text-fg-strong">{v.toFixed(1)}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-surface" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v)} aria-label={label}>
+        <div className={`h-full rounded-full transition-[width] duration-slow ${gaugeTone(v)}`} style={{ width: `${Math.min(100, v)}%` }} />
+      </div>
+      {detail && <p className="mt-1.5 text-caption text-muted">{detail}</p>}
+    </Card>
+  );
+}
+
+export default function Monitoring() {
+  const navigate = useNavigate();
+  const [stats, setStats] = useState(null);
+  const [statsError, setStatsError] = useState(null);
+  const [checks, setChecks] = useState([]);
+  const [checksError, setChecksError] = useState(null);
+  const [runs, setRuns] = useState([]);
   const [runsError, setRunsError] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [lastChecked, setLastChecked] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [nextIn, setNextIn] = useState(POLL_MS / 1000);
+  const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  const inFlight = useRef(false);
 
-  useEffect(() => {
-    loadMonitoringData();
-    const interval = setInterval(loadMonitoringData, 15000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const formatUptime = (seconds) => {
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-    if (seconds < 86400) return `${(seconds / 3600).toFixed(1)}h`;
-    return `${(seconds / 86400).toFixed(1)}d`;
-  };
-
-  const loadMonitoringData = async () => {
-    setLoading(true);
+  const load = useCallback(async ({ quiet = false } = {}) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    if (quiet) setRefreshing(true);
     try {
       const [statsRes, servicesRes, runsRes] = await Promise.allSettled([
         apiJson('/stats'),
         apiJson('/monitoring/services'),
         apiJson('/scheduled-runs', { redirectOn401: false }),
       ]);
-
       if (statsRes.status === 'fulfilled') {
-        const stats = statsRes.value;
-        setSystemHealth({
-          status: stats.status === 'operational' ? 'healthy' : 'degraded',
-          uptime: formatUptime(stats.uptime_seconds || 0),
-          lastCheck: new Date().toISOString(),
-          version: stats.version
-        });
-        setMetrics({
-          totalAgents: stats.totalAgents || 0,
-          activeAgents: stats.activeAgents || 0,
-          totalModels: stats.totalModels || 0,
-          totalTools: stats.totalTools || 0
-        });
-        if (stats.resources) {
-          setResources(stats.resources);
-          const r = stats.resources;
-          if (r.cpu_percent != null || r.memory_percent != null) {
-            setResourceHistory((prev) =>
-              [
-                ...prev,
-                {
-                  t: sampleTime(),
-                  cpu: Number(r.cpu_percent) || 0,
-                  mem: Number(r.memory_percent) || 0,
-                },
-              ].slice(-MAX_HISTORY)
-            );
-          }
+        const s = statsRes.value;
+        setStats(s);
+        setStatsError(null);
+        const r = s?.resources;
+        if (r && (r.cpu_percent != null || r.memory_percent != null)) {
+          setHistory((prev) => [...prev, { t: sampleTime(), cpu: pct(Number(r.cpu_percent)), mem: pct(Number(r.memory_percent)) }].slice(-MAX_HISTORY));
         }
       } else {
-        console.error('Failed to load monitoring data:', statsRes.reason);
-        setSystemHealth(prev => ({ ...prev, status: 'degraded' }));
+        setStatsError(statsRes.reason);
       }
-
       if (servicesRes.status === 'fulfilled') {
-        setServiceChecks(servicesRes.value.services || []);
+        setChecks(servicesRes.value?.services || []);
+        setChecksError(null);
       } else {
-        console.error('Failed to load service checks:', servicesRes.reason);
-        setServiceChecks([]);
+        setChecksError(servicesRes.reason);
       }
-
       if (runsRes.status === 'fulfilled') {
-        setScheduledRuns(runsRes.value.items || []);
+        setRuns(runsRes.value?.items || []);
         setRunsError(null);
       } else {
-        setScheduledRuns([]);
-        const status = runsRes.reason?.status;
-        setRunsError(
-          status === 401 || status === 403
-            ? 'Sign in with an operator account to view scheduled runs'
-            : 'Failed to load scheduled runs'
-        );
+        setRunsError(runsRes.reason);
       }
+      setLastChecked(new Date());
+      setNextIn(POLL_MS / 1000);
     } finally {
+      inFlight.current = false;
       setLoading(false);
+      setRefreshing(false);
     }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const poll = setInterval(() => load({ quiet: true }), POLL_MS);
+    const tick = setInterval(() => setNextIn((n) => (n > 1 ? n - 1 : POLL_MS / 1000)), 1000);
+    return () => {
+      clearInterval(poll);
+      clearInterval(tick);
+    };
+  }, [load]);
+
+  useEffect(() => {
+    const on = () => {
+      setOffline(false);
+      load({ quiet: true });
+    };
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [load]);
+
+  // The API server itself is a service: reachable when /stats answers.
+  const services = useMemo(() => {
+    const apiUp = Boolean(stats) && !statsError;
+    const api = {
+      key: 'api',
+      label: 'API server',
+      icon: Server,
+      status: apiUp ? 'healthy' : 'unhealthy',
+      latency: null,
+      detail: apiUp ? `Uptime ${formatUptime(stats?.uptime_seconds)}${stats?.version ? ` · v${stats.version}` : ''}` : apiFailure(statsError).detail,
+      raw: apiUp ? null : String(statsError?.message || ''),
+    };
+    const rest = checks.map((svc) => {
+      const meta = SERVICE_META[svc.name] || { label: svc.name, icon: Server };
+      const status = STATUS_CHIP[svc.status] ? svc.status : 'unknown';
+      return {
+        key: svc.name,
+        label: meta.label,
+        icon: meta.icon,
+        status,
+        latency: typeof svc.latency_ms === 'number' ? svc.latency_ms : null,
+        detail: describeCheck({ ...svc, status }),
+        raw: svc.detail || null,
+      };
+    });
+    return [api, ...rest];
+  }, [stats, statsError, checks]);
+
+  const attention = services.filter((s) => s.status !== 'healthy');
+  const apiDown = Boolean(statsError) && Boolean(checksError);
+
+  const banner = apiDown
+    ? { tone: 'danger', icon: AlertTriangle, ...apiFailure(statsError) }
+    : attention.length
+      ? {
+          tone: 'warn',
+          icon: AlertTriangle,
+          title: `${attention.length} service${attention.length === 1 ? '' : 's'} need${attention.length === 1 ? 's' : ''} attention`,
+          detail: attention.map((s) => s.label).join(' · '),
+        }
+      : { tone: 'ok', icon: CheckCircle, title: 'All systems operational', detail: `${services.length} services healthy` };
+
+  const BANNER_CLASS = {
+    ok: 'border-ok/30 bg-ok/10 text-ok',
+    warn: 'border-warn/30 bg-warn/10 text-warn',
+    danger: 'border-danger/30 bg-danger/10 text-danger',
   };
 
-  // API Server card comes from /stats reachability; the rest are the
-  // backend's real per-service checks.
-  const services = [
+  const res = stats?.resources || {};
+  const statCards = [
     {
-      name: 'API Server',
-      status: systemHealth.status === 'healthy' ? 'healthy' : 'degraded',
-      detail: `Uptime: ${systemHealth.uptime}`,
-      icon: Server
+      icon: Bot,
+      label: 'Agents',
+      value: stats?.totalAgents ?? '—',
+      change: (
+        <Tooltip content="Active = agents whose status is “active” in the roster. Paused, draft and archived agents count in the total but not here.">
+          <span tabIndex={0} className="cursor-help underline decoration-dotted underline-offset-2">
+            {stats?.activeAgents ?? '—'} active
+          </span>
+        </Tooltip>
+      ),
     },
-    ...serviceChecks.map((svc) => ({
-      name: SERVICE_LABELS[svc.name] || svc.name,
-      status: svc.status || 'unknown',
-      detail: [
-        typeof svc.latency_ms === 'number' ? `${svc.latency_ms}ms` : null,
-        svc.detail || null,
-      ].filter(Boolean).join(' · '),
-      icon: SERVICE_ICONS[svc.name] || Server
-    }))
+    { icon: Zap, label: 'Models available', value: stats?.totalModels ?? '—', change: 'Across every provider' },
+    { icon: Wrench, label: 'Tools registered', value: stats?.totalTools ?? '—', change: 'Built-in and MCP' },
+    { icon: Timer, label: 'Uptime', value: stats ? formatUptime(stats.uptime_seconds) : '—', change: stats?.version ? `Version ${stats.version}` : 'Since the last restart' },
   ];
 
-  // Static color classes (no dynamic `text-${color}` — Tailwind can't see those).
-  const performanceMetrics = [
+  const runColumns = [
+    { key: 'name', label: 'Run', render: (r) => <span className="font-medium text-fg">{r.name}</span> },
+    { key: 'cron', label: 'Schedule', mono: true },
     {
-      label: 'Total Agents',
-      value: metrics.totalAgents,
-      icon: Activity,
-      colorClass: 'text-unicorn-400'
+      key: 'enabled',
+      label: 'State',
+      render: (r) => (
+        <Chip tone={r.enabled ? 'ok' : 'neutral'} size="xs" dot>
+          {r.enabled ? 'Enabled' : 'Paused'}
+        </Chip>
+      ),
     },
     {
-      label: 'Active Agents',
-      value: metrics.activeAgents,
-      icon: CheckCircle,
-      colorClass: 'text-emerald-400'
+      key: 'lastStatus',
+      label: 'Last result',
+      render: (r) => {
+        const m = RUN_CHIP[r.lastStatus];
+        return m ? (
+          <Chip tone={m.tone} size="xs" dot pulse={r.lastStatus === 'running'}>
+            {m.label}
+          </Chip>
+        ) : (
+          <Chip size="xs">Never run</Chip>
+        );
+      },
     },
-    {
-      label: 'Models Available',
-      value: metrics.totalModels,
-      icon: Zap,
-      colorClass: 'text-orange-400'
-    },
-    {
-      label: 'Tools Registered',
-      value: metrics.totalTools,
-      icon: BarChart3,
-      colorClass: 'text-blue-400'
-    }
+    { key: 'lastRunAt', label: 'Last run', hideOnMobile: true, render: (r) => (r.lastRunAt ? new Date(r.lastRunAt).toLocaleString() : '—') },
   ];
+
+  // ── the four states ──────────────────────────────────────────────────────
+  let body;
+  if (offline && !stats && !checks.length) {
+    body = <OfflineState onRetry={() => load()} />;
+  } else if (loading) {
+    body = (
+      <div className="space-y-6">
+        <div aria-hidden="true" className="h-16 animate-pulse rounded-card border border-border bg-card" />
+        <LoadingState variant="stats" label="Loading monitoring" />
+        <section>
+          <SectionHeader title="Services" />
+          <LoadingState variant="cards" count={4} label="Loading services" />
+        </section>
+      </div>
+    );
+  } else if (apiDown && !checks.length) {
+    const f = apiFailure(statsError);
+    body = <ErrorState title={f.title} detail={f.detail} onRetry={() => load()} />;
+  } else {
+    const B = banner.icon;
+    body = (
+      <div className="space-y-6">
+        <div role="status" className={`flex flex-wrap items-center gap-3 rounded-card border px-4 py-3 ${BANNER_CLASS[banner.tone]}`}>
+          <B aria-hidden="true" className="h-5 w-5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-body font-semibold">{banner.title}</p>
+            <p className="text-body-sm text-muted">{banner.detail}</p>
+          </div>
+          <p className="text-caption text-muted">
+            {lastChecked ? `Checked ${lastChecked.toLocaleTimeString()}` : 'Checking…'}
+          </p>
+        </div>
+
+        <section aria-label="Key numbers" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {statCards.map((m) => (
+            <StatCard key={m.label} icon={m.icon} label={m.label} value={m.value} change={m.change} />
+          ))}
+        </section>
+
+        <section>
+          <SectionHeader title="Services" description={checksError ? undefined : `${services.length} checks, latency as measured by the API`} />
+          {checksError && (
+            <ErrorState compact title="Service checks unavailable" detail={humanize(checksError, { what: 'loading service checks' })} onRetry={() => load({ quiet: true })} className="mb-4" />
+          )}
+          {services.length ? (
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Services">
+              {services.map((s) => {
+                const Icon = s.icon;
+                const chip = STATUS_CHIP[s.status] || STATUS_CHIP.unknown;
+                const chipEl = (
+                  <Chip tone={chip.tone} size="xs" dot pulse={s.status === 'unhealthy'}>
+                    {chip.label}
+                  </Chip>
+                );
+                return (
+                  <li key={s.key}>
+                    <Card padding="sm" className={`h-full ${s.status === 'healthy' ? '' : 'border-warn/40'}`}>
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-elevated text-muted">
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <span className="truncate text-body font-semibold text-fg-strong">{s.label}</span>
+                        </span>
+                        {s.raw ? <Tooltip content={s.raw}>{chipEl}</Tooltip> : chipEl}
+                      </div>
+                      <p className="text-body-sm text-muted">{s.detail}</p>
+                      {s.latency != null && (
+                        <p className="mt-1.5 font-mono text-caption tabular-nums text-subtle">{s.latency} ms</p>
+                      )}
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            !checksError && <EmptyState compact icon={Server} title="No service checks reported" description="The API hasn’t reported any service checks yet." />
+          )}
+        </section>
+
+        <section>
+          <SectionHeader title="Resources" description="Live samples from /stats, every 15 seconds" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <Gauge icon={Cpu} label="CPU" value={res.cpu_percent} />
+            <Gauge icon={MemoryStick} label="Memory" value={res.memory_percent} detail={res.memory_total_gb ? `${res.memory_used_gb ?? 0} of ${res.memory_total_gb} GB` : undefined} />
+            <Gauge icon={HardDrive} label="Disk" value={res.disk_percent} />
+          </div>
+          <Card className="mt-4">
+            <CardHeader title="CPU and memory over time" description={history.length > 1 ? `${history.length} samples · the last ~${Math.round((history.length * POLL_MS) / 60000) || 1} min` : 'Collecting the first samples'} />
+            <TimeSeriesChart
+              series={[
+                { key: 'cpu', label: 'CPU', color: 'var(--chart-1)', data: history.map((p) => p.cpu) },
+                { key: 'mem', label: 'Memory', color: 'var(--chart-2)', data: history.map((p) => p.mem) },
+              ]}
+              labels={history.map((p) => p.t)}
+              yMax={100}
+              unit="%"
+              height={220}
+              emptyLabel="Collecting live samples — the first points appear within 30 seconds"
+            />
+          </Card>
+        </section>
+
+        <section>
+          <SectionHeader
+            title="Scheduled runs"
+            description="The most recent cron-driven agent runs"
+            actions={
+              <Button variant="secondary" size="sm" icon={CalendarClock} onClick={() => navigate('/scheduled-runs')}>
+                Manage runs
+              </Button>
+            }
+          />
+          <DataTable
+            columns={runColumns}
+            rows={runs.slice(0, 8)}
+            rowKey="id"
+            caption="Scheduled runs"
+            dense
+            onRowClick={() => navigate('/scheduled-runs')}
+            error={runsError && { title: 'Couldn’t load scheduled runs', detail: humanize(runsError, { what: 'loading scheduled runs' }), onRetry: () => load({ quiet: true }) }}
+            empty={{
+              icon: CalendarClock,
+              title: 'No scheduled runs yet',
+              description: 'Schedule an agent to run on a cron and it appears here.',
+              action: (
+                <Button size="sm" icon={CalendarClock} onClick={() => navigate('/scheduled-runs')}>
+                  Schedule a run
+                </Button>
+              ),
+            }}
+          />
+        </section>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen p-4 md:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <Breadcrumbs />
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gradient">
-              System Monitoring
-            </h1>
-            <p className="text-slate-400 mt-1">
-              Real-time platform health and performance metrics
-            </p>
-          </div>
-          <button
-            onClick={loadMonitoringData}
-            disabled={loading}
-            className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors flex items-center space-x-2 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
-          </button>
-        </div>
-
-        {/* System Status Banner */}
-        <div className={`backdrop-blur-xl border rounded-xl p-6 ${
-          systemHealth.status === 'healthy'
-            ? 'bg-emerald-500/10 border-emerald-500/30'
-            : 'bg-orange-500/10 border-orange-500/30'
-        }`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              {systemHealth.status === 'healthy' ? (
-                <CheckCircle className="w-8 h-8 text-emerald-400" />
-              ) : (
-                <AlertCircle className="w-8 h-8 text-orange-400" />
-              )}
-              <div>
-                <h2 className={`text-2xl font-bold ${
-                  systemHealth.status === 'healthy' ? 'text-emerald-400' : 'text-orange-400'
-                }`}>
-                  {systemHealth.status === 'healthy' ? 'All Systems Operational' : 'System Degraded'}
-                </h2>
-                <p className="text-slate-400">
-                  Uptime: {systemHealth.uptime} • Last checked: {new Date(systemHealth.lastCheck).toLocaleTimeString()}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Performance Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {performanceMetrics.map((metric, idx) => (
-            <div key={idx} className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <metric.icon className={`w-8 h-8 ${metric.colorClass}`} />
-              </div>
-              <p className="text-3xl font-bold text-white mb-1">{metric.value}</p>
-              <p className="text-sm text-slate-400">{metric.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Service Status */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4">Service Health</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {services.map((service, idx) => {
-              const colors = statusColors(service.status);
-              return (
-                <div key={idx} className="p-4 bg-slate-800/50 rounded-lg">
-                  <div className="flex items-center justify-between mb-3">
-                    <service.icon className={`w-6 h-6 ${colors.text}`} />
-                    <div className={`flex items-center space-x-1 ${colors.text}`}>
-                      <div className={`w-2 h-2 rounded-full ${colors.dot} animate-pulse`}></div>
-                      <span className="text-xs font-medium capitalize">{service.status}</span>
-                    </div>
-                  </div>
-                  <h3 className="font-semibold text-white mb-2">{service.name}</h3>
-                  <p className="text-xs text-slate-400 break-words">{service.detail}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Scheduled Runs */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4">Scheduled Runs (recent)</h2>
-          {runsError ? (
-            <p className="text-slate-400 text-center py-6">{runsError}</p>
-          ) : scheduledRuns.length === 0 ? (
-            <div className="text-center py-6">
-              <Clock className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-              <p className="text-slate-400">No scheduled runs configured</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {scheduledRuns.slice(0, 8).map((run) => (
-                <div key={run.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
-                  <div className="min-w-0">
-                    <p className="font-medium text-white truncate">{run.name}</p>
-                    <p className="text-xs text-slate-400 truncate">
-                      {run.cron} • {run.enabled ? 'enabled' : 'disabled'}
-                    </p>
-                  </div>
-                  <div className="text-right flex-shrink-0 ml-4">
-                    <span className={`px-2 py-0.5 rounded-full text-xs ${runStatusBadge(run.lastStatus)}`}>
-                      {run.lastStatus || 'never run'}
-                    </span>
-                    <p className="text-xs text-slate-400 mt-1">
-                      {run.lastRunAt ? new Date(run.lastRunAt).toLocaleString() : '—'}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Resource Utilization over time — live samples from /stats */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-white">Resource Utilization</h2>
-            <span className="text-xs text-slate-400">
-              Live · sampled every 15s{resourceHistory.length > 1 ? ` · ${resourceHistory.length} points` : ''}
+    <Page width="wide">
+      <PageHeader
+        breadcrumbs={<Breadcrumbs />}
+        eyebrow="System"
+        title="Monitoring"
+        description="Service health, resource use and scheduled runs, refreshed every 15 seconds"
+        actions={
+          <>
+            <span className="text-caption tabular-nums text-muted" aria-live="off">
+              Next check in {nextIn}s
             </span>
-          </div>
-          <TimeSeriesChart
-            series={[
-              { key: 'cpu', label: 'CPU', color: 'var(--chart-1)', data: resourceHistory.map((p) => p.cpu) },
-              { key: 'mem', label: 'Memory', color: 'var(--chart-2)', data: resourceHistory.map((p) => p.mem) },
-            ]}
-            labels={resourceHistory.map((p) => p.t)}
-            yMax={100}
-            unit="%"
-            height={220}
-            emptyLabel="Collecting live samples… (first points appear within ~30s)"
-          />
-        </div>
-
-        {/* Resource Usage */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4">Resource Usage</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-slate-800/50 rounded-lg">
-              <div className="flex items-center space-x-3 mb-3">
-                <Cpu className="w-6 h-6 text-blue-400" />
-                <h3 className="font-semibold text-white">CPU Usage</h3>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Current</span>
-                  <span className="text-white font-semibold">{resources.cpu_percent?.toFixed(1) || 0}%</span>
-                </div>
-                <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-700" style={{ width: `${resources.cpu_percent || 0}%` }}></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 bg-slate-800/50 rounded-lg">
-              <div className="flex items-center space-x-3 mb-3">
-                <HardDrive className="w-6 h-6 text-unicorn-400" />
-                <h3 className="font-semibold text-white">Memory Usage</h3>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">{resources.memory_used_gb || 0} / {resources.memory_total_gb || 0} GB</span>
-                  <span className="text-white font-semibold">{resources.memory_percent?.toFixed(1) || 0}%</span>
-                </div>
-                <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-unicorn-600 to-unicorn-500 transition-all duration-700" style={{ width: `${resources.memory_percent || 0}%` }}></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 bg-slate-800/50 rounded-lg">
-              <div className="flex items-center space-x-3 mb-3">
-                <Database className="w-6 h-6 text-emerald-400" />
-                <h3 className="font-semibold text-white">Disk Usage</h3>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-400">Current</span>
-                  <span className="text-white font-semibold">{resources.disk_percent?.toFixed(1) || 0}%</span>
-                </div>
-                <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-700" style={{ width: `${resources.disk_percent || 0}%` }}></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* System Info */}
-        <div className="backdrop-blur-xl bg-slate-900/50 border border-slate-700/50 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-4">System Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-sm text-slate-400 mb-1">Version</p>
-              <p className="text-white font-semibold">v{systemHealth.version || '—'}</p>
-            </div>
-            <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-sm text-slate-400 mb-1">Workflow Engine</p>
-              <p className="text-white font-semibold">APScheduler + Brigade</p>
-            </div>
-            <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-sm text-slate-400 mb-1">Backend</p>
-              <p className="text-white font-semibold">FastAPI + SQLAlchemy</p>
-            </div>
-            <div className="p-3 bg-slate-800/50 rounded-lg">
-              <p className="text-sm text-slate-400 mb-1">LLM Gateway</p>
-              <p className="text-white font-semibold">Ops-Center</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+            <Button variant="secondary" icon={RefreshCw} loading={refreshing} disabled={loading} onClick={() => load({ quiet: true })}>
+              Refresh
+            </Button>
+          </>
+        }
+      />
+      {body}
+    </Page>
   );
-};
-
-export default Monitoring;
+}

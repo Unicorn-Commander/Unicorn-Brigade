@@ -84,7 +84,7 @@ export default function TimeSeriesChart({
     return (
       <div
         ref={wrapRef}
-        className="flex items-center justify-center rounded-lg border border-border/40 bg-slate-800/30 text-sm text-muted"
+        className="flex items-center justify-center rounded-card border border-border bg-elevated/40 text-body-sm text-muted"
         style={{ height }}
       >
         {emptyLabel}
@@ -127,9 +127,9 @@ export default function TimeSeriesChart({
                 y={y}
                 textAnchor="end"
                 dominantBaseline="middle"
-                fontSize="10"
+                fontSize="11"
                 fill="var(--chart-axis)"
-                style={{ fontVariantNumeric: 'tabular-nums' }}
+                fontVariantNumeric="tabular-nums"
               >
                 {Math.round(t)}
                 {unit}
@@ -163,10 +163,10 @@ export default function TimeSeriesChart({
         })}
 
         {/* x-axis end labels (first + last only, to avoid clutter) */}
-        <text x={padL} y={height - 8} textAnchor="start" fontSize="10" fill="var(--chart-axis)">
+        <text x={padL} y={height - 8} textAnchor="start" fontSize="11" fill="var(--chart-axis)">
           {labels[0]}
         </text>
-        <text x={width - padR} y={height - 8} textAnchor="end" fontSize="10" fill="var(--chart-axis)">
+        <text x={width - padR} y={height - 8} textAnchor="end" fontSize="11" fill="var(--chart-axis)">
           {labels[n - 1]}
         </text>
 
@@ -190,7 +190,7 @@ export default function TimeSeriesChart({
                 cy={yAt(s.data[hover] ?? 0)}
                 r="4"
                 fill={s.color}
-                stroke="#0f172a"
+                stroke="hsl(var(--surface))"
                 strokeWidth="1.5"
               />
             ))}
@@ -201,21 +201,21 @@ export default function TimeSeriesChart({
       {/* Tooltip */}
       {hover != null && (
         <div
-          className="pointer-events-none absolute z-10 rounded-lg border border-border/60 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
+          className="pointer-events-none absolute z-raised rounded-control border border-border bg-overlay px-3 py-2 text-caption shadow-e3"
           style={{
             left: Math.min(Math.max(xAt(hover) - 60, 4), width - 124),
             top: 6,
             minWidth: 120,
           }}
         >
-          <p className="mb-1 font-medium text-slate-300">{labels[hover]}</p>
+          <p className="mb-1 font-medium text-muted">{labels[hover]}</p>
           {activeSeries.map((s) => (
             <div key={s.key} className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-1.5 text-muted">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
+                <svg aria-hidden="true" width="8" height="8" className="shrink-0"><circle cx="4" cy="4" r="4" fill={s.color} /></svg>
                 {s.label}
               </span>
-              <span className="font-semibold text-white" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              <span className="font-semibold tabular-nums text-fg-strong">
                 {Math.round(s.data[hover] ?? 0)}
                 {unit}
               </span>
@@ -227,8 +227,8 @@ export default function TimeSeriesChart({
       {/* Legend (identity is never color-alone) */}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
         {activeSeries.map((s) => (
-          <span key={s.key} className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
+          <span key={s.key} className="flex items-center gap-1.5 text-caption text-muted">
+            <svg aria-hidden="true" width="10" height="10" className="shrink-0"><rect width="10" height="10" rx="2" fill={s.color} /></svg>
             {s.label}
           </span>
         ))}

@@ -12,7 +12,7 @@ from sqlalchemy import desc, select
 from app.auth.middleware import AuthUser, require_admin, require_operator
 from app.auth.roles import UserRole
 from app.core.timezones import BUSINESS_TIMEZONE
-from app.db.database import AsyncSession, get_session
+from app.db.database import AsyncSession, ensure_org_context, get_session
 from app.db.models import Agent, ScheduledRun, ScheduledRunHistory
 from app.services.scheduler import _parse_cron, get_scheduler
 
@@ -30,6 +30,9 @@ class ScheduledRunCreate(BaseModel):
     ownerUserId: Optional[str] = None
     enabled: bool = True
     maxRuntimeSeconds: int = Field(300, ge=5, le=3600)
+    # P-00092: what this schedule is responsible for (the autonomy catalogue's
+    # ``responsibility``). Plain sentences; optional.
+    description: Optional[str] = Field(None, max_length=2000)
 
 
 class ScheduledRunUpdate(BaseModel):
@@ -41,6 +44,8 @@ class ScheduledRunUpdate(BaseModel):
     ownerUserId: Optional[str] = None
     enabled: Optional[bool] = None
     maxRuntimeSeconds: Optional[int] = Field(None, ge=5, le=3600)
+    # Send "" to clear it; omit (or null) to leave it unchanged.
+    description: Optional[str] = Field(None, max_length=2000)
 
 
 class ScheduledRunNowRequest(BaseModel):
@@ -123,9 +128,14 @@ async def create_scheduled_run(
         owner_user_id=owner_id,
         enabled=body.enabled,
         max_runtime_seconds=body.maxRuntimeSeconds,
+        description=(body.description or "").strip() or None,
     )
     session.add(run)
     await session.commit()
+    # The commit returned this request's connection to the pool; the refresh may
+    # check out another one without the org GUC, and FORCE RLS would then hide
+    # the row we just wrote ("Could not refresh instance"). Re-assert it first.
+    await ensure_org_context(session)
     await session.refresh(run)
 
     sched = get_scheduler()
@@ -192,8 +202,11 @@ async def update_scheduled_run(
         value = getattr(body, field)
         if value is not None:
             setattr(run, attr, value)
+    if body.description is not None:
+        run.description = body.description.strip() or None
 
     await session.commit()
+    await ensure_org_context(session)  # see create_scheduled_run: post-commit refresh needs the org GUC
     await session.refresh(run)
 
     sched = get_scheduler()

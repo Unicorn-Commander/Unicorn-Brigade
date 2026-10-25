@@ -1,291 +1,339 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  X,
-  Play,
-  StopCircle,
-  CheckCircle,
-  AlertCircle,
-  Clock,
-  Loader2,
-  ChevronDown,
-  ChevronRight,
-  Terminal,
-  AlertTriangle,
-  Zap,
-  RefreshCw
-} from 'lucide-react';
-import { toast } from 'react-hot-toast';
+/**
+ * WorkflowExecutionPanel — run a workflow, or watch one that is already running.
+ *
+ * A right-hand Sheet on desktop, full-screen on phones. Three live states:
+ *   running  → StatusDot pulse, "step 2 of 5", a live step list
+ *   done     → outputs, cost, tokens
+ *   failed   → the reason in human words + "Retry with self-correction"
+ *
+ * Also exports the shared execution-status vocabulary (EXEC_STATUS,
+ * ExecStatusChip) and the normalisers the Workflows page uses, so a "failed"
+ * is the same red with the same reason on the card, in the table and here.
+ */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Play, StopCircle, ChevronDown, ChevronRight, Zap, RefreshCw, Terminal, PauseCircle } from 'lucide-react';
 import notify from '../utils/notify';
+import { humanize } from '../utils/errors';
 import api from '../services/api';
-import Modal from './ui/Modal';
+import { Button, Chip, Field, Textarea, Sheet, StatusDot, Toggle, Tooltip, Spinner } from './ui';
 
-const terminalExecutionStates = new Set(['completed', 'failed', 'cancelled']);
+// ── vocabulary ──────────────────────────────────────────────────────────────
+export const EXEC_STATUS = {
+  pending: { tone: 'neutral', label: 'Queued', dot: 'idle' },
+  queued: { tone: 'neutral', label: 'Queued', dot: 'idle' },
+  running: { tone: 'live', label: 'Running', dot: 'tool', pulse: true, active: true },
+  delegating: { tone: 'live', label: 'Delegating', dot: 'tool', pulse: true, active: true },
+  waiting_workers: { tone: 'live', label: 'Waiting on workers', dot: 'tool', pulse: true, active: true },
+  aggregating: { tone: 'live', label: 'Aggregating', dot: 'tool', pulse: true, active: true },
+  waiting: { tone: 'warn', label: 'Needs you', dot: 'thinking', pulse: true, active: true },
+  waiting_checkpoint: { tone: 'warn', label: 'Needs you', dot: 'thinking', pulse: true, active: true },
+  paused: { tone: 'warn', label: 'Paused', dot: 'thinking', active: true },
+  completed: { tone: 'ok', label: 'Completed', dot: 'done' },
+  success: { tone: 'ok', label: 'Completed', dot: 'done' },
+  failed: { tone: 'danger', label: 'Failed', dot: 'error' },
+  error: { tone: 'danger', label: 'Failed', dot: 'error' },
+  cancelled: { tone: 'neutral', label: 'Cancelled', dot: 'offline' },
+  skipped: { tone: 'neutral', label: 'Skipped', dot: 'offline' },
+};
+export const execStatus = (state) => EXEC_STATUS[state] || EXEC_STATUS.pending;
+export const isActiveState = (state) => Boolean(execStatus(state).active);
+const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 
-const getRequiredInputs = (workflow) => workflow.required_inputs || workflow.requiredInputs || [];
+export function ExecStatusChip({ state, size = 'sm', className = '' }) {
+  const s = execStatus(state);
+  return (
+    <Chip tone={s.tone} dot pulse={s.pulse} size={size} className={className}>
+      {s.label}
+    </Chip>
+  );
+}
 
-const normalizeExecution = (raw) => {
+// ── normalisers (the API answers in camelCase, older callers used snake) ────
+export const normalizeExecution = (raw) => {
   const exec = raw?.execution || raw?.data?.execution || raw || {};
+  const started = exec.startedAt || exec.started_at;
+  const completed = exec.completedAt || exec.completed_at;
+  const duration = exec.durationSeconds ?? exec.duration_seconds ?? toSeconds(started, completed);
   return {
     id: exec.id || exec.execution_id || exec.executionId,
     workflowId: exec.workflowId || exec.workflow_id,
     workflowName: exec.workflowName || exec.workflow_name,
     state: exec.state || exec.status,
-    startedAt: exec.startedAt || exec.started_at,
-    completedAt: exec.completedAt || exec.completed_at,
+    startedAt: started,
+    completedAt: completed,
+    durationSeconds: duration,
     outputs: exec.outputs || exec.result,
-    totalCost: exec.totalCost || exec.total_cost,
-    totalTokens: exec.totalTokens || exec.total_tokens,
+    totalCost: exec.totalCost ?? exec.total_cost,
+    totalTokens: exec.totalTokens ?? exec.total_tokens,
     stepExecutions: exec.stepExecutions || exec.step_executions || exec.step_results || {},
     error: exec.error,
     modelConfigUsed: exec.modelConfigUsed || exec.model_config_used,
     pendingCheckpoint: exec.pendingCheckpoint || exec.pending_checkpoint,
     checkpointResponses: exec.checkpointResponses || exec.checkpoint_responses,
+    currentStep: exec.currentStep || exec.current_step,
     raw: exec,
   };
 };
 
-const normalizeStepExecutions = (stepExecutions) => {
-  if (Array.isArray(stepExecutions)) {
-    return stepExecutions.map((step) => ({
-      stepId: step.stepId || step.step_id,
-      state: step.state || step.status,
-      startedAt: step.startedAt || step.started_at,
-      completedAt: step.completedAt || step.completed_at,
-      executorId: step.executorId || step.executor_id,
-      modelUsed: step.modelUsed || step.model_used,
-      inputsReceived: step.inputsReceived || step.inputs_received,
-      outputs: step.outputs,
-      workerCalls: step.workerCalls || step.worker_calls,
-      error: step.error,
-      retries: step.retries,
-      tokensUsed: step.tokensUsed || step.tokens_used,
-      estimatedCost: step.estimatedCost || step.estimated_cost,
-      raw: step,
-    }));
-  }
+const normalizeStep = (value, key) => ({
+  stepId: value?.stepId || value?.step_id || key,
+  state: value?.state || value?.status,
+  startedAt: value?.startedAt || value?.started_at,
+  completedAt: value?.completedAt || value?.completed_at,
+  executorId: value?.executorId || value?.executor_id,
+  modelUsed: value?.modelUsed || value?.model_used,
+  outputs: value?.outputs,
+  workerCalls: value?.workerCalls ?? value?.worker_calls,
+  error: value?.error,
+  retries: value?.retries,
+  tokensUsed: value?.tokensUsed ?? value?.tokens_used,
+  estimatedCost: value?.estimatedCost ?? value?.estimated_cost,
+});
 
-  return Object.entries(stepExecutions || {}).map(([key, value]) => ({
-    stepId: value?.stepId || value?.step_id || key,
-    state: value?.state || value?.status,
-    startedAt: value?.startedAt || value?.started_at,
-    completedAt: value?.completedAt || value?.completed_at,
-    executorId: value?.executorId || value?.executor_id,
-    modelUsed: value?.modelUsed || value?.model_used,
-    inputsReceived: value?.inputsReceived || value?.inputs_received,
-    outputs: value?.outputs,
-    workerCalls: value?.workerCalls || value?.worker_calls,
-    error: value?.error,
-    retries: value?.retries,
-    tokensUsed: value?.tokensUsed || value?.tokens_used,
-    estimatedCost: value?.estimatedCost || value?.estimated_cost,
-    raw: value,
-  }));
-};
+export const normalizeStepExecutions = (stepExecutions) =>
+  Array.isArray(stepExecutions)
+    ? stepExecutions.map((s, i) => normalizeStep(s, `step-${i + 1}`))
+    : Object.entries(stepExecutions || {}).map(([key, value]) => normalizeStep(value, key));
 
-const toSeconds = (start, end) => {
+export function toSeconds(start, end) {
   if (!start || !end) return null;
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  if (Number.isNaN(startDate.valueOf()) || Number.isNaN(endDate.valueOf())) return null;
-  return (endDate - startDate) / 1000;
-};
+  const a = new Date(start);
+  const b = new Date(end);
+  if (Number.isNaN(a.valueOf()) || Number.isNaN(b.valueOf())) return null;
+  return (b - a) / 1000;
+}
 
-const getStepIcon = (status) => {
-  switch (status) {
-    case 'completed':
-      return <CheckCircle className="w-5 h-5 text-green-400" />;
-    case 'failed':
-      return <AlertCircle className="w-5 h-5 text-red-400" />;
-    case 'running':
-    case 'delegating':
-    case 'waiting_workers':
-    case 'aggregating':
-      return <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />;
-    case 'skipped':
-      return <AlertTriangle className="w-5 h-5 text-yellow-400" />;
-    default:
-      return <Clock className="w-5 h-5 text-slate-400" />;
-  }
-};
+export function fmtDuration(seconds) {
+  if (seconds == null || Number.isNaN(seconds)) return '—';
+  if (seconds < 1) return '<1s';
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  if (m < 60) return `${m}m ${s}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
 
-const getStateColor = (state) => {
-  switch (state) {
-    case 'completed':
-      return 'text-green-400';
-    case 'failed':
-      return 'text-red-400';
-    case 'running':
-    case 'waiting_checkpoint':
-    case 'paused':
-      return 'text-blue-400';
-    case 'cancelled':
-      return 'text-orange-400';
-    default:
-      return 'text-slate-400';
-  }
-};
+export function fmtCost(cost) {
+  if (cost == null) return '—';
+  if (cost === 0) return 'Free';
+  return `$${Number(cost).toFixed(4)}`;
+}
 
-export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionComplete }) {
+export function fmtTokens(n) {
+  return n == null ? '—' : Number(n).toLocaleString();
+}
+
+const requiredInputsOf = (workflow) => workflow?.required_inputs || workflow?.requiredInputs || [];
+const stepDefsOf = (workflow) => workflow?.steps || workflow?.workflowSteps || [];
+const humanKey = (k) => String(k).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+const Pre = ({ children }) => (
+  <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-control border border-border bg-surface p-3 font-mono text-caption text-fg">
+    {typeof children === 'string' ? children : JSON.stringify(children, null, 2)}
+  </pre>
+);
+
+// ── one step row ────────────────────────────────────────────────────────────
+function StepRow({ index, step, expanded, onToggle }) {
+  const s = execStatus(step.status);
+  const meta = Object.entries(step.metadata || {}).filter(([, v]) => v !== undefined && v !== null && v !== '' && v !== 0);
+  return (
+    <li className={`rounded-card border ${step.status === 'failed' ? 'border-danger/30' : 'border-border'} bg-card`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-left transition-colors duration-fast hover:bg-elevated/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <StatusDot status={s.dot} size="md" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-body font-medium text-fg-strong">
+            {index + 1}. {step.name}
+          </span>
+          <span className="block truncate text-caption text-muted">
+            {s.label}
+            {step.assignedTo ? (
+              <>
+                {' · '}
+                <code className="font-mono">{step.assignedTo}</code>
+              </>
+            ) : null}
+            {step.duration != null ? ` · ${fmtDuration(step.duration)}` : ''}
+          </span>
+        </span>
+        {expanded ? <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted" /> : <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-muted" />}
+      </button>
+      {step.error && !expanded && <p className="px-3 pb-2.5 text-caption text-danger">{step.error}</p>}
+      {expanded && (
+        <div className="space-y-3 border-t border-border px-3 py-3">
+          {step.error && (
+            <div className="rounded-control border border-danger/25 bg-danger/10 p-3">
+              <p className="text-caption font-medium text-danger">What went wrong</p>
+              <p className="mt-1 text-body-sm text-fg">{step.error}</p>
+            </div>
+          )}
+          {step.result && Object.keys(step.result).length > 0 && (
+            <div>
+              <p className="mb-1.5 flex items-center gap-1.5 text-caption text-muted">
+                <Terminal aria-hidden="true" className="h-3.5 w-3.5" /> Result
+              </p>
+              <Pre>{step.result}</Pre>
+            </div>
+          )}
+          {meta.length > 0 && (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-caption">
+              {meta.map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-2">
+                  <dt className="text-muted">{humanKey(k)}</dt>
+                  <dd className="truncate font-mono text-fg">{String(v)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {!step.error && !(step.result && Object.keys(step.result).length) && meta.length === 0 && (
+            <p className="text-caption text-muted">Nothing recorded for this step yet.</p>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+// ── the panel ───────────────────────────────────────────────────────────────
+export default function WorkflowExecutionPanel({ workflow, execution: initialExecution = null, onClose, onExecutionComplete, onExecutionChange }) {
   const [inputs, setInputs] = useState({});
-  const [execution, setExecution] = useState(null);
+  const [inputErrors, setInputErrors] = useState({});
+  const [execution, setExecution] = useState(() => (initialExecution ? normalizeExecution(initialExecution) : null));
   const [executionSource, setExecutionSource] = useState('hierarchical');
   const [loading, setLoading] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [expandedSteps, setExpandedSteps] = useState(new Set());
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [follow, setFollow] = useState(true);
   const [ralphProgress, setRalphProgress] = useState(null);
   const [ralphResult, setRalphResult] = useState(null);
   const [discoveryStartedAt, setDiscoveryStartedAt] = useState(null);
-  const progressRef = useRef(null);
+  const [pollError, setPollError] = useState(null);
+  const listRef = useRef(null);
+  const firstInputRef = useRef(null);
 
+  // Reset when the workflow changes (a new run) or a different execution is opened.
   useEffect(() => {
-    const initialInputs = {};
-    getRequiredInputs(workflow).forEach((input) => {
-      initialInputs[input] = '';
+    const initial = {};
+    requiredInputsOf(workflow).forEach((k) => {
+      initial[k] = '';
     });
-    setInputs(initialInputs);
-    setExecution(null);
+    const ex = initialExecution ? normalizeExecution(initialExecution) : null;
+    setInputs(ex?.raw?.inputs || initial);
+    setInputErrors({});
+    setExecution(ex);
     setExecutionSource('hierarchical');
     setRalphProgress(null);
     setRalphResult(null);
     setExpandedSteps(new Set());
     setDiscoveryStartedAt(null);
-  }, [workflow]);
+    setPollError(null);
+  }, [workflow?.id, initialExecution?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (autoScroll && progressRef.current) {
-      progressRef.current.scrollTop = progressRef.current.scrollHeight;
-    }
-  }, [execution, ralphProgress, autoScroll]);
+    if (follow && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [execution, ralphProgress, follow]);
 
+  // Poll a hierarchical execution until it settles.
   useEffect(() => {
-    if (!execution?.id || executionSource !== 'hierarchical') return;
-    if (terminalExecutionStates.has(execution.state)) return;
-
+    if (!execution?.id || executionSource !== 'hierarchical' || TERMINAL.has(execution.state)) return undefined;
     const interval = setInterval(async () => {
       try {
-        const updatedRaw = await api.getWorkflowExecutionDetails(execution.id);
-        const updated = normalizeExecution(updatedRaw);
+        const updated = normalizeExecution(await api.getWorkflowExecutionDetails(execution.id));
+        setPollError(null);
         setExecution(updated);
-
-        if (terminalExecutionStates.has(updated.state)) {
+        onExecutionChange?.(updated);
+        if (TERMINAL.has(updated.state)) {
           clearInterval(interval);
           if (updated.state === 'completed') {
-            notify.success('Workflow completed successfully');
+            notify.success(`${updated.workflowName || 'Workflow'} completed`);
             onExecutionComplete?.(updated);
           } else if (updated.state === 'failed') {
-            toast.error('Workflow failed');
+            notify.error(`${updated.workflowName || 'Workflow'} failed: ${updated.error || 'no reason was recorded'}`);
           }
         }
-      } catch (error) {
-        console.error('Failed to fetch execution status:', error);
+      } catch (err) {
+        setPollError(err);
       }
     }, 2000);
-
     return () => clearInterval(interval);
-  }, [execution?.id, execution?.state, executionSource, onExecutionComplete]);
+  }, [execution?.id, execution?.state, executionSource, onExecutionComplete, onExecutionChange]);
 
+  // When the API started the run asynchronously without returning its id, find it.
   useEffect(() => {
-    if (!discoveryStartedAt || execution?.id || executionSource !== 'hierarchical') return;
-
+    if (!discoveryStartedAt || execution?.id || executionSource !== 'hierarchical') return undefined;
     const interval = setInterval(async () => {
       try {
         const list = await api.getWorkflowExecutions();
-        const executions = list.executions || list.execution || list || [];
-        const candidates = executions
-          .map(normalizeExecution)
-          .filter((exec) => exec.workflowId === workflow.id || exec.workflowName === workflow.name)
-          .filter((exec) => {
-            if (!exec.startedAt) return true;
-            return new Date(exec.startedAt).valueOf() >= discoveryStartedAt;
-          });
-
-        if (candidates.length > 0) {
-          const newest = candidates.sort((a, b) => {
-            const aTime = a.startedAt ? new Date(a.startedAt).valueOf() : 0;
-            const bTime = b.startedAt ? new Date(b.startedAt).valueOf() : 0;
-            return bTime - aTime;
-          })[0];
+        const all = (list?.executions || list?.execution || (Array.isArray(list) ? list : []) || []).map(normalizeExecution);
+        const newest = all
+          .filter((ex) => ex.workflowId === workflow.id || ex.workflowName === workflow.name)
+          .filter((ex) => !ex.startedAt || new Date(ex.startedAt).valueOf() >= discoveryStartedAt)
+          .sort((a, b) => (b.startedAt ? Date.parse(b.startedAt) : 0) - (a.startedAt ? Date.parse(a.startedAt) : 0))[0];
+        if (newest) {
           setExecution(newest);
+          onExecutionChange?.(newest);
           setDiscoveryStartedAt(null);
         }
-      } catch (error) {
-        console.error('Failed to discover execution:', error);
+      } catch (err) {
+        setPollError(err);
       }
     }, 2000);
-
     return () => clearInterval(interval);
-  }, [discoveryStartedAt, execution?.id, executionSource, workflow.id, workflow.name]);
+  }, [discoveryStartedAt, execution?.id, executionSource, workflow?.id, workflow?.name, onExecutionChange]);
 
+  // Poll a self-correction (Ralph) run.
   useEffect(() => {
-    if (!execution?.id || executionSource !== 'ralph') return;
-
+    if (!execution?.id || executionSource !== 'ralph') return undefined;
     const interval = setInterval(async () => {
       try {
         const progress = await api.getRalphProgress(execution.id);
         setRalphProgress(progress);
-
-        if (progress.is_complete) {
+        if (progress?.is_complete) {
           clearInterval(interval);
           const result = await api.getRalphResult(execution.id);
           setRalphResult(result);
-          setExecution((prev) => ({
-            ...prev,
-            state: result.outcome === 'success' ? 'completed' : 'failed',
-          }));
-          if (result.outcome === 'success') {
-            notify.success('Self-correction completed successfully');
-          } else {
-            toast.error('Self-correction failed');
-          }
+          setExecution((prev) => ({ ...prev, state: result?.outcome === 'success' ? 'completed' : 'failed', error: result?.error || prev?.error }));
+          if (result?.outcome === 'success') notify.success('Self-correction completed');
+          else notify.error(`Self-correction ended: ${result?.outcome || 'failed'}`);
         }
-      } catch (error) {
-        console.error('Failed to fetch Ralph progress:', error);
+      } catch (err) {
+        setPollError(err);
       }
     }, 2000);
-
     return () => clearInterval(interval);
   }, [execution?.id, executionSource]);
 
   const handleExecute = async (e) => {
     e.preventDefault();
-
-    const requiredInputs = getRequiredInputs(workflow);
-    const missingInputs = requiredInputs.filter(
-      (input) => !inputs[input] || inputs[input].trim() === ''
-    );
-
-    if (missingInputs.length > 0) {
-      toast.error(`Missing required inputs: ${missingInputs.join(', ')}`);
-      return;
-    }
+    const required = requiredInputsOf(workflow);
+    const errs = {};
+    required.forEach((k) => {
+      if (!inputs[k] || !String(inputs[k]).trim()) errs[k] = `${humanKey(k)} is needed before the run can start.`;
+    });
+    setInputErrors(errs);
+    if (Object.keys(errs).length) return;
 
     setLoading(true);
-    setExecution({
-      id: null,
-      workflowId: workflow.id,
-      workflowName: workflow.name,
-      state: 'running',
-      stepExecutions: {},
-    });
+    setExecution({ id: null, workflowId: workflow.id, workflowName: workflow.name, state: 'running', stepExecutions: {} });
     setDiscoveryStartedAt(Date.now());
     try {
-      const resultRaw = await api.executeWorkflow(workflow.id, inputs, null, true);
-      const result = normalizeExecution(resultRaw);
-
+      const result = normalizeExecution(await api.executeWorkflow(workflow.id, inputs, null, true));
       if (result.id && result.id !== 'pending') {
         setExecution(result);
+        onExecutionChange?.(result);
       } else {
-        setExecution((prev) => ({
-          ...prev,
-          state: prev?.state || 'queued',
-        }));
+        setExecution((prev) => ({ ...prev, state: prev?.state || 'queued' }));
       }
-
-      notify.success('Workflow execution started');
-    } catch (error) {
-      console.error('Failed to start workflow:', error);
-      toast.error(error?.message || 'Failed to start workflow');
+      notify.success(`${workflow.name} started`);
+    } catch (err) {
+      notify.error(humanize(err, { what: 'starting the workflow' }));
       setExecution(null);
+      setDiscoveryStartedAt(null);
     } finally {
       setLoading(false);
     }
@@ -293,17 +341,20 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
 
   const handleCancel = async () => {
     if (!execution?.id) return;
-
+    setCancelling(true);
     try {
-      if (executionSource === 'ralph') {
-        await api.cancelRalphExecution(execution.id);
-      } else {
-        await api.cancelWorkflowExecution(execution.id);
-      }
+      if (executionSource === 'ralph') await api.cancelRalphExecution(execution.id);
+      else await api.cancelWorkflowExecution(execution.id);
       notify.success('Workflow cancelled');
-      setExecution((prev) => ({ ...prev, state: 'cancelled' }));
-    } catch (error) {
-      toast.error('Failed to cancel workflow');
+      setExecution((prev) => {
+        const next = { ...prev, state: 'cancelled' };
+        onExecutionChange?.(next);
+        return next;
+      });
+    } catch (err) {
+      notify.error(humanize(err, { what: 'cancelling the workflow' }));
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -315,420 +366,236 @@ export default function WorkflowExecutionPanel({ workflow, onClose, onExecutionC
         max_iterations: 5,
         retry_failed_execution: execution?.id,
       });
-
-      setExecution({
-        id: result.execution_id,
-        workflowId: result.workflow_id,
-        workflowName: workflow.name,
-        state: result.status || 'running',
-      });
+      setExecution({ id: result.execution_id, workflowId: result.workflow_id, workflowName: workflow.name, state: result.status || 'running', stepExecutions: {} });
       setExecutionSource('ralph');
       setRalphProgress(null);
       setRalphResult(null);
-      notify.success('Retrying with self-correction enabled');
-    } catch (error) {
-      toast.error(error?.message || 'Failed to retry workflow');
+      notify.success('Retrying with self-correction');
+    } catch (err) {
+      notify.error(humanize(err, { what: 'retrying the workflow' }));
     } finally {
       setLoading(false);
     }
   };
 
-  const toggleStep = (stepId) => {
+  const toggleStep = (stepId) =>
     setExpandedSteps((prev) => {
       const next = new Set(prev);
-      if (next.has(stepId)) {
-        next.delete(stepId);
-      } else {
-        next.add(stepId);
-      }
+      if (next.has(stepId)) next.delete(stepId);
+      else next.add(stepId);
       return next;
     });
-  };
 
-  const stepDefinitions = workflow.steps || workflow.workflowSteps || [];
-  const stepExecutionList = normalizeStepExecutions(execution?.stepExecutions || {});
+  const stepDefinitions = stepDefsOf(workflow);
+  const stepExecutionList = useMemo(() => normalizeStepExecutions(execution?.stepExecutions || {}), [execution?.stepExecutions]);
 
   const steps = useMemo(() => {
     const resolved = [];
-    const usedStepIds = new Set();
-
-    stepDefinitions.forEach((stepDef, index) => {
-      const stepId = stepDef.id || stepDef.step_id || stepDef.name || `step-${index + 1}`;
-      const matching = stepExecutionList.find((item) => item.stepId === stepId) || stepExecutionList[index];
-
-      usedStepIds.add(stepId);
-
-      const duration = toSeconds(matching?.startedAt, matching?.completedAt);
-
-      resolved.push({
-        id: stepId,
-        name: stepDef.name || stepDef.title || stepDef.executor || `Step ${index + 1}`,
-        assignedTo: stepDef.executor || stepDef.assigned_to || stepDef.assignedTo,
-        status: matching?.state || 'pending',
-        duration,
-        error: matching?.error,
-        result: matching?.outputs,
-        metadata: {
-          model_used: matching?.modelUsed,
-          executor_id: matching?.executorId,
-          tokens_used: matching?.tokensUsed,
-          estimated_cost: matching?.estimatedCost,
-          retries: matching?.retries,
-        },
-      });
+    const used = new Set();
+    const fromExec = (m) => ({
+      status: m?.state || 'pending',
+      duration: toSeconds(m?.startedAt, m?.completedAt),
+      error: m?.error,
+      result: m?.outputs,
+      metadata: { model: m?.modelUsed, executor: m?.executorId, tokens: m?.tokensUsed, cost: m?.estimatedCost, retries: m?.retries, worker_calls: m?.workerCalls },
     });
-
-    stepExecutionList.forEach((stepExec, index) => {
-      if (usedStepIds.has(stepExec.stepId)) return;
-      const duration = toSeconds(stepExec.startedAt, stepExec.completedAt);
-      resolved.push({
-        id: stepExec.stepId || `step-exec-${index + 1}`,
-        name: stepExec.stepId || `Step ${index + 1}`,
-        assignedTo: stepExec.executorId,
-        status: stepExec.state || 'pending',
-        duration,
-        error: stepExec.error,
-        result: stepExec.outputs,
-        metadata: {
-          model_used: stepExec.modelUsed,
-          executor_id: stepExec.executorId,
-          tokens_used: stepExec.tokensUsed,
-          estimated_cost: stepExec.estimatedCost,
-          retries: stepExec.retries,
-        },
-      });
+    stepDefinitions.forEach((def, index) => {
+      const id = def.id || def.step_id || def.name || `step-${index + 1}`;
+      const m = stepExecutionList.find((x) => x.stepId === id) || (stepDefinitions.length === stepExecutionList.length ? stepExecutionList[index] : null);
+      used.add(id);
+      resolved.push({ id, name: def.name || def.title || def.executor || `Step ${index + 1}`, assignedTo: def.executor || def.assigned_to || def.assignedTo, ...fromExec(m) });
     });
-
+    stepExecutionList.forEach((m, index) => {
+      if (used.has(m.stepId)) return;
+      resolved.push({ id: m.stepId || `exec-${index}`, name: humanKey(m.stepId || `Step ${index + 1}`), assignedTo: m.executorId, ...fromExec(m) });
+    });
     return resolved;
   }, [stepDefinitions, stepExecutionList]);
 
-  const completedStepCount = steps.filter((step) => step.status === 'completed').length;
-  const totalStepCount = steps.length;
-  const progressPercent = execution?.raw?.progress_percent
-    ?? (totalStepCount > 0 ? Math.round((completedStepCount / totalStepCount) * 100) : 0);
-  const currentStepIndex = execution?.raw?.current_step ?? completedStepCount;
+  const completedCount = steps.filter((s) => s.status === 'completed').length;
+  const total = steps.length;
+  const percent = execution?.raw?.progress_percent ?? (total ? Math.round((completedCount / total) * 100) : 0);
+  const runningIndex = steps.findIndex((s) => isActiveState(s.status));
+  const currentIndex = runningIndex >= 0 ? runningIndex + 1 : Math.min(completedCount + 1, total);
+  const state = execution?.state;
+  const status = execStatus(state);
+  const active = isActiveState(state);
+  const required = requiredInputsOf(workflow);
+  const failReason = execution?.error || ralphResult?.error || steps.find((s) => s.error)?.error;
+  const checkpoint = execution?.pendingCheckpoint;
 
   return (
-    <Modal
-      onClose={onClose}
-      ariaLabel={`${workflow.name} execution`}
-      showClose={false}
-      closeOnBackdrop={false}
-      panelClassName="bg-slate-800/90 backdrop-blur-xl border border-slate-700/50 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col focus:outline-none"
-    >
-        <div className="flex justify-between items-start p-6 border-b border-slate-700/50">
-          <div>
-            <h2 className="text-2xl font-bold text-white">{workflow.name}</h2>
-            <p className="text-sm text-slate-400 mt-1">{workflow.description}</p>
-            <div className="flex gap-2 mt-2">
-              {workflow.tags?.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-1 bg-unicorn-500/20 text-unicorn-400 text-xs rounded-full"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
+    <Sheet isOpen={Boolean(workflow)} onClose={onClose} side="right" title={workflow?.name} initialFocusRef={execution ? undefined : firstInputRef} className="sm:max-w-xl">
+      {workflow && (
+        <div className="space-y-5 pt-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {execution ? <ExecStatusChip state={state} /> : <Chip size="sm">Not started</Chip>}
+            {(workflow.tags || []).map((t) => (
+              <Chip key={t} size="xs">
+                {t}
+              </Chip>
+            ))}
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Close dialog"
-            className="p-3 min-h-[44px] min-w-[44px] hover:bg-slate-700/50 rounded-lg transition-colors"
-          >
-            <X className="w-6 h-6 text-slate-400" />
-          </button>
-        </div>
+          {workflow.description && <p className="text-body-sm text-muted">{workflow.description}</p>}
 
-        <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-          <div className="w-full lg:w-1/3 border-b lg:border-b-0 lg:border-r border-slate-700/50 p-6 overflow-y-auto">
-            <h3 className="text-lg font-semibold text-white mb-4">
-              {execution ? 'Inputs (Submitted)' : 'Configure Workflow'}
-            </h3>
-
-            <form onSubmit={handleExecute} className="space-y-4">
-              {getRequiredInputs(workflow).map((input) => (
-                <div key={input}>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    {input.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-                    <span className="text-red-400">*</span>
-                  </label>
-                  <textarea
-                    value={inputs[input] || ''}
-                    onChange={(e) => setInputs({ ...inputs, [input]: e.target.value })}
-                    disabled={!!execution}
-                    className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-unicorn-500 disabled:opacity-50 min-h-[80px]"
-                    placeholder={`Enter ${input.replace(/_/g, ' ')}...`}
+          {/* ── inputs / start ── */}
+          {!execution ? (
+            <form onSubmit={handleExecute} noValidate className="space-y-4">
+              {required.length === 0 && <p className="text-body-sm text-muted">This workflow needs no inputs.</p>}
+              {required.map((key, i) => (
+                <Field key={key} label={humanKey(key)} required error={inputErrors[key]}>
+                  <Textarea
+                    ref={i === 0 ? firstInputRef : undefined}
+                    rows={3}
+                    value={inputs[key] || ''}
+                    onChange={(e) => setInputs({ ...inputs, [key]: e.target.value })}
+                    placeholder={`Enter the ${humanKey(key).toLowerCase()}…`}
                   />
-                </div>
+                </Field>
               ))}
-
-              {!execution && (
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full px-4 py-3 bg-gradient-to-r from-unicorn-600 to-unicorn-500 text-white rounded-lg hover:from-unicorn-600 hover:to-unicorn-500 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Starting...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-5 h-5" />
-                      <span>Execute Workflow</span>
-                    </>
-                  )}
-                </button>
-              )}
-
-              {execution && ['running', 'waiting_checkpoint', 'paused'].includes(execution.state) && (
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center space-x-2"
-                >
-                  <StopCircle className="w-5 h-5" />
-                  <span>Cancel Workflow</span>
-                </button>
-              )}
-
-              {execution && execution.state === 'failed' && (
-                <button
-                  type="button"
-                  onClick={handleRetryWithRalph}
-                  disabled={loading}
-                  className="w-full px-4 py-3 bg-gradient-to-r from-orange-600 to-yellow-600 text-white rounded-lg hover:from-orange-700 hover:to-yellow-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-2"
-                >
-                  <Zap className="w-5 h-5" />
-                  <span>Retry with Self-Correction</span>
-                </button>
-              )}
+              <Button type="submit" icon={Play} loading={loading} className="w-full">
+                Run workflow
+              </Button>
             </form>
-
-            {execution && (
-              <div className="mt-6 pt-6 border-t border-slate-700/50 space-y-3">
-                <h4 className="text-sm font-semibold text-slate-300">Execution Info</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Status:</span>
-                    <span className={`font-medium ${getStateColor(execution.state)}`}>
-                      {(execution.state || 'pending').toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Steps:</span>
-                    <span className="text-white">
-                      {completedStepCount} / {totalStepCount}
-                    </span>
-                  </div>
-                  {execution.totalCost !== undefined && execution.totalCost !== null && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Cost:</span>
-                      <span className="text-green-400">${execution.totalCost.toFixed(4)}</span>
-                    </div>
-                  )}
-                  {execution.startedAt && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Started:</span>
-                      <span className="text-white text-xs">
-                        {new Date(execution.startedAt).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 flex flex-col">
-            {execution ? (
-              <>
-                <div className="p-4 border-b border-slate-700/50 flex justify-between items-center bg-slate-800/50">
-                  <h3 className="text-lg font-semibold text-white">Execution Progress</h3>
-                  <label className="flex items-center space-x-2 text-sm text-slate-400">
-                    <input
-                      type="checkbox"
-                      checked={autoScroll}
-                      onChange={(e) => setAutoScroll(e.target.checked)}
-                      className="rounded text-unicorn-600 focus:ring-unicorn-500"
-                    />
-                    <span>Auto-scroll</span>
-                  </label>
-                </div>
-
-                <div ref={progressRef} className="flex-1 overflow-y-auto p-6 space-y-3">
-                  {execution.state === 'running' && (
-                    <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-slate-400">
-                          Step {currentStepIndex} of {totalStepCount || '?'}
-                        </span>
-                        <span className="text-sm text-unicorn-400">
-                          {progressPercent}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-700/50 rounded-full h-2">
-                        <div
-                          className="bg-gradient-to-r from-unicorn-600 to-unicorn-500 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${progressPercent}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {executionSource === 'ralph' && (
-                    <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4 mb-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <RefreshCw className="w-5 h-5 text-orange-400" />
-                          <span className="text-sm font-medium text-orange-300">Self-Correction in Progress</span>
-                        </div>
-                        {ralphProgress?.progress_percent !== undefined && (
-                          <span className="text-sm text-orange-200">
-                            {ralphProgress.progress_percent}%
-                          </span>
-                        )}
-                      </div>
-                      {ralphProgress && (
-                        <div className="mt-3 text-xs text-slate-300 grid grid-cols-2 gap-2">
-                          <div>Iteration: {ralphProgress.iteration} / {ralphProgress.max_iterations}</div>
-                          <div>Tasks: {ralphProgress.tasks?.completed || 0} / {ralphProgress.tasks?.total || 0}</div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {steps.map((step, index) => (
-                    <div
-                      key={step.id}
-                      className="bg-slate-700/30 border border-slate-600/50 rounded-lg overflow-hidden"
-                    >
-                      <button
-                        onClick={() => toggleStep(step.id)}
-                        className="w-full flex items-center justify-between p-4 hover:bg-slate-700/50 transition-colors"
-                      >
-                        <div className="flex items-center space-x-3">
-                          {getStepIcon(step.status)}
-                          <div className="text-left">
-                            <div className="font-medium text-white">
-                              Step {index + 1}: {step.name}
-                            </div>
-                            {step.assignedTo && (
-                              <div className="text-xs text-slate-400 mt-1">
-                                Assigned to: {step.assignedTo}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          {step.duration !== null && step.duration !== undefined && (
-                            <span className="text-xs text-slate-400">
-                              {step.duration.toFixed(2)}s
-                            </span>
-                          )}
-                          {expandedSteps.has(step.id) ? (
-                            <ChevronDown className="w-5 h-5 text-slate-400" />
-                          ) : (
-                            <ChevronRight className="w-5 h-5 text-slate-400" />
-                          )}
-                        </div>
-                      </button>
-
-                      {expandedSteps.has(step.id) && (
-                        <div className="px-4 pb-4 space-y-3 border-t border-slate-600/50 pt-4">
-                          {step.error && (
-                            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                              <div className="flex items-start space-x-2">
-                                <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
-                                <div className="flex-1">
-                                  <div className="text-sm font-medium text-red-300">Error</div>
-                                  <div className="text-sm text-red-200 mt-1">{step.error}</div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {step.result && (
-                            <div className="bg-slate-800/50 rounded-lg p-3">
-                              <div className="flex items-center space-x-2 mb-2">
-                                <Terminal className="w-4 h-4 text-slate-400" />
-                                <span className="text-sm font-medium text-slate-300">Result</span>
-                              </div>
-                              <pre className="text-xs text-slate-300 overflow-x-auto whitespace-pre-wrap">
-                                {typeof step.result === 'string'
-                                  ? step.result
-                                  : JSON.stringify(step.result, null, 2)}
-                              </pre>
-                            </div>
-                          )}
-
-                          {step.metadata && (
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              {Object.entries(step.metadata)
-                                .filter(([, value]) => value !== undefined && value !== null && value !== '')
-                                .map(([key, value]) => (
-                                  <div key={key} className="flex justify-between">
-                                    <span className="text-slate-400">{key}:</span>
-                                    <span className="text-white">{String(value)}</span>
-                                  </div>
-                                ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+          ) : (
+            Object.keys(inputs || {}).length > 0 && (
+              <details className="rounded-control border border-border bg-surface/60 px-3 py-2">
+                <summary className="cursor-pointer text-body-sm font-medium text-fg">Inputs</summary>
+                <dl className="mt-2 space-y-1.5">
+                  {Object.entries(inputs).map(([k, v]) => (
+                    <div key={k}>
+                      <dt className="text-caption text-muted">{humanKey(k)}</dt>
+                      <dd className="whitespace-pre-wrap text-body-sm text-fg">{String(v) || '—'}</dd>
                     </div>
                   ))}
+                </dl>
+              </details>
+            )
+          )}
 
-                  {steps.length === 0 && (
-                    <div className="text-center py-12 text-slate-400">
-                      <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
-                      <p>Initializing workflow execution...</p>
+          {/* ── progress / outcome ── */}
+          {execution && (
+            <section aria-live="polite" className="space-y-3">
+              {active && (
+                <div className="rounded-card border border-border bg-card p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2 text-body-sm">
+                    <span className="flex items-center gap-2 text-fg">
+                      <StatusDot status={status.dot} size="md" />
+                      {execution.id ? (total ? `Step ${currentIndex} of ${total}` : 'Starting…') : 'Queued — waiting for the engine to pick it up'}
+                    </span>
+                    <span className="tabular-nums text-muted">{percent}%</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-elevated" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
+                    <div className="h-full rounded-full bg-accent-fill transition-[width] duration-slow ease-standard" style={{ width: `${percent}%` }} />
+                  </div>
+                  {checkpoint && (
+                    <div className="mt-3 flex items-start gap-2 rounded-control border border-warn/25 bg-warn/10 p-2.5">
+                      <PauseCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
+                      <div className="text-body-sm">
+                        <p className="font-medium text-fg-strong">{checkpoint.name || 'Checkpoint'}</p>
+                        <p className="text-fg">{checkpoint.prompt || 'This run is waiting for a decision.'}</p>
+                      </div>
                     </div>
                   )}
                 </div>
-
-                {execution.state === 'completed' && execution.outputs && (
-                  <div className="p-6 border-t border-slate-700/50 bg-green-500/5">
-                    <h4 className="text-lg font-semibold text-green-400 mb-3 flex items-center space-x-2">
-                      <CheckCircle className="w-5 h-5" />
-                      <span>Workflow Completed</span>
-                    </h4>
-                    <div className="bg-slate-800/50 rounded-lg p-4">
-                      <pre className="text-sm text-slate-300 overflow-x-auto whitespace-pre-wrap">
-                        {typeof execution.outputs === 'string'
-                          ? execution.outputs
-                          : JSON.stringify(execution.outputs, null, 2)}
-                      </pre>
-                    </div>
-                  </div>
-                )}
-
-                {executionSource === 'ralph' && ralphResult && (
-                  <div className="p-6 border-t border-slate-700/50 bg-orange-500/5">
-                    <h4 className="text-lg font-semibold text-orange-300 mb-3 flex items-center space-x-2">
-                      <RefreshCw className="w-5 h-5" />
-                      <span>Self-Correction Result</span>
-                    </h4>
-                    <div className="bg-slate-800/50 rounded-lg p-4">
-                      <pre className="text-sm text-slate-300 overflow-x-auto whitespace-pre-wrap">
-                        {JSON.stringify(ralphResult, null, 2)}
-                      </pre>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-slate-400">
-                <div className="text-center">
-                  <Play className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg">Ready to execute</p>
-                  <p className="text-sm mt-2">Fill in the inputs and click Execute Workflow</p>
+              )}
+              {state === 'failed' && (
+                <div className="rounded-card border border-danger/30 bg-danger/10 p-3">
+                  <p className="text-body-sm font-medium text-danger">The run failed</p>
+                  <p className="mt-1 text-body-sm text-fg">{failReason || 'No reason was recorded for this failure.'}</p>
+                  <Button variant="secondary" size="sm" icon={Zap} loading={loading} onClick={handleRetryWithRalph} className="mt-3">
+                    Retry with self-correction
+                  </Button>
                 </div>
+              )}
+              {state === 'completed' && (
+                <div className="rounded-card border border-ok/25 bg-ok/10 p-3">
+                  <p className="text-body-sm font-medium text-ok">Completed</p>
+                  <p className="mt-1 text-caption text-muted">
+                    {fmtDuration(execution.durationSeconds)} · {fmtCost(execution.totalCost)}
+                    {execution.totalTokens != null ? ` · ${fmtTokens(execution.totalTokens)} tokens` : ''}
+                  </p>
+                  {execution.outputs && Object.keys(execution.outputs).length > 0 && (
+                    <div className="mt-3">
+                      <Pre>{execution.outputs}</Pre>
+                    </div>
+                  )}
+                </div>
+              )}
+              {state === 'cancelled' && <p className="text-body-sm text-muted">This run was cancelled.</p>}
+              {executionSource === 'ralph' && (
+                <div className="rounded-card border border-warn/25 bg-warn/10 p-3">
+                  <p className="flex items-center gap-2 text-body-sm font-medium text-fg-strong">
+                    <RefreshCw aria-hidden="true" className="h-4 w-4 text-warn" /> Self-correction
+                    {ralphProgress?.progress_percent != null && <span className="ml-auto tabular-nums text-muted">{ralphProgress.progress_percent}%</span>}
+                  </p>
+                  {ralphProgress && (
+                    <p className="mt-1 text-caption text-muted">
+                      Iteration {ralphProgress.iteration} of {ralphProgress.max_iterations} · tasks {ralphProgress.tasks?.completed || 0} / {ralphProgress.tasks?.total || 0}
+                    </p>
+                  )}
+                  {ralphResult && (
+                    <div className="mt-3">
+                      <Pre>{ralphResult}</Pre>
+                    </div>
+                  )}
+                </div>
+              )}
+              {pollError && <p className="text-caption text-warn">Lost touch with the engine while refreshing: {humanize(pollError, { what: 'refreshing the run' })}</p>}
+            </section>
+          )}
+
+          {/* ── steps ── */}
+          {execution && (
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-caption font-semibold uppercase tracking-wider text-muted">Steps</p>
+                {active && (
+                  <label className="flex items-center gap-2 text-caption text-muted">
+                    Follow
+                    <Toggle checked={follow} onChange={setFollow} label="Follow the newest step" />
+                  </label>
+                )}
               </div>
-            )}
-          </div>
+              {steps.length === 0 ? (
+                <p className="flex items-center gap-2 py-6 text-body-sm text-muted">
+                  <Spinner /> Waiting for the first step…
+                </p>
+              ) : (
+                <ol ref={listRef} className="max-h-[50vh] space-y-2 overflow-y-auto pr-1" aria-label="Workflow steps">
+                  {steps.map((step, i) => (
+                    <StepRow key={step.id} index={i} step={step} expanded={expandedSteps.has(step.id)} onToggle={() => toggleStep(step.id)} />
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
+
+          {execution && execution.modelConfigUsed && (
+            <details className="rounded-control border border-border bg-surface/60 px-3 py-2">
+              <summary className="cursor-pointer text-body-sm font-medium text-fg">Model configuration</summary>
+              <div className="mt-2">
+                <Pre>{execution.modelConfigUsed}</Pre>
+              </div>
+            </details>
+          )}
+
+          {execution && (
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+              {active && execution.id && (
+                <Tooltip content="Stops the run; finished steps keep their results">
+                  <Button variant="danger" icon={StopCircle} loading={cancelling} onClick={handleCancel}>
+                    Cancel run
+                  </Button>
+                </Tooltip>
+              )}
+              <Button variant="secondary" onClick={onClose}>
+                Close
+              </Button>
+            </div>
+          )}
         </div>
-    </Modal>
+      )}
+    </Sheet>
   );
 }

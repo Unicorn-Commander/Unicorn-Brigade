@@ -1,0 +1,265 @@
+/* ==========================================================================
+ * UNICORN BRIGADE DESIGN TOKENS — the one place colour, elevation and motion
+ * are decided. Everything else (tailwind.config.js, the ui/ primitives, every
+ * page) consumes these; nothing else may invent a colour.
+ *
+ * FORMAT: colour tokens are HSL channel triples ("229 24% 11%"), consumed by
+ * tailwind.config.js as hsl(var(--token) / <alpha-value>) so `bg-card/60`
+ * style alpha works. A few ready-made CSS colours/gradients sit at the end.
+ *
+ * THEMES: dark is the default (values on :root, so first paint and no-JS are
+ * dark, matching the brand). Light overrides live on :root[data-theme="light"].
+ * src/utils/theme.js flips data-theme; index.html does it before first paint.
+ *
+ * CONTRAST: scripts/audit-contrast.mjs parses THIS file, resolves both themes
+ * and asserts WCAG 2.2 AA on every text/surface pairing a user can see plus
+ * 3:1 on focus rings and status dots. Run `npm run audit`. Never lower a
+ * threshold to make it pass — change the colour.
+ *
+ * NAMING (what each token is FOR, not what it looks like):
+ *   bg · surface · card · elevated · overlay   surfaces, from page to popover
+ *   border · border-strong                     hairline vs. input/active edge
+ *   fg · fg-strong · muted · subtle            text, from loudest to quietest
+ *   accent · accent-fill · on-accent           brand: text-safe / button fill / its text
+ *   ok · warn · danger · info · live           status TEXT + icons (text-safe)
+ *   *-fill · on-warn                           solid status fills + their text
+ *   ring                                       the one focus ring
+ * ====================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces — near-black navy, calmer and less saturated than slate-950. */
+  --bg: 232 30% 5%;
+  --surface: 230 26% 9%;
+  --card: 229 24% 11%;
+  --elevated: 227 20% 16%;
+  --overlay: 230 26% 8%;
+
+  /* Edges */
+  --border: 226 18% 28%;
+  --border-strong: 226 16% 40%;
+
+  /* Text */
+  --fg: 220 30% 96%;
+  --fg-strong: 0 0% 100%;
+  --muted: 222 16% 68%;
+  --subtle: 222 12% 57%;
+
+  /* Brand accent — the unicorn magenta the product has carried since launch.
+   * `accent` is text-safe on every dark surface; `accent-fill` is the button
+   * fill (darker, so white text clears 4.5:1 — the two jobs need two values). */
+  --accent: 329 86% 70%;
+  --accent-fill: 332 78% 47%;
+  --on-accent: 0 0% 100%;
+
+  /* Status (text-safe on dark surfaces) */
+  --ok: 158 64% 52%;
+  --warn: 40 95% 58%;
+  --danger: 0 90% 70%;
+  --info: 201 90% 62%;
+  --live: 187 85% 53%;
+
+  /* Solid status fills (white text on ok/danger/info; dark text on warn) */
+  --ok-fill: 158 70% 28%;
+  --warn-fill: 40 90% 42%;
+  --on-warn: 30 60% 10%;
+  --danger-fill: 0 70% 46%;
+  --info-fill: 203 85% 36%;
+
+  /* Focus ring — one ring, everywhere. */
+  --ring: 329 86% 70%;
+
+  /* Legacy aliases kept so nothing still reading them goes blank. New code
+   * must not use these. */
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --card-foreground: var(--fg);
+  --primary: var(--accent);
+  --primary-foreground: var(--on-accent);
+
+  /* Data-viz series (CVD-safe blue + magenta pair, validated on the dark card). */
+  --chart-1: #3987e5;
+  --chart-2: #d55181;
+  --chart-3: #199e70;
+  --chart-grid: rgba(148, 163, 184, 0.14);
+  --chart-axis: #94a3b8;
+
+  /* Elevation — shadows are black-based on dark; the ring edge keeps a panel
+   * legible against a same-tone surface. */
+  --shadow-e1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-e2: 0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 0 0 1px hsl(var(--border) / 0.6);
+  --shadow-e3: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 0 0 1px hsl(var(--border) / 0.7);
+  --shadow-e4: 0 24px 64px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px hsl(var(--border-strong) / 0.6);
+
+  /* Motion */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* The brand gradient — The General's rainbow mane. Display moments ONLY:
+   * the wordmark, one word in a hero. Never a button, never body text. */
+  --gradient-brand: linear-gradient(
+    90deg,
+    hsl(0 90% 66%),
+    hsl(32 95% 60%),
+    hsl(48 95% 58%),
+    hsl(150 60% 52%),
+    hsl(187 85% 53%),
+    hsl(262 85% 72%)
+  );
+  /* The subtle accent gradient used by the primary button. */
+  --gradient-accent: linear-gradient(135deg, hsl(332 78% 47%), hsl(322 80% 42%));
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: 220 30% 97%;
+  --surface: 0 0% 100%;
+  --card: 0 0% 100%;
+  --elevated: 220 25% 95%;
+  --overlay: 0 0% 100%;
+
+  --border: 220 18% 78%;
+  --border-strong: 220 14% 64%;
+
+  --fg: 228 36% 12%;
+  --fg-strong: 228 40% 6%;
+  --muted: 222 14% 40%;
+  --subtle: 222 12% 42%;
+
+  --accent: 332 76% 40%;
+  --accent-fill: 332 76% 44%;
+  --on-accent: 0 0% 100%;
+
+  --ok: 158 72% 24%;
+  --warn: 32 92% 29%;
+  --danger: 0 70% 42%;
+  --info: 203 85% 32%;
+  --live: 188 90% 24%;
+
+  --ok-fill: 158 70% 28%;
+  --warn-fill: 40 92% 46%;
+  --on-warn: 30 60% 10%;
+  --danger-fill: 0 70% 44%;
+  --info-fill: 203 85% 36%;
+
+  --ring: 332 76% 44%;
+
+  --chart-1: #1d67c9;
+  --chart-2: #be2a63;
+  --chart-3: #0f7a54;
+  --chart-grid: rgba(51, 65, 85, 0.14);
+  --chart-axis: #475569;
+
+  --shadow-e1: 0 1px 2px rgba(16, 24, 40, 0.08);
+  --shadow-e2: 0 4px 12px -2px rgba(16, 24, 40, 0.1), 0 0 0 1px hsl(var(--border) / 0.9);
+  --shadow-e3: 0 12px 32px -8px rgba(16, 24, 40, 0.16), 0 0 0 1px hsl(var(--border) / 0.9);
+  --shadow-e4: 0 24px 64px -12px rgba(16, 24, 40, 0.24), 0 0 0 1px hsl(var(--border-strong) / 0.8);
+
+  --gradient-accent: linear-gradient(135deg, hsl(332 76% 44%), hsl(322 78% 38%));
+}
+
+/* ==========================================================================
+ * THEME FAMILIES (Aaron, 2026-10-24: "a few different themes, including one
+ * most businesses would appreciate, in light and dark").
+ *
+ *   brigade   the default above — Unicorn Commander magenta, navy-black, aurora
+ *   business  neutral graphite-blue surfaces, indigo accent, no aurora —
+ *             the one to show a bank
+ *   graphite  monochrome: black / white, the accent IS the foreground
+ *             (white buttons on dark, black on light), calm status hues
+ *
+ * Selected by data-theme-family on <html> (src/utils/theme.js; the pre-paint
+ * script in index.html). Each family overrides EVERY colour token that
+ * differs, in a dark block and a [data-theme="light"] block, so the cascade
+ * (specificity, then source order) resolves exactly one value per cell.
+ * scripts/audit-contrast.mjs checks all six cells.
+ * ====================================================================== */
+
+:root[data-theme-family="business"] {
+  --bg: 220 14% 6%;
+  --surface: 220 12% 9%;
+  --card: 220 11% 11%;
+  --elevated: 220 10% 16%;
+  --overlay: 220 12% 8%;
+  --border: 220 10% 27%;
+  --border-strong: 220 9% 40%;
+  --fg: 220 20% 96%;
+  --fg-strong: 0 0% 100%;
+  --muted: 220 10% 68%;
+  --subtle: 220 8% 58%;
+  --accent: 221 90% 74%;
+  --accent-fill: 221 75% 54%;
+  --on-accent: 0 0% 100%;
+  --ring: 221 90% 74%;
+  --gradient-accent: linear-gradient(135deg, hsl(221 75% 54%), hsl(232 70% 48%));
+}
+:root[data-theme-family="business"][data-theme="light"] {
+  --bg: 220 20% 97%;
+  --surface: 0 0% 100%;
+  --card: 0 0% 100%;
+  --elevated: 220 16% 95%;
+  --overlay: 0 0% 100%;
+  --border: 220 14% 79%;
+  --border-strong: 220 10% 64%;
+  --fg: 220 25% 12%;
+  --fg-strong: 220 30% 6%;
+  --muted: 220 10% 40%;
+  --subtle: 220 8% 42%;
+  --accent: 221 72% 42%;
+  --accent-fill: 221 72% 46%;
+  --on-accent: 0 0% 100%;
+  --ring: 221 72% 46%;
+  --gradient-accent: linear-gradient(135deg, hsl(221 72% 46%), hsl(232 68% 42%));
+}
+
+:root[data-theme-family="graphite"] {
+  --bg: 0 0% 4%;
+  --surface: 0 0% 7%;
+  --card: 0 0% 9%;
+  --elevated: 0 0% 14%;
+  --overlay: 0 0% 6%;
+  --border: 0 0% 26%;
+  --border-strong: 0 0% 38%;
+  --fg: 0 0% 95%;
+  --fg-strong: 0 0% 100%;
+  --muted: 0 0% 67%;
+  --subtle: 0 0% 57%;
+  --accent: 0 0% 92%;
+  --accent-fill: 0 0% 96%;
+  --on-accent: 0 0% 8%;
+  --ok: 150 55% 56%;
+  --warn: 40 90% 60%;
+  --danger: 0 85% 70%;
+  --info: 205 80% 66%;
+  --live: 190 70% 56%;
+  --ring: 0 0% 90%;
+  --gradient-accent: linear-gradient(135deg, hsl(0 0% 98%), hsl(0 0% 86%));
+}
+:root[data-theme-family="graphite"][data-theme="light"] {
+  --bg: 0 0% 98%;
+  --surface: 0 0% 100%;
+  --card: 0 0% 100%;
+  --elevated: 0 0% 94%;
+  --overlay: 0 0% 100%;
+  --border: 0 0% 77%;
+  --border-strong: 0 0% 62%;
+  --fg: 0 0% 10%;
+  --fg-strong: 0 0% 0%;
+  --muted: 0 0% 38%;
+  --subtle: 0 0% 42%;
+  --accent: 0 0% 8%;
+  --accent-fill: 0 0% 10%;
+  --on-accent: 0 0% 100%;
+  --ok: 150 60% 26%;
+  --warn: 32 90% 30%;
+  --danger: 0 70% 42%;
+  --info: 205 80% 32%;
+  --live: 190 80% 25%;
+  --ring: 0 0% 10%;
+  --gradient-accent: linear-gradient(135deg, hsl(0 0% 14%), hsl(0 0% 4%));
+}

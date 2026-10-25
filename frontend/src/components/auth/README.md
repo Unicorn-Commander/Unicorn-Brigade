@@ -1,5 +1,14 @@
 # Brigade Auth Component Library
 
+> **Design-system note (2026-10-24).** These components render on the ui kit
+> (`frontend/src/components/ui`, see `frontend/docs/DESIGN-SYSTEM.md`): `RoleBadge`
+> and `TierBadge` are `Chip`s whose permissions/benefits show in the shared
+> `Tooltip` (hover and keyboard focus); `size` maps small → xs, medium → sm,
+> large → md. `PermissionGate` / `RoleGate` show a `LoadingState` text skeleton
+> while access resolves. `UpgradePrompt` is a `Card` inline and a `Modal` as a
+> dialog; `FeatureLock` keeps its blur and overlays a status block with one
+> `Button`. Prop APIs are unchanged.
+
 Permission-based UI component library for Unicorn Brigade. This library provides reusable React components for implementing feature gating, subscription tiers, user roles, and upgrade prompts.
 
 ## Installation

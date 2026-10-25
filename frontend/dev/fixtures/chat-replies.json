@@ -1,0 +1,54 @@
+{
+  "replies": [
+    {
+      "tool": {
+        "name": "web_search",
+        "arguments": {
+          "query": "{{question}}",
+          "max_results": 5
+        },
+        "result": {
+          "results": [
+            {
+              "title": "Build In Public — the receipts are the content",
+              "url": "https://magicunicorn.tech/build-in-public"
+            },
+            {
+              "title": "Unicorn Brigade agent roster",
+              "url": "https://brigade.example.com/library"
+            }
+          ],
+          "count": 2
+        }
+      },
+      "markdown": "## {{agentName}} reporting\n\nYou asked:\n\n> {{question}}\n\nHere is what I can say with confidence, and what I would want to measure before saying more.\n\n### What I checked\n\n1. The current roster and who reports to whom\n2. The last run of the relevant scheduled job\n3. Two public sources (linked in the tool result above)\n\n### Findings\n\n| Item | Status | Confidence |\n|---|---|---|\n| Platform health | healthy | high |\n| Last scheduled run | success, 8h ago | high |\n| Open receivables > 30d | 2 invoices | medium |\n\n### Next step\n\n```bash\n# re-run the check with the measured numbers\nnode frontend/dev/mock-api.mjs --scenario busy\n```\n\n- **Recommendation:** proceed, and re-measure the medium-confidence line next week.\n- I have not deployed or changed anything."
+    },
+    {
+      "tool": {
+        "name": "calculator",
+        "arguments": {
+          "expression": "(11900 + 13600 + 11900) / 3"
+        },
+        "result": {
+          "value": 12466.67
+        }
+      },
+      "markdown": "## Quick numbers from {{agentName}}\n\n> {{question}}\n\nTrailing three-month average burn is **$19,946.67 / month**.\n\n### Breakdown\n\n- July: $19,040\n- August: $21,760 (drive replacements)\n- September: $19,040\n\n### Scenarios\n\n| Scenario | Monthly net | Runway |\n|---|---|---|\n| Flat | -$19,970 | 5.1 mo |\n| +1 contract | -$16,130 | 7.3 mo |\n| +2 contracts | -$11,730 | 10.8 mo |\n\n```python\nburn = (19040 + 21760 + 19040) / 3\nrunway_months = 101700 / burn\nprint(round(runway_months, 1))  # 5.1\n```\n\nSay the word and I will save this table to memory under `q3-runway`."
+    },
+    {
+      "tool": {
+        "name": "memory",
+        "arguments": {
+          "action": "recall",
+          "key": "last-decision"
+        },
+        "result": {
+          "ok": true,
+          "key": "last-decision",
+          "value": "One GPU at a time on gpu-01 since last week."
+        }
+      },
+      "markdown": "## {{agentName}} — {{domain}} desk\n\n> {{question}}\n\nShort answer: **yes, with one caveat.**\n\n### Why\n\n1. The standing rule since last week is one GPU at a time on gpu-01.\n2. The footage lane is already on the second GPU, so anything new waits or goes to edge-01.\n3. Nothing in the last 14 hours of history contradicts that.\n\n### Caveat\n\n| Check | Result | Confidence |\n|---|---|---|\n| One-GPU rule in force | yes | high |\n| Footage lane on the second GPU | yes | high |\n| Nightly patrol | **failed** | high |\n\n- The nightly patrol **failed** last night (`shell` timed out reaching gpu-01). Until it passes once, treat the host as unverified.\n\n```text\nlastStatus: error\nerror: Tool 'shell' timed out after 300s while running zpool status on gpu-01\n```\n\nI can re-run the patrol now if you want the receipt before deciding."
+    }
+  ]
+}
