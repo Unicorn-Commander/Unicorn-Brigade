@@ -6,10 +6,10 @@ Enables persistent relationship tracking across conversations.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 
-from app.llm.ops_center_client import ToolDefinition, ToolParameter
 from app.knowledge.graph_manager import KnowledgeGraphManager
+from app.llm.ops_center_client import ToolDefinition, ToolParameter
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +34,13 @@ async def knowledge_store_handler(
     predicate: Optional[str] = None,
     object: Optional[str] = None,
     object_type: Optional[str] = None,
-    properties: Optional[Dict[str, Any]] = None,
+    properties: Optional[dict[str, Any]] = None,
     confidence: float = 1.0,
     source: Optional[str] = None,
     agent_id: Optional[str] = None,
     caller_user_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    caller_email: Optional[str] = None,  # injected for human callers; accepted, not used
+) -> dict[str, Any]:
     # Per-user memory scoping. The injected caller_user_id (Brigade puts it
     # there because the ToolDefinition has needs_caller_context=True) wins
     # over a literal agent_id arg the LLM might pass. This keeps facts I
@@ -213,13 +214,14 @@ async def knowledge_query_handler(
     entity_type: Optional[str] = None,
     relationship_type: Optional[str] = None,
     cypher_query: Optional[str] = None,
-    cypher_params: Optional[Dict[str, Any]] = None,
+    cypher_params: Optional[dict[str, Any]] = None,
     direction: str = "both",
     max_depth: int = 2,
     agent_id: Optional[str] = None,
     limit: int = 20,
     caller_user_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    caller_email: Optional[str] = None,  # injected for human callers; accepted, not used
+) -> dict[str, Any]:
     # Per-user memory scoping (matches knowledge_store_handler). caller_user_id
     # is auto-injected by Brigade's tool dispatcher since the ToolDefinition
     # below has needs_caller_context=True.

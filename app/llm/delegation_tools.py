@@ -6,10 +6,10 @@ For example, Carter Knox can ask The General for a plan, or
 Detective Holmes can ask Gunny for help building an agent.
 """
 
-import os
 import logging
+import os
 from contextvars import ContextVar
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -25,7 +25,8 @@ _CURRENT_CASE_ID: ContextVar[Optional[str]] = ContextVar("_CURRENT_CASE_ID", def
 _CURRENT_AGENT_ID: ContextVar[Optional[str]] = ContextVar("_CURRENT_AGENT_ID", default=None)
 _CURRENT_AGENT_NAME: ContextVar[Optional[str]] = ContextVar("_CURRENT_AGENT_NAME", default=None)
 
-from app.llm.ops_center_client import ToolDefinition, ToolParameter
+# Kept below the context vars on purpose (import order predates the lint gate).
+from app.llm.ops_center_client import ToolDefinition, ToolParameter  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,8 @@ async def delegate_to_agent_handler(
     task: str,
     context: Optional[str] = None,
     caller_user_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    caller_email: Optional[str] = None,
+) -> dict[str, Any]:
     """Delegate a task to another Brigade agent and return their response.
 
     ``caller_user_id`` is injected by the tool invocation layer (not by the
@@ -48,6 +50,12 @@ async def delegate_to_agent_handler(
     ``needs_caller_context=True``. Forwarding it in the downstream request
     body preserves memory isolation and RBAC through delegation chains: the
     delegated agent sees the real caller, not the service key identity.
+
+    ``caller_email`` is injected alongside it whenever the caller is a person
+    (ops_center_client adds it for any caller with an email). It must be
+    accepted, or every human-initiated delegation fails with an unexpected
+    keyword argument. It is not forwarded: the downstream chat identifies the
+    caller by ``caller_user_id``.
     """
     logger.info(
         "Delegating to agent '%s' (caller=%s): %s",
@@ -80,7 +88,7 @@ async def delegate_to_agent_handler(
     except Exception as _emit_err:  # noqa: BLE001 - telemetry is advisory
         logger.debug("delegation invocation emit failed: %s", _emit_err)
 
-    body: Dict[str, Any] = {"message": message}
+    body: dict[str, Any] = {"message": message}
     if caller_user_id:
         body["user_id"] = caller_user_id
     # Forward parent's mission_id so the downstream specialist's events
