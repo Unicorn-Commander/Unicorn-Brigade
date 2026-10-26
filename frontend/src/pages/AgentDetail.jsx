@@ -1,8 +1,8 @@
 /**
  * Agent detail — one agent: who it is, how it is built, what it may use, how
  * to call it. Numbers come only from endpoints that state them (the agent's
- * own tool list, /agents/:id/api-keys, /conversations); anything the API does
- * not record is labelled as such instead of shown as zero.
+ * own tool list, /agents/:id/stats, and /agents/:id/api-keys); anything the API
+ * does not record is labelled as such instead of shown as zero.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -82,7 +82,7 @@ export default function AgentDetail() {
 
   const [catalog, setCatalog] = useState([]);
   const [keys, setKeys] = useState({ state: 'loading', list: [], error: null });
-  const [convos, setConvos] = useState({ state: 'loading', list: [] });
+  const [stats, setStats] = useState({ state: 'loading', data: null, error: null });
   const [session, setSession] = useState({ state: 'idle', data: null });
 
   const [editing, setEditing] = useState(false);
@@ -95,6 +95,16 @@ export default function AgentDetail() {
   // The jobs this agent runs on its own (one read of the autonomy catalogue).
   const autonomy = useAutonomy({ refreshMs: 0 });
   const ownJobs = useMemo(() => autonomy.items.filter((it) => it.agentId === id), [autonomy.items, id]);
+
+  const loadStats = useCallback(async () => {
+    setStats((s) => ({ ...s, state: 'loading', error: null }));
+    try {
+      const data = await apiJson(`/agents/${encodeURIComponent(id)}/stats`);
+      setStats({ state: 'ready', data, error: null });
+    } catch (err) {
+      setStats({ state: 'error', data: null, error: err });
+    }
+  }, [id]);
 
   const loadKeys = useCallback(async () => {
     setKeys((k) => ({ ...k, state: 'loading', error: null }));
@@ -126,17 +136,12 @@ export default function AgentDetail() {
       setLoading(false);
     }
     // Side facts: each answers on its own and fails on its own.
+    loadStats();
     loadKeys();
     apiJson('/tools')
       .then((d) => setCatalog(Array.isArray(d) ? d : d?.tools || []))
       .catch(() => setCatalog([]));
-    apiJson('/conversations', { params: { limit: 200 } })
-      .then((d) => {
-        const list = (Array.isArray(d) ? d : d?.conversations || []).filter((c) => c.agent_id === id || c.agentId === id || c.agent?.id === id);
-        setConvos({ state: 'ready', list });
-      })
-      .catch(() => setConvos({ state: 'error', list: [] }));
-  }, [id, loadKeys]);
+  }, [id, loadKeys, loadStats]);
 
   useEffect(() => {
     load();
@@ -226,8 +231,9 @@ export default function AgentDetail() {
   if (!agent) return null;
 
   const name = agent.displayName || agent.name;
-  const messageTotal = convos.state === 'ready' ? convos.list.reduce((n, c) => n + (Number(c.message_count) || 0), 0) : null;
-  const recordedMessages = Number(agent?._count?.messages) > 0 ? Number(agent._count.messages) : null;
+  const statValue = (key) => (stats.state === 'ready' && stats.data?.[key] != null ? Number(stats.data[key]) : null);
+  const lastUsed = stats.state === 'ready' && stats.data?.lastUsedAt ? new Date(stats.data.lastUsedAt).toLocaleString() : null;
+  const statsNote = stats.state === 'error' ? 'couldn’t load' : undefined;
 
   // ── tab panels ───────────────────────────────────────────────────────────
   let panel;
@@ -235,15 +241,12 @@ export default function AgentDetail() {
     panel = (
       <div className="space-y-6">
         {agent.bio && <p className="max-w-3xl text-body text-fg">{agent.bio}</p>}
-        <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Fact label="Tools attached" value={attached.length} />
-          <Fact label="API keys" value={keys.state === 'ready' ? keys.list.length : null} note={keys.state === 'error' ? 'couldn’t load' : undefined} />
-          <Fact label="Conversations" value={convos.state === 'ready' ? convos.list.length : null} note={convos.state === 'ready' ? 'in your history' : convos.state === 'error' ? 'couldn’t load' : undefined} />
-          <Fact
-            label="Messages"
-            value={messageTotal != null && messageTotal > 0 ? messageTotal : recordedMessages}
-            note={messageTotal != null && messageTotal > 0 ? 'in your conversations' : recordedMessages != null ? 'recorded by the API' : undefined}
-          />
+          <Fact label="API keys" value={statValue('apiKeys')} note={statsNote} />
+          <Fact label="Conversations" value={statValue('conversations')} note={statsNote} />
+          <Fact label="Messages" value={statValue('messages')} note={statsNote} />
+          <Fact label="Last used" value={lastUsed} note={statsNote} />
         </dl>
         <AgentAutonomyCard agentId={agent.id} items={ownJobs} />
         <div>

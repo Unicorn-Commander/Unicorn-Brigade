@@ -27,7 +27,11 @@ server {
         image/svg+xml;
 
     # ── Security Headers ────────────────────────────────────────────────────
-    add_header X-Frame-Options "SAMEORIGIN" always;
+    # Ops-Center at https://unicorncommander.ai embeds the Brigade UI. Keep the
+    # frame allowlist: our own origins only (Ops-Center embeds prod Brigade from more than one of them);
+    # X-Frame-Options cannot express this cross-origin
+    # parent, so CSP frame-ancestors is the authoritative framing policy.
+    add_header Content-Security-Policy "frame-ancestors 'self' https://unicorncommander.ai https://*.unicorncommander.ai https://magicunicorn.dev https://*.magicunicorn.dev" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
@@ -36,6 +40,10 @@ server {
     # Vite hashed assets — cache aggressively (fingerprinted filenames)
     location /assets/ {
         expires 1y;
+        add_header Content-Security-Policy "frame-ancestors 'self' https://unicorncommander.ai https://*.unicorncommander.ai https://magicunicorn.dev https://*.magicunicorn.dev" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
         add_header Cache-Control "public, immutable";
         access_log off;
     }
@@ -43,6 +51,10 @@ server {
     # Images, fonts, and other static files
     location ~* \.(jpg|jpeg|png|gif|ico|svg|webp|woff|woff2|ttf|eot)$ {
         expires 30d;
+        add_header Content-Security-Policy "frame-ancestors 'self' https://unicorncommander.ai https://*.unicorncommander.ai https://magicunicorn.dev https://*.magicunicorn.dev" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
         add_header Cache-Control "public, no-transform";
         access_log off;
     }
@@ -54,6 +66,10 @@ server {
     # bundles (with stale asset hashes) after every deploy.
     location / {
         try_files $uri $uri/ /index.html;
+        add_header Content-Security-Policy "frame-ancestors 'self' https://unicorncommander.ai https://*.unicorncommander.ai https://magicunicorn.dev https://*.magicunicorn.dev" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
         add_header Cache-Control "no-cache, must-revalidate" always;
     }
 
@@ -61,12 +77,20 @@ server {
     location /health {
         access_log off;
         return 200 "OK\n";
+        add_header Content-Security-Policy "frame-ancestors 'self' https://unicorncommander.ai https://*.unicorncommander.ai https://magicunicorn.dev https://*.magicunicorn.dev" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
         add_header Content-Type text/plain;
     }
 
     # ── Deny Hidden Files ───────────────────────────────────────────────────
     location ~ /\. {
         deny all;
+        add_header Content-Security-Policy "frame-ancestors 'self' https://unicorncommander.ai https://*.unicorncommander.ai https://magicunicorn.dev https://*.magicunicorn.dev" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(self), geolocation=()" always;
         access_log off;
         log_not_found off;
     }

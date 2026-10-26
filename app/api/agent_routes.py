@@ -875,7 +875,6 @@ async def list_agents(
         catalog_rows=[(name, meta["orgs"]) for name, meta in catalog.items()] if catalog is not None else None,
     )
     for agent in agents:
-        agent.setdefault("_count", {"messages": 0, "tasks": 0, "apiKeys": 0})
         agent.setdefault("agentTools", [])
         _filter_agent_tools(agent, scope)
         _enrich_agent_tools(agent, catalog or {})
@@ -1036,6 +1035,24 @@ async def set_agent_reports_to(
         return await repo.update(agent_id, {"reportsTo": request.reportsTo})
 
 
+@router.get("/agents/{agent_id}/stats")
+async def get_agent_stats(
+    agent_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: Annotated[AuthUser, Depends(require_api_key)] = None,
+):
+    """Return tenant-scoped usage facts for one agent."""
+    _ensure_agent_access(user, agent_id)
+
+    repo = AgentRepository(session)
+    agent = await repo.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+    stats = await repo.get_stats(agent_id)
+    return {"agentId": agent_id, **stats}
+
+
 @router.get("/agents/{agent_id}")
 async def get_agent(
     agent_id: str,
@@ -1049,7 +1066,6 @@ async def get_agent(
     agent = await repo.get(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
-    agent.setdefault("_count", {"messages": 0, "tasks": 0, "apiKeys": 0})
     agent.setdefault("agentTools", [])
     agent.setdefault("apiKeys", [])
     scope = await load_tool_org_scope(session, getattr(user, "org_id", None))

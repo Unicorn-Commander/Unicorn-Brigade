@@ -198,6 +198,74 @@ class AgentRepository:
         )
         return result.scalar() or 0
 
+    async def get_stats_for_agents(self, agent_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Return usage facts for visible agents with one query per metric.
+
+        Conversations and messages are RLS-protected tenant data, while agent
+        keys are deliberately not RLS-protected because authentication must
+        resolve a key before an org is bound. The explicit current-org filter
+        on keys mirrors ``ApiKeyRepository.list_for_agent`` and keeps shared
+        agent key metadata tenant-scoped.
+
+        Brigade has no persisted task table. Do not manufacture a zero-valued
+        task count until a durable task source exists.
+        """
+        ids = list(dict.fromkeys(agent_ids))
+        if not ids:
+            return {}
+
+        stats = {
+            agent_id: {
+                "messages": 0,
+                "conversations": 0,
+                "apiKeys": 0,
+                "lastUsedAt": None,
+            }
+            for agent_id in ids
+        }
+
+        message_rows = await self.session.execute(
+            select(Conversation.agent_id, func.count(Message.id))
+            .join(Message, Message.conversation_id == Conversation.id)
+            .where(Conversation.agent_id.in_(ids))
+            .group_by(Conversation.agent_id)
+        )
+        for agent_id, count in message_rows.all():
+            stats[agent_id]["messages"] = int(count or 0)
+
+        conversation_rows = await self.session.execute(
+            select(Conversation.agent_id, func.count(Conversation.id))
+            .where(Conversation.agent_id.in_(ids))
+            .group_by(Conversation.agent_id)
+        )
+        for agent_id, count in conversation_rows.all():
+            stats[agent_id]["conversations"] = int(count or 0)
+
+        key_rows = await self.session.execute(
+            select(
+                ApiKey.agent_id,
+                func.count(ApiKey.id),
+                func.max(ApiKey.last_used_at),
+            )
+            .where(
+                ApiKey.agent_id.in_(ids),
+                ApiKey.is_active.is_(True),
+                ApiKey.org_id == func.current_org_id(),
+            )
+            .group_by(ApiKey.agent_id)
+        )
+        for agent_id, count, last_used_at in key_rows.all():
+            stats[agent_id]["apiKeys"] = int(count or 0)
+            stats[agent_id]["lastUsedAt"] = (
+                last_used_at.isoformat() if last_used_at else None
+            )
+
+        return stats
+
+    async def get_stats(self, agent_id: str) -> dict[str, Any]:
+        """Return the usage facts for one agent."""
+        return (await self.get_stats_for_agents([agent_id]))[agent_id]
+
 
 # ── Conversation Repository ───────────────────────────────────────
 
