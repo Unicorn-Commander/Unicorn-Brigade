@@ -1497,6 +1497,19 @@ PATCH('/orgs/:id', (ctx) => {
   ok(ctx, clone(o));
 });
 GET('/orgs/:id/members', (ctx) => ok(ctx, { members: clone(membersFor(ctx.scenario, ctx.params.id)) }));
+PATCH('/orgs/:id/members/:userId', (ctx) => {
+  const member = (STATE.members[ctx.params.id] || []).find((m) => m.userId === ctx.params.userId);
+  if (!member) return notFound(ctx, 'Member not found');
+  member.role = ctx.body.role || member.role;
+  ok(ctx, clone(member));
+});
+DELETE('/orgs/:id/members/:userId', (ctx) => {
+  const list = STATE.members[ctx.params.id] || [];
+  const index = list.findIndex((m) => m.userId === ctx.params.userId);
+  if (index < 0) return notFound(ctx, 'Member not found');
+  const [removed] = list.splice(index, 1);
+  ok(ctx, { ...clone(removed), status: 'removed' });
+});
 GET('/orgs/:id/invitations', (ctx) => {
   const status = ctx.url.searchParams.get('status_filter');
   let list = isEmpty(ctx.scenario) ? onlyCreated(STATE.invitations[ctx.params.id] || []) : (STATE.invitations[ctx.params.id] || []);
@@ -1504,15 +1517,25 @@ GET('/orgs/:id/invitations', (ctx) => {
   ok(ctx, { invitations: clone(list) });
 });
 POST('/orgs/:id/invitations', (ctx) => {
-  const inv = mark({ id: uuid(), orgId: ctx.params.id, email: ctx.body.email || 'invitee@example.com', role: ctx.body.role || 'member', status: 'pending', invitedBy: CALLER.id, acceptedBy: null, expiresAt: iso(Date.now() + 28 * UNIT.d), acceptedAt: null, createdAt: iso() });
+  const inv = mark({ id: uuid(), orgId: ctx.params.id, email: ctx.body.email || 'invitee@example.com', role: ctx.body.role || 'member', status: 'pending', invitedBy: CALLER.id, acceptedBy: null, expiresAt: iso(Date.now() + 28 * UNIT.d), acceptedAt: null, createdAt: iso(), token: `inv_mock_${hex(24)}` });
   (STATE.invitations[ctx.params.id] ||= []).unshift(inv);
-  created(ctx, { ...inv, token: `inv_mock_${hex(24)}` });
+  created(ctx, { ...inv, emailDelivery: 'stub' });
 });
 DELETE('/orgs/:id/invitations/:invId', (ctx) => {
   const inv = (STATE.invitations[ctx.params.id] || []).find((i) => i.id === ctx.params.invId);
   if (!inv) return notFound(ctx, 'Invitation not found');
   inv.status = 'revoked';
   ok(ctx, { status: 'revoked', id: inv.id });
+});
+POST('/orgs/:id/invitations/:invId/resend', (ctx) => {
+  const inv = (STATE.invitations[ctx.params.id] || []).find((i) => i.id === ctx.params.invId);
+  if (!inv) return notFound(ctx, 'Invitation not found');
+  if (inv.status !== 'pending') return sendJson(ctx, 409, detail('Only pending invitations can be resent'));
+  inv.token = `inv_mock_${hex(24)}`;
+  inv.expiresAt = iso(Date.now() + 28 * UNIT.d);
+  inv.invitedBy = CALLER.id;
+  inv.updatedAt = iso();
+  ok(ctx, { ...clone(inv), emailDelivery: 'stub' });
 });
 
 // ---------------------------------------------------------------------------

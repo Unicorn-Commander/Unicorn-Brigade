@@ -8,9 +8,10 @@
  *
  * Backend authz recap (enforced server-side, mirrored in the UI gates):
  *   - org CRUD reads: any member; rename (PATCH): owner/admin only.
- *   - invitation create/list/revoke: owner/admin AND the caller must be ACTING
- *     UNDER the target org (X-Org-Id == org_id) or the route 409s. The UI only
- *     ever manages the ACTIVE org, so the header always matches.
+ *   - member role/remove and invitation create/list/revoke/resend: owner/admin;
+ *     invitation mutations also require the caller to be ACTING UNDER the
+ *     target org (X-Org-Id == org_id) or the route 409s. The UI only ever
+ *     manages the ACTIVE org, so the header always matches.
  *   - accept is cross-tenant (token-bearer) and needs no active-org header.
  */
 import { apiJson } from './http';
@@ -18,7 +19,7 @@ import { apiJson } from './http';
 /** Per-org role vocabulary (mirrors app/db/org_service.py). */
 export const ORG_ROLES = { OWNER: 'owner', ADMIN: 'admin', MEMBER: 'member' };
 
-/** Owner/admin may rename the org, invite, and revoke. Members are read-only. */
+/** Owner/admin may rename the org and manage members/invitations. */
 export function canManageOrg(role) {
   return role === ORG_ROLES.OWNER || role === ORG_ROLES.ADMIN;
 }
@@ -56,6 +57,19 @@ export async function listMembers(orgId) {
   return data?.members || [];
 }
 
+/** PATCH /orgs/{id}/members/{userId} — change a member's org role. */
+export async function updateMemberRole(orgId, userId, role) {
+  return apiJson(`/orgs/${orgId}/members/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  });
+}
+
+/** DELETE /orgs/{id}/members/{userId} — remove a member from the org. */
+export async function removeMember(orgId, userId) {
+  return apiJson(`/orgs/${orgId}/members/${userId}`, { method: 'DELETE' });
+}
+
 /**
  * GET /orgs/{id}/invitations — invitations for the org (owner/admin).
  * Tokens are never returned here. `status` filters (pending|accepted|…).
@@ -82,6 +96,11 @@ export async function createInvitation(orgId, { email, role = ORG_ROLES.MEMBER }
 /** DELETE /orgs/{id}/invitations/{invId} — revoke a pending invite (owner/admin). */
 export async function revokeInvitation(orgId, invitationId) {
   return apiJson(`/orgs/${orgId}/invitations/${invitationId}`, { method: 'DELETE' });
+}
+
+/** POST /orgs/{id}/invitations/{invId}/resend — rotate a pending invite token. */
+export async function resendInvitation(orgId, invitationId) {
+  return apiJson(`/orgs/${orgId}/invitations/${invitationId}/resend`, { method: 'POST' });
 }
 
 /** POST /orgs/invitations/accept — join an org by its invite token. */

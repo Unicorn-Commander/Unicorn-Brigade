@@ -1,8 +1,9 @@
 """BR-2.1 org-lifecycle service layer — the multi-USER half of tenancy.
 
 Pure, session-in async functions for the org lifecycle: personal-org
-auto-provision, org CRUD, per-org role lookup, active-org resolution, and
-invite-by-email create/accept. The API routes (``app/api/org_routes.py``) and
+auto-provision, org CRUD, per-org role lookup, active-org resolution,
+member administration, and invite-by-email create/accept/resend. The API routes
+(``app/api/org_routes.py``) and
 the auth middleware (``app/auth/middleware._bind_org_context``) are thin wrappers
 over these; the proof script (``scripts/prove_org_lifecycle.py``) drives the very
 same functions, so what is proven is what ships.
@@ -23,18 +24,18 @@ the caller's transaction. Callers own the commit/rollback boundary.
 """
 from __future__ import annotations
 
-import re
-import uuid
-import secrets
 import logging
+import re
+import secrets
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Organization, OrgMembership, Invitation, User
+from app.db.models import Invitation, Organization, OrgMembership, User
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +45,17 @@ ORG_ROLE_OWNER = "owner"
 ORG_ROLE_ADMIN = "admin"
 ORG_ROLE_MEMBER = "member"
 VALID_ORG_ROLES = (ORG_ROLE_OWNER, ORG_ROLE_ADMIN, ORG_ROLE_MEMBER)
-# Roles that may manage the org (rename, invite, revoke). Members are read-only.
+# Roles that may manage the org (rename, member administration, invite, revoke).
+# Members are read-only.
 MANAGER_ROLES = (ORG_ROLE_OWNER, ORG_ROLE_ADMIN)
 
 # Default invitation lifetime (7 days).
 INVITE_TTL_HOURS = 168
+
+
+def _new_invitation_token() -> str:
+    """Mint the same kind of bearer token used by the create path."""
+    return secrets.token_urlsafe(32)
 
 
 # ── slug helpers ───────────────────────────────────────────────────────────────
@@ -163,7 +170,7 @@ async def get_membership_role(
 
 
 def can_manage_org(role: Optional[str]) -> bool:
-    """Owner/admin may rename the org, invite, and revoke. Member is read-only."""
+    """Owner/admin may rename the org and manage members/invitations."""
     return role in MANAGER_ROLES
 
 
@@ -218,14 +225,117 @@ async def list_org_members(session: AsyncSession, org_id: str) -> list[dict]:
     )).all()
     out = []
     for m, user in rows:
-        out.append({
-            "userId": str(user.id),
-            "email": user.email,
-            "name": user.name,
-            "role": m.role,
-            "joinedAt": m.created_at.isoformat() + "Z" if m.created_at else None,
-        })
+        out.append(_member_to_dict(m, user))
     return out
+
+
+def _member_to_dict(membership: OrgMembership, user: User) -> dict:
+    """Serialize a membership with the user fields used by the org page."""
+    return {
+        "userId": str(user.id),
+        "email": user.email,
+        "name": user.name,
+        "role": membership.role,
+        "joinedAt": membership.created_at.isoformat() + "Z" if membership.created_at else None,
+    }
+
+
+async def get_org_membership(
+    session: AsyncSession,
+    org_id: str,
+    user_id: str,
+    *,
+    for_update: bool = False,
+) -> Optional[OrgMembership]:
+    """Return one membership, always constrained to the requested org."""
+    query = select(OrgMembership).where(
+        OrgMembership.org_id == org_id,
+        OrgMembership.user_id == user_id,
+    )
+    if for_update:
+        query = query.with_for_update()
+    return (await session.execute(query)).scalar_one_or_none()
+
+
+async def get_org_member(
+    session: AsyncSession, org_id: str, user_id: str
+) -> Optional[dict]:
+    """Return a serialized member, or ``None`` when it is not in this org."""
+    row = (await session.execute(
+        select(OrgMembership, User)
+        .join(User, User.id == OrgMembership.user_id)
+        .where(
+            OrgMembership.org_id == org_id,
+            OrgMembership.user_id == user_id,
+        )
+    )).first()
+    if row is None:
+        return None
+    membership, user = row
+    return _member_to_dict(membership, user)
+
+
+async def _locked_org_memberships(
+    session: AsyncSession, org_id: str
+) -> list[OrgMembership]:
+    """Lock every membership in one org in one query before a mutation."""
+    query = select(OrgMembership).where(OrgMembership.org_id == org_id).with_for_update()
+    return list((await session.execute(query)).scalars().all())
+
+
+async def update_member_role(
+    session: AsyncSession,
+    org_id: str,
+    user_id: str,
+    role: str,
+) -> Optional[OrgMembership]:
+    """Change a member's role while preserving the last-owner invariant.
+
+    Authorization over *who* may make this change belongs to the API route. The
+    service owns the data invariant so direct callers cannot accidentally remove
+    the final owner either. ``with_for_update`` serializes concurrent owner
+    demotions/removals on PostgreSQL.
+    """
+    if role not in VALID_ORG_ROLES:
+        raise ValueError("invalid_role")
+
+    memberships = await _locked_org_memberships(session, org_id)
+    membership = next((m for m in memberships if str(m.user_id) == str(user_id)), None)
+    if membership is None:
+        return None
+
+    if membership.role == ORG_ROLE_OWNER and role != ORG_ROLE_OWNER:
+        owners = [m for m in memberships if m.role == ORG_ROLE_OWNER]
+        if len(owners) <= 1:
+            raise ValueError("last_owner")
+
+    membership.role = role
+    await session.flush()
+    logger.info(
+        "BR-2.1 org member role changed: org=%s user=%s role=%s",
+        org_id, user_id, role,
+    )
+    return membership
+
+
+async def remove_member(
+    session: AsyncSession, org_id: str, user_id: str
+) -> Optional[OrgMembership]:
+    """Remove a membership while preserving at least one owner."""
+    memberships = await _locked_org_memberships(session, org_id)
+    membership = next((m for m in memberships if str(m.user_id) == str(user_id)), None)
+    if membership is None:
+        return None
+
+    if membership.role == ORG_ROLE_OWNER:
+        owners = [m for m in memberships if m.role == ORG_ROLE_OWNER]
+        if len(owners) <= 1:
+            raise ValueError("last_owner")
+
+    await session.delete(membership)
+    await session.flush()
+    logger.info("BR-2.1 org member removed: org=%s user=%s", org_id, user_id)
+    return membership
 
 
 # ── org CRUD ────────────────────────────────────────────────────────────────────
@@ -311,13 +421,51 @@ async def create_invitation(
         org_id=org_id,
         email=(email or "").strip().lower(),
         role=role,
-        token=secrets.token_urlsafe(32),
+        token=_new_invitation_token(),
         status="pending",
         invited_by=invited_by,
         expires_at=datetime.utcnow() + timedelta(hours=ttl_hours),
     )
     session.add(inv)
     await session.flush()
+    return inv
+
+
+async def resend_invitation(
+    session: AsyncSession,
+    org_id: str,
+    invitation_id: str,
+    invited_by: Optional[str] = None,
+    ttl_hours: int = INVITE_TTL_HOURS,
+) -> Optional[Invitation]:
+    """Rotate a pending invitation's token and reset its expiry.
+
+    Updating the token in place deliberately makes the previous bearer secret
+    unresolvable. The default TTL and token generator are the same ones used by
+    :func:`create_invitation`; callers may only use this for a still-pending row.
+    """
+    r = await session.execute(
+        select(Invitation).where(
+            Invitation.id == invitation_id,
+            Invitation.org_id == org_id,
+        )
+    )
+    inv = r.scalar_one_or_none()
+    if inv is None:
+        return None
+    if inv.status != "pending":
+        raise ValueError("not_pending")
+
+    inv.token = _new_invitation_token()
+    inv.expires_at = datetime.utcnow() + timedelta(hours=ttl_hours)
+    if invited_by is not None:
+        inv.invited_by = invited_by
+    inv.updated_at = datetime.utcnow()
+    await session.flush()
+    logger.info(
+        "BR-2.1 invitation resent: org=%s invitation=%s email=%s",
+        org_id, inv.id, inv.email,
+    )
     return inv
 
 

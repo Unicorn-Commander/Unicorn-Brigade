@@ -3,7 +3,7 @@ import { Copy, Check, Link2, KeyRound, UserPlus } from 'lucide-react';
 import { Button, Field, IconButton, Input, Modal, Select } from '../ui';
 import notify from '../../utils/notify';
 import { humanize } from '../../utils/errors';
-import { createInvitation, ORG_ROLES } from '../../services/orgService';
+import { createInvitation, ORG_ROLES, resendInvitation } from '../../services/orgService';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -46,8 +46,18 @@ function CopyRow({ icon: Icon, label, value }) {
  * stub, so on success the one-time invite link and token are shown for the
  * manager to hand off; the invitee accepts on the Organization page.
  * `initialEmail` / `initialRole` pre-fill it ("Invite again" on a lapsed invite).
+ * `resendInvitationId` switches the submit path to rotate an existing pending
+ * invitation's token while preserving its email and role.
  */
-export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated, initialEmail = '', initialRole = ORG_ROLES.MEMBER }) {
+export default function InviteMemberModal({
+  isOpen,
+  onClose,
+  orgId,
+  onCreated,
+  initialEmail = '',
+  initialRole = ORG_ROLES.MEMBER,
+  resendInvitationId = null,
+}) {
   const [email, setEmail] = useState(initialEmail);
   const [role, setRole] = useState(initialRole);
   const [submitting, setSubmitting] = useState(false);
@@ -61,7 +71,7 @@ export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated, i
       setError(null);
       setResult(null);
     }
-  }, [isOpen, initialEmail, initialRole]);
+  }, [isOpen, initialEmail, initialRole, resendInvitationId]);
 
   const valid = EMAIL_RE.test(email.trim());
 
@@ -85,12 +95,14 @@ export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated, i
     setSubmitting(true);
     setError(null);
     try {
-      const invite = await createInvitation(orgId, { email: email.trim().toLowerCase(), role });
+      const invite = resendInvitationId
+        ? await resendInvitation(orgId, resendInvitationId)
+        : await createInvitation(orgId, { email: email.trim().toLowerCase(), role });
       setResult(invite);
-      notify.success('Invitation created');
+      notify.success(resendInvitationId ? 'Invitation resent' : 'Invitation created');
       onCreated?.(invite);
     } catch (err) {
-      setError(humanize(err, { what: 'creating the invitation' }));
+      setError(humanize(err, { what: resendInvitationId ? 'resending the invitation' : 'creating the invitation' }));
     } finally {
       setSubmitting(false);
     }
@@ -103,18 +115,22 @@ export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated, i
       isOpen={isOpen}
       onClose={close}
       size="lg"
-      title={result ? 'Invitation ready' : 'Invite a teammate'}
+      title={result ? (resendInvitationId ? 'Invitation resent' : 'Invitation ready') : resendInvitationId ? 'Resend invitation' : 'Invite a teammate'}
       description={
         result
           ? `Share this with ${result.email}. It expires in 7 days.`
-          : 'They join this organization once they accept. An organization has one owner, so invites are member or admin.'
+          : resendInvitationId
+            ? 'A fresh link will invalidate the previous invitation. Share the new link or token with the invitee.'
+            : 'They join this organization once they accept. An organization has one owner, so invites are member or admin.'
       }
       footer={
         result ? (
           <>
-            <Button variant="ghost" onClick={reset}>
-              Invite another
-            </Button>
+            {!resendInvitationId && (
+              <Button variant="ghost" onClick={reset}>
+                Invite another
+              </Button>
+            )}
             <Button onClick={close}>Done</Button>
           </>
         ) : (
@@ -123,7 +139,7 @@ export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated, i
               Cancel
             </Button>
             <Button type="submit" form="invite-form" icon={UserPlus} loading={submitting} disabled={!valid}>
-              Create invite
+              {resendInvitationId ? 'Resend invitation' : 'Create invite'}
             </Button>
           </>
         )
@@ -147,14 +163,17 @@ export default function InviteMemberModal({ isOpen, onClose, orgId, onCreated, i
               onChange={(e) => setEmail(e.target.value)}
               placeholder="teammate@company.com"
               autoComplete="email"
+              readOnly={Boolean(resendInvitationId)}
             />
           </Field>
-          <Field label="Role" help="Members can view; admins can also manage members and invitations.">
-            <Select value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value={ORG_ROLES.MEMBER}>Member</option>
-              <option value={ORG_ROLES.ADMIN}>Admin</option>
-            </Select>
-          </Field>
+          {!resendInvitationId && (
+            <Field label="Role" help="Members can view; admins can also manage members and invitations.">
+              <Select value={role} onChange={(e) => setRole(e.target.value)}>
+                <option value={ORG_ROLES.MEMBER}>Member</option>
+                <option value={ORG_ROLES.ADMIN}>Admin</option>
+              </Select>
+            </Field>
+          )}
         </form>
       )}
     </Modal>

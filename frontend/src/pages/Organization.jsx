@@ -1,8 +1,7 @@
 /**
  * Organization — the active org: name, your role, members, invitations and
- * joining by token. Management actions appear only where the API supports them
- * (rename, invite, revoke, invite again); the backend has no member role change
- * or removal yet, so the members table has no action menu.
+ * joining by token. Management actions are available to owners/admins while
+ * owner protection and the last-owner invariant remain server-enforced.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -14,7 +13,17 @@ import CreateOrgModal from '../components/org/CreateOrgModal';
 import notify from '../utils/notify';
 import { humanize } from '../utils/errors';
 import useOrg, { useActiveOrg } from '../stores/useOrg';
-import { listMembers, listInvitations, revokeInvitation, updateOrg, acceptInvitation, canManageOrg } from '../services/orgService';
+import {
+  listMembers,
+  listInvitations,
+  revokeInvitation,
+  updateMemberRole,
+  removeMember,
+  updateOrg,
+  acceptInvitation,
+  canManageOrg,
+  ORG_ROLES,
+} from '../services/orgService';
 import {
   Button,
   Card,
@@ -26,6 +35,7 @@ import {
   Modal,
   Page,
   PageHeader,
+  Select,
   SectionHeader,
   EmptyState,
   ErrorState,
@@ -152,6 +162,51 @@ export default function Organization() {
   const [revoking, setRevoking] = useState(null); // the invitation awaiting confirmation
   const [revokeBusy, setRevokeBusy] = useState(false);
 
+  // ── member role / removal ────────────────────────────────────────────────
+  const [editingMember, setEditingMember] = useState(null);
+  const [roleDraft, setRoleDraft] = useState(ORG_ROLES.MEMBER);
+  const [roleBusy, setRoleBusy] = useState(false);
+  const [removingMember, setRemovingMember] = useState(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+
+  const openRoleEditor = (member) => {
+    setEditingMember(member);
+    setRoleDraft(member.role);
+  };
+
+  const saveMemberRole = async () => {
+    if (!editingMember || roleBusy || roleDraft === editingMember.role) return;
+    setRoleBusy(true);
+    try {
+      const updated = await updateMemberRole(activeOrgId, editingMember.userId, roleDraft);
+      setMembers((prev) => prev.map((m) => (m.userId === editingMember.userId ? { ...m, ...updated, role: roleDraft } : m)));
+      await loadOrgs();
+      notify.success(`${editingMember.name || editingMember.email} is now ${roleDraft}`);
+      setEditingMember(null);
+    } catch (err) {
+      notify.error(humanize(err, { what: 'changing the member role' }));
+    } finally {
+      setRoleBusy(false);
+    }
+  };
+
+  const confirmRemoveMember = async () => {
+    if (!removingMember || removeBusy) return;
+    setRemoveBusy(true);
+    try {
+      await removeMember(activeOrgId, removingMember.userId);
+      setMembers((prev) => prev.filter((m) => m.userId !== removingMember.userId));
+      notify.success(`${removingMember.name || removingMember.email} removed from the organization`);
+      setRemovingMember(null);
+      const remainingOrgs = await loadOrgs();
+      if (remainingOrgs.some((org) => org.id === activeOrgId)) await loadMembers();
+    } catch (err) {
+      notify.error(humanize(err, { what: 'removing the member' }));
+    } finally {
+      setRemoveBusy(false);
+    }
+  };
+
   const confirmRevoke = async () => {
     if (!revoking) return;
     setRevokeBusy(true);
@@ -232,6 +287,23 @@ export default function Organization() {
     },
     { key: 'role', label: 'Role', render: (m) => <OrgRoleBadge role={m.role} /> },
     { key: 'joinedAt', label: 'Joined', render: (m) => formatDate(m.joinedAt), align: 'right' },
+    {
+      key: 'actions',
+      label: 'Actions',
+      align: 'right',
+      render: (m) => {
+        const canTouch = canManage && !(activeOrg?.role === ORG_ROLES.ADMIN && m.role === ORG_ROLES.OWNER);
+        if (!canTouch) return <span className="text-caption text-subtle">Protected</span>;
+        return (
+          <span className="inline-flex items-center justify-end gap-1">
+            <Button variant="ghost" size="xs" onClick={() => openRoleEditor(m)}>
+              Change role
+            </Button>
+            <IconButton icon={Trash2} label={`Remove ${m.name || m.email}`} size="sm" onClick={() => setRemovingMember(m)} />
+          </span>
+        );
+      },
+    },
   ];
 
   const inviteColumns = [
@@ -272,7 +344,12 @@ export default function Organization() {
       align: 'right',
       render: (inv) =>
         inv.status === 'pending' ? (
-          <IconButton icon={Trash2} label={`Revoke the invitation for ${inv.email}`} size="sm" onClick={() => setRevoking(inv)} />
+          <span className="inline-flex items-center justify-end gap-1">
+            <Button variant="ghost" size="xs" icon={RotateCw} onClick={() => setInvite({ email: inv.email, role: inv.role, resendInvitationId: inv.id })}>
+              Resend
+            </Button>
+            <IconButton icon={Trash2} label={`Revoke the invitation for ${inv.email}`} size="sm" onClick={() => setRevoking(inv)} />
+          </span>
         ) : inv.status === 'accepted' ? (
           <span className="text-caption text-subtle">Joined</span>
         ) : (
@@ -361,7 +438,7 @@ export default function Organization() {
         <section>
           <SectionHeader
             title={`Members${members.length ? ` (${members.length})` : ''}`}
-            description={canManage ? 'Owners and admins can invite; roles are set when inviting.' : 'You have view access to this organization.'}
+            description={canManage ? 'Owners and admins can manage roles, remove members and invite teammates.' : 'You have view access to this organization.'}
           />
           <DataTable
             columns={memberColumns}
@@ -466,6 +543,53 @@ export default function Organization() {
         }
       />
 
+      {/* Change member role */}
+      <Modal
+        isOpen={Boolean(editingMember)}
+        onClose={() => !roleBusy && setEditingMember(null)}
+        size="sm"
+        title="Change member role"
+        description={editingMember ? `${editingMember.name || editingMember.email} will keep access to this organization.` : ''}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditingMember(null)} disabled={roleBusy}>
+              Cancel
+            </Button>
+            <Button onClick={saveMemberRole} loading={roleBusy} disabled={!editingMember || roleDraft === editingMember.role}>
+              Save role
+            </Button>
+          </>
+        }
+      >
+        <Field label="Role">
+          <Select value={roleDraft} onChange={(e) => setRoleDraft(e.target.value)}>
+            <option value={ORG_ROLES.MEMBER}>Member</option>
+            <option value={ORG_ROLES.ADMIN}>Admin</option>
+            {activeOrg?.role === ORG_ROLES.OWNER && <option value={ORG_ROLES.OWNER}>Owner</option>}
+          </Select>
+        </Field>
+      </Modal>
+
+      {/* Remove member — destructive, so it confirms */}
+      <Modal
+        isOpen={Boolean(removingMember)}
+        onClose={() => !removeBusy && setRemovingMember(null)}
+        size="sm"
+        tone="danger"
+        title="Remove this member?"
+        description={removingMember ? `${removingMember.name || removingMember.email} will lose access to this organization. They can be invited again later.` : ''}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRemovingMember(null)} disabled={removeBusy}>
+              Keep member
+            </Button>
+            <Button variant="danger" icon={Trash2} loading={removeBusy} onClick={confirmRemoveMember}>
+              Remove member
+            </Button>
+          </>
+        }
+      />
+
       {activeOrgId && (
         <InviteMemberModal
           isOpen={Boolean(invite)}
@@ -474,6 +598,7 @@ export default function Organization() {
           onCreated={loadInvites}
           initialEmail={invite?.email || ''}
           initialRole={invite?.role || 'member'}
+          resendInvitationId={invite?.resendInvitationId || null}
         />
       )}
       <CreateOrgModal isOpen={showCreate} onClose={() => setShowCreate(false)} />

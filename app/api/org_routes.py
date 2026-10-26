@@ -5,7 +5,8 @@ The multi-USER half of tenancy. Thin HTTP wrappers over ``app/db/org_service.py`
   * the GLOBAL role gate in ``get_current_user`` only requires that the caller be
     authenticated for any ``/orgs`` path (see app/auth/roles.get_minimum_role_for_method);
   * the PER-ORG gate lives here — owner/admin may rename the org and manage
-    invites; members are read-only — resolved fresh against ``org_memberships``.
+    members/invites; members are read-only — resolved fresh against
+    ``org_memberships``.
 
 RLS split for invitations
 -------------------------
@@ -17,15 +18,15 @@ binds the GUC the invitations policy filters on — while ACCEPT is inherently
 cross-tenant (the invitee is not a member yet) and runs on ``admin_session``.
 """
 import logging
-from typing import Optional, List, Annotated
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_session, admin_session
-from app.auth.middleware import get_current_user, AuthUser
+from app.auth.middleware import AuthUser, get_current_user
 from app.db import org_service as svc
+from app.db.database import admin_session, get_session
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,6 +52,18 @@ class CreateOrgRequest(BaseModel):
 class UpdateOrgRequest(BaseModel):
     name: Optional[str] = None
     slug: Optional[str] = None
+
+
+class UpdateMemberRoleRequest(BaseModel):
+    role: str
+
+    @field_validator("role")
+    @classmethod
+    def _role(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if v not in svc.VALID_ORG_ROLES:
+            raise ValueError("role must be 'owner', 'admin' or 'member'")
+        return v
 
 
 class CreateInviteRequest(BaseModel):
@@ -196,7 +209,7 @@ async def update_org(
         org = await svc.update_org(session, org_id, name=body.name, slug=body.slug)
     except ValueError as e:
         detail = "Slug already in use" if str(e) == "slug_taken" else "Invalid slug"
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail) from e
     if org is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
     await session.commit()
@@ -217,7 +230,98 @@ async def list_members(
     return {"members": await svc.list_org_members(session, org_id)}
 
 
+@router.patch("/orgs/{org_id}/members/{user_id}")
+async def update_member_role(
+    org_id: str,
+    user_id: str,
+    body: UpdateMemberRoleRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: Annotated[AuthUser, Depends(get_current_user)] = None,
+):
+    """Change a member's per-org role (owner/admin; owners protect owners)."""
+    uid = await _uid(session, current_user)
+    actor_role = await _require_manager(session, uid, org_id)
+    target = await svc.get_org_membership(session, org_id, user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    if actor_role == svc.ORG_ROLE_ADMIN and (
+        target.role == svc.ORG_ROLE_OWNER or body.role == svc.ORG_ROLE_OWNER
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admins cannot change an owner or assign the owner role",
+        )
+    try:
+        updated = await svc.update_member_role(session, org_id, user_id, body.role)
+    except ValueError as exc:
+        if str(exc) == "last_owner":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The organization must always have an owner",
+            ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid member role") from exc
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    await session.commit()
+    member = await svc.get_org_member(session, org_id, user_id)
+    if member is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    logger.info(
+        "BR-2.1 member role API: org=%s actor=%s target=%s role=%s",
+        org_id, uid, user_id, body.role,
+    )
+    return member
+
+
+@router.delete("/orgs/{org_id}/members/{user_id}")
+async def delete_member(
+    org_id: str,
+    user_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: Annotated[AuthUser, Depends(get_current_user)] = None,
+):
+    """Remove a member (owner/admin; an admin cannot remove an owner)."""
+    uid = await _uid(session, current_user)
+    actor_role = await _require_manager(session, uid, org_id)
+    target = await svc.get_org_membership(session, org_id, user_id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    if actor_role == svc.ORG_ROLE_ADMIN and target.role == svc.ORG_ROLE_OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admins cannot remove an owner",
+        )
+    removed_member = await svc.get_org_member(session, org_id, user_id)
+    try:
+        removed = await svc.remove_member(session, org_id, user_id)
+    except ValueError as exc:
+        if str(exc) == "last_owner":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The organization must always have an owner",
+            ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not remove member") from exc
+    if removed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    await session.commit()
+    logger.info(
+        "BR-2.1 member removal API: org=%s actor=%s target=%s",
+        org_id, uid, user_id,
+    )
+    return {**(removed_member or {"userId": user_id}), "status": "removed"}
+
+
 # ── invitations ─────────────────────────────────────────────────────────────────
+
+def _invite_delivery_response(inv):
+    """Log and serialize the same delivery-stub result for create and resend."""
+    logger.info(
+        "BR-2.1 EMAIL-STUB: would send invite for org %s to %s (role=%s) — "
+        "token=%s… (delivery not yet wired)",
+        inv.org_id, inv.email, inv.role, inv.token[:8],
+    )
+    return {**inv.to_dict(include_token=True), "emailDelivery": "stub"}
+
 
 @router.post("/orgs/{org_id}/invitations", status_code=201)
 async def create_invite(
@@ -239,13 +343,7 @@ async def create_invite(
         session, org_id, body.email, role=body.role, invited_by=uid
     )
     await session.commit()
-    # --- email send stub -------------------------------------------------------
-    logger.info(
-        "BR-2.1 EMAIL-STUB: would send invite for org %s to %s (role=%s) — "
-        "token=%s… (delivery not yet wired)",
-        org_id, inv.email, inv.role, inv.token[:8],
-    )
-    return {**inv.to_dict(include_token=True), "emailDelivery": "stub"}
+    return _invite_delivery_response(inv)
 
 
 @router.get("/orgs/{org_id}/invitations")
@@ -279,6 +377,34 @@ async def revoke_invite(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
     await session.commit()
     return inv.to_dict()
+
+
+@router.post("/orgs/{org_id}/invitations/{invitation_id}/resend")
+async def resend_invite(
+    org_id: str,
+    invitation_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: Annotated[AuthUser, Depends(get_current_user)] = None,
+):
+    """Resend a pending invitation with a fresh token and seven-day expiry."""
+    uid = await _uid(session, current_user)
+    await _require_manager(session, uid, org_id)
+    _require_active_org(current_user, org_id)
+    try:
+        inv = await svc.resend_invitation(
+            session, org_id, invitation_id, invited_by=uid
+        )
+    except ValueError as exc:
+        if str(exc) == "not_pending":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only pending invitations can be resent",
+            ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not resend invitation") from exc
+    if inv is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+    await session.commit()
+    return _invite_delivery_response(inv)
 
 
 @router.post("/orgs/invitations/accept")
