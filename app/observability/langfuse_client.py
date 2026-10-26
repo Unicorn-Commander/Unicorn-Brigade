@@ -5,30 +5,53 @@ Provides tracing, cost tracking, and evaluation for LLM operations.
 Self-hosted Langfuse integration for Unicorn Brigade.
 """
 
-import os
-import logging
+import asyncio
 import functools
-from typing import Any, Callable, Dict, Optional, TypeVar
-from datetime import datetime
+import logging
+import os
 from contextlib import asynccontextmanager
+from typing import Any, Callable, Optional, TypeVar
 
 logger = logging.getLogger(__name__)
 
-# Configuration from environment
+# Configuration from environment.  Keep these names aligned with the existing
+# deployment contract; Langfuse v4 maps LANGFUSE_HOST to its base_url argument.
 LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "true").lower() == "true"
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://localhost:3000")
 
-# Lazy initialization
+# Lazy initialization: importing the application must not create an SDK client
+# or start any OTel worker threads.
 _langfuse_client = None
 
 
+def _langfuse_configuration() -> tuple[bool, str, str, str]:
+    """Read the Langfuse configuration while preserving import-time defaults."""
+    enabled = os.getenv("LANGFUSE_ENABLED")
+    public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+    secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+    host = os.getenv("LANGFUSE_HOST")
+
+    return (
+        (enabled if enabled is not None else str(LANGFUSE_ENABLED)).lower() == "true",
+        public_key if public_key is not None else LANGFUSE_PUBLIC_KEY,
+        secret_key if secret_key is not None else LANGFUSE_SECRET_KEY,
+        host if host is not None else LANGFUSE_HOST,
+    )
+
+
+def _log_langfuse_failure(operation: str, error: Exception) -> None:
+    """Log SDK failures without putting request data or credentials in logs."""
+    logger.warning("Langfuse %s failed (%s)", operation, type(error).__name__)
+
+
 def _get_langfuse():
-    """Get or create Langfuse client (lazy initialization)."""
+    """Get or create the v4 Langfuse client (lazily and fail-safe)."""
     global _langfuse_client
 
-    if not LANGFUSE_ENABLED:
+    enabled, public_key, secret_key, host = _langfuse_configuration()
+    if not enabled or not public_key or not secret_key:
         return None
 
     if _langfuse_client is None:
@@ -36,26 +59,68 @@ def _get_langfuse():
             from langfuse import Langfuse
 
             _langfuse_client = Langfuse(
-                public_key=LANGFUSE_PUBLIC_KEY or None,
-                secret_key=LANGFUSE_SECRET_KEY or None,
-                host=LANGFUSE_HOST,
+                public_key=public_key,
+                secret_key=secret_key,
+                base_url=host,
             )
-            logger.info(f"Langfuse client initialized: {LANGFUSE_HOST}")
+            logger.info("Langfuse client initialized: %s", host)
         except ImportError:
             logger.warning("langfuse package not installed, observability disabled")
             return None
-        except Exception as e:
-            logger.error(f"Failed to initialize Langfuse: {e}")
+        except Exception as error:
+            _log_langfuse_failure("client initialization", error)
             return None
 
     return _langfuse_client
+
+
+def _normalise_usage(usage: Optional[dict[str, int]]) -> Optional[dict[str, int]]:
+    """Translate Brigade's legacy token names to v4 usage_details names."""
+    if not usage:
+        return None
+
+    aliases = {
+        "input": "prompt_tokens",
+        "output": "completion_tokens",
+        "input_tokens": "prompt_tokens",
+        "output_tokens": "completion_tokens",
+        "total": "total_tokens",
+    }
+    normalised = {
+        aliases.get(key, key): value
+        for key, value in usage.items()
+        if value is not None
+    }
+
+    if (
+        "total_tokens" not in normalised
+        and "prompt_tokens" in normalised
+        and "completion_tokens" in normalised
+    ):
+        normalised["total_tokens"] = (
+            normalised["prompt_tokens"] + normalised["completion_tokens"]
+        )
+
+    return normalised
+
+
+def _close_context(context: Any, operation: str) -> None:
+    """Close a synchronously entered v4 context manager without raising."""
+    if context is None:
+        return
+    try:
+        context.__exit__(None, None, None)
+    except Exception as error:
+        _log_langfuse_failure(operation, error)
 
 
 class LangfuseTracer:
     """
     Tracer for Unicorn Brigade agent operations.
 
-    Wraps Langfuse functionality with Brigade-specific conventions.
+    The public facade is intentionally stable for Brigade callers.  Internally
+    it uses Langfuse v4's OpenTelemetry observations instead of the removed v2
+    trace/span/generation objects.
     """
 
     def __init__(
@@ -68,16 +133,18 @@ class LangfuseTracer:
         self.session_id = session_id
         self.user_id = user_id
         self._trace = None
+        self._trace_context = None
+        self._attributes_context = None
         self._current_span = None
 
     def start_trace(
         self,
         name: str,
-        input_data: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        input_data: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
         tags: Optional[list] = None,
     ):
-        """Start a new trace for an operation."""
+        """Start a root v4 span and propagate trace-level attributes."""
         client = _get_langfuse()
         if not client:
             return self
@@ -86,33 +153,73 @@ class LangfuseTracer:
             "agent_id": self.agent_id,
             **(metadata or {}),
         }
+        trace_context = None
+        attributes_context = None
 
-        self._trace = client.trace(
-            name=name,
-            input=input_data,
-            session_id=self.session_id,
-            user_id=self.user_id,
-            metadata=trace_metadata,
-            tags=tags or [],
-        )
+        try:
+            # v4's generic observation API is the exact equivalent of the
+            # older trace object.  Keep it current until end_trace() so child
+            # observations created by this facade have the right parent.
+            trace_context = client.start_as_current_observation(
+                name=name,
+                as_type="span",
+                input=input_data,
+                metadata=trace_metadata,
+                end_on_exit=False,
+            )
+            trace = trace_context.__enter__()
+
+            from langfuse import propagate_attributes
+
+            attributes_context = propagate_attributes(
+                user_id=self.user_id,
+                session_id=self.session_id,
+                metadata=trace_metadata,
+                tags=tags or [],
+                trace_name=name,
+            )
+            attributes_context.__enter__()
+
+            self._trace = trace
+            self._trace_context = trace_context
+            self._attributes_context = attributes_context
+        except Exception as error:
+            if attributes_context is not None:
+                _close_context(attributes_context, "trace attribute cleanup")
+            if trace_context is not None:
+                if "trace" in locals() and trace is not None:
+                    try:
+                        trace.end()
+                    except Exception as end_error:
+                        _log_langfuse_failure("trace cleanup", end_error)
+                _close_context(trace_context, "trace cleanup")
+            self._trace = None
+            self._trace_context = None
+            self._attributes_context = None
+            _log_langfuse_failure("start_trace", error)
 
         return self
 
     def start_span(
         self,
         name: str,
-        input_data: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        input_data: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ):
-        """Start a new span within the current trace."""
+        """Start a child span within the current trace."""
         if not self._trace:
             return self
 
-        self._current_span = self._trace.span(
-            name=name,
-            input=input_data,
-            metadata=metadata,
-        )
+        try:
+            self._current_span = self._trace.start_observation(
+                name=name,
+                as_type="span",
+                input=input_data,
+                metadata=metadata,
+            )
+        except Exception as error:
+            self._current_span = None
+            _log_langfuse_failure("start_span", error)
 
         return self
 
@@ -121,13 +228,21 @@ class LangfuseTracer:
         output: Optional[Any] = None,
         level: str = "DEFAULT",
     ):
-        """End the current span."""
-        if self._current_span:
-            self._current_span.end(
-                output=output,
-                level=level,
-            )
-            self._current_span = None
+        """Update and end the current child span."""
+        span = self._current_span
+        self._current_span = None
+        if span is None:
+            return self
+
+        try:
+            span.update(output=output, level=level)
+        except Exception as error:
+            _log_langfuse_failure("end_span update", error)
+        finally:
+            try:
+                span.end()
+            except Exception as error:
+                _log_langfuse_failure("end_span", error)
 
         return self
 
@@ -137,50 +252,70 @@ class LangfuseTracer:
         model: str,
         input_messages: list,
         output: Optional[str] = None,
-        usage: Optional[Dict[str, int]] = None,
-        model_parameters: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        usage: Optional[dict[str, int]] = None,
+        model_parameters: Optional[dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ):
-        """Log an LLM generation (call)."""
+        """Create and end a v4 generation observation."""
         if not self._trace:
             return self
 
-        self._trace.generation(
-            name=name,
-            model=model,
-            input=input_messages,
-            output=output,
-            usage=usage,
-            model_parameters=model_parameters,
-            metadata=metadata,
-        )
+        generation = None
+        try:
+            generation = self._trace.start_observation(
+                name=name,
+                as_type="generation",
+                model=model,
+                input=input_messages,
+                output=output,
+                usage_details=_normalise_usage(usage),
+                model_parameters=model_parameters,
+                metadata=metadata,
+            )
+        except Exception as error:
+            _log_langfuse_failure("log_generation", error)
+
+        if generation is not None:
+            try:
+                generation.end()
+            except Exception as error:
+                _log_langfuse_failure("end_generation", error)
 
         return self
 
     def log_tool_call(
         self,
         tool_name: str,
-        tool_input: Dict[str, Any],
+        tool_input: dict[str, Any],
         tool_output: Optional[Any] = None,
         success: bool = True,
         duration_ms: Optional[float] = None,
     ):
-        """Log a tool execution."""
+        """Create and end a v4 tool observation."""
         if not self._trace:
             return self
 
-        metadata = {
-            "success": success,
-            "duration_ms": duration_ms,
-        }
+        tool = None
+        try:
+            tool = self._trace.start_observation(
+                name=f"tool:{tool_name}",
+                as_type="tool",
+                input=tool_input,
+                output=tool_output,
+                metadata={
+                    "success": success,
+                    "duration_ms": duration_ms,
+                },
+                level="DEFAULT" if success else "WARNING",
+            )
+        except Exception as error:
+            _log_langfuse_failure("log_tool_call", error)
 
-        self._trace.span(
-            name=f"tool:{tool_name}",
-            input=tool_input,
-            output=tool_output,
-            metadata=metadata,
-            level="WARNING" if not success else "DEFAULT",
-        )
+        if tool is not None:
+            try:
+                tool.end()
+            except Exception as error:
+                _log_langfuse_failure("end_tool_call", error)
 
         return self
 
@@ -188,19 +323,38 @@ class LangfuseTracer:
         self,
         output: Optional[Any] = None,
         status: str = "success",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ):
-        """End the current trace."""
-        if self._trace:
-            final_metadata = {
-                "status": status,
-                **(metadata or {}),
-            }
-            self._trace.update(
+        """Update and close the root observation."""
+        trace = self._trace
+        if trace is None:
+            return self
+
+        # Do not leave an unfinished child behind if a caller exits early.
+        if self._current_span is not None:
+            self.end_span()
+
+        try:
+            trace.update(
                 output=output,
-                metadata=final_metadata,
+                metadata={
+                    "status": status,
+                    **(metadata or {}),
+                },
             )
+        except Exception as error:
+            _log_langfuse_failure("end_trace update", error)
+        finally:
+            try:
+                trace.end()
+            except Exception as error:
+                _log_langfuse_failure("end_trace", error)
+
+            _close_context(self._attributes_context, "trace attribute cleanup")
+            _close_context(self._trace_context, "trace cleanup")
             self._trace = None
+            self._trace_context = None
+            self._attributes_context = None
 
         return self
 
@@ -211,12 +365,17 @@ class LangfuseTracer:
         comment: Optional[str] = None,
     ):
         """Add a score to the current trace."""
-        if self._trace:
-            self._trace.score(
+        if not self._trace:
+            return self
+
+        try:
+            self._trace.score_trace(
                 name=name,
                 value=value,
                 comment=comment,
             )
+        except Exception as error:
+            _log_langfuse_failure("score", error)
 
         return self
 
@@ -235,7 +394,188 @@ def get_tracer(
 
 
 # Type variable for decorator return types
-F = TypeVar('F', bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def _decorator_input(args: tuple, kwargs: dict) -> dict[str, Any]:
+    """Build the same broad input shape for v4 decorator observations."""
+    return {"args": list(args), "kwargs": kwargs}
+
+
+def _run_observed_sync(
+    func: Callable[..., Any],
+    args: tuple,
+    kwargs: dict,
+    *,
+    name: str,
+    as_type: str,
+    model: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+    tags: Optional[list] = None,
+):
+    """Run a sync function inside a fail-safe v4 observation."""
+    client = _get_langfuse()
+    if not client:
+        return func(*args, **kwargs)
+
+    context = None
+    observation = None
+    attributes_context = None
+    try:
+        context = client.start_as_current_observation(
+            name=name,
+            as_type=as_type,
+            input=_decorator_input(args, kwargs),
+            metadata=metadata,
+            model=model,
+            end_on_exit=False,
+        )
+        observation = context.__enter__()
+        if metadata is not None or tags is not None:
+            from langfuse import propagate_attributes
+
+            attributes_context = propagate_attributes(
+                metadata=metadata,
+                tags=tags or [],
+                trace_name=name,
+            )
+            attributes_context.__enter__()
+    except Exception as error:
+        if attributes_context is not None:
+            _close_context(attributes_context, "decorator attribute cleanup")
+        if observation is not None:
+            try:
+                observation.end()
+            except Exception as end_error:
+                _log_langfuse_failure("decorator cleanup", end_error)
+        if context is not None:
+            _close_context(context, "decorator cleanup")
+        _log_langfuse_failure("decorator start", error)
+        return func(*args, **kwargs)
+
+    try:
+        result = func(*args, **kwargs)
+    except BaseException as error:
+        if observation is not None:
+            try:
+                observation.update(
+                    level="ERROR",
+                    status_message=str(error) or type(error).__name__,
+                )
+            except Exception as update_error:
+                _log_langfuse_failure("decorator error update", update_error)
+        _close_context(attributes_context, "decorator attribute cleanup")
+        try:
+            context.__exit__(type(error), error, error.__traceback__)
+        except Exception as exit_error:
+            _log_langfuse_failure("decorator cleanup", exit_error)
+        raise
+    else:
+        if observation is not None:
+            try:
+                observation.update(output=result)
+            except Exception as error:
+                _log_langfuse_failure("decorator output update", error)
+        _close_context(attributes_context, "decorator attribute cleanup")
+        try:
+            context.__exit__(None, None, None)
+        except Exception as error:
+            _log_langfuse_failure("decorator cleanup", error)
+        return result
+    finally:
+        if observation is not None:
+            try:
+                observation.end()
+            except Exception as error:
+                _log_langfuse_failure("decorator end", error)
+
+
+async def _run_observed_async(
+    func: Callable[..., Any],
+    args: tuple,
+    kwargs: dict,
+    *,
+    name: str,
+    as_type: str,
+    model: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+    tags: Optional[list] = None,
+):
+    """Run an async function inside a fail-safe v4 observation."""
+    client = _get_langfuse()
+    if not client:
+        return await func(*args, **kwargs)
+
+    context = None
+    observation = None
+    attributes_context = None
+    try:
+        context = client.start_as_current_observation(
+            name=name,
+            as_type=as_type,
+            input=_decorator_input(args, kwargs),
+            metadata=metadata,
+            model=model,
+            end_on_exit=False,
+        )
+        observation = context.__enter__()
+        if metadata is not None or tags is not None:
+            from langfuse import propagate_attributes
+
+            attributes_context = propagate_attributes(
+                metadata=metadata,
+                tags=tags or [],
+                trace_name=name,
+            )
+            attributes_context.__enter__()
+    except Exception as error:
+        if attributes_context is not None:
+            _close_context(attributes_context, "decorator attribute cleanup")
+        if observation is not None:
+            try:
+                observation.end()
+            except Exception as end_error:
+                _log_langfuse_failure("decorator cleanup", end_error)
+        if context is not None:
+            _close_context(context, "decorator cleanup")
+        _log_langfuse_failure("decorator start", error)
+        return await func(*args, **kwargs)
+
+    try:
+        result = await func(*args, **kwargs)
+    except BaseException as error:
+        if observation is not None:
+            try:
+                observation.update(
+                    level="ERROR",
+                    status_message=str(error) or type(error).__name__,
+                )
+            except Exception as update_error:
+                _log_langfuse_failure("decorator error update", update_error)
+        _close_context(attributes_context, "decorator attribute cleanup")
+        try:
+            context.__exit__(type(error), error, error.__traceback__)
+        except Exception as exit_error:
+            _log_langfuse_failure("decorator cleanup", exit_error)
+        raise
+    else:
+        if observation is not None:
+            try:
+                observation.update(output=result)
+            except Exception as error:
+                _log_langfuse_failure("decorator output update", error)
+        _close_context(attributes_context, "decorator attribute cleanup")
+        try:
+            context.__exit__(None, None, None)
+        except Exception as error:
+            _log_langfuse_failure("decorator cleanup", error)
+        return result
+    finally:
+        if observation is not None:
+            try:
+                observation.end()
+            except Exception as error:
+                _log_langfuse_failure("decorator end", error)
 
 
 def trace_llm_call(
@@ -243,51 +583,42 @@ def trace_llm_call(
     model: Optional[str] = None,
 ) -> Callable[[F], F]:
     """
-    Decorator to trace LLM calls.
+    Decorator to trace LLM calls as v4 generation observations.
 
     Usage:
         @trace_llm_call(name="chat_completion", model="gpt-4o")
         async def my_llm_call(messages: list) -> str:
             ...
     """
+
     def decorator(func: F) -> F:
-        @functools.wraps(func)
-        async def async_wrapper(*args, **kwargs):
-            client = _get_langfuse()
-            if not client:
-                return await func(*args, **kwargs)
+        trace_name = name or func.__name__
+        if asyncio.iscoroutinefunction(func):
 
-            trace_name = name or func.__name__
-            start_time = datetime.utcnow()
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                return await _run_observed_async(
+                    func,
+                    args,
+                    kwargs,
+                    name=trace_name,
+                    as_type="generation",
+                    model=model,
+                )
 
-            try:
-                # Try to use langfuse's @observe decorator if available
-                from langfuse import observe
-                observed_func = observe(name=trace_name, as_type="generation")(func)
-                return await observed_func(*args, **kwargs)
-            except ImportError:
-                # Fallback to manual tracing
-                result = await func(*args, **kwargs)
-                return result
+            return async_wrapper  # type: ignore
 
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
-            client = _get_langfuse()
-            if not client:
-                return func(*args, **kwargs)
+            return _run_observed_sync(
+                func,
+                args,
+                kwargs,
+                name=trace_name,
+                as_type="generation",
+                model=model,
+            )
 
-            trace_name = name or func.__name__
-
-            try:
-                from langfuse import observe
-                observed_func = observe(name=trace_name, as_type="generation")(func)
-                return observed_func(*args, **kwargs)
-            except ImportError:
-                return func(*args, **kwargs)
-
-        import asyncio
-        if asyncio.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore
         return sync_wrapper  # type: ignore
 
     return decorator
@@ -296,49 +627,34 @@ def trace_llm_call(
 def trace_tool_call(
     tool_name: Optional[str] = None,
 ) -> Callable[[F], F]:
-    """
-    Decorator to trace tool executions.
+    """Decorator to trace tool executions as v4 tool observations."""
 
-    Usage:
-        @trace_tool_call(tool_name="web_search")
-        async def web_search_handler(query: str) -> dict:
-            ...
-    """
     def decorator(func: F) -> F:
-        @functools.wraps(func)
-        async def async_wrapper(*args, **kwargs):
-            client = _get_langfuse()
-            if not client:
-                return await func(*args, **kwargs)
+        observation_name = f"tool:{tool_name or func.__name__}"
+        if asyncio.iscoroutinefunction(func):
 
-            name = tool_name or func.__name__
-            start_time = datetime.utcnow()
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                return await _run_observed_async(
+                    func,
+                    args,
+                    kwargs,
+                    name=observation_name,
+                    as_type="tool",
+                )
 
-            try:
-                from langfuse import observe
-                observed_func = observe(name=f"tool:{name}")(func)
-                return await observed_func(*args, **kwargs)
-            except ImportError:
-                return await func(*args, **kwargs)
+            return async_wrapper  # type: ignore
 
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
-            client = _get_langfuse()
-            if not client:
-                return func(*args, **kwargs)
+            return _run_observed_sync(
+                func,
+                args,
+                kwargs,
+                name=observation_name,
+                as_type="tool",
+            )
 
-            name = tool_name or func.__name__
-
-            try:
-                from langfuse import observe
-                observed_func = observe(name=f"tool:{name}")(func)
-                return observed_func(*args, **kwargs)
-            except ImportError:
-                return func(*args, **kwargs)
-
-        import asyncio
-        if asyncio.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore
         return sync_wrapper  # type: ignore
 
     return decorator
@@ -348,61 +664,38 @@ def trace_agent_run(
     agent_id: Optional[str] = None,
     operation: str = "chat",
 ) -> Callable[[F], F]:
-    """
-    Decorator to trace complete agent runs.
+    """Decorator to trace complete agent runs as v4 span observations."""
 
-    Usage:
-        @trace_agent_run(agent_id="col-finance", operation="chat")
-        async def agent_chat(message: str) -> str:
-            ...
-    """
     def decorator(func: F) -> F:
-        @functools.wraps(func)
-        async def async_wrapper(*args, **kwargs):
-            client = _get_langfuse()
-            if not client:
-                return await func(*args, **kwargs)
+        trace_name = f"agent:{agent_id or 'unknown'}:{operation}"
+        if asyncio.iscoroutinefunction(func):
 
-            trace_name = f"agent:{agent_id or 'unknown'}:{operation}"
+            @functools.wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                return await _run_observed_async(
+                    func,
+                    args,
+                    kwargs,
+                    name=trace_name,
+                    as_type="span",
+                    metadata={"agent_id": agent_id, "operation": operation},
+                    tags=["agent", operation],
+                )
 
-            try:
-                from langfuse import observe, langfuse_context
-
-                @observe(name=trace_name)
-                async def traced_func(*a, **kw):
-                    # Update trace with agent metadata
-                    langfuse_context.update_current_trace(
-                        name=trace_name,
-                        metadata={
-                            "agent_id": agent_id,
-                            "operation": operation,
-                        },
-                        tags=["agent", operation],
-                    )
-                    return await func(*a, **kw)
-
-                return await traced_func(*args, **kwargs)
-            except ImportError:
-                return await func(*args, **kwargs)
+            return async_wrapper  # type: ignore
 
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
-            client = _get_langfuse()
-            if not client:
-                return func(*args, **kwargs)
+            return _run_observed_sync(
+                func,
+                args,
+                kwargs,
+                name=trace_name,
+                as_type="span",
+                metadata={"agent_id": agent_id, "operation": operation},
+                tags=["agent", operation],
+            )
 
-            trace_name = f"agent:{agent_id or 'unknown'}:{operation}"
-
-            try:
-                from langfuse import observe
-                observed_func = observe(name=trace_name)(func)
-                return observed_func(*args, **kwargs)
-            except ImportError:
-                return func(*args, **kwargs)
-
-        import asyncio
-        if asyncio.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore
         return sync_wrapper  # type: ignore
 
     return decorator
@@ -413,44 +706,38 @@ async def langfuse_lifespan():
     """
     Async context manager for FastAPI lifespan.
 
-    Usage in main.py:
-        from app.observability import langfuse_lifespan
-
-        @asynccontextmanager
-        async def lifespan(app):
-            async with langfuse_lifespan():
-                yield
+    Startup is intentionally lazy.  The v4 client is created only when a trace
+    is requested, and shutdown flushes any queued OTel spans best-effort.
     """
-    # Startup - client is lazily initialized
     logger.info("Langfuse observability ready")
 
     yield
 
-    # Shutdown - flush pending events
+    flush()
+
+
+def flush():
+    """Flush pending Langfuse v4 observations without affecting the app."""
     client = _get_langfuse()
     if client:
         try:
             client.flush()
-            logger.info("Langfuse events flushed")
-        except Exception as e:
-            logger.warning(f"Error flushing Langfuse: {e}")
-
-
-def flush():
-    """Manually flush pending Langfuse events."""
-    client = _get_langfuse()
-    if client:
-        client.flush()
+        except Exception as error:
+            _log_langfuse_failure("flush", error)
 
 
 def shutdown():
-    """Shutdown Langfuse client."""
+    """Flush and shut down the Langfuse v4 client without raising."""
     global _langfuse_client
-    if _langfuse_client:
+    client = _langfuse_client
+    if client:
         try:
-            _langfuse_client.flush()
-            _langfuse_client.shutdown()
-        except Exception as e:
-            logger.warning(f"Error shutting down Langfuse: {e}")
+            client.flush()
+        except Exception as error:
+            _log_langfuse_failure("shutdown flush", error)
+        try:
+            client.shutdown()
+        except Exception as error:
+            _log_langfuse_failure("shutdown", error)
         finally:
             _langfuse_client = None

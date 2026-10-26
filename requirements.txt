@@ -38,9 +38,12 @@ tiktoken>=0.8.0
 
 # Monitoring & Observability
 prometheus-client==0.21.0
-opentelemetry-api==1.27.0
-opentelemetry-sdk==1.27.0
-langfuse>=2.0.0
+opentelemetry-api==1.45.1
+opentelemetry-sdk==1.45.1
+# Langfuse 4.x uses the OpenTelemetry-based client and requires OTel >=1.45.
+# Keep the v4 floor for compatibility with the legacy Langfuse server; httpx
+# remains pinned below for the rest of Brigade's dependency set.
+langfuse>=4.7,<5
 
 # Browser Automation (optional - requires playwright install)
 browser-use>=0.11.0

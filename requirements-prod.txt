@@ -39,13 +39,12 @@ tiktoken==0.8.0
 
 # Monitoring & Observability
 prometheus-client==0.21.0
-opentelemetry-api==1.27.0
-opentelemetry-sdk==1.27.0
-# langfuse 2.x is compatible with the pinned httpx==0.27.2 (it requires
-# httpx>=0.15.4,<1.0) and pydantic 2.x — the earlier "httpx conflict" was the
-# langfuse 3.x line, which we deliberately avoid. langfuse_client.py uses the
-# v2 SDK API (client.trace()/generation()/observe). Kept <3 to stay compatible.
-langfuse>=2.60.0,<3.0.0
+opentelemetry-api==1.45.1
+opentelemetry-sdk==1.45.1
+# Langfuse 4.x uses the OpenTelemetry-based client and requires OTel >=1.45.
+# The v4 floor works with the legacy Langfuse server; httpx==0.27.2 remains
+# pinned below and is compatible with langfuse's httpx>=0.15.4,<1.0 range.
+langfuse>=4.7,<5
 
 # Browser Automation (optional - disabled on this server)
 # browser-use>=0.11.0
