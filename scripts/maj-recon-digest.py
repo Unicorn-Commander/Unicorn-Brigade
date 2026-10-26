@@ -21,7 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.integrations.postmark_sender import PostmarkSender  # noqa: E402
 
-STATE_FILE = Path(os.getenv("MAJIKS_DIGEST_STATE_FILE", "/etc/maj-recon/last-digest-ts"))
+# Window state lives on the container's /app/uploads volume so an API recreate does not reset it
+# (the old default sat in the writable layer: every deploy fell back to a 7-day window; PO ea55c9f5).
+STATE_FILE = Path(os.getenv("MAJIKS_DIGEST_STATE_FILE", "/app/uploads/.maj-recon/last-digest-ts"))
+LEGACY_STATE_FILE = Path("/etc/maj-recon/last-digest-ts")
 DEFAULT_TO = "aaron@magicunicorn.tech"
 GRAPH_NAME = os.getenv("MAJIKS_RESEARCH_GRAPH", "majiks_research")
 STABLE_URL = "https://stable.magicunicorn.dev/?room=majiks-research"
@@ -45,7 +48,7 @@ class DigestTripwire:
     fired_at: str = ""
 
     @classmethod
-    def from_mapping(cls, value: dict[str, Any]) -> "DigestTripwire":
+    def from_mapping(cls, value: dict[str, Any]) -> DigestTripwire:
         props = value.get("properties", value)
         domain = props.get("domain") or props.get("captain") or props.get("cap") or "unknown"
         return cls(
@@ -75,8 +78,9 @@ def utc_now() -> datetime:
 
 
 def default_since() -> datetime:
-    if STATE_FILE.exists():
-        raw = STATE_FILE.read_text(encoding="utf-8").strip()
+    source = STATE_FILE if STATE_FILE.exists() else LEGACY_STATE_FILE
+    if source.exists():
+        raw = source.read_text(encoding="utf-8").strip()
         if raw:
             return parse_iso_ts(raw)
     return utc_now() - timedelta(days=7)
