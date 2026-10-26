@@ -30,7 +30,6 @@ from datetime import datetime
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select, text
 
 from app.core.timezones import BUSINESS_TIMEZONE
@@ -49,6 +48,7 @@ from app.integrations.metering import meter_usage
 from app.llm.ops_center_client import DEFAULT_MODEL
 from app.llm.tool_resolver import get_tools_for_agent
 from app.observability.metrics import scheduled_run_total
+from app.services.cron import CronTriggerLike, parse_cron
 from app.services.leader_election import PgAdvisoryLeaderLock, lock_key_from_name
 
 logger = logging.getLogger(__name__)
@@ -145,17 +145,9 @@ def _record_run_outcome(outcome: str) -> None:
         pass
 
 
-def _parse_cron(expr: str, tz: str = BUSINESS_TIMEZONE) -> CronTrigger:
-    """Parse a 5-field cron expression. Raises ValueError on bad input."""
-    parts = expr.strip().split()
-    if len(parts) != 5:
-        raise ValueError(
-            f"cron must be 5 fields (minute hour day month day_of_week), got: {expr!r}"
-        )
-    minute, hour, day, month, dow = parts
-    return CronTrigger(
-        minute=minute, hour=hour, day=day, month=month, day_of_week=dow, timezone=tz
-    )
+def _parse_cron(expr: str, tz: str = BUSINESS_TIMEZONE) -> CronTriggerLike:
+    """Backward-compatible scheduler name for the shared standard parser."""
+    return parse_cron(expr, tz)
 
 
 class BrigadeScheduler:

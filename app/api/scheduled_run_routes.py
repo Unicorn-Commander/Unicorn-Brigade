@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,7 +15,8 @@ from app.auth.roles import UserRole
 from app.core.timezones import BUSINESS_TIMEZONE
 from app.db.database import AsyncSession, ensure_org_context, get_session
 from app.db.models import Agent, ScheduledRun, ScheduledRunHistory
-from app.services.scheduler import _parse_cron, get_scheduler
+from app.services.cron import parse_cron
+from app.services.scheduler import get_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +73,28 @@ def _own_filter(user: AuthUser):
 
 def _validate_cron(expr: str, tz: str) -> None:
     try:
-        _parse_cron(expr, tz or BUSINESS_TIMEZONE)
+        parse_cron(expr, tz or BUSINESS_TIMEZONE)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"invalid cron: {e}") from e
+
+
+def _next_run_at(run: ScheduledRun) -> Optional[str]:
+    """Return the next enabled fire time using the same parser as dispatch."""
+    if not run.enabled:
+        return None
+    try:
+        trigger = parse_cron(run.cron, run.timezone or BUSINESS_TIMEZONE)
+        next_fire = trigger.get_next_fire_time(None, datetime.now(UTC))
+    except Exception as exc:  # pragma: no cover - rows are validated on write
+        logger.warning("Could not calculate next run for %s: %s", run.id, exc)
+        return None
+    return next_fire.astimezone(UTC).isoformat().replace("+00:00", "Z") if next_fire else None
+
+
+def _run_to_dict(run: ScheduledRun) -> dict:
+    body = run.to_dict()
+    body["nextRunAt"] = _next_run_at(run)
+    return body
 
 
 async def _ensure_agent_exists(session: AsyncSession, agent_id: str) -> None:
@@ -102,7 +123,7 @@ async def list_scheduled_runs(
     if own is not None:
         stmt = stmt.where(ScheduledRun.owner_user_id == own)
     rows = (await session.execute(stmt)).scalars().all()
-    return {"items": [r.to_dict() for r in rows], "total": len(rows)}
+    return {"items": [_run_to_dict(r) for r in rows], "total": len(rows)}
 
 
 @router.post("", status_code=201)
@@ -142,7 +163,7 @@ async def create_scheduled_run(
     if sched is not None and run.enabled:
         sched.upsert(run)
 
-    return run.to_dict()
+    return _run_to_dict(run)
 
 
 @router.get("/{run_id}")
@@ -156,7 +177,7 @@ async def get_scheduled_run(
     if run is None:
         raise HTTPException(status_code=404, detail="scheduled run not found")
     _ensure_owner_or_admin(user, run)
-    body = run.to_dict()
+    body = _run_to_dict(run)
     if history_limit:
         rows = (
             await session.execute(
@@ -213,7 +234,7 @@ async def update_scheduled_run(
     if sched is not None:
         sched.upsert(run)
 
-    return run.to_dict()
+    return _run_to_dict(run)
 
 
 @router.delete("/{run_id}", status_code=204)

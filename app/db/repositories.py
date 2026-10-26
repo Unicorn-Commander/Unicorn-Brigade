@@ -274,15 +274,63 @@ class ConversationRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def list_for_user(self, user_id: str = "anonymous", limit: int = 50) -> list[dict]:
+    async def list_for_user(
+        self,
+        user_id: str = "anonymous",
+        limit: int = 50,
+        *,
+        agent_id: Optional[str] = None,
+        q: Optional[str] = None,
+        status: Optional[str] = None,
+        offset: int = 0,
+    ) -> list[dict]:
+        """List one user's conversations while preserving the legacy return shape."""
+        conversations, _ = await self.list_for_user_page(
+            user_id=user_id,
+            limit=limit,
+            agent_id=agent_id,
+            q=q,
+            status=status,
+            offset=offset,
+        )
+        return conversations
+
+    async def list_for_user_page(
+        self,
+        user_id: str = "anonymous",
+        limit: int = 50,
+        *,
+        agent_id: Optional[str] = None,
+        q: Optional[str] = None,
+        status: Optional[str] = None,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """Return a filtered page and its total within the current tenant.
+
+        Tenant isolation remains the responsibility of the request session's
+        existing RLS context, exactly as it was for the unfiltered list.
+        """
+        filters = [Conversation.user_id == user_id]
+        if agent_id:
+            filters.append(Conversation.agent_id == agent_id)
+        if q and q.strip():
+            filters.append(Conversation.title.ilike(f"%{q.strip()}%"))
+        if status:
+            filters.append(Conversation.status == status)
+
+        count_result = await self.session.execute(
+            select(func.count(Conversation.id)).where(*filters)
+        )
+        total = int(count_result.scalar() or 0)
         result = await self.session.execute(
             select(Conversation)
             .options(selectinload(Conversation.agent))
-            .where(Conversation.user_id == user_id)
+            .where(*filters)
             .order_by(Conversation.updated_at.desc())
             .limit(limit)
+            .offset(max(0, offset))
         )
-        return [c.to_dict() for c in result.scalars().all()]
+        return [c.to_dict() for c in result.scalars().all()], total
 
     async def get(self, conv_id: str, include_messages: bool = False) -> Optional[dict]:
         query = select(Conversation).where(Conversation.id == conv_id)
@@ -376,9 +424,12 @@ class ConversationRepository:
             conv.message_count = (conv.message_count or 0) + 1
             conv.total_tokens = (conv.total_tokens or 0) + (data.get("tokens_used", 0))
             conv.updated_at = datetime.utcnow()
-            # Auto-title from first user message
-            if not conv.title and data["role"] == "user":
-                conv.title = data["content"][:100]
+            # Auto-title from the first non-empty user message. Keep the title
+            # short enough for list views, and never overwrite an explicit title.
+            if not (conv.title or "").strip() and data["role"] == "user":
+                title = str(data.get("content") or "").strip()
+                if title:
+                    conv.title = title[:60]
 
         # BR-1.4 (RLS): NO post-commit refresh. ``messages`` is FORCE-RLS; flush
         # emits INSERT ... RETURNING org_id (server_default current_org_id()) inside

@@ -2,15 +2,16 @@
 Conversation persistence routes.
 Provides CRUD for conversations and messages.
 """
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Dict, List, Optional, Annotated
 import logging
+from typing import Annotated, Optional
 
-from app.db.database import get_session, AsyncSession
-from app.db.repositories import ConversationRepository
-from app.auth.middleware import require_api_key, require_operator, require_admin, AuthUser
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+
+from app.auth.middleware import AuthUser, require_admin, require_api_key, require_operator
 from app.auth.roles import UserRole
+from app.db.database import AsyncSession, get_session
+from app.db.repositories import ConversationRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -30,9 +31,9 @@ class AddMessageRequest(BaseModel):
     content: str
     model: Optional[str] = None
     tokens_used: Optional[int] = 0
-    tool_calls: Optional[List[Dict]] = None
-    tool_results: Optional[List[Dict]] = None
-    metadata: Optional[Dict] = None
+    tool_calls: Optional[list[dict]] = None
+    tool_results: Optional[list[dict]] = None
+    metadata: Optional[dict] = None
 
 
 class UpdateConversationRequest(BaseModel):
@@ -46,16 +47,27 @@ class UpdateConversationRequest(BaseModel):
 @router.get("/conversations")
 async def list_conversations(
     user_id: str = "anonymous",
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
+    agent_id: Optional[str] = Query(None),
+    q: Optional[str] = Query(None, max_length=200),
+    status: Optional[str] = Query(None, max_length=50),
+    offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
     user: Annotated[AuthUser, Depends(require_api_key)] = None,
 ):
-    """List conversations for a user."""
+    """List a user's tenant-scoped conversations with optional server filters."""
     if user and user.role != UserRole.ADMIN:
         user_id = user.id
     repo = ConversationRepository(session)
-    conversations = await repo.list_for_user(user_id=user_id, limit=limit)
-    return {"conversations": conversations}
+    conversations, total = await repo.list_for_user_page(
+        user_id=user_id,
+        limit=limit,
+        agent_id=agent_id,
+        q=q,
+        status=status,
+        offset=offset,
+    )
+    return {"conversations": conversations, "total": total}
 
 
 @router.get("/conversations/{conversation_id}")

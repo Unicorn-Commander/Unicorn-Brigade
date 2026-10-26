@@ -12,16 +12,13 @@ object with the right attributes, so a ``SimpleNamespace`` works in tests). No
 database, no request, no clock: callers pass ``now``. The routes in
 ``app/api/autonomy_routes.py`` only load rows, call these, and persist.
 
-Two cron dialects
------------------
-* Brigade's own schedules are interpreted EXACTLY as Brigade's scheduler fires
-  them: ``app.services.scheduler._parse_cron`` (APScheduler 3, where day-of-week
-  0 is MONDAY and day-of-month/day-of-week combine with AND).
-* An outside job's ``schedule`` comes from a real crontab, a Claude Code routine
-  or similar, so it is read with STANDARD cron semantics (day-of-week 0 or 7 is
-  Sunday, 1 is Monday; when both day-of-month and day-of-week are restricted the
-  job fires when EITHER matches). It is translated into APScheduler terms and
-  still validated by ``_parse_cron``.
+Cron schedules
+--------------
+Every schedule is parsed by ``app.services.cron.parse_cron`` using standard
+five-field cron semantics: day-of-week 0 or 7 is Sunday, 1 is Monday, and when
+both day-of-month and day-of-week are restricted the job fires when EITHER
+matches. That shared parser translates the expression into APScheduler terms
+and uses ``OrTrigger`` where APScheduler's native AND semantics differ.
 
 Staleness
 ---------
@@ -44,7 +41,10 @@ from typing import Any, Iterable, Optional
 from zoneinfo import ZoneInfo
 
 from app.core.timezones import BUSINESS_TIMEZONE
-from app.services.scheduler import _parse_cron
+from app.services.cron import parse_cron as _parse_standard_cron
+from app.services.cron import (
+    standard_dow_to_aps,  # noqa: F401  (re-exported: catalogue callers and tests import it from here)
+)
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +252,7 @@ def validate_timezone(tz: str) -> str:
     name = (tz or "").strip()
     try:
         ZoneInfo(name)
-        _parse_cron("0 0 * * *", name)  # APScheduler resolves zones through pytz
+        _parse_standard_cron("0 0 * * *", name)  # APScheduler resolves zones through pytz
     except Exception:  # noqa: BLE001 - every failure means "not a usable zone"
         raise ValueError(f"unknown timezone {tz!r}; use an IANA zone such as UTC or America/New_York") from None
     return name
@@ -276,89 +276,21 @@ class CronSchedule:
         return min(fires).astimezone(UTC) if fires else None
 
 
-# Standard cron numbers its weekdays from Sunday (0, and 7 again); APScheduler 3
-# numbers them from Monday. Translate through names, which mean the same in both.
-_STD_DOW_NAMES = ("sun", "mon", "tue", "wed", "thu", "fri", "sat")
-_APS_DOW_ORDER = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+def parse_schedule(cron: str, tz: str, *, standard: bool = True) -> CronSchedule:
+    """Parse a five-field cron through the shared standard parser.
 
-
-def _std_dow_number(token: str) -> int:
-    t = token.strip().lower()
-    if t.isdigit():
-        n = int(t)
-        if 0 <= n <= 7:
-            return n
-        raise ValueError(f"day-of-week {token!r} is out of range (0-7)")
-    if t in _STD_DOW_NAMES:
-        return _STD_DOW_NAMES.index(t)
-    raise ValueError(f"invalid day-of-week {token!r}")
-
-
-def _std_dow_days(field: str) -> set:
-    """Standard-cron day-of-week field -> the set of days it names (0 = Sunday)."""
-    days: set = set()
-    for part in field.split(","):
-        part = part.strip()
-        if not part:
-            raise ValueError(f"invalid day-of-week field {field!r}")
-        base, slash, step_text = part.partition("/")
-        step = 1
-        if slash:
-            if not step_text.isdigit() or int(step_text) < 1:
-                raise ValueError(f"invalid day-of-week step in {part!r}")
-            step = int(step_text)
-        if base == "*":
-            low, high = 0, 7
-        elif "-" in base:
-            first, last = base.split("-", 1)
-            low, high = _std_dow_number(first), _std_dow_number(last)
-            if high < low and high == 0:
-                high = 7  # "fri-sun"
-            if high < low:
-                raise ValueError(f"day-of-week range {base!r} runs backwards")
-        else:
-            low = _std_dow_number(base)
-            high = 7 if slash else low
-        days.update(n % 7 for n in range(low, high + 1, step))
-    return days
-
-
-def standard_dow_to_aps(field: str) -> str:
-    """Rewrite a standard-cron day-of-week field in APScheduler's terms."""
-    if field.strip() == "*":
-        return "*"
-    days = _std_dow_days(field)
-    if days == set(range(7)):
-        return "*"
-    return ",".join(name for name in _APS_DOW_ORDER if _STD_DOW_NAMES.index(name) in days)
-
-
-def parse_schedule(cron: str, tz: str, *, standard: bool) -> CronSchedule:
-    """Parse a 5-field cron. ``standard=False``: Brigade's own semantics, exactly
-    ``_parse_cron``. ``standard=True``: crontab semantics (see module docstring).
-    Raises ValueError on bad input."""
-    if not standard:
-        return CronSchedule((_parse_cron(cron, tz),))
-    parts = (cron or "").strip().split()
-    if len(parts) != 5:
-        raise ValueError(
-            f"cron must be 5 fields (minute hour day month day_of_week), got: {cron!r}"
-        )
-    minute, hour, dom, month, dow = parts
-    aps_dow = standard_dow_to_aps(dow)
-    if dom.startswith("*") or dow.startswith("*"):
-        return CronSchedule((_parse_cron(f"{minute} {hour} {dom} {month} {aps_dow}", tz),))
-    return CronSchedule((
-        _parse_cron(f"{minute} {hour} {dom} {month} *", tz),
-        _parse_cron(f"{minute} {hour} * {month} {aps_dow}", tz),
-    ))
+    ``standard`` remains as a source-compatible keyword for callers from the
+    pre-unification API; all schedules now use standard cron semantics.
+    Raises ``ValueError`` on bad input.
+    """
+    return CronSchedule((_parse_standard_cron(cron, tz),))
 
 
 def validate_schedule(cron: str, tz: str, *, now: Optional[datetime] = None) -> str:
     """A cleaned standard cron for an outside job, or ValueError with the reason.
 
-    It must parse (through the scheduler's ``_parse_cron``) and fire at least once
-    more: ``0 0 31 2 *`` is valid syntax that never runs."""
+    It must parse (through the shared cron parser) and fire at least once more:
+    ``0 0 31 2 *`` is valid syntax that never runs."""
     cleaned = " ".join((cron or "").split())
     try:
         schedule = parse_schedule(cleaned, tz, standard=True)
@@ -476,7 +408,7 @@ def build_brigade_item(
     (scheduled_runs itself keeps no duration)."""
     tz = getattr(run, "timezone", None) or BUSINESS_TIMEZONE
     enabled = bool(run.enabled)
-    schedule = safe_schedule(run.cron, tz, standard=False)
+    schedule = safe_schedule(run.cron, tz, standard=True)
     summary = getattr(run, "last_result_summary", None)
     last_status = getattr(run, "last_status", None)
     return {

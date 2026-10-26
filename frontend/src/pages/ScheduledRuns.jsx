@@ -262,6 +262,19 @@ function ScheduleCell({ row }) {
         {reading || 'Custom schedule'} <span className="text-muted">{tzLabel(row.timezone)}</span>
       </span>
       <code className="whitespace-nowrap font-mono text-caption text-muted">{row.cron}</code>
+      {row.enabled ? (
+        row.nextRunAt ? (
+          <Tooltip content={absoluteTime(row.nextRunAt, row.timezone || BUSINESS_TZ)}>
+            <time dateTime={row.nextRunAt} className="text-caption text-muted">
+              Next {relativeTime(row.nextRunAt)}
+            </time>
+          </Tooltip>
+        ) : (
+          <span className="text-caption text-muted">No upcoming run</span>
+        )
+      ) : (
+        <span className="text-caption text-muted">Paused</span>
+      )}
     </div>
   );
 }

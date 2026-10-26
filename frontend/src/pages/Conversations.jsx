@@ -47,6 +47,7 @@ const when = (c) => c.updated_at || c.created_at;
 export default function Conversations() {
   const navigate = useNavigate();
   const [conversations, setConversations] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
@@ -71,16 +72,24 @@ export default function Conversations() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const params = {
+      limit: 50,
+      q: query.trim() || undefined,
+      agent_id: agentFilter || undefined,
+    };
     // Both before the first render, so every row's face comes from the roster.
-    const [convs, agents] = await Promise.allSettled([apiJson('/conversations'), apiJson('/agents')]);
+    const [convs, agents] = await Promise.allSettled([apiJson('/conversations', { params }), apiJson('/agents')]);
     if (agents.status === 'fulfilled') {
       const d = agents.value;
       setRoster(new Map((d?.agents || (Array.isArray(d) ? d : [])).map((a) => [a.id, a])));
     }
-    if (convs.status === 'fulfilled') setConversations(convs.value?.conversations || []);
+    if (convs.status === 'fulfilled') {
+      setConversations(convs.value?.conversations || []);
+      setTotal(Number(convs.value?.total ?? convs.value?.conversations?.length ?? 0));
+    }
     else setError(convs.reason);
     setLoading(false);
-  }, []);
+  }, [agentFilter, query]);
 
   useEffect(() => {
     load();
@@ -102,20 +111,18 @@ export default function Conversations() {
 
   const agentsInList = useMemo(() => {
     const m = new Map();
+    for (const agent of roster.values()) {
+      if (agent.id) m.set(agent.id, agent.displayName || agent.name || agent.id);
+    }
     for (const c of conversations) {
       const id = c.agent?.id || c.agent_id;
       if (id && !m.has(id)) m.set(id, agentLabel(c));
     }
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [conversations]);
+  }, [conversations, roster]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = conversations.filter((c) => {
-      if (agentFilter && (c.agent?.id || c.agent_id) !== agentFilter) return false;
-      if (!q) return true;
-      return titleOf(c).toLowerCase().includes(q) || agentLabel(c).toLowerCase().includes(q) || String(c.model || '').toLowerCase().includes(q);
-    });
+    const list = [...conversations];
     const time = (c) => new Date(when(c) || 0).getTime();
     list.sort((a, b) => {
       if (sort === 'oldest') return time(a) - time(b);
@@ -124,9 +131,9 @@ export default function Conversations() {
       return time(b) - time(a);
     });
     return list;
-  }, [conversations, query, sort, agentFilter]);
+  }, [conversations, sort]);
 
-  const hasFilters = Boolean(query || agentFilter);
+  const hasFilters = Boolean(query.trim() || agentFilter);
   const clearFilters = () => {
     setQuery('');
     setAgentFilter('');
@@ -168,6 +175,7 @@ export default function Conversations() {
     try {
       await apiJson(`/conversations/${deleting.id}`, { method: 'DELETE' });
       setConversations((prev) => prev.filter((c) => c.id !== deleting.id));
+      setTotal((count) => Math.max(0, count - 1));
       setDeleting(null);
       notify.success('Conversation deleted');
     } catch (err) {
@@ -185,7 +193,7 @@ export default function Conversations() {
     body = <LoadingState variant="list" count={6} label="Loading conversations" />;
   } else if (error) {
     body = <ErrorState title="Couldn’t load your conversations" detail={humanize(error, { what: 'loading conversations' })} onRetry={load} />;
-  } else if (!conversations.length) {
+  } else if (!conversations.length && !hasFilters) {
     body = (
       <EmptyState
         icon={MessageSquare}
@@ -204,7 +212,7 @@ export default function Conversations() {
         compact
         icon={Search}
         title="No conversations match"
-        description="Try another word, or clear the search and the agent filter."
+        description="Try another title, or clear the search and the agent filter."
         action={
           <Button variant="secondary" size="sm" icon={X} onClick={clearFilters}>
             Clear filters
@@ -288,11 +296,11 @@ export default function Conversations() {
 
   const description = loading
     ? 'Every chat with an agent, saved with its tool calls'
-    : conversations.length === 0
+    : total === 0 && !hasFilters
       ? 'Nothing saved yet'
       : hasFilters
-        ? `${filtered.length} of ${conversations.length} conversations shown`
-        : `${conversations.length} ${conversations.length === 1 ? 'conversation' : 'conversations'}`;
+        ? `${total} matching ${total === 1 ? 'conversation' : 'conversations'}`
+        : `${total} ${total === 1 ? 'conversation' : 'conversations'}`;
 
   return (
     <Page width="wide" className="[contain:inline-size]">
@@ -315,7 +323,7 @@ export default function Conversations() {
             <Input
               type="search"
               aria-label="Search conversations"
-              placeholder="Search by title, agent or model…"
+              placeholder="Search by title…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="min-h-touch pl-9 sm:min-h-0"
@@ -339,7 +347,7 @@ export default function Conversations() {
         {hasFilters && !loading && (
           <div className="mt-2 flex items-center gap-2 text-caption text-muted">
             <span>
-              {filtered.length} match{filtered.length === 1 ? '' : 'es'}
+              {total} match{total === 1 ? '' : 'es'}
             </span>
             <Button variant="link" size="xs" onClick={clearFilters}>
               Clear

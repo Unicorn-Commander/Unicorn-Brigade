@@ -308,15 +308,13 @@ def test_bad_day_of_week_is_rejected(field):
         svc.standard_dow_to_aps(field)
 
 
-def test_outside_crons_use_standard_semantics_and_brigade_keeps_its_own():
+def test_all_catalogue_crons_use_standard_semantics():
     saturday_evening = utc(2026, 10, 24, 20, 0)  # Sat Oct 24, 16:00 in New York
     standard = _sched("40 8 * * 1-5", "America/New_York", standard=True)
     brigade = _sched("40 8 * * 1-5", "America/New_York", standard=False)
-    # A real crontab's 1-5 is Monday-Friday: next run is Monday 08:40 EDT.
+    # Every catalogue schedule now shares standard cron semantics with dispatch.
     assert svc.iso_z(standard.fire_at_or_after(saturday_evening)) == "2026-10-26T12:40:00Z"
-    # Brigade's scheduler (APScheduler, 0 = Monday) reads 1-5 as Tue-Sat; the
-    # catalogue reports when Brigade will ACTUALLY fire it.
-    assert svc.iso_z(brigade.fire_at_or_after(saturday_evening)) == "2026-10-27T12:40:00Z"
+    assert svc.iso_z(brigade.fire_at_or_after(saturday_evening)) == "2026-10-26T12:40:00Z"
 
 
 def test_standard_cron_fires_when_day_of_month_or_day_of_week_matches():
